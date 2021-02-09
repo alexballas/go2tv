@@ -14,33 +14,32 @@ type filesToServe struct {
 	Subtitles string
 }
 
-// HTTPserverAndmux - combine the http and mux into on type
-type HTTPserverAndmux struct {
+// HTTPserver - new http.Server instance
+type HTTPserver struct {
 	http *http.Server
-	mux  *http.ServeMux
 }
 
 // ServeFiles - Start HTTP server and serve file
-func (s *HTTPserverAndmux) ServeFiles(serverStarted chan<- struct{}, videoPath, subtitlesPath string) {
+func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtitlesPath string) {
 	files := &filesToServe{
 		Video:     videoPath,
 		Subtitles: subtitlesPath,
 	}
 
-	s.mux.HandleFunc("/"+path.Base(files.Video), files.serveVideoHandler)
+	http.HandleFunc("/"+path.Base(files.Video), files.serveVideoHandler)
 
 	ln, err := net.Listen("tcp", s.http.Addr)
 	if err != nil {
 		log.Fatal(err)
 	}
 	serverStarted <- struct{}{}
-	log.Println("Listening on :3000...")
+	log.Println("Listening on:", s.http.Addr)
 	s.http.Serve(ln)
 
 }
 
 // StopServeFiles - Kill the HTTP server
-func (s *HTTPserverAndmux) StopServeFiles() {
+func (s *HTTPserver) StopServeFiles() {
 	s.http.Close()
 }
 
@@ -57,16 +56,14 @@ func (f *filesToServe) serveVideoHandler(w http.ResponseWriter, req *http.Reques
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	http.ServeContent(w, req, path.Base(f.Video), fileStat.ModTime(), filePath)
 
 }
 
 // NewServer - create a new HTTP server
-func NewServer(adr string) HTTPserverAndmux {
-	return HTTPserverAndmux{
-		http: &http.Server{Addr: ":3000"},
-		mux:  http.NewServeMux(),
+func NewServer(a string) HTTPserver {
+	return HTTPserver{
+		http: &http.Server{Addr: a},
 	}
 
 }

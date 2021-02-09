@@ -37,11 +37,14 @@ func setAVTransportSoapCall(videoURL, transporturl string) {
 
 	parsedURL, err := url.Parse(transporturl)
 	if err != nil {
-		log.Fatalln("Failed to parse URL")
+		log.Fatal(err)
 	}
 
 	newSetAVTransportURIcall := soap.NewSOAPClient(*parsedURL)
-	newSetAVTransportURIcall.PerformAction("urn:schemas-upnp-org:service:AVTransport:1", "SetAVTransportURI", setAVTransportRequest, setAVTransportResponse)
+	if err := newSetAVTransportURIcall.PerformAction("urn:schemas-upnp-org:service:AVTransport:1",
+		"SetAVTransportURI", setAVTransportRequest, setAVTransportResponse); err != nil {
+		log.Fatal(err)
+	}
 
 }
 
@@ -53,11 +56,14 @@ func playStopSoapCall(action, transporturl string) {
 
 	parsedURL, err := url.Parse(transporturl)
 	if err != nil {
-		log.Fatalln("Failed to parse URL")
+		log.Fatal(err)
 	}
 
 	newPlaycall := soap.NewSOAPClient(*parsedURL)
-	newPlaycall.PerformAction("urn:schemas-upnp-org:service:AVTransport:1", action, psRequest, psResponse)
+	if err := newPlaycall.PerformAction("urn:schemas-upnp-org:service:AVTransport:1",
+		action, psRequest, psResponse); err != nil {
+		log.Fatal(err)
+	}
 }
 
 // SendtoTV - Send to tv

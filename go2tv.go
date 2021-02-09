@@ -8,12 +8,13 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/alexballas/go2tv/iptools"
 	"github.com/alexballas/go2tv/servfiles"
 	"github.com/alexballas/go2tv/soapcalls"
 )
 
 var serverStarted = make(chan struct{})
-var videoArg = flag.String("video", "", "Path of our video file")
+var videoArg = flag.String("video", "/home/alex/VIDEO0170.mp4", "Path of our video file")
 var subsArg = flag.String("sub", "", "Path of our subs file (optional)")
 
 func main() {
@@ -51,7 +52,10 @@ func main() {
 		VideoURL:     "http://192.168.88.250:3000/VIDEO0170.mp4",
 		SubtitlesURL: "http://192.168.88.250:3000/VIDEO0170.srt",
 	}
-	go func() { servfiles.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile) }()
+	whereToListen := iptools.URLtoListeIP("http://192.168.88.244:9197/drm")
+
+	s := servfiles.NewServer(whereToListen + ":3000")
+	go func() { s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile) }()
 	calctime := time.Now()
 	// Wait for HTTP server to properly initialize
 	<-serverStarted
@@ -60,6 +64,5 @@ func main() {
 	time.Sleep(10 * time.Second)
 	tvdata.SendtoTV("Stop")
 
-	servfiles.StopServeFiles()
 	select {}
 }
