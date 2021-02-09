@@ -1,21 +1,29 @@
 package iptools
 
 import (
-	"log"
 	"net"
 	"net/url"
 	"strings"
 )
 
 // URLtoListeIP for a given internal URL, find the correct IP/Interface to listen to.
-func URLtoListeIP(u string) string {
+func URLtoListeIP(u string) (string, error) {
 	parsedURL, err := url.Parse(u)
 	if err != nil {
-		log.Fatal(err)
+		return "", err
 	}
 	conn, err := net.Dial("udp", parsedURL.Host)
 	if err != nil {
-		log.Fatalln("Failed to establish connection")
+		return "", err
 	}
-	return strings.Split(conn.LocalAddr().String(), ":")[0]
+	return strings.Split(conn.LocalAddr().String(), ":")[0], nil
+}
+
+// URLtoIP - Simple URL to IP parser
+func URLtoIP(u string) (string, error) {
+	parsedURL, err := url.Parse(u)
+	if err != nil {
+		return "", err
+	}
+	return parsedURL.Hostname(), nil
 }

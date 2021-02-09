@@ -1,7 +1,6 @@
 package soapcalls
 
 import (
-	"log"
 	"net/url"
 
 	"github.com/huin/goupnp/soap"
@@ -31,46 +30,51 @@ type TVPayload struct {
 	SubtitlesURL string
 }
 
-func setAVTransportSoapCall(videoURL, transporturl string) {
+func setAVTransportSoapCall(videoURL, transporturl string) error {
 	setAVTransportRequest := &setAVTransportRequest{InstanceID: "0", CurrentURI: videoURL}
 	setAVTransportResponse := &setAVTransportResponse{}
 
 	parsedURL, err := url.Parse(transporturl)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	newSetAVTransportURIcall := soap.NewSOAPClient(*parsedURL)
 	if err := newSetAVTransportURIcall.PerformAction("urn:schemas-upnp-org:service:AVTransport:1",
 		"SetAVTransportURI", setAVTransportRequest, setAVTransportResponse); err != nil {
-		log.Fatal(err)
+		return err
 	}
-
+	return nil
 }
 
 // PlayStopSoapCall - Build and call the play soap call
-func playStopSoapCall(action, transporturl string) {
+func playStopSoapCall(action, transporturl string) error {
 
 	psRequest := &playStopRequest{InstanceID: "0", Speed: "1"}
 	psResponse := &playStopResponse{}
 
 	parsedURL, err := url.Parse(transporturl)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	newPlaycall := soap.NewSOAPClient(*parsedURL)
 	if err := newPlaycall.PerformAction("urn:schemas-upnp-org:service:AVTransport:1",
 		action, psRequest, psResponse); err != nil {
-		log.Fatal(err)
+		return err
 	}
+	return nil
 }
 
 // SendtoTV - Send to tv
-func (p *TVPayload) SendtoTV(action string) {
+func (p *TVPayload) SendtoTV(action string) error {
 	if action == "Play" {
-		setAVTransportSoapCall(p.VideoURL, p.TransportURL)
+		if err := setAVTransportSoapCall(p.VideoURL, p.TransportURL); err != nil {
+			return err
+		}
 	}
-	playStopSoapCall(action, p.TransportURL)
-
+	if err := playStopSoapCall(action, p.TransportURL); err != nil {
+		return err
+	}
+	return nil
 }
