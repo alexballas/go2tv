@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// URLtoListeIP for a given internal URL, find the correct IP/Interface to listen to.
-func URLtoListeIP(u string) (string, error) {
+// URLtoListenIPandPort for a given internal URL, find the correct IP/Interface to listen to.
+func URLtoListenIPandPort(u string) (string, error) {
 	parsedURL, err := url.Parse(u)
 	if err != nil {
 		return "", err
@@ -16,5 +16,6 @@ func URLtoListeIP(u string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return strings.Split(conn.LocalAddr().String(), ":")[0], nil
+	res := strings.Split(conn.LocalAddr().String(), ":")[0] + ":3500"
+	return res, nil
 }

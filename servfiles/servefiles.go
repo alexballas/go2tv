@@ -49,6 +49,7 @@ func (f *filesToServe) serveVideoHandler(w http.ResponseWriter, req *http.Reques
 	w.Header().Set("contentFeatures.dlna.org", "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=017000 00000000000000000000000000")
 
 	filePath, err := os.Open(f.Video)
+	defer filePath.Close()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 		os.Exit(1)
@@ -68,5 +69,4 @@ func NewServer(a string) HTTPserver {
 	return HTTPserver{
 		http: &http.Server{Addr: a},
 	}
-
 }

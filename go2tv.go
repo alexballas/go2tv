@@ -4,8 +4,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/alexballas/go2tv/iptools"
@@ -14,30 +16,67 @@ import (
 	"github.com/koron/go-ssdp"
 )
 
-var serverStarted = make(chan struct{})
-var devices = make(map[int][]string)
+var (
+	serverStarted = make(chan struct{})
+	devices       = make(map[int][]string)
 
-var videoArg = flag.String("video", "/home/alex/VIDEO0170.mp4", "Path to the video file")
-var subsArg = flag.String("sub", "", "Path to the subtitles file")
-var listPtr = flag.Bool("list", false, "List available UPnP/DLNA MediaRenderers")
-var targetPtr = flag.String("target", "", "Cast to a specific UPnP/DLNA MediaRenderer URL")
+	videoArg  = flag.String("v", "", "Path to the video file.")
+	subsArg   = flag.String("s", "", "Path to the subtitles file.")
+	listPtr   = flag.Bool("l", false, "List all available UPnP/DLNA MediaRenderer models and URLs.")
+	targetPtr = flag.String("t", "", "Cast to a specific UPnP/DLNA MediaRenderer URL.")
+)
 
 func main() {
+	var dmrURL string
 	flag.Parse()
 
 	if *targetPtr == "" {
-		if err := loadSSDPservices(); err != nil {
+		err := loadSSDPservices()
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 			os.Exit(1)
 		}
+
+		dmrURL, err = devicePicker(1)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+			os.Exit(1)
+		}
+	} else {
+		// Validate URL before proceeding
+		_, err := url.ParseRequestURI(*targetPtr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+			os.Exit(1)
+		}
+		dmrURL = *targetPtr
 	}
 
 	if *listPtr == true {
 		if len(devices) == 0 {
-			err := errors.New("-list and -target can't be used together")
+			err := errors.New("-l and -t can't be used together")
 			fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 			os.Exit(1)
 		}
+		fmt.Println()
+
+		// We loop through this map twice as we need to maintain
+		// the correct order.
+		keys := make([]int, 0)
+		for k := range devices {
+			keys = append(keys, k)
+		}
+
+		sort.Ints(keys)
+
+		for _, k := range keys {
+			fmt.Printf("\033[1mDevice %v\033[0m\n", k)
+			fmt.Printf("\033[1m--------\033[0m\n")
+			fmt.Printf("\033[1mModel\033[0m: %s\n", devices[k][0])
+			fmt.Printf("\033[1mURL\033[0m:   %s\n", devices[k][1])
+			fmt.Println()
+		}
+		os.Exit(0)
 	}
 
 	if *videoArg == "" {
@@ -58,28 +97,40 @@ func main() {
 
 	absSubtitlesFile := *subsArg
 
-	tvdata := &soapcalls.TVPayload{
-		TransportURL: "http://192.168.88.244:9197/upnp/control/AVTransport1",
-		VideoURL:     "http://192.168.88.250:3000/VIDEO0170.mp4",
-		SubtitlesURL: "http://192.168.88.250:3000/VIDEO0170.srt",
-	}
-	whereToListen, err := iptools.URLtoListeIP("http://192.168.88.244:9197/drm")
+	transportURL, err := soapcalls.AVTransportFromDMRextractor(dmrURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 		os.Exit(1)
 	}
 
-	s := servfiles.NewServer(whereToListen + ":3000")
+	whereToListen, err := iptools.URLtoListenIPandPort(dmrURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		os.Exit(1)
+	}
+
+	tvdata := &soapcalls.TVPayload{
+		TransportURL: transportURL,
+		VideoURL:     "http://" + whereToListen + "/" + filepath.Base(absVideoFile),
+		SubtitlesURL: "http://" + whereToListen + "/" + filepath.Base(absSubtitlesFile),
+	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		os.Exit(1)
+	}
+
+	s := servfiles.NewServer(whereToListen)
 	go func() { s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile) }()
-	calctime := time.Now()
 	// Wait for HTTP server to properly initialize
 	<-serverStarted
 
-	fmt.Println(time.Since(calctime))
 	if err := tvdata.SendtoTV("Play"); err != nil {
 		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 		os.Exit(1)
 	}
+
+	// Just for debugging reasons
 	time.Sleep(10 * time.Second)
 	if err := tvdata.SendtoTV("Stop"); err != nil {
 		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
@@ -105,5 +156,22 @@ func loadSSDPservices() error {
 	if counter > 0 {
 		return nil
 	}
-	return errors.New("No available Media Renderers")
+	return errors.New("loadSSDPservices: No available Media Renderers")
+}
+
+func devicePicker(i int) (string, error) {
+	if i > len(devices) || len(devices) == 0 || i <= 0 {
+		return "", errors.New("devicePicker: Requested device not available")
+	}
+	keys := make([]int, 0)
+	for k := range devices {
+		keys = append(keys, k)
+	}
+	sort.Ints(keys)
+	for _, k := range keys {
+		if i == k {
+			return devices[k][1], nil
+		}
+	}
+	return "", errors.New("devicePicker: Something went terribly wrong")
 }
