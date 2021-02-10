@@ -4,11 +4,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
-	"time"
+	"syscall"
 
 	"github.com/alexballas/go2tv/iptools"
 	"github.com/alexballas/go2tv/servfiles"
@@ -17,76 +17,26 @@ import (
 )
 
 var (
+	dmrURL        string
 	serverStarted = make(chan struct{})
 	devices       = make(map[int][]string)
-
-	videoArg  = flag.String("v", "", "Path to the video file.")
-	subsArg   = flag.String("s", "", "Path to the subtitles file.")
-	listPtr   = flag.Bool("l", false, "List all available UPnP/DLNA MediaRenderer models and URLs.")
-	targetPtr = flag.String("t", "", "Cast to a specific UPnP/DLNA MediaRenderer URL.")
+	videoArg      = flag.String("v", "", "Path to the video file.")
+	subsArg       = flag.String("s", "", "Path to the subtitles file.")
+	listPtr       = flag.Bool("l", false, "List all available UPnP/DLNA MediaRenderer models and URLs.")
+	targetPtr     = flag.String("t", "", "Cast to a specific UPnP/DLNA MediaRenderer URL.")
 )
 
 func main() {
-	var dmrURL string
 	flag.Parse()
 
-	if *targetPtr == "" {
-		err := loadSSDPservices()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-			os.Exit(1)
-		}
-
-		dmrURL, err = devicePicker(1)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-			os.Exit(1)
-		}
-	} else {
-		// Validate URL before proceeding
-		_, err := url.ParseRequestURI(*targetPtr)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-			os.Exit(1)
-		}
-		dmrURL = *targetPtr
+	exit, err := checkflags()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		os.Exit(1)
 	}
 
-	if *listPtr == true {
-		if len(devices) == 0 {
-			err := errors.New("-l and -t can't be used together")
-			fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-			os.Exit(1)
-		}
-		fmt.Println()
-
-		// We loop through this map twice as we need to maintain
-		// the correct order.
-		keys := make([]int, 0)
-		for k := range devices {
-			keys = append(keys, k)
-		}
-
-		sort.Ints(keys)
-
-		for _, k := range keys {
-			fmt.Printf("\033[1mDevice %v\033[0m\n", k)
-			fmt.Printf("\033[1m--------\033[0m\n")
-			fmt.Printf("\033[1mModel\033[0m: %s\n", devices[k][0])
-			fmt.Printf("\033[1mURL\033[0m:   %s\n", devices[k][1])
-			fmt.Println()
-		}
+	if exit == true {
 		os.Exit(0)
-	}
-
-	if *videoArg == "" {
-		err := errors.New("No video file defined")
-		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-		os.Exit(1)
-	}
-	if _, err := os.Stat(*videoArg); os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-		os.Exit(1)
 	}
 
 	absVideoFile, err := filepath.Abs(*videoArg)
@@ -129,14 +79,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 		os.Exit(1)
 	}
+	initializeCloseHandler(*tvdata)
 
-	// Just for debugging reasons
-	time.Sleep(10 * time.Second)
-	if err := tvdata.SendtoTV("Stop"); err != nil {
-		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-		os.Exit(1)
-	}
-
+	// Sleep forever
 	select {}
 }
 
@@ -174,4 +119,18 @@ func devicePicker(i int) (string, error) {
 		}
 	}
 	return "", errors.New("devicePicker: Something went terribly wrong")
+}
+
+func initializeCloseHandler(tvdata soapcalls.TVPayload) {
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		fmt.Println("\rShutting down...")
+		if err := tvdata.SendtoTV("Stop"); err != nil {
+			fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}()
 }

@@ -1,6 +1,7 @@
 package soapcalls
 
 import (
+	"fmt"
 	"net/url"
 
 	"github.com/huin/goupnp/soap"
@@ -76,5 +77,12 @@ func (p *TVPayload) SendtoTV(action string) error {
 	if err := playStopSoapCall(action, p.TransportURL); err != nil {
 		return err
 	}
+	if action == "Play" {
+		fmt.Println("Streaming to Device..")
+	}
+	if action == "Stop" {
+		fmt.Println("Stopping streaming..")
+	}
+
 	return nil
 }
