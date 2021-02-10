@@ -4,7 +4,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -28,26 +27,33 @@ func main() {
 
 	if *targetPtr == "" {
 		if err := loadSSDPservices(); err != nil {
-			log.Fatal(err)
+			fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+			os.Exit(1)
 		}
 	}
 
 	if *listPtr == true {
 		if len(devices) == 0 {
-			log.Fatal("-list and -target can't be used together")
+			err := errors.New("-list and -target can't be used together")
+			fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+			os.Exit(1)
 		}
 	}
 
 	if *videoArg == "" {
-		log.Fatal("No video file defined")
+		err := errors.New("No video file defined")
+		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		os.Exit(1)
 	}
 	if _, err := os.Stat(*videoArg); os.IsNotExist(err) {
-		log.Fatalf("Could not locate video file %v", *videoArg)
+		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		os.Exit(1)
 	}
 
 	absVideoFile, err := filepath.Abs(*videoArg)
 	if err != nil {
-		log.Fatalf("Could not retriece absolute path for %v", *videoArg)
+		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		os.Exit(1)
 	}
 
 	absSubtitlesFile := *subsArg
@@ -59,7 +65,8 @@ func main() {
 	}
 	whereToListen, err := iptools.URLtoListeIP("http://192.168.88.244:9197/drm")
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		os.Exit(1)
 	}
 
 	s := servfiles.NewServer(whereToListen + ":3000")
@@ -70,11 +77,13 @@ func main() {
 
 	fmt.Println(time.Since(calctime))
 	if err := tvdata.SendtoTV("Play"); err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		os.Exit(1)
 	}
 	time.Sleep(10 * time.Second)
 	if err := tvdata.SendtoTV("Stop"); err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		os.Exit(1)
 	}
 
 	select {}
@@ -90,11 +99,7 @@ func loadSSDPservices() error {
 		// We only care about the AVTransport services
 		if srv.Type == "urn:schemas-upnp-org:service:AVTransport:1" {
 			counter++
-			srvLocation, err := iptools.URLtoIP(srv.Location)
-			if err != nil {
-				return err
-			}
-			devices[counter] = []string{srv.Server, srvLocation}
+			devices[counter] = []string{srv.Server, srv.Location}
 		}
 	}
 	if counter > 0 {

@@ -18,12 +18,3 @@ func URLtoListeIP(u string) (string, error) {
 	}
 	return strings.Split(conn.LocalAddr().String(), ":")[0], nil
 }
-
-// URLtoIP - Simple URL to IP parser
-func URLtoIP(u string) (string, error) {
-	parsedURL, err := url.Parse(u)
-	if err != nil {
-		return "", err
-	}
-	return parsedURL.Hostname(), nil
-}

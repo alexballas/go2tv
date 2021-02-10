@@ -1,7 +1,7 @@
 package servfiles
 
 import (
-	"log"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -30,10 +30,11 @@ func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtit
 
 	ln, err := net.Listen("tcp", s.http.Addr)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		os.Exit(1)
 	}
 	serverStarted <- struct{}{}
-	log.Println("Listening on:", s.http.Addr)
+	fmt.Println("Listening on:", s.http.Addr)
 	s.http.Serve(ln)
 
 }
@@ -49,12 +50,14 @@ func (f *filesToServe) serveVideoHandler(w http.ResponseWriter, req *http.Reques
 
 	filePath, err := os.Open(f.Video)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		os.Exit(1)
 	}
 
 	fileStat, err := filePath.Stat()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		os.Exit(1)
 	}
 	http.ServeContent(w, req, path.Base(f.Video), fileStat.ModTime(), filePath)
 
