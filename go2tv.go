@@ -21,7 +21,7 @@ var (
 	serverStarted = make(chan struct{})
 	devices       = make(map[int][]string)
 	videoArg      = flag.String("v", "", "Path to the video file.")
-	subsArg       = flag.String("s", "", "Path to the subtitles file.")
+	subsArg       = flag.String("s", "", "Path to the subtitles file. (not supported yet)")
 	listPtr       = flag.Bool("l", false, "List all available UPnP/DLNA MediaRenderer models and URLs.")
 	targetPtr     = flag.String("t", "", "Cast to a specific UPnP/DLNA MediaRenderer URL.")
 )
@@ -126,7 +126,7 @@ func initializeCloseHandler(tvdata soapcalls.TVPayload) {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
-		fmt.Println("\rShutting down...")
+		fmt.Println(" Shutting down...")
 		if err := tvdata.SendtoTV("Stop"); err != nil {
 			fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 			os.Exit(1)
