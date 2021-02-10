@@ -81,7 +81,7 @@ func (p *TVPayload) SendtoTV(action string) error {
 		fmt.Println("Streaming to Device..")
 	}
 	if action == "Stop" {
-		fmt.Println("Stopping streaming..")
+		fmt.Println("Stopping stream..")
 	}
 
 	return nil
