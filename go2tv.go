@@ -122,7 +122,7 @@ func devicePicker(i int) (string, error) {
 }
 
 func initializeCloseHandler(tvdata soapcalls.TVPayload) {
-	c := make(chan os.Signal)
+	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
