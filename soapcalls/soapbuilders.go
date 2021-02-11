@@ -1,88 +1,144 @@
 package soapcalls
 
 import (
+	"bytes"
+	"encoding/xml"
 	"fmt"
-	"net/url"
-
-	"github.com/huin/goupnp/soap"
 )
 
-type playStopRequest struct {
-	InstanceID string
-	Speed      string
+type Envelope struct {
+	XMLName  xml.Name `xml:"s:Envelope"`
+	Schema   string   `xml:"xmlns:s,attr"`
+	Encoding string   `xml:"s:encodingStyle,attr"`
+	Body     Body     `xml:"s:Body"`
 }
 
-type playStopResponse struct {
+type Body struct {
+	XMLName           xml.Name          `xml:"s:Body"`
+	SetAVTransportURI SetAVTransportURI `xml:"u:SetAVTransportURI"`
 }
 
-type setAVTransportRequest struct {
+type SetAVTransportURI struct {
+	XMLName            xml.Name `xml:"u:SetAVTransportURI"`
+	AVTransport        string   `xml:"xmlns:u,attr"`
 	InstanceID         string
 	CurrentURI         string
-	CurrentURIMetaData string
+	CurrentURIMetaData CurrentURIMetaData `xml:"CurrentURIMetaData"`
 }
 
-type setAVTransportResponse struct {
+type CurrentURIMetaData struct {
+	XMLName xml.Name `xml:"CurrentURIMetaData"`
+	Value   string   `xml:",chardata"`
 }
 
-// TVPayload - we need this populated in order
-type TVPayload struct {
-	TransportURL string
-	VideoURL     string
-	SubtitlesURL string
+type DIDLLite struct {
+	XMLName      xml.Name     `xml:"DIDL-Lite"`
+	SchemaDIDL   string       `xml:"xmlns,attr"`
+	DC           string       `xml:"xmlns:dc,attr"`
+	Sec          string       `xml:"xmlns:sec,attr"`
+	SchemaUPNP   string       `xml:"xmlns:upnp,attr"`
+	DIDLLiteItem DIDLLiteItem `xml:"item"`
 }
 
-func setAVTransportSoapCall(videoURL, transporturl string) error {
-	setAVTransportRequest := &setAVTransportRequest{InstanceID: "0", CurrentURI: videoURL}
-	setAVTransportResponse := &setAVTransportResponse{}
+type DIDLLiteItem struct {
+	XMLName          xml.Name         `xml:"item"`
+	ID               string           `xml:"id,attr"`
+	ParentID         string           `xml:"parentID,attr"`
+	Restricted       string           `xml:"restricted,attr"`
+	UPNPClass        string           `xml:"upnp:class"`
+	DCtitle          string           `xml:"dc:title"`
+	ResNode          []ResNode        `xml:"res"`
+	SecCaptionInfo   SecCaptionInfo   `xml:"sec:CaptionInfo"`
+	SecCaptionInfoEx SecCaptionInfoEx `xml:"sec:CaptionInfoEx"`
+}
 
-	parsedURL, err := url.Parse(transporturl)
+type ResNode struct {
+	XMLName      xml.Name `xml:"res"`
+	ProtocolInfo string   `xml:"protocolInfo,attr"`
+	Value        string   `xml:",chardata"`
+}
+
+type SecCaptionInfo struct {
+	XMLName xml.Name `xml:"sec:CaptionInfo"`
+	Type    string   `xml:"sec:type,attr"`
+	Value   string   `xml:",chardata"`
+}
+
+type SecCaptionInfoEx struct {
+	XMLName xml.Name `xml:"sec:CaptionInfoEx"`
+	Type    string   `xml:"sec:type,attr"`
+	Value   string   `xml:",chardata"`
+}
+
+func setAVTransportSoapBuild(videoURL, subtitleURL string) ([]byte, error) {
+	l := DIDLLite{
+		XMLName:    xml.Name{},
+		SchemaDIDL: "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
+		DC:         "http://purl.org/dc/elements/1.1/",
+		Sec:        "http://www.sec.co.kr/",
+		SchemaUPNP: "urn:schemas-upnp-org:metadata-1-0/upnp/",
+		DIDLLiteItem: DIDLLiteItem{
+			XMLName:    xml.Name{},
+			ID:         "0",
+			ParentID:   "-1",
+			Restricted: "false",
+			UPNPClass:  "object.item.videoItem.movie",
+			DCtitle:    videoURL,
+			ResNode: []ResNode{{
+				XMLName:      xml.Name{},
+				ProtocolInfo: "http-get:*:video/mp4:*",
+				Value:        videoURL,
+			}, {
+				XMLName:      xml.Name{},
+				ProtocolInfo: "http-get:*:text/srt:*",
+				Value:        subtitleURL,
+			},
+			},
+			SecCaptionInfo: SecCaptionInfo{
+				XMLName: xml.Name{},
+				Type:    "srt",
+				Value:   subtitleURL,
+			},
+			SecCaptionInfoEx: SecCaptionInfoEx{
+				XMLName: xml.Name{},
+				Type:    "srt",
+				Value:   subtitleURL,
+			},
+		},
+	}
+	a, err := xml.Marshal(l)
 	if err != nil {
-		return err
+		fmt.Println(err)
+		return make([]byte, 0), err
 	}
 
-	newSetAVTransportURIcall := soap.NewSOAPClient(*parsedURL)
-	if err := newSetAVTransportURIcall.PerformAction("urn:schemas-upnp-org:service:AVTransport:1",
-		"SetAVTransportURI", setAVTransportRequest, setAVTransportResponse); err != nil {
-		return err
+	a = bytes.ReplaceAll(a, []byte(">"), []byte("&gt;"))
+	a = bytes.ReplaceAll(a, []byte("<"), []byte("&lt;"))
+
+	d := Envelope{
+		XMLName:  xml.Name{},
+		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
+		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
+		Body: Body{
+			XMLName: xml.Name{},
+			SetAVTransportURI: SetAVTransportURI{
+				XMLName:     xml.Name{},
+				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
+				InstanceID:  "0",
+				CurrentURI:  videoURL,
+				CurrentURIMetaData: CurrentURIMetaData{
+					XMLName: xml.Name{},
+					Value:   string(a),
+				},
+			},
+		},
 	}
-	return nil
-}
-
-// PlayStopSoapCall - Build and call the play soap call
-func playStopSoapCall(action, transporturl string) error {
-
-	psRequest := &playStopRequest{InstanceID: "0", Speed: "1"}
-	psResponse := &playStopResponse{}
-
-	parsedURL, err := url.Parse(transporturl)
+	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
+	b, err := xml.Marshal(d)
 	if err != nil {
-		return err
+		fmt.Println(err)
+		return make([]byte, 0), err
 	}
 
-	newPlaycall := soap.NewSOAPClient(*parsedURL)
-	if err := newPlaycall.PerformAction("urn:schemas-upnp-org:service:AVTransport:1",
-		action, psRequest, psResponse); err != nil {
-		return err
-	}
-	return nil
-}
-
-// SendtoTV - Send to tv
-func (p *TVPayload) SendtoTV(action string) error {
-	if action == "Play" {
-		if err := setAVTransportSoapCall(p.VideoURL, p.TransportURL); err != nil {
-			return err
-		}
-	}
-	if err := playStopSoapCall(action, p.TransportURL); err != nil {
-		return err
-	}
-	if action == "Play" {
-		fmt.Println("Streaming to Device..")
-	}
-	if action == "Stop" {
-		fmt.Println("Stopping stream..")
-	}
-
-	return nil
+	return append(xmlStart, b...), nil
 }

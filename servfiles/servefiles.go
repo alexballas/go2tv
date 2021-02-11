@@ -27,6 +27,7 @@ func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtit
 	}
 
 	http.HandleFunc("/"+path.Base(files.Video), files.serveVideoHandler)
+	http.HandleFunc("/"+path.Base(files.Subtitles), files.serveSubtitlesHandler)
 
 	ln, err := net.Listen("tcp", s.http.Addr)
 	if err != nil {
@@ -61,6 +62,26 @@ func (f *filesToServe) serveVideoHandler(w http.ResponseWriter, req *http.Reques
 		os.Exit(1)
 	}
 	http.ServeContent(w, req, path.Base(f.Video), fileStat.ModTime(), filePath)
+
+}
+
+func (f *filesToServe) serveSubtitlesHandler(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("transferMode.dlna.org", "Streaming")
+	w.Header().Set("contentFeatures.dlna.org", "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=017000 00000000000000000000000000")
+
+	filePath, err := os.Open(f.Subtitles)
+	defer filePath.Close()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		os.Exit(1)
+	}
+
+	fileStat, err := filePath.Stat()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		os.Exit(1)
+	}
+	http.ServeContent(w, req, path.Base(f.Subtitles), fileStat.ModTime(), filePath)
 
 }
 

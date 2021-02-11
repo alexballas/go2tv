@@ -45,7 +45,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	absSubtitlesFile := *subsArg
+	absSubtitlesFile, err := filepath.Abs(*subsArg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		os.Exit(1)
+	}
 
 	transportURL, err := soapcalls.AVTransportFromDMRextractor(dmrURL)
 	if err != nil {
@@ -74,7 +78,6 @@ func main() {
 	go func() { s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile) }()
 	// Wait for HTTP server to properly initialize
 	<-serverStarted
-
 	if err := tvdata.SendtoTV("Play"); err != nil {
 		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 		os.Exit(1)
