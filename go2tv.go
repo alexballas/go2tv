@@ -79,8 +79,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 		os.Exit(1)
 	}
-	initializeCloseHandler(*tvdata)
 
+	initializeCloseHandler(*tvdata)
 	// Sleep forever
 	select {}
 }

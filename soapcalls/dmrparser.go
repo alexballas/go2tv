@@ -57,7 +57,6 @@ func AVTransportFromDMRextractor(dmrurl string) (string, error) {
 			avtransportURL := parsedURL.Scheme + "://" + parsedURL.Host + root.Device.ServiceList.Services[i].ControlURL
 			return avtransportURL, nil
 		}
-
 	}
 	return "", errors.New("Something broke somewhere - wrong DMR URL?")
 }
