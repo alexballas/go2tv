@@ -11,7 +11,7 @@ import (
 	"syscall"
 
 	"github.com/alexballas/go2tv/iptools"
-	"github.com/alexballas/go2tv/servfiles"
+	"github.com/alexballas/go2tv/servefiles"
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/koron/go-ssdp"
 )
@@ -74,7 +74,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	s := servfiles.NewServer(whereToListen)
+	s := servefiles.NewServer(whereToListen)
 	go func() { s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile) }()
 	// Wait for HTTP server to properly initialize
 	<-serverStarted

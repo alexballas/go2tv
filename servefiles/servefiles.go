@@ -1,11 +1,11 @@
-package servfiles
+package servefiles
 
 import (
 	"fmt"
 	"net"
 	"net/http"
 	"os"
-	"path"
+	"path/filepath"
 )
 
 // filesToServe defines the files we need to serve
@@ -26,8 +26,8 @@ func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtit
 		Subtitles: subtitlesPath,
 	}
 
-	http.HandleFunc("/"+path.Base(files.Video), files.serveVideoHandler)
-	http.HandleFunc("/"+path.Base(files.Subtitles), files.serveSubtitlesHandler)
+	http.HandleFunc("/"+filepath.Base(files.Video), files.serveVideoHandler)
+	http.HandleFunc("/"+filepath.Base(files.Subtitles), files.serveSubtitlesHandler)
 
 	ln, err := net.Listen("tcp", s.http.Addr)
 	if err != nil {
@@ -61,7 +61,7 @@ func (f *filesToServe) serveVideoHandler(w http.ResponseWriter, req *http.Reques
 		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 		os.Exit(1)
 	}
-	http.ServeContent(w, req, path.Base(f.Video), fileStat.ModTime(), filePath)
+	http.ServeContent(w, req, filepath.Base(f.Video), fileStat.ModTime(), filePath)
 
 }
 
@@ -81,7 +81,7 @@ func (f *filesToServe) serveSubtitlesHandler(w http.ResponseWriter, req *http.Re
 		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 		os.Exit(1)
 	}
-	http.ServeContent(w, req, path.Base(f.Subtitles), fileStat.ModTime(), filePath)
+	http.ServeContent(w, req, filepath.Base(f.Subtitles), fileStat.ModTime(), filePath)
 
 }
 

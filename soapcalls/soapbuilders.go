@@ -28,7 +28,7 @@ type SetAVTransportURI struct {
 
 type CurrentURIMetaData struct {
 	XMLName xml.Name `xml:"CurrentURIMetaData"`
-	Value   string   `xml:",chardata"`
+	Value   []byte   `xml:",chardata"`
 }
 
 type DIDLLite struct {
@@ -112,9 +112,6 @@ func setAVTransportSoapBuild(videoURL, subtitleURL string) ([]byte, error) {
 		return make([]byte, 0), err
 	}
 
-	a = bytes.ReplaceAll(a, []byte(">"), []byte("&gt;"))
-	a = bytes.ReplaceAll(a, []byte("<"), []byte("&lt;"))
-
 	d := Envelope{
 		XMLName:  xml.Name{},
 		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
@@ -128,7 +125,7 @@ func setAVTransportSoapBuild(videoURL, subtitleURL string) ([]byte, error) {
 				CurrentURI:  videoURL,
 				CurrentURIMetaData: CurrentURIMetaData{
 					XMLName: xml.Name{},
-					Value:   string(a),
+					Value:   a,
 				},
 			},
 		},
@@ -139,6 +136,9 @@ func setAVTransportSoapBuild(videoURL, subtitleURL string) ([]byte, error) {
 		fmt.Println(err)
 		return make([]byte, 0), err
 	}
+	// That looks like an issue just with my SamsungTV
+	b = bytes.ReplaceAll(b, []byte("&#34;"), []byte(`"`))
+	b = bytes.ReplaceAll(b, []byte("&amp;"), []byte("&"))
 
 	return append(xmlStart, b...), nil
 }
