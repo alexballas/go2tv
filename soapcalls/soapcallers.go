@@ -5,17 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-
-	"github.com/huin/goupnp/soap"
 )
-
-type playStopRequest struct {
-	InstanceID string
-	Speed      string
-}
-
-type playStopResponse struct {
-}
 
 // TVPayload - we need this populated in order
 type TVPayload struct {
@@ -54,18 +44,36 @@ func setAVTransportSoapCall(videoURL, subtitleURL, transporturl string) error {
 
 // PlayStopSoapCall - Build and call the play soap call
 func playStopSoapCall(action, transporturl string) error {
-
-	psRequest := &playStopRequest{InstanceID: "0", Speed: "1"}
-	psResponse := &playStopResponse{}
-
-	parsedURL, err := url.Parse(transporturl)
+	parsedURLtransport, err := url.Parse(transporturl)
 	if err != nil {
 		return err
 	}
 
-	newPlaycall := soap.NewSOAPClient(*parsedURL)
-	if err := newPlaycall.PerformAction("urn:schemas-upnp-org:service:AVTransport:1",
-		action, psRequest, psResponse); err != nil {
+	var xml []byte
+	if action == "Play" {
+		xml, err = playSoapBuild()
+	}
+
+	if action == "Stop" {
+		xml, err = stopSoapBuild()
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xml))
+	if err != nil {
+		return err
+	}
+
+	headers := http.Header{
+		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#` + action + `"`},
+		"content-type": []string{"text/xml"},
+		"charset":      []string{"utf-8"},
+		"Connection":   []string{"close"},
+	}
+	req.Header = headers
+
+	_, err = client.Do(req)
+	if err != nil {
 		return err
 	}
 	return nil

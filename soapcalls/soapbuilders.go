@@ -6,18 +6,65 @@ import (
 	"fmt"
 )
 
-type Envelope struct {
+// PlayEnvelope - As in Play Pause Stop
+type PlayEnvelope struct {
 	XMLName  xml.Name `xml:"s:Envelope"`
 	Schema   string   `xml:"xmlns:s,attr"`
 	Encoding string   `xml:"s:encodingStyle,attr"`
-	Body     Body     `xml:"s:Body"`
+	PlayBody PlayBody `xml:"s:Body"`
 }
 
-type Body struct {
+// PlayBody .
+type PlayBody struct {
+	XMLName    xml.Name   `xml:"s:Body"`
+	PlayAction PlayAction `xml:"u:Play"`
+}
+
+// PlayAction .
+type PlayAction struct {
+	XMLName     xml.Name `xml:"u:Play"`
+	AVTransport string   `xml:"xmlns:u,attr"`
+	InstanceID  string
+	Speed       string
+}
+
+// StopEnvelope - As in Play Pause Stop
+type StopEnvelope struct {
+	XMLName  xml.Name `xml:"s:Envelope"`
+	Schema   string   `xml:"xmlns:s,attr"`
+	Encoding string   `xml:"s:encodingStyle,attr"`
+	StopBody StopBody `xml:"s:Body"`
+}
+
+// StopBody .
+type StopBody struct {
+	XMLName    xml.Name   `xml:"s:Body"`
+	StopAction StopAction `xml:"u:Stop"`
+}
+
+// StopAction .
+type StopAction struct {
+	XMLName     xml.Name `xml:"u:Stop"`
+	AVTransport string   `xml:"xmlns:u,attr"`
+	InstanceID  string
+	Speed       string
+}
+
+// SetAVTransportEnvelope .
+type SetAVTransportEnvelope struct {
+	XMLName  xml.Name           `xml:"s:Envelope"`
+	Schema   string             `xml:"xmlns:s,attr"`
+	Encoding string             `xml:"s:encodingStyle,attr"`
+	Body     SetAVTransportBody `xml:"s:Body"`
+}
+
+// SetAVTransportBody .
+type SetAVTransportBody struct {
 	XMLName           xml.Name          `xml:"s:Body"`
 	SetAVTransportURI SetAVTransportURI `xml:"u:SetAVTransportURI"`
 }
 
+// SetAVTransportURI .
 type SetAVTransportURI struct {
 	XMLName            xml.Name `xml:"u:SetAVTransportURI"`
 	AVTransport        string   `xml:"xmlns:u,attr"`
@@ -26,11 +73,13 @@ type SetAVTransportURI struct {
 	CurrentURIMetaData CurrentURIMetaData `xml:"CurrentURIMetaData"`
 }
 
+// CurrentURIMetaData .
 type CurrentURIMetaData struct {
 	XMLName xml.Name `xml:"CurrentURIMetaData"`
 	Value   []byte   `xml:",chardata"`
 }
 
+// DIDLLite .
 type DIDLLite struct {
 	XMLName      xml.Name     `xml:"DIDL-Lite"`
 	SchemaDIDL   string       `xml:"xmlns,attr"`
@@ -40,6 +89,7 @@ type DIDLLite struct {
 	DIDLLiteItem DIDLLiteItem `xml:"item"`
 }
 
+// DIDLLiteItem .
 type DIDLLiteItem struct {
 	XMLName          xml.Name         `xml:"item"`
 	ID               string           `xml:"id,attr"`
@@ -52,18 +102,21 @@ type DIDLLiteItem struct {
 	SecCaptionInfoEx SecCaptionInfoEx `xml:"sec:CaptionInfoEx"`
 }
 
+// ResNode .
 type ResNode struct {
 	XMLName      xml.Name `xml:"res"`
 	ProtocolInfo string   `xml:"protocolInfo,attr"`
 	Value        string   `xml:",chardata"`
 }
 
+// SecCaptionInfo .
 type SecCaptionInfo struct {
 	XMLName xml.Name `xml:"sec:CaptionInfo"`
 	Type    string   `xml:"sec:type,attr"`
 	Value   string   `xml:",chardata"`
 }
 
+// SecCaptionInfoEx .
 type SecCaptionInfoEx struct {
 	XMLName xml.Name `xml:"sec:CaptionInfoEx"`
 	Type    string   `xml:"sec:type,attr"`
@@ -112,11 +165,11 @@ func setAVTransportSoapBuild(videoURL, subtitleURL string) ([]byte, error) {
 		return make([]byte, 0), err
 	}
 
-	d := Envelope{
+	d := SetAVTransportEnvelope{
 		XMLName:  xml.Name{},
 		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
 		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
-		Body: Body{
+		Body: SetAVTransportBody{
 			XMLName: xml.Name{},
 			SetAVTransportURI: SetAVTransportURI{
 				XMLName:     xml.Name{},
@@ -139,6 +192,56 @@ func setAVTransportSoapBuild(videoURL, subtitleURL string) ([]byte, error) {
 	// That looks like an issue just with my SamsungTV
 	b = bytes.ReplaceAll(b, []byte("&#34;"), []byte(`"`))
 	b = bytes.ReplaceAll(b, []byte("&amp;"), []byte("&"))
+
+	return append(xmlStart, b...), nil
+}
+
+func playSoapBuild() ([]byte, error) {
+	d := PlayEnvelope{
+		XMLName:  xml.Name{},
+		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
+		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
+		PlayBody: PlayBody{
+			XMLName: xml.Name{},
+			PlayAction: PlayAction{
+				XMLName:     xml.Name{},
+				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
+				InstanceID:  "0",
+				Speed:       "1",
+			},
+		},
+	}
+	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
+	b, err := xml.Marshal(d)
+	if err != nil {
+		fmt.Println(err)
+		return make([]byte, 0), err
+	}
+
+	return append(xmlStart, b...), nil
+}
+
+func stopSoapBuild() ([]byte, error) {
+	d := StopEnvelope{
+		XMLName:  xml.Name{},
+		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
+		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
+		StopBody: StopBody{
+			XMLName: xml.Name{},
+			StopAction: StopAction{
+				XMLName:     xml.Name{},
+				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
+				InstanceID:  "0",
+				Speed:       "1",
+			},
+		},
+	}
+	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
+	b, err := xml.Marshal(d)
+	if err != nil {
+		fmt.Println(err)
+		return make([]byte, 0), err
+	}
 
 	return append(xmlStart, b...), nil
 }

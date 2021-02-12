@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
+	"runtime"
 	"sort"
 )
 
@@ -25,44 +27,56 @@ func listFlagFunction() error {
 	sort.Ints(keys)
 
 	for _, k := range keys {
-		fmt.Printf("\033[1mDevice %v\033[0m\n", k)
-		fmt.Printf("\033[1m--------\033[0m\n")
-		fmt.Printf("\033[1mModel\033[0m: %s\n", devices[k][0])
-		fmt.Printf("\033[1mURL\033[0m:   %s\n", devices[k][1])
+		boldStart := ""
+		boldEnd := ""
+
+		if runtime.GOOS == "linux" {
+			boldStart = "\033[1m"
+			boldEnd = "\033[0m"
+		}
+		fmt.Printf("%sDevice %v%s\n", boldStart, k, boldEnd)
+		fmt.Printf("%s--------%s\n", boldStart, boldEnd)
+		fmt.Printf("%sModel:%s %s\n", boldStart, boldEnd, devices[k][0])
+		fmt.Printf("%sURL:%s   %s\n", boldStart, boldEnd, devices[k][1])
 		fmt.Println()
 	}
 	return nil
 }
 
 func checkflags() (bool, error) {
+	if err := checkVflag(); err != nil {
+		return false, err
+	}
+
 	if err := checkTflag(); err != nil {
 		return false, err
 	}
+
 	list, err := checkLflag()
 	if err != nil {
 		return false, err
 	}
+
 	if list == true {
 		return true, nil
-	}
-
-	if err := checkVflag(); err != nil {
-		return false, err
 	}
 
 	if err := checkSflag(); err != nil {
 		return false, err
 	}
+
 	return false, nil
 }
 
 func checkVflag() error {
-	if *videoArg == "" {
-		err := errors.New("No video file defined")
-		return err
-	}
-	if _, err := os.Stat(*videoArg); os.IsNotExist(err) {
-		return err
+	if *listPtr == false {
+		if *videoArg == "" {
+			err := errors.New("No video file defined")
+			return err
+		}
+		if _, err := os.Stat(*videoArg); os.IsNotExist(err) {
+			return err
+		}
 	}
 	return nil
 }
@@ -72,6 +86,14 @@ func checkSflag() error {
 		if _, err := os.Stat(*subsArg); os.IsNotExist(err) {
 			return err
 		}
+	} else {
+		// The checkVflag should happen before
+		// checkSflag so we're safe to call *videoArg
+		// here. If *subsArg is empty, try to
+		// automatically find the srt from the
+		// video filename.
+		*subsArg = (*videoArg)[0:len(*videoArg)-
+			len(filepath.Ext(*videoArg))] + ".srt"
 	}
 	return nil
 }

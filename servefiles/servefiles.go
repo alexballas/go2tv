@@ -72,14 +72,14 @@ func (f *filesToServe) serveSubtitlesHandler(w http.ResponseWriter, req *http.Re
 	filePath, err := os.Open(f.Subtitles)
 	defer filePath.Close()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-		os.Exit(1)
+		http.Error(w, "", 404)
+		return
 	}
 
 	fileStat, err := filePath.Stat()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-		os.Exit(1)
+		http.Error(w, "", 404)
+		return
 	}
 	http.ServeContent(w, req, filepath.Base(f.Subtitles), fileStat.ModTime(), filePath)
 

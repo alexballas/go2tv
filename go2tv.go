@@ -78,6 +78,7 @@ func main() {
 	go func() { s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile) }()
 	// Wait for HTTP server to properly initialize
 	<-serverStarted
+
 	if err := tvdata.SendtoTV("Play"); err != nil {
 		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 		os.Exit(1)
