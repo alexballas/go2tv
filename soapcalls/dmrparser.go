@@ -28,35 +28,37 @@ type ServiceList struct {
 
 // Service - service node
 type Service struct {
-	XMLName    xml.Name `xml:"service"`
-	Type       string   `xml:"serviceType"`
-	ID         string   `xml:"serviceId"`
-	ControlURL string   `xml:"controlURL"`
+	XMLName     xml.Name `xml:"service"`
+	Type        string   `xml:"serviceType"`
+	ID          string   `xml:"serviceId"`
+	ControlURL  string   `xml:"controlURL"`
+	EventSubURL string   `xml:"eventSubURL"`
 }
 
-// AVTransportFromDMRextractor - Get the AVTransport URL from the main DMR xml
-func AVTransportFromDMRextractor(dmrurl string) (string, error) {
+// DMRextractor - Get the AVTransport URL from the main DMR xml
+func DMRextractor(dmrurl string) (string, string, error) {
 	var root Root
 
 	parsedURL, err := url.Parse(dmrurl)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	xmlresp, err := http.Get(dmrurl)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	xmlbody, err := ioutil.ReadAll(xmlresp.Body)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	xml.Unmarshal(xmlbody, &root)
 	for i := 0; i < len(root.Device.ServiceList.Services); i++ {
 		if root.Device.ServiceList.Services[i].ID == "urn:upnp-org:serviceId:AVTransport" {
-			avtransportURL := parsedURL.Scheme + "://" + parsedURL.Host + root.Device.ServiceList.Services[i].ControlURL
-			return avtransportURL, nil
+			avtransportControlURL := parsedURL.Scheme + "://" + parsedURL.Host + root.Device.ServiceList.Services[i].ControlURL
+			avtransportEventSubURL := parsedURL.Scheme + "://" + parsedURL.Host + root.Device.ServiceList.Services[i].EventSubURL
+			return avtransportControlURL, avtransportEventSubURL, nil
 		}
 	}
-	return "", errors.New("Something broke somewhere - wrong DMR URL?")
+	return "", "", errors.New("Something broke somewhere - wrong DMR URL?")
 }

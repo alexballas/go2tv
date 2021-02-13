@@ -51,7 +51,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	transportURL, err := soapcalls.AVTransportFromDMRextractor(dmrURL)
+	transportURL, _, err := soapcalls.DMRextractor(dmrURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 		os.Exit(1)
