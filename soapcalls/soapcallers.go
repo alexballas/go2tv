@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"net/url"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // MediaRenderersStates - We hold the states and uuids here
@@ -16,7 +18,7 @@ var MediaRenderersStates = make(map[string]map[string]string)
 // InitialMediaRenderersStates - Just storing the subscription uuids here
 var InitialMediaRenderersStates = make(map[string]interface{})
 
-// TVPayload - we need this populated in order
+// TVPayload - this is the heard of Go2TV
 type TVPayload struct {
 	TransportURL string
 	VideoURL     string
@@ -24,6 +26,7 @@ type TVPayload struct {
 	ControlURL   string
 	CallbackURL  string
 	Mu           *sync.Mutex
+	Sequence     int
 }
 
 func (p *TVPayload) setAVTransportSoapCall() error {
@@ -91,9 +94,9 @@ func (p *TVPayload) playStopSoapCall(action string) error {
 	return nil
 }
 
-// SubscribeSoapCall - Let's export that too,
-// why not
-func (p *TVPayload) SubscribeSoapCall() error {
+// SubscribeSoapCall - Subscribe to a media renderer
+// If we explicetely pass the uuid, then we refresh it instead.
+func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 
 	parsedURLcontrol, err := url.Parse(p.ControlURL)
 	if err != nil {
@@ -110,12 +113,21 @@ func (p *TVPayload) SubscribeSoapCall() error {
 		return err
 	}
 
-	headers := http.Header{
-		"USER-AGENT": []string{runtime.GOOS + "  UPnP/1.1 " + "Go2TV"},
-		"CALLBACK":   []string{"<" + parsedURLcallback.String() + ">"},
-		"NT":         []string{"upnp:event"},
-		"TIMEOUT":    []string{"Second-300"},
-		"Connection": []string{"close"},
+	var headers http.Header
+	if uuidInput == "" {
+		headers = http.Header{
+			"USER-AGENT": []string{runtime.GOOS + "  UPnP/1.1 " + "Go2TV"},
+			"CALLBACK":   []string{"<" + parsedURLcallback.String() + ">"},
+			"NT":         []string{"upnp:event"},
+			"TIMEOUT":    []string{"Second-300"},
+			"Connection": []string{"close"},
+		}
+	} else {
+		headers = http.Header{
+			"SID":        []string{"uuid:" + uuidInput},
+			"TIMEOUT":    []string{"Second-300"},
+			"Connection": []string{"close"},
+		}
 	}
 	req.Header = headers
 	req.Header.Del("User-Agent")
@@ -124,22 +136,27 @@ func (p *TVPayload) SubscribeSoapCall() error {
 	if err != nil {
 		return err
 	}
+
 	uuid := resp.Header["Sid"][0]
 	uuid = strings.TrimLeft(uuid, "[")
 	uuid = strings.TrimLeft(uuid, "]")
 	uuid = strings.TrimLeft(uuid, "uuid:")
 
-	p.Mu.Lock()
-	InitialMediaRenderersStates[uuid] = true
-	MediaRenderersStates[uuid] = map[string]string{
-		"PreviousState": "",
-		"NewState":      "",
+	// We don't really need to initialize or set
+	// the State if we're just refreshing the uuid
+	if uuidInput == "" {
+		p.Mu.Lock()
+		InitialMediaRenderersStates[uuid] = true
+		MediaRenderersStates[uuid] = map[string]string{
+			"PreviousState": "",
+			"NewState":      "",
+		}
+		p.Mu.Unlock()
 	}
-	p.Mu.Unlock()
 
-	fmt.Println("ALEX SUBSCRIBE")
-	fmt.Println(MediaRenderersStates)
-	fmt.Println("-------")
+	timeoutReply := strings.TrimLeft(resp.Header["Timeout"][0], "Second-")
+	p.RefreshLoopUUIDSoapCall(uuid, timeoutReply)
+
 	return nil
 }
 
@@ -166,7 +183,7 @@ func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 	req.Header = headers
 	req.Header.Del("User-Agent")
 
-	resp, err := client.Do(req)
+	_, err = client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -176,18 +193,42 @@ func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 	delete(MediaRenderersStates, uuid)
 	p.Mu.Unlock()
 
-	fmt.Println("ALEX UNSUBSCRIBE")
-	fmt.Println(MediaRenderersStates)
-	fmt.Println(resp.StatusCode)
-	fmt.Println("-------")
+	return nil
+}
+
+// RefreshLoopUUIDSoapCall - Refresh the UUID
+func (p *TVPayload) RefreshLoopUUIDSoapCall(uuid, timeout string) error {
+	var triggerTime int
+	timeoutInt, err := strconv.Atoi(timeout)
+	if err != nil {
+		return err
+	}
+
+	// Refresh token after after Timeout / 2 seconds
+	if timeoutInt > 1 {
+		triggerTime = timeoutInt / 2
+	}
+
+	triggerTimefunc := time.Duration(triggerTime) * time.Second
+
+	// We're doing this as time.AfterFunc can't hanndle
+	// function arguments.
+	f := p.refreshLoopUUIDAsyncSoapCall(uuid)
+	time.AfterFunc(triggerTimefunc, f)
 
 	return nil
+}
+
+func (p *TVPayload) refreshLoopUUIDAsyncSoapCall(uuid string) func() {
+	return func() {
+		p.SubscribeSoapCall(uuid)
+	}
 }
 
 // SendtoTV - Send to tv
 func (p *TVPayload) SendtoTV(action string) error {
 	if action == "Play" {
-		if err := p.SubscribeSoapCall(); err != nil {
+		if err := p.SubscribeSoapCall(""); err != nil {
 			return err
 		}
 		if err := p.setAVTransportSoapCall(); err != nil {
@@ -199,13 +240,10 @@ func (p *TVPayload) SendtoTV(action string) error {
 	if action == "Stop" {
 		// Cleaning up all uuids until we start
 		// supporting multiple streaming devices
-
 		for uuids := range MediaRenderersStates {
 			p.UnsubscribeSoapCall(uuids)
 		}
-
 		fmt.Println("Stopping stream..")
-
 	}
 	if err := p.playStopSoapCall(action); err != nil {
 		return err

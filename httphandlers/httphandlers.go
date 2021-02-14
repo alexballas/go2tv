@@ -108,6 +108,15 @@ func (p *TVPayload) callbackHandler(w http.ResponseWriter, req *http.Request) {
 	uuid = strings.TrimLeft(uuid, "]")
 	uuid = strings.TrimLeft(uuid, "uuid:")
 
+	// Apparently we should ignore the first message
+	// On some media renderes we receive a STOPPED message
+	// even before we start streaming.
+	if p.Soapcalls.Sequence == 0 {
+		p.Soapcalls.Sequence++
+		fmt.Fprintf(w, "OK\n")
+		return
+	}
+
 	previousstate, newstate, err := soapcalls.EventNotifyParser(html.UnescapeString(string(reqParsed)))
 
 	if err != nil {
@@ -133,11 +142,18 @@ func (p *TVPayload) callbackHandler(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "", 404)
 		return
 	}
+	if newstate == "PLAYING" {
+		fmt.Println("Received: Playing")
+	}
 
-	fmt.Println("ALEX CALLBACK")
-	fmt.Println(soapcalls.MediaRenderersStates)
-	fmt.Println("-------")
-
+	if newstate == "PAUSED_PLAYBACK" {
+		fmt.Println("Received: Paused")
+	}
+	if newstate == "STOPPED" {
+		fmt.Println("Received: Stopped")
+		p.Soapcalls.UnsubscribeSoapCall(uuid)
+		os.Exit(0)
+	}
 	// TODO - Properly reply to that
 	fmt.Fprintf(w, "OK\n")
 	return

@@ -98,5 +98,4 @@ func EventNotifyParser(xmlbody string) (string, string, error) {
 	newstate := root.EventInstance.EventTransportState.Value
 
 	return previousstate, newstate, nil
-
 }

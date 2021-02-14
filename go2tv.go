@@ -71,6 +71,7 @@ func main() {
 		VideoURL:     "http://" + whereToListen + "/" + filepath.Base(absVideoFile),
 		SubtitlesURL: "http://" + whereToListen + "/" + filepath.Base(absSubtitlesFile),
 		Mu:           &mu,
+		Sequence:     0,
 	}
 
 	if err != nil {
