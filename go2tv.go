@@ -8,10 +8,11 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"sync"
 	"syscall"
 
+	"github.com/alexballas/go2tv/httphandlers"
 	"github.com/alexballas/go2tv/iptools"
-	"github.com/alexballas/go2tv/servefiles"
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/koron/go-ssdp"
 )
@@ -51,7 +52,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	transportURL, _, err := soapcalls.DMRextractor(dmrURL)
+	transportURL, controlURL, err := soapcalls.DMRextractor(dmrURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 		os.Exit(1)
@@ -62,11 +63,14 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 		os.Exit(1)
 	}
-
+	var mu sync.Mutex
 	tvdata := &soapcalls.TVPayload{
 		TransportURL: transportURL,
+		ControlURL:   controlURL,
+		CallbackURL:  "http://" + whereToListen + "/callback",
 		VideoURL:     "http://" + whereToListen + "/" + filepath.Base(absVideoFile),
 		SubtitlesURL: "http://" + whereToListen + "/" + filepath.Base(absSubtitlesFile),
+		Mu:           &mu,
 	}
 
 	if err != nil {
@@ -74,8 +78,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	s := servefiles.NewServer(whereToListen)
-	go func() { s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile) }()
+	s := httphandlers.NewServer(whereToListen)
+
+	// We pass the tvdata here as we need the callback handlers to be able to
+	// react to the different Media Renderer states
+	go func() {
+		s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile, &httphandlers.TVPayload{Soapcalls: *tvdata})
+	}()
 	// Wait for HTTP server to properly initialize
 	<-serverStarted
 

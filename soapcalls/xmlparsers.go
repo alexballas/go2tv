@@ -35,6 +35,30 @@ type Service struct {
 	EventSubURL string   `xml:"eventSubURL"`
 }
 
+// EventPropertySet .
+type EventPropertySet struct {
+	XMLName       xml.Name      `xml:"propertyset"`
+	EventInstance EventInstance `xml:"property>LastChange>Event>InstanceID"`
+}
+
+// EventInstance .
+type EventInstance struct {
+	XMLName                      xml.Name                     `xml:"InstanceID"`
+	Value                        string                       `xml:"val,attr"`
+	EventCurrentTransportActions EventCurrentTransportActions `xml:"CurrentTransportActions"`
+	EventTransportState          EventTransportState          `xml:"TransportState"`
+}
+
+// EventCurrentTransportActions .
+type EventCurrentTransportActions struct {
+	Value string `xml:"val,attr"`
+}
+
+// EventTransportState .
+type EventTransportState struct {
+	Value string `xml:"val,attr"`
+}
+
 // DMRextractor - Get the AVTransport URL from the main DMR xml
 func DMRextractor(dmrurl string) (string, string, error) {
 	var root Root
@@ -61,4 +85,18 @@ func DMRextractor(dmrurl string) (string, string, error) {
 		}
 	}
 	return "", "", errors.New("Something broke somewhere - wrong DMR URL?")
+}
+
+// EventNotifyParser - Parse the Notify messages from the Media Renderer
+func EventNotifyParser(xmlbody string) (string, string, error) {
+	var root EventPropertySet
+	err := xml.Unmarshal([]byte(xmlbody), &root)
+	if err != nil {
+		return "", "", err
+	}
+	previousstate := root.EventInstance.EventCurrentTransportActions.Value
+	newstate := root.EventInstance.EventTransportState.Value
+
+	return previousstate, newstate, nil
+
 }

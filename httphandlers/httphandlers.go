@@ -1,11 +1,16 @@
-package servefiles
+package httphandlers
 
 import (
 	"fmt"
+	"html"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/alexballas/go2tv/soapcalls"
 )
 
 // filesToServe defines the files we need to serve
@@ -19,8 +24,16 @@ type HTTPserver struct {
 	http *http.Server
 }
 
+// TVPayload - We need some of the soapcalls magic in
+// this package too. We need to expose the ControlURL
+// to the callback handler
+type TVPayload struct {
+	Soapcalls soapcalls.TVPayload
+}
+
 // ServeFiles - Start HTTP server and serve file
-func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtitlesPath string) {
+func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtitlesPath string, tvpayload *TVPayload) {
+
 	files := &filesToServe{
 		Video:     videoPath,
 		Subtitles: subtitlesPath,
@@ -28,6 +41,7 @@ func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtit
 
 	http.HandleFunc("/"+filepath.Base(files.Video), files.serveVideoHandler)
 	http.HandleFunc("/"+filepath.Base(files.Subtitles), files.serveSubtitlesHandler)
+	http.HandleFunc("/callback", tvpayload.callbackHandler)
 
 	ln, err := net.Listen("tcp", s.http.Addr)
 	if err != nil {
@@ -82,6 +96,51 @@ func (f *filesToServe) serveSubtitlesHandler(w http.ResponseWriter, req *http.Re
 		return
 	}
 	http.ServeContent(w, req, filepath.Base(f.Subtitles), fileStat.ModTime(), filePath)
+
+}
+
+func (p *TVPayload) callbackHandler(w http.ResponseWriter, req *http.Request) {
+	reqParsed, _ := ioutil.ReadAll(req.Body)
+	// I'm sure there's a smarter way to do it.
+	// I'm not smart.
+	uuid := req.Header["Sid"][0]
+	uuid = strings.TrimLeft(uuid, "[")
+	uuid = strings.TrimLeft(uuid, "]")
+	uuid = strings.TrimLeft(uuid, "uuid:")
+
+	previousstate, newstate, err := soapcalls.EventNotifyParser(html.UnescapeString(string(reqParsed)))
+
+	if err != nil {
+		http.Error(w, "", 404)
+		return
+	}
+
+	// If the uuid is not one of the UUIDs we storred in
+	// soapcalls.InitialMediaRenderersStates it means that
+	// probably it expired and there is not much we can do
+	// with it. Trying to send an unsubscribe for those will
+	// probably result in a 412 error as per the upnpn documentation
+	// http://upnp.org/specs/arch/UPnP-arch-DeviceArchitecture-v1.1.pdf
+	// (page 94)
+	if soapcalls.InitialMediaRenderersStates[uuid] == true {
+		p.Soapcalls.Mu.Lock()
+		soapcalls.MediaRenderersStates[uuid] = map[string]string{
+			"PreviousState": previousstate,
+			"NewState":      newstate,
+		}
+		p.Soapcalls.Mu.Unlock()
+	} else {
+		http.Error(w, "", 404)
+		return
+	}
+
+	fmt.Println("ALEX CALLBACK")
+	fmt.Println(soapcalls.MediaRenderersStates)
+	fmt.Println("-------")
+
+	// TODO - Properly reply to that
+	fmt.Fprintf(w, "OK\n")
+	return
 
 }
 
