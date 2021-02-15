@@ -136,6 +136,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
 	uuid := resp.Header["Sid"][0]
 	uuid = strings.TrimLeft(uuid, "[")
@@ -211,7 +212,7 @@ func (p *TVPayload) RefreshLoopUUIDSoapCall(uuid, timeout string) error {
 
 	triggerTimefunc := time.Duration(triggerTime) * time.Second
 
-	// We're doing this as time.AfterFunc can't hanndle
+	// We're doing this as time.AfterFunc can't handle
 	// function arguments.
 	f := p.refreshLoopUUIDAsyncSoapCall(uuid)
 	time.AfterFunc(triggerTimefunc, f)
@@ -238,8 +239,7 @@ func (p *TVPayload) SendtoTV(action string) error {
 	}
 
 	if action == "Stop" {
-		// Cleaning up all uuids until we start
-		// supporting multiple streaming devices
+		// Cleaning up all uuids on force stop
 		for uuids := range MediaRenderersStates {
 			p.UnsubscribeSoapCall(uuids)
 		}

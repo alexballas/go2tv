@@ -22,6 +22,7 @@ type filesToServe struct {
 // HTTPserver - new http.Server instance
 type HTTPserver struct {
 	http *http.Server
+	mux  *http.ServeMux
 }
 
 // TVPayload - We need some of the soapcalls magic in
@@ -39,9 +40,9 @@ func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtit
 		Subtitles: subtitlesPath,
 	}
 
-	http.HandleFunc("/"+filepath.Base(files.Video), files.serveVideoHandler)
-	http.HandleFunc("/"+filepath.Base(files.Subtitles), files.serveSubtitlesHandler)
-	http.HandleFunc("/callback", tvpayload.callbackHandler)
+	s.mux.HandleFunc("/"+filepath.Base(files.Video), files.serveVideoHandler)
+	s.mux.HandleFunc("/"+filepath.Base(files.Subtitles), files.serveSubtitlesHandler)
+	s.mux.HandleFunc("/callback", tvpayload.callbackHandler)
 
 	ln, err := net.Listen("tcp", s.http.Addr)
 	if err != nil {
@@ -76,7 +77,6 @@ func (f *filesToServe) serveVideoHandler(w http.ResponseWriter, req *http.Reques
 		os.Exit(1)
 	}
 	http.ServeContent(w, req, filepath.Base(f.Video), fileStat.ModTime(), filePath)
-
 }
 
 func (f *filesToServe) serveSubtitlesHandler(w http.ResponseWriter, req *http.Request) {
@@ -96,7 +96,6 @@ func (f *filesToServe) serveSubtitlesHandler(w http.ResponseWriter, req *http.Re
 		return
 	}
 	http.ServeContent(w, req, filepath.Base(f.Subtitles), fileStat.ModTime(), filePath)
-
 }
 
 func (p *TVPayload) callbackHandler(w http.ResponseWriter, req *http.Request) {
@@ -117,7 +116,8 @@ func (p *TVPayload) callbackHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	previousstate, newstate, err := soapcalls.EventNotifyParser(html.UnescapeString(string(reqParsed)))
+	reqParsedUnescape := html.UnescapeString(string(reqParsed))
+	previousstate, newstate, err := soapcalls.EventNotifyParser(reqParsedUnescape)
 
 	if err != nil {
 		http.Error(w, "", 404)
@@ -157,12 +157,14 @@ func (p *TVPayload) callbackHandler(w http.ResponseWriter, req *http.Request) {
 	// TODO - Properly reply to that
 	fmt.Fprintf(w, "OK\n")
 	return
-
 }
 
 // NewServer - create a new HTTP server
 func NewServer(a string) HTTPserver {
-	return HTTPserver{
+	srv := HTTPserver{
 		http: &http.Server{Addr: a},
+		mux:  http.NewServeMux(),
 	}
+	srv.http.Handler = srv.mux
+	return srv
 }

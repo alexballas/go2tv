@@ -68,10 +68,18 @@ func DMRextractor(dmrurl string) (string, string, error) {
 		return "", "", err
 	}
 
-	xmlresp, err := http.Get(dmrurl)
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", dmrurl, nil)
 	if err != nil {
 		return "", "", err
 	}
+
+	xmlresp, err := client.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer xmlresp.Body.Close()
+
 	xmlbody, err := ioutil.ReadAll(xmlresp.Body)
 	if err != nil {
 		return "", "", err
