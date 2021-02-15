@@ -17,6 +17,11 @@ Usage of go2tv:
     	Path to the video file.
 ```
 
+Tested on
+-----
+- Samsung UE50JU6400
+- Android - BubbleUPnP app
+
 Author
 ------
 
