@@ -110,7 +110,7 @@ func checkTflag() error {
 			return err
 		}
 	} else {
-		// Validate URL before proceeding
+		// Validate URL before proceeding.
 		_, err := url.ParseRequestURI(*targetPtr)
 		if err != nil {
 			return err

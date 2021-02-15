@@ -13,13 +13,13 @@ import (
 	"github.com/alexballas/go2tv/soapcalls"
 )
 
-// filesToServe defines the files we need to serve
+// filesToServe defines the files we need to serve.
 type filesToServe struct {
 	Video     string
 	Subtitles string
 }
 
-// HTTPserver - new http.Server instance
+// HTTPserver - new http.Server instance.
 type HTTPserver struct {
 	http *http.Server
 	mux  *http.ServeMux
@@ -27,12 +27,12 @@ type HTTPserver struct {
 
 // TVPayload - We need some of the soapcalls magic in
 // this package too. We need to expose the ControlURL
-// to the callback handler
+// to the callback handler.
 type TVPayload struct {
 	Soapcalls soapcalls.TVPayload
 }
 
-// ServeFiles - Start HTTP server and serve file
+// ServeFiles - Start HTTP server and serve the files.
 func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtitlesPath string, tvpayload *TVPayload) {
 
 	files := &filesToServe{
@@ -55,7 +55,7 @@ func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtit
 
 }
 
-// StopServeFiles - Kill the HTTP server
+// StopServeFiles - Kill the HTTP server.
 func (s *HTTPserver) StopServeFiles() {
 	s.http.Close()
 }
@@ -124,13 +124,13 @@ func (p *TVPayload) callbackHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// If the uuid is not one of the UUIDs we storred in
+	// If the uuid is not one of the UUIDs we stored in
 	// soapcalls.InitialMediaRenderersStates it means that
 	// probably it expired and there is not much we can do
 	// with it. Trying to send an unsubscribe for those will
 	// probably result in a 412 error as per the upnpn documentation
 	// http://upnp.org/specs/arch/UPnP-arch-DeviceArchitecture-v1.1.pdf
-	// (page 94)
+	// (page 94).
 	if soapcalls.InitialMediaRenderersStates[uuid] == true {
 		p.Soapcalls.Mu.Lock()
 		soapcalls.MediaRenderersStates[uuid] = map[string]string{
@@ -145,7 +145,6 @@ func (p *TVPayload) callbackHandler(w http.ResponseWriter, req *http.Request) {
 	if newstate == "PLAYING" {
 		fmt.Println("Received: Playing")
 	}
-
 	if newstate == "PAUSED_PLAYBACK" {
 		fmt.Println("Received: Paused")
 	}
@@ -154,12 +153,12 @@ func (p *TVPayload) callbackHandler(w http.ResponseWriter, req *http.Request) {
 		p.Soapcalls.UnsubscribeSoapCall(uuid)
 		os.Exit(0)
 	}
-	// TODO - Properly reply to that
+	// TODO - Properly reply to that.
 	fmt.Fprintf(w, "OK\n")
 	return
 }
 
-// NewServer - create a new HTTP server
+// NewServer - create a new HTTP server.
 func NewServer(a string) HTTPserver {
 	srv := HTTPserver{
 		http: &http.Server{Addr: a},

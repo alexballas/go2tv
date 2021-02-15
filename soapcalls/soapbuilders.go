@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-// PlayEnvelope - As in Play Pause Stop
+// PlayEnvelope - As in Play Pause Stop.
 type PlayEnvelope struct {
 	XMLName  xml.Name `xml:"s:Envelope"`
 	Schema   string   `xml:"xmlns:s,attr"`
@@ -28,7 +28,7 @@ type PlayAction struct {
 	Speed       string
 }
 
-// StopEnvelope - As in Play Pause Stop
+// StopEnvelope - As in Play Pause Stop.
 type StopEnvelope struct {
 	XMLName  xml.Name `xml:"s:Envelope"`
 	Schema   string   `xml:"xmlns:s,attr"`
@@ -189,7 +189,7 @@ func setAVTransportSoapBuild(videoURL, subtitleURL string) ([]byte, error) {
 		fmt.Println(err)
 		return make([]byte, 0), err
 	}
-	// That looks like an issue just with my SamsungTV
+	// That looks like an issue just with my Samsung TV.
 	b = bytes.ReplaceAll(b, []byte("&#34;"), []byte(`"`))
 	b = bytes.ReplaceAll(b, []byte("&amp;"), []byte("&"))
 

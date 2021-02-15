@@ -8,13 +8,13 @@ import (
 	"net/url"
 )
 
-// Root - root node
+// Root - root node.
 type Root struct {
 	XMLName xml.Name `xml:"root"`
 	Device  Device   `xml:"device"`
 }
 
-// Device - device node (we should only expect one?)
+// Device - device node (we should only expect one?).
 type Device struct {
 	XMLName     xml.Name    `xml:"device"`
 	ServiceList ServiceList `xml:"serviceList"`
@@ -26,7 +26,7 @@ type ServiceList struct {
 	Services []Service `xml:"service"`
 }
 
-// Service - service node
+// Service - service node.
 type Service struct {
 	XMLName     xml.Name `xml:"service"`
 	Type        string   `xml:"serviceType"`
@@ -59,7 +59,7 @@ type EventTransportState struct {
 	Value string `xml:"val,attr"`
 }
 
-// DMRextractor - Get the AVTransport URL from the main DMR xml
+// DMRextractor - Get the AVTransport URL from the main DMR xml.
 func DMRextractor(dmrurl string) (string, string, error) {
 	var root Root
 
@@ -95,7 +95,7 @@ func DMRextractor(dmrurl string) (string, string, error) {
 	return "", "", errors.New("Something broke somewhere - wrong DMR URL?")
 }
 
-// EventNotifyParser - Parse the Notify messages from the Media Renderer
+// EventNotifyParser - Parse the Notify messages from the media renderer.
 func EventNotifyParser(xmlbody string) (string, string, error) {
 	var root EventPropertySet
 	err := xml.Unmarshal([]byte(xmlbody), &root)

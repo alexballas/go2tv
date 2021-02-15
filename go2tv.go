@@ -82,11 +82,11 @@ func main() {
 	s := httphandlers.NewServer(whereToListen)
 
 	// We pass the tvdata here as we need the callback handlers to be able to
-	// react to the different Media Renderer states
+	// react to the different media renderer states.
 	go func() {
 		s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile, &httphandlers.TVPayload{Soapcalls: *tvdata})
 	}()
-	// Wait for HTTP server to properly initialize
+	// Wait for HTTP server to properly initialize.
 	<-serverStarted
 
 	if err := tvdata.SendtoTV("Play"); err != nil {
@@ -95,7 +95,7 @@ func main() {
 	}
 
 	initializeCloseHandler(*tvdata)
-	// Sleep forever
+	// Sleep forever.
 	select {}
 }
 
@@ -106,7 +106,7 @@ func loadSSDPservices() error {
 	}
 	counter := 0
 	for _, srv := range list {
-		// We only care about the AVTransport services
+		// We only care about the AVTransport services.
 		if srv.Type == "urn:schemas-upnp-org:service:AVTransport:1" {
 			counter++
 			devices[counter] = []string{srv.Server, srv.Location}
