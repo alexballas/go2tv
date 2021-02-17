@@ -3,7 +3,7 @@ package soapcalls
 import (
 	"encoding/xml"
 	"errors"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 )
@@ -80,7 +80,7 @@ func DMRextractor(dmrurl string) (string, string, error) {
 	}
 	defer xmlresp.Body.Close()
 
-	xmlbody, err := ioutil.ReadAll(xmlresp.Body)
+	xmlbody, err := io.ReadAll(xmlresp.Body)
 	if err != nil {
 		return "", "", err
 	}

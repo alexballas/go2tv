@@ -17,6 +17,10 @@ Usage of go2tv:
     	Path to the video file.
 ```
 
+Build requirements
+-----
+- Go v1.16+
+
 Tested on
 -----
 - Samsung UE50JU6400

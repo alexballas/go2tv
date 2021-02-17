@@ -12,11 +12,16 @@ import (
 	"time"
 )
 
-// MediaRenderersStates - We hold the states and uuids here.
-var MediaRenderersStates = make(map[string]map[string]string)
+type states struct {
+	previousState string
+	newState      string
+	sequence      int
+}
 
-// InitialMediaRenderersStates - Just storing the subscription uuids here.
-var InitialMediaRenderersStates = make(map[string]interface{})
+var mediaRenderersStates = make(map[string]*states)
+var initialMediaRenderersStates = make(map[string]interface{})
+
+var mu sync.Mutex
 
 // TVPayload - this is the heard of Go2TV.
 type TVPayload struct {
@@ -25,8 +30,6 @@ type TVPayload struct {
 	SubtitlesURL string
 	ControlURL   string
 	CallbackURL  string
-	Mu           *sync.Mutex
-	Sequence     int
 }
 
 func (p *TVPayload) setAVTransportSoapCall() error {
@@ -36,6 +39,10 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 	}
 
 	xml, err := setAVTransportSoapBuild(p.VideoURL, p.SubtitlesURL)
+	if err != nil {
+		return err
+	}
+
 	client := &http.Client{}
 	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xml))
 	if err != nil {
@@ -73,6 +80,10 @@ func (p *TVPayload) playStopSoapCall(action string) error {
 		xml, err = stopSoapBuild()
 	}
 
+	if err != nil {
+		return err
+	}
+
 	client := &http.Client{}
 	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xml))
 	if err != nil {
@@ -106,6 +117,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 	if err != nil {
 		return err
 	}
+
 	client := &http.Client{}
 
 	req, err := http.NewRequest("SUBSCRIBE", parsedURLcontrol.String(), nil)
@@ -146,18 +158,11 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 	// We don't really need to initialize or set
 	// the State if we're just refreshing the uuid.
 	if uuidInput == "" {
-		p.Mu.Lock()
-		InitialMediaRenderersStates[uuid] = true
-		MediaRenderersStates[uuid] = map[string]string{
-			"PreviousState": "",
-			"NewState":      "",
-		}
-		p.Mu.Unlock()
+		CreateMRstate(uuid)
 	}
 
 	timeoutReply := strings.TrimLeft(resp.Header["Timeout"][0], "Second-")
 	p.RefreshLoopUUIDSoapCall(uuid, timeoutReply)
-
 	return nil
 }
 
@@ -189,11 +194,7 @@ func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 		return err
 	}
 
-	p.Mu.Lock()
-	delete(InitialMediaRenderersStates, uuid)
-	delete(MediaRenderersStates, uuid)
-	p.Mu.Unlock()
-
+	DeleteMRstate(uuid)
 	return nil
 }
 
@@ -216,7 +217,6 @@ func (p *TVPayload) RefreshLoopUUIDSoapCall(uuid, timeout string) error {
 	// function arguments.
 	f := p.refreshLoopUUIDAsyncSoapCall(uuid)
 	time.AfterFunc(triggerTimefunc, f)
-
 	return nil
 }
 
@@ -240,7 +240,7 @@ func (p *TVPayload) SendtoTV(action string) error {
 
 	if action == "Stop" {
 		// Cleaning up all uuids on force stop.
-		for uuids := range MediaRenderersStates {
+		for uuids := range mediaRenderersStates {
 			p.UnsubscribeSoapCall(uuids)
 		}
 		fmt.Println("Stopping stream..")
@@ -249,4 +249,58 @@ func (p *TVPayload) SendtoTV(action string) error {
 		return err
 	}
 	return nil
+}
+
+// UpdateMRstate - Update the mediaRenderersStates map
+// with the state. Return true or false to verify that
+// the actual update took place.
+func UpdateMRstate(previous, new, uuid string) bool {
+	// If the uuid is not one of the UUIDs we stored in
+	// soapcalls.InitialMediaRenderersStates it means that
+	// probably it expired and there is not much we can do
+	// with it. Trying to send an unsubscribe for those will
+	// probably result in a 412 error as per the upnpn documentation
+	// http://upnp.org/specs/arch/UPnP-arch-DeviceArchitecture-v1.1.pdf
+	// (page 94).
+	if initialMediaRenderersStates[uuid] == true {
+		mu.Lock()
+		mediaRenderersStates[uuid].previousState = previous
+		mediaRenderersStates[uuid].newState = new
+		mediaRenderersStates[uuid].sequence++
+		mu.Unlock()
+		return true
+	}
+	return false
+}
+
+// CreateMRstate .
+func CreateMRstate(uuid string) {
+	mu.Lock()
+	defer mu.Unlock()
+	initialMediaRenderersStates[uuid] = true
+	mediaRenderersStates[uuid] = &states{
+		previousState: "",
+		newState:      "",
+		sequence:      0,
+	}
+}
+
+// DeleteMRstate .
+func DeleteMRstate(uuid string) {
+	mu.Lock()
+	defer mu.Unlock()
+	delete(initialMediaRenderersStates, uuid)
+	delete(mediaRenderersStates, uuid)
+}
+
+// IncreaseSequence .
+func IncreaseSequence(uuid string) {
+	mu.Lock()
+	defer mu.Unlock()
+	mediaRenderersStates[uuid].sequence++
+}
+
+// GetSequence .
+func GetSequence(uuid string) int {
+	return mediaRenderersStates[uuid].sequence
 }

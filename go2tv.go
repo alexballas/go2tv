@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
-	"sync"
 	"syscall"
 
 	"github.com/alexballas/go2tv/httphandlers"
@@ -31,52 +30,30 @@ func main() {
 	flag.Parse()
 
 	exit, err := checkflags()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-		os.Exit(1)
-	}
+	check(err)
 
-	if exit == true {
+	if exit {
 		os.Exit(0)
 	}
 
 	absVideoFile, err := filepath.Abs(*videoArg)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-		os.Exit(1)
-	}
+	check(err)
 
 	absSubtitlesFile, err := filepath.Abs(*subsArg)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-		os.Exit(1)
-	}
+	check(err)
 
 	transportURL, controlURL, err := soapcalls.DMRextractor(dmrURL)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-		os.Exit(1)
-	}
+	check(err)
 
 	whereToListen, err := iptools.URLtoListenIPandPort(dmrURL)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-		os.Exit(1)
-	}
-	var mu sync.Mutex
+	check(err)
+
 	tvdata := &soapcalls.TVPayload{
 		TransportURL: transportURL,
 		ControlURL:   controlURL,
 		CallbackURL:  "http://" + whereToListen + "/callback",
 		VideoURL:     "http://" + whereToListen + "/" + filepath.Base(absVideoFile),
 		SubtitlesURL: "http://" + whereToListen + "/" + filepath.Base(absSubtitlesFile),
-		Mu:           &mu,
-		Sequence:     0,
-	}
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-		os.Exit(1)
 	}
 
 	s := httphandlers.NewServer(whereToListen)
@@ -86,15 +63,14 @@ func main() {
 	go func() {
 		s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile, &httphandlers.TVPayload{Soapcalls: *tvdata})
 	}()
-	// Wait for HTTP server to properly initialize.
+	// Wait for HTTP server to properly initialize
 	<-serverStarted
 
-	if err := tvdata.SendtoTV("Play"); err != nil {
-		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-		os.Exit(1)
-	}
+	err = tvdata.SendtoTV("Play")
+	check(err)
 
 	initializeCloseHandler(*tvdata)
+
 	// Sleep forever.
 	select {}
 }
@@ -106,7 +82,10 @@ func loadSSDPservices() error {
 	}
 	counter := 0
 	for _, srv := range list {
-		// We only care about the AVTransport services.
+		// We only care about the AVTransport services for basic actions
+		// (stop,play,pause). If we need to extend this to support other
+		// functionality like volume control we need to use the
+		// RenderingControl service.
 		if srv.Type == "urn:schemas-upnp-org:service:AVTransport:1" {
 			counter++
 			devices[counter] = []string{srv.Server, srv.Location}
@@ -141,10 +120,16 @@ func initializeCloseHandler(tvdata soapcalls.TVPayload) {
 	go func() {
 		<-c
 		fmt.Println(" Shutting down...")
-		if err := tvdata.SendtoTV("Stop"); err != nil {
-			fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-			os.Exit(1)
-		}
+		err := tvdata.SendtoTV("Stop")
+		check(err)
+
 		os.Exit(0)
 	}()
+}
+
+func check(err error) {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		os.Exit(1)
+	}
 }
