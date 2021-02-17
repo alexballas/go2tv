@@ -1,4 +1,8 @@
 # Go2TV
+![Go](https://github.com/alexballas/Go2TV/workflows/Go/badge.svg)
+[![Go Report Card](https://goreportcard.com/badge/github.com/alexballas/Go2TV)](https://goreportcard.com/report/github.com/alexballas/Go2TV)
+[![Release Version](https://img.shields.io/github/v/release/alexballas/Go2TV?label=Release)](https://github.com/alexballas/Go2TV/releases/latest)
+
 Go2TV lets you cast your videos to any UPnP/DLNA MediaRenderer like Samsumg TVs.
 
 ![](https://i.imgur.com/fnYkkp7.gif)
