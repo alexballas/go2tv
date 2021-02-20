@@ -26,12 +26,12 @@ type HTTPserver struct {
 	mux  *http.ServeMux
 }
 
-// TVPayload - We need some of the soapcalls magic in
+// HTTPPayload - We need some of the soapcalls magic in
 // this package too. We need to expose the ControlURL
 // to the callback handler.
 type HTTPPayload struct {
-	Soapcalls soapcalls.TVPayload
-	Emmit     messages.Emmiter
+	Soapcalls *soapcalls.TVPayload
+	Emmit     *messages.Emmiter
 }
 
 // ServeFiles - Start HTTP server and serve the files.
@@ -50,7 +50,9 @@ func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtit
 	check(err)
 
 	serverStarted <- struct{}{}
-	fmt.Println("Listening on:", s.http.Addr)
+	if !tvpayload.Emmit.Interactive {
+		fmt.Println("Listening on:", s.http.Addr)
+	}
 	s.http.Serve(ln)
 
 }
@@ -147,6 +149,7 @@ func (p *HTTPPayload) callbackHandler(w http.ResponseWriter, req *http.Request) 
 	if newstate == "STOPPED" {
 		p.Emmit.EmmitMsg("Received: Stopped")
 		p.Soapcalls.UnsubscribeSoapCall(uuid)
+		p.Emmit.Screen.Current.Fini()
 		os.Exit(0)
 	}
 	// TODO - Properly reply to that.

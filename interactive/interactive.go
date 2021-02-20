@@ -13,10 +13,13 @@ import (
 
 // NewScreen .
 type NewScreen struct {
-	Screen tcell.Screen
+	Current tcell.Screen
 }
 
-func emitStr(s tcell.Screen, x, y int, style tcell.Style, str string) {
+var flipflop bool = true
+
+func (p *NewScreen) emitStr(x, y int, style tcell.Style, str string) {
+	s := p.Current
 	for _, c := range str {
 		var comb []rune
 		w := runewidth.RuneWidth(c)
@@ -30,23 +33,26 @@ func emitStr(s tcell.Screen, x, y int, style tcell.Style, str string) {
 	}
 }
 
-func displayFirstText(s tcell.Screen) {
+func (p *NewScreen) displayFirstText() {
+	s := p.Current
 	w, h := s.Size()
 	s.Clear()
-	emitStr(s, w/2-10, h/2, tcell.StyleDefault, "Waiting for status...")
-	emitStr(s, 1, 1, tcell.StyleDefault, "Press ESC to exit.")
-	emitStr(s, w/2-10, h/2+2, tcell.StyleDefault, "Press P to Pause/Play.")
-	emitStr(s, w/2-10, h/2+3, tcell.StyleDefault, "Press S to Stop.")
+	p.emitStr(w/2-10, h/2, tcell.StyleDefault, "Waiting for status...")
+	p.emitStr(1, 1, tcell.StyleDefault, "Press ESC / q to exit.")
+	p.emitStr(w/2-10, h/2+2, tcell.StyleDefault, "Press p to Pause/Play.")
+	p.emitStr(w/2-10, h/2+3, tcell.StyleDefault, "Press s to Stop.")
 	s.Show()
 }
 
-func DisplayAtext(s tcell.Screen, inputtext string) {
+//DisplayAtext .
+func (p *NewScreen) DisplayAtext(inputtext string) {
+	s := p.Current
 	w, h := s.Size()
 	s.Clear()
-	emitStr(s, w/2-4, h/2, tcell.StyleDefault, inputtext)
-	emitStr(s, 1, 1, tcell.StyleDefault, "Press ESC to exit.")
-	emitStr(s, w/2-10, h/2+2, tcell.StyleDefault, "Press P to Pause/Play.")
-	emitStr(s, w/2-10, h/2+3, tcell.StyleDefault, "Press S to Stop.")
+	p.emitStr(w/2-8, h/2, tcell.StyleDefault, inputtext)
+	p.emitStr(1, 1, tcell.StyleDefault, "Press ESC / q to exit.")
+	p.emitStr(w/2-10, h/2+2, tcell.StyleDefault, "Press p to Pause/Play.")
+	p.emitStr(w/2-10, h/2+3, tcell.StyleDefault, "Press s to Stop.")
 
 	s.Show()
 }
@@ -54,7 +60,7 @@ func DisplayAtext(s tcell.Screen, inputtext string) {
 // InterInit - Start the interactive terminal
 func (p *NewScreen) InterInit(tv soapcalls.TVPayload) {
 	encoding.Register()
-	s := p.Screen
+	s := p.Current
 	if e := s.Init(); e != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", e)
 		os.Exit(1)
@@ -65,36 +71,44 @@ func (p *NewScreen) InterInit(tv soapcalls.TVPayload) {
 		Foreground(tcell.ColorWhite)
 	s.SetStyle(defStyle)
 
-	displayFirstText(s)
+	p.displayFirstText()
 
 	for {
 		switch ev := s.PollEvent().(type) {
 		case *tcell.EventResize:
 			s.Sync()
-			displayFirstText(s)
+			p.displayFirstText()
 		case *tcell.EventKey:
-			if ev.Key() == tcell.KeyEscape {
+			if ev.Key() == tcell.KeyEscape ||
+				ev.Rune() == 'q' {
 				tv.SendtoTV("Stop")
 				s.Fini()
 				os.Exit(0)
 			} else if ev.Rune() == 'p' {
-				DisplayAtext(s, "Playing")
-				tv.SendtoTV("Pause")
+				if flipflop {
+					flipflop = false
+					tv.SendtoTV("Pause")
+				} else {
+					flipflop = true
+					tv.SendtoTV("Play")
+				}
 			} else if ev.Rune() == 's' {
-				DisplayAtext(s, "Stopped")
+				tv.SendtoTV("Stop")
+				s.Fini()
+				os.Exit(0)
 			}
 		}
 	}
 }
 
 // InitNewScreen .
-func InitNewScreen() (NewScreen, error) {
+func InitNewScreen() (*NewScreen, error) {
 	s, e := tcell.NewScreen()
 	if e != nil {
-		return NewScreen{}, errors.New("Can't start new interactive screen")
+		return &NewScreen{}, errors.New("Can't start new interactive screen")
 	}
 	q := NewScreen{
-		Screen: s,
+		Current: s,
 	}
-	return q, nil
+	return &q, nil
 }

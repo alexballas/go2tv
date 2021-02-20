@@ -75,17 +75,17 @@ func main() {
 	// We pass the tvdata here as we need the callback handlers to be able to
 	// react to the different media renderer states.
 	go func() {
-		s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile, &httphandlers.HTTPPayload{Soapcalls: *tvdata, Emmit: *emi})
+		s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile, &httphandlers.HTTPPayload{Soapcalls: tvdata, Emmit: emi})
 	}()
 	// Wait for HTTP server to properly initialize
 	<-serverStarted
 
-	err = tvdata.SendtoTV("Play")
+	err = tvdata.SendtoTV("Play1")
 	check(err)
-
 	if *interactivePtr {
 		s, err := interactive.InitNewScreen()
 		check(err)
+		emi.Screen = s
 		s.InterInit(*tvdata)
 	} else {
 		initializeCloseHandler(*tvdata)

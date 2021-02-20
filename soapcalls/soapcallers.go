@@ -232,13 +232,14 @@ func (p *TVPayload) refreshLoopUUIDAsyncSoapCall(uuid string) func() {
 
 // SendtoTV - Send to TV.
 func (p *TVPayload) SendtoTV(action string) error {
-	if action == "Play" {
+	if action == "Play1" {
 		if err := p.SubscribeSoapCall(""); err != nil {
 			return err
 		}
 		if err := p.setAVTransportSoapCall(); err != nil {
 			return err
 		}
+		action = "Play"
 	}
 
 	if action == "Stop" {
