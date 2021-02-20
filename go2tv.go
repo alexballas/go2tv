@@ -11,19 +11,22 @@ import (
 	"syscall"
 
 	"github.com/alexballas/go2tv/httphandlers"
+	"github.com/alexballas/go2tv/interactive"
 	"github.com/alexballas/go2tv/iptools"
+	"github.com/alexballas/go2tv/messages"
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/koron/go-ssdp"
 )
 
 var (
-	dmrURL        string
-	serverStarted = make(chan struct{})
-	devices       = make(map[int][]string)
-	videoArg      = flag.String("v", "", "Path to the video file.")
-	subsArg       = flag.String("s", "", "Path to the subtitles file.")
-	listPtr       = flag.Bool("l", false, "List all available UPnP/DLNA MediaRenderer models and URLs.")
-	targetPtr     = flag.String("t", "", "Cast to a specific UPnP/DLNA MediaRenderer URL.")
+	dmrURL         string
+	serverStarted  = make(chan struct{})
+	devices        = make(map[int][]string)
+	videoArg       = flag.String("v", "", "Path to the video file.")
+	subsArg        = flag.String("s", "", "Path to the subtitles file.")
+	listPtr        = flag.Bool("l", false, "List all available UPnP/DLNA MediaRenderer models and URLs.")
+	targetPtr      = flag.String("t", "", "Cast to a specific UPnP/DLNA MediaRenderer URL.")
+	interactivePtr = flag.Bool("i", false, "Interactive terminal for extra control on the streams.")
 )
 
 func main() {
@@ -48,6 +51,17 @@ func main() {
 	whereToListen, err := iptools.URLtoListenIPandPort(dmrURL)
 	check(err)
 
+	var emi *messages.Emmiter
+	if checkIflag() {
+		emi = &messages.Emmiter{
+			Interactive: true,
+		}
+	} else {
+		emi = &messages.Emmiter{
+			Interactive: false,
+		}
+	}
+
 	tvdata := &soapcalls.TVPayload{
 		TransportURL: transportURL,
 		ControlURL:   controlURL,
@@ -61,7 +75,7 @@ func main() {
 	// We pass the tvdata here as we need the callback handlers to be able to
 	// react to the different media renderer states.
 	go func() {
-		s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile, &httphandlers.TVPayload{Soapcalls: *tvdata})
+		s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile, &httphandlers.HTTPPayload{Soapcalls: *tvdata, Emmit: *emi})
 	}()
 	// Wait for HTTP server to properly initialize
 	<-serverStarted
@@ -69,10 +83,15 @@ func main() {
 	err = tvdata.SendtoTV("Play")
 	check(err)
 
-	initializeCloseHandler(*tvdata)
-
-	// Sleep forever.
-	select {}
+	if *interactivePtr {
+		s, err := interactive.InitNewScreen()
+		check(err)
+		s.InterInit(*tvdata)
+	} else {
+		initializeCloseHandler(*tvdata)
+		// Sleep forever.
+		select {}
+	}
 }
 
 func loadSSDPservices() error {

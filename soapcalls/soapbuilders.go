@@ -28,6 +28,28 @@ type PlayAction struct {
 	Speed       string
 }
 
+// PauseEnvelope - As in Play Pause Stop.
+type PauseEnvelope struct {
+	XMLName   xml.Name  `xml:"s:Envelope"`
+	Schema    string    `xml:"xmlns:s,attr"`
+	Encoding  string    `xml:"s:encodingStyle,attr"`
+	PauseBody PauseBody `xml:"s:Body"`
+}
+
+// PauseBody .
+type PauseBody struct {
+	XMLName     xml.Name    `xml:"s:Body"`
+	PauseAction PauseAction `xml:"u:Pause"`
+}
+
+// PauseAction .
+type PauseAction struct {
+	XMLName     xml.Name `xml:"u:Pause"`
+	AVTransport string   `xml:"xmlns:u,attr"`
+	InstanceID  string
+	Speed       string
+}
+
 // StopEnvelope - As in Play Pause Stop.
 type StopEnvelope struct {
 	XMLName  xml.Name `xml:"s:Envelope"`
@@ -229,6 +251,31 @@ func stopSoapBuild() ([]byte, error) {
 		StopBody: StopBody{
 			XMLName: xml.Name{},
 			StopAction: StopAction{
+				XMLName:     xml.Name{},
+				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
+				InstanceID:  "0",
+				Speed:       "1",
+			},
+		},
+	}
+	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
+	b, err := xml.Marshal(d)
+	if err != nil {
+		fmt.Println(err)
+		return make([]byte, 0), err
+	}
+
+	return append(xmlStart, b...), nil
+}
+
+func pauseSoapBuild() ([]byte, error) {
+	d := PauseEnvelope{
+		XMLName:  xml.Name{},
+		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
+		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
+		PauseBody: PauseBody{
+			XMLName: xml.Name{},
+			PauseAction: PauseAction{
 				XMLName:     xml.Name{},
 				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
 				InstanceID:  "0",

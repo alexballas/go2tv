@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/alexballas/go2tv/messages"
 	"github.com/alexballas/go2tv/soapcalls"
 )
 
@@ -28,12 +29,13 @@ type HTTPserver struct {
 // TVPayload - We need some of the soapcalls magic in
 // this package too. We need to expose the ControlURL
 // to the callback handler.
-type TVPayload struct {
+type HTTPPayload struct {
 	Soapcalls soapcalls.TVPayload
+	Emmit     messages.Emmiter
 }
 
 // ServeFiles - Start HTTP server and serve the files.
-func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtitlesPath string, tvpayload *TVPayload) {
+func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtitlesPath string, tvpayload *HTTPPayload) {
 
 	files := &filesToServe{
 		Video:     videoPath,
@@ -63,8 +65,8 @@ func (f *filesToServe) serveVideoHandler(w http.ResponseWriter, req *http.Reques
 	w.Header().Set("contentFeatures.dlna.org", "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=017000 00000000000000000000000000")
 
 	filePath, err := os.Open(f.Video)
-	defer filePath.Close()
 	check(err)
+	defer filePath.Close()
 
 	fileStat, err := filePath.Stat()
 	check(err)
@@ -77,11 +79,11 @@ func (f *filesToServe) serveSubtitlesHandler(w http.ResponseWriter, req *http.Re
 	w.Header().Set("contentFeatures.dlna.org", "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=017000 00000000000000000000000000")
 
 	filePath, err := os.Open(f.Subtitles)
-	defer filePath.Close()
 	if err != nil {
 		http.Error(w, "", 404)
 		return
 	}
+	defer filePath.Close()
 
 	fileStat, err := filePath.Stat()
 	if err != nil {
@@ -91,7 +93,7 @@ func (f *filesToServe) serveSubtitlesHandler(w http.ResponseWriter, req *http.Re
 	http.ServeContent(w, req, filepath.Base(f.Subtitles), fileStat.ModTime(), filePath)
 }
 
-func (p *TVPayload) callbackHandler(w http.ResponseWriter, req *http.Request) {
+func (p *HTTPPayload) callbackHandler(w http.ResponseWriter, req *http.Request) {
 	reqParsed, _ := io.ReadAll(req.Body)
 	sidVal, sidExists := req.Header["Sid"]
 
@@ -109,11 +111,16 @@ func (p *TVPayload) callbackHandler(w http.ResponseWriter, req *http.Request) {
 	uuid = strings.TrimLeft(uuid, "[")
 	uuid = strings.TrimLeft(uuid, "]")
 	uuid = strings.TrimLeft(uuid, "uuid:")
-
 	// Apparently we should ignore the first message
 	// On some media renderers we receive a STOPPED message
 	// even before we start streaming.
-	if soapcalls.GetSequence(uuid) == 0 {
+	seq, err := soapcalls.GetSequence(uuid)
+	if err != nil {
+		http.Error(w, "", 404)
+		return
+	}
+
+	if seq == 0 {
 		soapcalls.IncreaseSequence(uuid)
 		fmt.Fprintf(w, "OK\n")
 		return
@@ -126,18 +133,19 @@ func (p *TVPayload) callbackHandler(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "", 404)
 		return
 	}
+
 	if !soapcalls.UpdateMRstate(previousstate, newstate, uuid) {
 		http.Error(w, "", 404)
 		return
 	}
 	if newstate == "PLAYING" {
-		fmt.Println("Received: Playing")
+		p.Emmit.EmmitMsg("Received: Playing")
 	}
 	if newstate == "PAUSED_PLAYBACK" {
-		fmt.Println("Received: Paused")
+		p.Emmit.EmmitMsg("Received: Paused")
 	}
 	if newstate == "STOPPED" {
-		fmt.Println("Received: Stopped")
+		p.Emmit.EmmitMsg("Received: Stopped")
 		p.Soapcalls.UnsubscribeSoapCall(uuid)
 		os.Exit(0)
 	}
