@@ -3,7 +3,9 @@ package interactive
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/gdamore/tcell/v2"
@@ -13,7 +15,8 @@ import (
 
 // NewScreen .
 type NewScreen struct {
-	Current tcell.Screen
+	Current    tcell.Screen
+	videoTitle string
 }
 
 var flipflop bool = true
@@ -35,8 +38,10 @@ func (p *NewScreen) emitStr(x, y int, style tcell.Style, str string) {
 
 func (p *NewScreen) displayFirstText() {
 	s := p.Current
+	titleLen := len("Title:")
 	w, h := s.Size()
 	s.Clear()
+	p.emitStr(w/2-titleLen/2, h/2-2, tcell.StyleDefault, "Title:")
 	p.emitStr(w/2-10, h/2, tcell.StyleDefault, "Waiting for status...")
 	p.emitStr(1, 1, tcell.StyleDefault, "Press ESC / q to exit.")
 	p.emitStr(w/2-10, h/2+2, tcell.StyleDefault, "Press p to Pause/Play.")
@@ -47,8 +52,10 @@ func (p *NewScreen) displayFirstText() {
 //DisplayAtext .
 func (p *NewScreen) DisplayAtext(inputtext string) {
 	s := p.Current
+	titleLen := len("Title: " + p.videoTitle)
 	w, h := s.Size()
 	s.Clear()
+	p.emitStr(w/2-titleLen/2, h/2-2, tcell.StyleDefault, "Title: "+p.videoTitle)
 	p.emitStr(w/2-8, h/2, tcell.StyleDefault, inputtext)
 	p.emitStr(1, 1, tcell.StyleDefault, "Press ESC / q to exit.")
 	p.emitStr(w/2-10, h/2+2, tcell.StyleDefault, "Press p to Pause/Play.")
@@ -59,6 +66,16 @@ func (p *NewScreen) DisplayAtext(inputtext string) {
 
 // InterInit - Start the interactive terminal
 func (p *NewScreen) InterInit(tv soapcalls.TVPayload) {
+	var videoTitle string
+
+	videoTitlefromURL, err := url.Parse(tv.VideoURL)
+	if err != nil {
+		videoTitle = tv.VideoURL
+	} else {
+		videoTitle = strings.TrimLeft(videoTitlefromURL.Path, "/")
+	}
+	p.videoTitle = videoTitle
+
 	encoding.Register()
 	s := p.Current
 	if e := s.Init(); e != nil {

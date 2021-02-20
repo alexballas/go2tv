@@ -26,7 +26,7 @@ var (
 	subsArg        = flag.String("s", "", "Path to the subtitles file.")
 	listPtr        = flag.Bool("l", false, "List all available UPnP/DLNA MediaRenderer models and URLs.")
 	targetPtr      = flag.String("t", "", "Cast to a specific UPnP/DLNA MediaRenderer URL.")
-	interactivePtr = flag.Bool("i", false, "Interactive terminal for extra control on the streams.")
+	interactivePtr = flag.Bool("i", false, "Interactive terminal for extra control.")
 )
 
 func main() {

@@ -149,7 +149,9 @@ func (p *HTTPPayload) callbackHandler(w http.ResponseWriter, req *http.Request) 
 	if newstate == "STOPPED" {
 		p.Emmit.EmmitMsg("Received: Stopped")
 		p.Soapcalls.UnsubscribeSoapCall(uuid)
-		p.Emmit.Screen.Current.Fini()
+		if p.Emmit.Interactive {
+			p.Emmit.Screen.Current.Fini()
+		}
 		os.Exit(0)
 	}
 	// TODO - Properly reply to that.

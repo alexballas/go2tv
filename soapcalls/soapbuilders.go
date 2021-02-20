@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
+	"net/url"
+	"strings"
 )
 
 // PlayEnvelope - As in Play Pause Stop.
@@ -146,6 +148,15 @@ type SecCaptionInfoEx struct {
 }
 
 func setAVTransportSoapBuild(videoURL, subtitleURL string) ([]byte, error) {
+	var videoTitle string
+
+	videoTitlefromURL, err := url.Parse(videoURL)
+	if err != nil {
+		videoTitle = videoURL
+	} else {
+		videoTitle = strings.TrimLeft(videoTitlefromURL.Path, "/")
+	}
+
 	l := DIDLLite{
 		XMLName:    xml.Name{},
 		SchemaDIDL: "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
@@ -158,7 +169,7 @@ func setAVTransportSoapBuild(videoURL, subtitleURL string) ([]byte, error) {
 			ParentID:   "-1",
 			Restricted: "false",
 			UPNPClass:  "object.item.videoItem.movie",
-			DCtitle:    videoURL,
+			DCtitle:    videoTitle,
 			ResNode: []ResNode{{
 				XMLName:      xml.Name{},
 				ProtocolInfo: "http-get:*:video/mp4:*",
@@ -239,7 +250,6 @@ func playSoapBuild() ([]byte, error) {
 		fmt.Println(err)
 		return make([]byte, 0), err
 	}
-
 	return append(xmlStart, b...), nil
 }
 
