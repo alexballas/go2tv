@@ -28,6 +28,7 @@ Build requirements
 Tested on
 -----
 - Samsung UE50JU6400
+- Samsung UE65KS7000
 - Android - BubbleUPnP app
 
 Author
