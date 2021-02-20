@@ -2,6 +2,7 @@ package soapcalls
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -301,6 +302,9 @@ func IncreaseSequence(uuid string) {
 }
 
 // GetSequence .
-func GetSequence(uuid string) int {
-	return mediaRenderersStates[uuid].sequence
+func GetSequence(uuid string) (int, error) {
+	if initialMediaRenderersStates[uuid] == true {
+		return mediaRenderersStates[uuid].sequence, nil
+	}
+	return -1, errors.New("Zombie callbacks, we should ignore those")
 }

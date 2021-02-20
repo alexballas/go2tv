@@ -113,7 +113,13 @@ func (p *TVPayload) callbackHandler(w http.ResponseWriter, req *http.Request) {
 	// Apparently we should ignore the first message
 	// On some media renderers we receive a STOPPED message
 	// even before we start streaming.
-	if soapcalls.GetSequence(uuid) == 0 {
+	seq, err := soapcalls.GetSequence(uuid)
+	if err != nil {
+		http.Error(w, "", 404)
+		return
+	}
+
+	if seq == 0 {
 		soapcalls.IncreaseSequence(uuid)
 		fmt.Fprintf(w, "OK\n")
 		return
