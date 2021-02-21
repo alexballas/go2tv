@@ -40,6 +40,7 @@ func listFlagFunction() error {
 		fmt.Printf("%sURL:%s   %s\n", boldStart, boldEnd, devices[k][1])
 		fmt.Println()
 	}
+
 	return nil
 }
 
@@ -80,6 +81,7 @@ func checkVflag() error {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -97,6 +99,7 @@ func checkSflag() error {
 		*subsArg = (*videoArg)[0:len(*videoArg)-
 			len(filepath.Ext(*videoArg))] + ".srt"
 	}
+
 	return nil
 }
 
@@ -119,6 +122,7 @@ func checkTflag() error {
 		}
 		dmrURL = *targetPtr
 	}
+
 	return nil
 }
 
@@ -129,6 +133,7 @@ func checkLflag() (bool, error) {
 		}
 		return true, nil
 	}
+
 	return false, nil
 }
 

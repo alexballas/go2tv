@@ -249,6 +249,7 @@ func playSoapBuild() ([]byte, error) {
 		fmt.Println(err)
 		return make([]byte, 0), err
 	}
+
 	return append(xmlStart, b...), nil
 }
 

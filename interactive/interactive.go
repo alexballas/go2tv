@@ -125,5 +125,6 @@ func InitNewScreen() (*NewScreen, error) {
 	q := NewScreen{
 		Current: s,
 	}
+
 	return &q, nil
 }

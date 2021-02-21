@@ -61,6 +61,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -75,15 +76,12 @@ func (p *TVPayload) playStopPauseSoapCall(action string) error {
 	if action == "Play" {
 		xml, err = playSoapBuild()
 	}
-
 	if action == "Stop" {
 		xml, err = stopSoapBuild()
 	}
-
 	if action == "Pause" {
 		xml, err = pauseSoapBuild()
 	}
-
 	if err != nil {
 		return err
 	}
@@ -106,17 +104,18 @@ func (p *TVPayload) playStopPauseSoapCall(action string) error {
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
 // SubscribeSoapCall - Subscribe to a media renderer
 // If we explicitly pass the uuid, then we refresh it instead.
 func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
-
 	parsedURLcontrol, err := url.Parse(p.ControlURL)
 	if err != nil {
 		return err
 	}
+
 	parsedURLcallback, err := url.Parse(p.CallbackURL)
 	if err != nil {
 		return err
@@ -152,6 +151,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 	if err != nil {
 		return err
 	}
+
 	defer resp.Body.Close()
 
 	uuid := resp.Header["Sid"][0]
@@ -167,6 +167,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 
 	timeoutReply := strings.TrimLeft(resp.Header["Timeout"][0], "Second-")
 	p.RefreshLoopUUIDSoapCall(uuid, timeoutReply)
+
 	return nil
 }
 
@@ -199,6 +200,7 @@ func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 	}
 
 	DeleteMRstate(uuid)
+
 	return nil
 }
 
@@ -221,6 +223,7 @@ func (p *TVPayload) RefreshLoopUUIDSoapCall(uuid, timeout string) error {
 	// function arguments.
 	f := p.refreshLoopUUIDAsyncSoapCall(uuid)
 	time.AfterFunc(triggerTimefunc, f)
+
 	return nil
 }
 
@@ -251,6 +254,7 @@ func (p *TVPayload) SendtoTV(action string) error {
 	if err := p.playStopPauseSoapCall(action); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -273,6 +277,7 @@ func UpdateMRstate(previous, new, uuid string) bool {
 		mediaRenderersStates[uuid].sequence++
 		return true
 	}
+
 	return false
 }
 
@@ -308,5 +313,6 @@ func GetSequence(uuid string) (int, error) {
 	if initialMediaRenderersStates[uuid] == true {
 		return mediaRenderersStates[uuid].sequence, nil
 	}
+
 	return -1, errors.New("Zombie callbacks, we should ignore those")
 }

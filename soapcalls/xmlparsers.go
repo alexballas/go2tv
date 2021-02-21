@@ -92,6 +92,7 @@ func DMRextractor(dmrurl string) (string, string, error) {
 			return avtransportControlURL, avtransportEventSubURL, nil
 		}
 	}
+
 	return "", "", errors.New("Something broke somewhere - wrong DMR URL?")
 }
 

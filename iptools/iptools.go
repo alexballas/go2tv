@@ -13,17 +13,19 @@ func URLtoListenIPandPort(u string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	conn, err := net.Dial("udp", parsedURL.Host)
 	if err != nil {
 		return "", err
 	}
+
 	ipToListen := strings.Split(conn.LocalAddr().String(), ":")[0]
 	portToListen, err := checkAndPickPort(ipToListen, 3500)
 	if err != nil {
 		return "", err
 	}
-	res := ipToListen + ":" + portToListen
 
+	res := ipToListen + ":" + portToListen
 	return res, nil
 }
 

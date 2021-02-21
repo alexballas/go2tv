@@ -36,7 +36,6 @@ type HTTPPayload struct {
 
 // ServeFiles - Start HTTP server and serve the files.
 func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtitlesPath string, tvpayload *HTTPPayload) {
-
 	files := &filesToServe{
 		Video:     videoPath,
 		Subtitles: subtitlesPath,
@@ -51,7 +50,6 @@ func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtit
 
 	serverStarted <- struct{}{}
 	s.http.Serve(ln)
-
 }
 
 // StopServeFiles - Kill the HTTP server.
@@ -110,6 +108,7 @@ func (p *HTTPPayload) callbackHandler(w http.ResponseWriter, req *http.Request) 
 	uuid = strings.TrimLeft(uuid, "[")
 	uuid = strings.TrimLeft(uuid, "]")
 	uuid = strings.TrimLeft(uuid, "uuid:")
+
 	// Apparently we should ignore the first message
 	// On some media renderers we receive a STOPPED message
 	// even before we start streaming.
@@ -127,7 +126,6 @@ func (p *HTTPPayload) callbackHandler(w http.ResponseWriter, req *http.Request) 
 
 	reqParsedUnescape := html.UnescapeString(string(reqParsed))
 	previousstate, newstate, err := soapcalls.EventNotifyParser(reqParsedUnescape)
-
 	if err != nil {
 		http.Error(w, "", 404)
 		return
@@ -137,6 +135,7 @@ func (p *HTTPPayload) callbackHandler(w http.ResponseWriter, req *http.Request) 
 		http.Error(w, "", 404)
 		return
 	}
+
 	if newstate == "PLAYING" {
 		p.Screen.EmmitMsg("Playing")
 	}
@@ -149,9 +148,9 @@ func (p *HTTPPayload) callbackHandler(w http.ResponseWriter, req *http.Request) 
 		p.Screen.Current.Fini()
 		os.Exit(0)
 	}
+
 	// TODO - Properly reply to that.
 	fmt.Fprintf(w, "OK\n")
-	return
 }
 
 // NewServer - create a new HTTP server.
@@ -161,6 +160,7 @@ func NewServer(a string) HTTPserver {
 		mux:  http.NewServeMux(),
 	}
 	srv.http.Handler = srv.mux
+
 	return srv
 }
 

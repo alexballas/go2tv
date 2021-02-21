@@ -100,6 +100,7 @@ func loadSSDPservices() error {
 	if counter > 0 {
 		return nil
 	}
+
 	return errors.New("loadSSDPservices: No available Media Renderers")
 }
 
