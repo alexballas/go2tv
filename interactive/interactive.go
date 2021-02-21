@@ -37,9 +37,9 @@ func (p *NewScreen) emitStr(x, y int, style tcell.Style, str string) {
 	}
 }
 
-// DisplayAtext - Display the actions to the
+// EmmitMsg - Display the actions to the
 // interactive terminal
-func (p *NewScreen) DisplayAtext(inputtext string) {
+func (p *NewScreen) EmmitMsg(inputtext string) {
 	p.lastAction = inputtext
 	s := p.Current
 	titleLen := len("Title: " + p.videoTitle)
@@ -90,13 +90,13 @@ func (p *NewScreen) InterInit(tv soapcalls.TVPayload) {
 	s.SetStyle(defStyle)
 
 	p.lastAction = "Waiting for status..."
-	p.DisplayAtext(p.lastAction)
+	p.EmmitMsg(p.lastAction)
 
 	for {
 		switch ev := s.PollEvent().(type) {
 		case *tcell.EventResize:
 			s.Sync()
-			p.DisplayAtext(p.lastAction)
+			p.EmmitMsg(p.lastAction)
 		case *tcell.EventKey:
 			if ev.Key() == tcell.KeyEscape {
 				tv.SendtoTV("Stop")
@@ -126,9 +126,4 @@ func InitNewScreen() (*NewScreen, error) {
 		Current: s,
 	}
 	return &q, nil
-}
-
-// EmmitMsg - Print message
-func (p *NewScreen) EmmitMsg(msg string) {
-	p.DisplayAtext(msg)
 }
