@@ -44,6 +44,8 @@ func listFlagFunction() error {
 }
 
 func checkflags() (bool, error) {
+	checkVerflag()
+
 	if err := checkVflag(); err != nil {
 		return false, err
 	}
@@ -128,4 +130,11 @@ func checkLflag() (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+func checkVerflag() {
+	if *versionPtr {
+		fmt.Println("1.2")
+		os.Exit(0)
+	}
 }
