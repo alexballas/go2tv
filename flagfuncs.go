@@ -44,6 +44,8 @@ func listFlagFunction() error {
 }
 
 func checkflags() (bool, error) {
+	checkVerflag()
+
 	if err := checkVflag(); err != nil {
 		return false, err
 	}
@@ -57,7 +59,7 @@ func checkflags() (bool, error) {
 		return false, err
 	}
 
-	if list == true {
+	if list {
 		return true, nil
 	}
 
@@ -69,7 +71,7 @@ func checkflags() (bool, error) {
 }
 
 func checkVflag() error {
-	if *listPtr == false {
+	if !*listPtr {
 		if *videoArg == "" {
 			err := errors.New("No video file defined")
 			return err
@@ -121,11 +123,18 @@ func checkTflag() error {
 }
 
 func checkLflag() (bool, error) {
-	if *listPtr == true {
+	if *listPtr {
 		if err := listFlagFunction(); err != nil {
 			return false, err
 		}
 		return true, nil
 	}
 	return false, nil
+}
+
+func checkVerflag() {
+	if *versionPtr {
+		fmt.Println("1.2")
+		os.Exit(0)
+	}
 }

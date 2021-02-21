@@ -3,7 +3,6 @@ package soapcalls
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"runtime"
@@ -66,7 +65,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 }
 
 // PlayStopSoapCall - Build and call the play soap call.
-func (p *TVPayload) playStopSoapCall(action string) error {
+func (p *TVPayload) playStopPauseSoapCall(action string) error {
 	parsedURLtransport, err := url.Parse(p.TransportURL)
 	if err != nil {
 		return err
@@ -79,6 +78,10 @@ func (p *TVPayload) playStopSoapCall(action string) error {
 
 	if action == "Stop" {
 		xml, err = stopSoapBuild()
+	}
+
+	if action == "Pause" {
+		xml, err = pauseSoapBuild()
 	}
 
 	if err != nil {
@@ -229,14 +232,14 @@ func (p *TVPayload) refreshLoopUUIDAsyncSoapCall(uuid string) func() {
 
 // SendtoTV - Send to TV.
 func (p *TVPayload) SendtoTV(action string) error {
-	if action == "Play" {
+	if action == "Play1" {
 		if err := p.SubscribeSoapCall(""); err != nil {
 			return err
 		}
 		if err := p.setAVTransportSoapCall(); err != nil {
 			return err
 		}
-		fmt.Println("Streaming to Device..")
+		action = "Play"
 	}
 
 	if action == "Stop" {
@@ -244,9 +247,8 @@ func (p *TVPayload) SendtoTV(action string) error {
 		for uuids := range mediaRenderersStates {
 			p.UnsubscribeSoapCall(uuids)
 		}
-		fmt.Println("Stopping stream..")
 	}
-	if err := p.playStopSoapCall(action); err != nil {
+	if err := p.playStopPauseSoapCall(action); err != nil {
 		return err
 	}
 	return nil
@@ -256,6 +258,8 @@ func (p *TVPayload) SendtoTV(action string) error {
 // with the state. Return true or false to verify that
 // the actual update took place.
 func UpdateMRstate(previous, new, uuid string) bool {
+	mu.Lock()
+	defer mu.Unlock()
 	// If the uuid is not one of the UUIDs we stored in
 	// soapcalls.InitialMediaRenderersStates it means that
 	// probably it expired and there is not much we can do
@@ -264,11 +268,9 @@ func UpdateMRstate(previous, new, uuid string) bool {
 	// http://upnp.org/specs/arch/UPnP-arch-DeviceArchitecture-v1.1.pdf
 	// (page 94).
 	if initialMediaRenderersStates[uuid] == true {
-		mu.Lock()
 		mediaRenderersStates[uuid].previousState = previous
 		mediaRenderersStates[uuid].newState = new
 		mediaRenderersStates[uuid].sequence++
-		mu.Unlock()
 		return true
 	}
 	return false
