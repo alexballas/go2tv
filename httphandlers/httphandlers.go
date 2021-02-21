@@ -138,13 +138,13 @@ func (p *HTTPPayload) callbackHandler(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 	if newstate == "PLAYING" {
-		p.Emmit.EmmitMsg("Received: Playing")
+		p.Emmit.EmmitMsg("Playing")
 	}
 	if newstate == "PAUSED_PLAYBACK" {
-		p.Emmit.EmmitMsg("Received: Paused")
+		p.Emmit.EmmitMsg("Paused")
 	}
 	if newstate == "STOPPED" {
-		p.Emmit.EmmitMsg("Received: Stopped")
+		p.Emmit.EmmitMsg("Stopped")
 		p.Soapcalls.UnsubscribeSoapCall(uuid)
 		p.Emmit.Screen.Current.Fini()
 		os.Exit(0)

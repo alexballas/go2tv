@@ -37,31 +37,29 @@ func (p *NewScreen) emitStr(x, y int, style tcell.Style, str string) {
 	}
 }
 
-func (p *NewScreen) displayFirstText() {
-	s := p.Current
-	titleLen := len("Title:")
-	w, h := s.Size()
-	s.Clear()
-	p.emitStr(w/2-titleLen/2, h/2-2, tcell.StyleDefault, "Title:")
-	p.emitStr(w/2-10, h/2, tcell.StyleDefault, "Waiting for status...")
-	p.emitStr(1, 1, tcell.StyleDefault, "Press ESC / q to exit.")
-	p.emitStr(w/2-10, h/2+2, tcell.StyleDefault, "Press p to Pause/Play.")
-	p.emitStr(w/2-10, h/2+3, tcell.StyleDefault, "Press s to Stop.")
-	s.Show()
-}
-
 //DisplayAtext .
 func (p *NewScreen) DisplayAtext(inputtext string) {
 	p.lastAction = inputtext
 	s := p.Current
 	titleLen := len("Title: " + p.videoTitle)
 	w, h := s.Size()
+	boldStyle := tcell.StyleDefault.
+		Background(tcell.ColorBlack).
+		Foreground(tcell.ColorWhite).Bold(true)
+	blinkStyle := tcell.StyleDefault.
+		Background(tcell.ColorBlack).
+		Foreground(tcell.ColorWhite).Blink(true)
+
 	s.Clear()
+
 	p.emitStr(w/2-titleLen/2, h/2-2, tcell.StyleDefault, "Title: "+p.videoTitle)
-	p.emitStr(w/2-8, h/2, tcell.StyleDefault, inputtext)
-	p.emitStr(1, 1, tcell.StyleDefault, "Press ESC / q to exit.")
-	p.emitStr(w/2-10, h/2+2, tcell.StyleDefault, "Press p to Pause/Play.")
-	p.emitStr(w/2-10, h/2+3, tcell.StyleDefault, "Press s to Stop.")
+	if inputtext == "Waiting for status..." {
+		p.emitStr(w/2-len(inputtext)/2, h/2, blinkStyle, inputtext)
+	} else {
+		p.emitStr(w/2-len(inputtext)/2, h/2, boldStyle, inputtext)
+	}
+	p.emitStr(1, 1, tcell.StyleDefault, "Press ESC to stop and exit.")
+	p.emitStr(w/2-len("Press p to Pause/Play.")/2, h/2+2, tcell.StyleDefault, "Press p to Pause/Play.")
 
 	s.Show()
 }
@@ -90,16 +88,16 @@ func (p *NewScreen) InterInit(tv soapcalls.TVPayload) {
 		Foreground(tcell.ColorWhite)
 	s.SetStyle(defStyle)
 
-	p.displayFirstText()
 	p.lastAction = "Waiting for status..."
+	p.DisplayAtext(p.lastAction)
+
 	for {
 		switch ev := s.PollEvent().(type) {
 		case *tcell.EventResize:
 			s.Sync()
 			p.DisplayAtext(p.lastAction)
 		case *tcell.EventKey:
-			if ev.Key() == tcell.KeyEscape ||
-				ev.Rune() == 'q' {
+			if ev.Key() == tcell.KeyEscape {
 				tv.SendtoTV("Stop")
 				s.Fini()
 				os.Exit(0)
@@ -111,10 +109,6 @@ func (p *NewScreen) InterInit(tv soapcalls.TVPayload) {
 					flipflop = true
 					tv.SendtoTV("Play")
 				}
-			} else if ev.Rune() == 's' {
-				tv.SendtoTV("Stop")
-				s.Fini()
-				os.Exit(0)
 			}
 		}
 	}
