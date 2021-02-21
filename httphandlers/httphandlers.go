@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/alexballas/go2tv/messages"
+	"github.com/alexballas/go2tv/interactive"
 	"github.com/alexballas/go2tv/soapcalls"
 )
 
@@ -31,7 +31,7 @@ type HTTPserver struct {
 // to the callback handler.
 type HTTPPayload struct {
 	Soapcalls *soapcalls.TVPayload
-	Emmit     *messages.Emmiter
+	Screen    *interactive.NewScreen
 }
 
 // ServeFiles - Start HTTP server and serve the files.
@@ -138,15 +138,15 @@ func (p *HTTPPayload) callbackHandler(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 	if newstate == "PLAYING" {
-		p.Emmit.EmmitMsg("Playing")
+		p.Screen.EmmitMsg("Playing")
 	}
 	if newstate == "PAUSED_PLAYBACK" {
-		p.Emmit.EmmitMsg("Paused")
+		p.Screen.EmmitMsg("Paused")
 	}
 	if newstate == "STOPPED" {
-		p.Emmit.EmmitMsg("Stopped")
+		p.Screen.EmmitMsg("Stopped")
 		p.Soapcalls.UnsubscribeSoapCall(uuid)
-		p.Emmit.Screen.Current.Fini()
+		p.Screen.Current.Fini()
 		os.Exit(0)
 	}
 	// TODO - Properly reply to that.

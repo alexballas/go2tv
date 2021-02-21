@@ -12,7 +12,6 @@ import (
 	"github.com/alexballas/go2tv/httphandlers"
 	"github.com/alexballas/go2tv/interactive"
 	"github.com/alexballas/go2tv/iptools"
-	"github.com/alexballas/go2tv/messages"
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/koron/go-ssdp"
 )
@@ -52,10 +51,6 @@ func main() {
 	newsc, err := interactive.InitNewScreen()
 	check(err)
 
-	emi := &messages.Emmiter{
-		Screen: newsc,
-	}
-
 	// The String() method of the net/url package will properly escape
 	// the URL compared to the url.QueryEscape() method.
 	videoFileURLencoded := &url.URL{Path: filepath.Base(absVideoFile)}
@@ -74,7 +69,7 @@ func main() {
 	// We pass the tvdata here as we need the callback handlers to be able to
 	// react to the different media renderer states.
 	go func() {
-		s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile, &httphandlers.HTTPPayload{Soapcalls: tvdata, Emmit: emi})
+		s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile, &httphandlers.HTTPPayload{Soapcalls: tvdata, Screen: newsc})
 	}()
 	// Wait for HTTP server to properly initialize
 	<-serverStarted

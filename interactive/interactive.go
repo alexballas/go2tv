@@ -37,7 +37,8 @@ func (p *NewScreen) emitStr(x, y int, style tcell.Style, str string) {
 	}
 }
 
-//DisplayAtext .
+// DisplayAtext - Display the actions to the
+// interactive terminal
 func (p *NewScreen) DisplayAtext(inputtext string) {
 	p.lastAction = inputtext
 	s := p.Current
@@ -114,7 +115,8 @@ func (p *NewScreen) InterInit(tv soapcalls.TVPayload) {
 	}
 }
 
-// InitNewScreen .
+// InitNewScreen - Just initializing our new
+// tcell screen
 func InitNewScreen() (*NewScreen, error) {
 	s, e := tcell.NewScreen()
 	if e != nil {
@@ -124,4 +126,9 @@ func InitNewScreen() (*NewScreen, error) {
 		Current: s,
 	}
 	return &q, nil
+}
+
+// EmmitMsg - Print message
+func (p *NewScreen) EmmitMsg(msg string) {
+	p.DisplayAtext(msg)
 }
