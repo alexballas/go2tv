@@ -4,13 +4,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"sort"
-	"syscall"
 
 	"github.com/alexballas/go2tv/httphandlers"
+	"github.com/alexballas/go2tv/interactive"
 	"github.com/alexballas/go2tv/iptools"
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/koron/go-ssdp"
@@ -24,6 +24,7 @@ var (
 	subsArg       = flag.String("s", "", "Path to the subtitles file.")
 	listPtr       = flag.Bool("l", false, "List all available UPnP/DLNA MediaRenderer models and URLs.")
 	targetPtr     = flag.String("t", "", "Cast to a specific UPnP/DLNA MediaRenderer URL.")
+	versionPtr    = flag.Bool("version", false, "Print version.")
 )
 
 func main() {
@@ -48,12 +49,20 @@ func main() {
 	whereToListen, err := iptools.URLtoListenIPandPort(dmrURL)
 	check(err)
 
+	newsc, err := interactive.InitNewScreen()
+	check(err)
+
+	// The String() method of the net/url package will properly escape
+	// the URL compared to the url.QueryEscape() method.
+	videoFileURLencoded := &url.URL{Path: filepath.Base(absVideoFile)}
+	subsFileURLencoded := &url.URL{Path: filepath.Base(absSubtitlesFile)}
+
 	tvdata := &soapcalls.TVPayload{
 		TransportURL: transportURL,
 		ControlURL:   controlURL,
 		CallbackURL:  "http://" + whereToListen + "/callback",
-		VideoURL:     "http://" + whereToListen + "/" + filepath.Base(absVideoFile),
-		SubtitlesURL: "http://" + whereToListen + "/" + filepath.Base(absSubtitlesFile),
+		VideoURL:     "http://" + whereToListen + "/" + videoFileURLencoded.String(),
+		SubtitlesURL: "http://" + whereToListen + "/" + subsFileURLencoded.String(),
 	}
 
 	s := httphandlers.NewServer(whereToListen)
@@ -61,18 +70,15 @@ func main() {
 	// We pass the tvdata here as we need the callback handlers to be able to
 	// react to the different media renderer states.
 	go func() {
-		s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile, &httphandlers.TVPayload{Soapcalls: *tvdata})
+		s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile, &httphandlers.HTTPPayload{Soapcalls: tvdata, Screen: newsc})
 	}()
 	// Wait for HTTP server to properly initialize
 	<-serverStarted
 
-	err = tvdata.SendtoTV("Play")
+	err = tvdata.SendtoTV("Play1")
 	check(err)
 
-	initializeCloseHandler(*tvdata)
-
-	// Sleep forever.
-	select {}
+	newsc.InterInit(*tvdata)
 }
 
 func loadSSDPservices() error {
@@ -112,19 +118,6 @@ func devicePicker(i int) (string, error) {
 		}
 	}
 	return "", errors.New("devicePicker: Something went terribly wrong")
-}
-
-func initializeCloseHandler(tvdata soapcalls.TVPayload) {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		fmt.Println(" Shutting down...")
-		err := tvdata.SendtoTV("Stop")
-		check(err)
-
-		os.Exit(0)
-	}()
 }
 
 func check(err error) {

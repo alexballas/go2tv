@@ -5,7 +5,7 @@
 
 Go2TV lets you cast your videos to any UPnP/DLNA MediaRenderer like Samsumg TVs.
 
-![](https://i.imgur.com/fnYkkp7.gif)
+![](https://i.imgur.com/BsMevHi.gif)
 
 Usage
 -----
@@ -19,6 +19,8 @@ Usage of go2tv:
     	Cast to a specific UPnP/DLNA MediaRenderer URL.
   -v string
     	Path to the video file.
+  -version
+    	Print version.
 ```
 
 Build requirements
