@@ -17,6 +17,7 @@ import (
 type NewScreen struct {
 	Current    tcell.Screen
 	videoTitle string
+	lastAction string
 }
 
 var flipflop bool = true
@@ -51,6 +52,7 @@ func (p *NewScreen) displayFirstText() {
 
 //DisplayAtext .
 func (p *NewScreen) DisplayAtext(inputtext string) {
+	p.lastAction = inputtext
 	s := p.Current
 	titleLen := len("Title: " + p.videoTitle)
 	w, h := s.Size()
@@ -89,12 +91,12 @@ func (p *NewScreen) InterInit(tv soapcalls.TVPayload) {
 	s.SetStyle(defStyle)
 
 	p.displayFirstText()
-
+	p.lastAction = "Waiting for status..."
 	for {
 		switch ev := s.PollEvent().(type) {
 		case *tcell.EventResize:
 			s.Sync()
-			p.displayFirstText()
+			p.DisplayAtext(p.lastAction)
 		case *tcell.EventKey:
 			if ev.Key() == tcell.KeyEscape ||
 				ev.Rune() == 'q' {

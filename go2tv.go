@@ -4,11 +4,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"sort"
-	"syscall"
 
 	"github.com/alexballas/go2tv/httphandlers"
 	"github.com/alexballas/go2tv/interactive"
@@ -19,14 +18,13 @@ import (
 )
 
 var (
-	dmrURL         string
-	serverStarted  = make(chan struct{})
-	devices        = make(map[int][]string)
-	videoArg       = flag.String("v", "", "Path to the video file.")
-	subsArg        = flag.String("s", "", "Path to the subtitles file.")
-	listPtr        = flag.Bool("l", false, "List all available UPnP/DLNA MediaRenderer models and URLs.")
-	targetPtr      = flag.String("t", "", "Cast to a specific UPnP/DLNA MediaRenderer URL.")
-	interactivePtr = flag.Bool("i", false, "Interactive terminal for extra control.")
+	dmrURL        string
+	serverStarted = make(chan struct{})
+	devices       = make(map[int][]string)
+	videoArg      = flag.String("v", "", "Path to the video file.")
+	subsArg       = flag.String("s", "", "Path to the subtitles file.")
+	listPtr       = flag.Bool("l", false, "List all available UPnP/DLNA MediaRenderer models and URLs.")
+	targetPtr     = flag.String("t", "", "Cast to a specific UPnP/DLNA MediaRenderer URL.")
 )
 
 func main() {
@@ -51,23 +49,24 @@ func main() {
 	whereToListen, err := iptools.URLtoListenIPandPort(dmrURL)
 	check(err)
 
-	var emi *messages.Emmiter
-	if checkIflag() {
-		emi = &messages.Emmiter{
-			Interactive: true,
-		}
-	} else {
-		emi = &messages.Emmiter{
-			Interactive: false,
-		}
+	newsc, err := interactive.InitNewScreen()
+	check(err)
+
+	emi := &messages.Emmiter{
+		Screen: newsc,
 	}
+
+	// The String() method of the net/url package will properly escape
+	// the URL compared to the url.QueryEscape() method.
+	videoFileURLencoded := &url.URL{Path: filepath.Base(absVideoFile)}
+	subsFileURLencoded := &url.URL{Path: filepath.Base(absSubtitlesFile)}
 
 	tvdata := &soapcalls.TVPayload{
 		TransportURL: transportURL,
 		ControlURL:   controlURL,
 		CallbackURL:  "http://" + whereToListen + "/callback",
-		VideoURL:     "http://" + whereToListen + "/" + filepath.Base(absVideoFile),
-		SubtitlesURL: "http://" + whereToListen + "/" + filepath.Base(absSubtitlesFile),
+		VideoURL:     "http://" + whereToListen + "/" + videoFileURLencoded.String(),
+		SubtitlesURL: "http://" + whereToListen + "/" + subsFileURLencoded.String(),
 	}
 
 	s := httphandlers.NewServer(whereToListen)
@@ -82,16 +81,8 @@ func main() {
 
 	err = tvdata.SendtoTV("Play1")
 	check(err)
-	if *interactivePtr {
-		s, err := interactive.InitNewScreen()
-		check(err)
-		emi.Screen = s
-		s.InterInit(*tvdata)
-	} else {
-		initializeCloseHandler(*tvdata)
-		// Sleep forever.
-		select {}
-	}
+
+	newsc.InterInit(*tvdata)
 }
 
 func loadSSDPservices() error {
@@ -131,19 +122,6 @@ func devicePicker(i int) (string, error) {
 		}
 	}
 	return "", errors.New("devicePicker: Something went terribly wrong")
-}
-
-func initializeCloseHandler(tvdata soapcalls.TVPayload) {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		fmt.Println(" Shutting down...")
-		err := tvdata.SendtoTV("Stop")
-		check(err)
-
-		os.Exit(0)
-	}()
 }
 
 func check(err error) {

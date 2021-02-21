@@ -156,7 +156,6 @@ func setAVTransportSoapBuild(videoURL, subtitleURL string) ([]byte, error) {
 	} else {
 		videoTitle = strings.TrimLeft(videoTitlefromURL.Path, "/")
 	}
-
 	l := DIDLLite{
 		XMLName:    xml.Name{},
 		SchemaDIDL: "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",

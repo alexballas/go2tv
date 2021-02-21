@@ -50,9 +50,6 @@ func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtit
 	check(err)
 
 	serverStarted <- struct{}{}
-	if !tvpayload.Emmit.Interactive {
-		fmt.Println("Listening on:", s.http.Addr)
-	}
 	s.http.Serve(ln)
 
 }
@@ -149,9 +146,7 @@ func (p *HTTPPayload) callbackHandler(w http.ResponseWriter, req *http.Request) 
 	if newstate == "STOPPED" {
 		p.Emmit.EmmitMsg("Received: Stopped")
 		p.Soapcalls.UnsubscribeSoapCall(uuid)
-		if p.Emmit.Interactive {
-			p.Emmit.Screen.Current.Fini()
-		}
+		p.Emmit.Screen.Current.Fini()
 		os.Exit(0)
 	}
 	// TODO - Properly reply to that.

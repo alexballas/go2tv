@@ -1,7 +1,6 @@
 package messages
 
 import (
-	"fmt"
 	"reflect"
 
 	"github.com/alexballas/go2tv/interactive"
@@ -9,8 +8,7 @@ import (
 
 // Emmiter - Define emmiter target
 type Emmiter struct {
-	Interactive bool
-	Screen      *interactive.NewScreen
+	Screen *interactive.NewScreen
 }
 
 // EmmitMsg - Print message
@@ -20,9 +18,5 @@ func (e *Emmiter) EmmitMsg(msg string) {
 	if !ok {
 		return
 	}
-	if e.Interactive {
-		e.Screen.DisplayAtext(msg)
-	} else {
-		fmt.Println(msg)
-	}
+	e.Screen.DisplayAtext(msg)
 }

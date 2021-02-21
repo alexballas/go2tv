@@ -129,10 +129,3 @@ func checkLflag() (bool, error) {
 	}
 	return false, nil
 }
-
-func checkIflag() bool {
-	if *interactivePtr {
-		return true
-	}
-	return false
-}
