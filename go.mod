@@ -1,6 +1,6 @@
 module github.com/alexballas/go2tv
 
-go 1.15
+go 1.16
 
 require (
 	github.com/gdamore/tcell/v2 v2.1.0

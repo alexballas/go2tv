@@ -17,6 +17,8 @@ import (
 )
 
 var (
+	version       string
+	build         string
 	dmrURL        string
 	serverStarted = make(chan struct{})
 	devices       = make(map[int][]string)

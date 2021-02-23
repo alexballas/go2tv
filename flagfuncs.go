@@ -139,7 +139,8 @@ func checkLflag() (bool, error) {
 
 func checkVerflag() {
 	if *versionPtr {
-		fmt.Println("1.2")
+		fmt.Printf("Go2TV Version: %s, ", version)
+		fmt.Printf("Build: %s\n", build)
 		os.Exit(0)
 	}
 }
