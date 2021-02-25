@@ -149,8 +149,10 @@ func (p *HTTPPayload) callbackHandler(w http.ResponseWriter, req *http.Request) 
 		os.Exit(0)
 	}
 
-	// TODO - Properly reply to that.
-	fmt.Fprintf(w, "OK\n")
+	// We could just not send anything here
+	// as the core server package would still
+	// default to a 200 OK empty response.
+	w.WriteHeader(http.StatusOK)
 }
 
 // NewServer - create a new HTTP server.
