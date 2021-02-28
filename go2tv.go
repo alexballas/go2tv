@@ -54,8 +54,8 @@ func main() {
 	newsc, err := interactive.InitNewScreen()
 	check(err)
 
-	// The String() method of the net/url package will properly escape
-	// the URL compared to the url.QueryEscape() method.
+	// The String() method of the net/url package will properly escape the URL
+	// compared to the url.QueryEscape() method.
 	videoFileURLencoded := &url.URL{Path: filepath.Base(absVideoFile)}
 	subsFileURLencoded := &url.URL{Path: filepath.Base(absSubtitlesFile)}
 
@@ -69,8 +69,8 @@ func main() {
 
 	s := httphandlers.NewServer(whereToListen)
 
-	// We pass the tvdata here as we need the callback handlers to be able to
-	// react to the different media renderer states.
+	// We pass the tvdata here as we need the callback handlers to be able to react
+	// to the different media renderer states.
 	go func() {
 		s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile, &httphandlers.HTTPPayload{Soapcalls: tvdata, Screen: newsc})
 	}()
@@ -91,9 +91,8 @@ func loadSSDPservices() error {
 	counter := 0
 	for _, srv := range list {
 		// We only care about the AVTransport services for basic actions
-		// (stop,play,pause). If we need to extend this to support other
-		// functionality like volume control we need to use the
-		// RenderingControl service.
+		// (stop,play,pause). If we need to extend this to support other functionality
+		// like volume control we need to use the RenderingControl service.
 		if srv.Type == "urn:schemas-upnp-org:service:AVTransport:1" {
 			counter++
 			devices[counter] = []string{srv.Server, srv.Location}
@@ -125,7 +124,7 @@ func devicePicker(i int) (string, error) {
 
 func check(err error) {
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 		os.Exit(1)
 	}
 }

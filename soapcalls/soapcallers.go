@@ -314,5 +314,5 @@ func GetSequence(uuid string) (int, error) {
 		return mediaRenderersStates[uuid].sequence, nil
 	}
 
-	return -1, errors.New("Zombie callbacks, we should ignore those")
+	return -1, errors.New("zombie callbacks, we should ignore those")
 }

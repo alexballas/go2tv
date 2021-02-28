@@ -26,9 +26,8 @@ type HTTPserver struct {
 	mux  *http.ServeMux
 }
 
-// HTTPPayload - We need some of the soapcalls magic in
-// this package too. We need to expose the ControlURL
-// to the callback handler.
+// HTTPPayload - We need some of the soapcalls magic in this package too. We need
+// to expose the ControlURL to the callback handler.
 type HTTPPayload struct {
 	Soapcalls *soapcalls.TVPayload
 	Screen    *interactive.NewScreen
@@ -120,7 +119,7 @@ func (p *HTTPPayload) callbackHandler(w http.ResponseWriter, req *http.Request) 
 
 	if seq == 0 {
 		soapcalls.IncreaseSequence(uuid)
-		fmt.Fprintf(w, "OK\n")
+		_, _ = fmt.Fprintf(w, "OK\n")
 		return
 	}
 
@@ -168,7 +167,7 @@ func NewServer(a string) HTTPserver {
 
 func check(err error) {
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 		os.Exit(1)
 	}
 }

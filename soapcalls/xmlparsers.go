@@ -93,7 +93,7 @@ func DMRextractor(dmrurl string) (string, string, error) {
 		}
 	}
 
-	return "", "", errors.New("Something broke somewhere - wrong DMR URL?")
+	return "", "", errors.New("something broke somewhere - wrong DMR URL?")
 }
 
 // EventNotifyParser - Parse the Notify messages from the media renderer.

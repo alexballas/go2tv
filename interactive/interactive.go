@@ -37,8 +37,7 @@ func (p *NewScreen) emitStr(x, y int, style tcell.Style, str string) {
 	}
 }
 
-// EmmitMsg - Display the actions to the
-// interactive terminal
+// EmmitMsg - Display the actions to the interactive terminal
 func (p *NewScreen) EmmitMsg(inputtext string) {
 	p.lastAction = inputtext
 	s := p.Current
@@ -80,7 +79,7 @@ func (p *NewScreen) InterInit(tv soapcalls.TVPayload) {
 	encoding.Register()
 	s := p.Current
 	if e := s.Init(); e != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", e)
+		_, _ = fmt.Fprintf(os.Stderr, "%v\n", e)
 		os.Exit(1)
 	}
 
@@ -115,8 +114,7 @@ func (p *NewScreen) InterInit(tv soapcalls.TVPayload) {
 	}
 }
 
-// InitNewScreen - Just initializing our new
-// tcell screen
+// InitNewScreen - Just initializing our new tcell screen
 func InitNewScreen() (*NewScreen, error) {
 	s, e := tcell.NewScreen()
 	if e != nil {
