@@ -51,11 +51,6 @@ func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtit
 	s.http.Serve(ln)
 }
 
-// StopServeFiles - Kill the HTTP server.
-func (s *HTTPserver) StopServeFiles() {
-	s.http.Close()
-}
-
 func (f *filesToServe) serveVideoHandler(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("transferMode.dlna.org", "Streaming")
 	w.Header().Set("contentFeatures.dlna.org", "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=017000 00000000000000000000000000")

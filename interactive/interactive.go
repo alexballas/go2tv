@@ -118,7 +118,7 @@ func (p *NewScreen) InterInit(tv soapcalls.TVPayload) {
 func InitNewScreen() (*NewScreen, error) {
 	s, e := tcell.NewScreen()
 	if e != nil {
-		return &NewScreen{}, errors.New("Can't start new interactive screen")
+		return nil, errors.New("can't start new interactive screen")
 	}
 	q := NewScreen{
 		Current: s,
