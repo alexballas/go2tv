@@ -1,7 +1,7 @@
 LDFLAGS="-s -w -X main.build=`date -u +%Y%m%d%H%M%S` -X main.version=`cat ./version.txt`"
 
 build: clean
-	go build -ldflags $(LDFLAGS) -o build/go2tv go2tv.go flagfuncs.go
+	go build -ldflags $(LDFLAGS) -o build/go2tv cmd/go2tv/go2tv.go cmd/go2tv/flagfuncs.go
 
 install:
 	mkdir -p /usr/local/bin/
