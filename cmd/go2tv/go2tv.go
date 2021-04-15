@@ -88,14 +88,25 @@ func loadSSDPservices() error {
 	if err != nil {
 		return err
 	}
+
 	counter := 0
 	for _, srv := range list {
 		// We only care about the AVTransport services for basic actions
-		// (stop,play,pause). If we need to extend this to support other functionality
+		// (stop,play,pause). If we need support other functionalities
 		// like volume control we need to use the RenderingControl service.
 		if srv.Type == "urn:schemas-upnp-org:service:AVTransport:1" {
-			counter++
-			devices[counter] = []string{srv.Server, srv.Location}
+			curr := []string{srv.Server, srv.Location}
+			add := true
+			for _, z := range devices {
+				if z[0] == curr[0] && z[1] == curr[1] {
+					add = false
+					break
+				}
+			}
+			if add {
+				counter++
+				devices[counter] = curr
+			}
 		}
 	}
 	if counter > 0 {

@@ -74,7 +74,7 @@ func checkflags() (bool, error) {
 func checkVflag() error {
 	if !*listPtr {
 		if *videoArg == "" {
-			err := errors.New("No video file defined")
+			err := errors.New("no video file defined")
 			return err
 		}
 		if _, err := os.Stat(*videoArg); os.IsNotExist(err) {
