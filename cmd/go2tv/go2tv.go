@@ -38,7 +38,8 @@ func main() {
 	}
 
 	if *guiPtr {
-		gui.Start()
+		scr := gui.InitFyneNewScreen()
+		gui.Start(scr)
 	}
 
 	absVideoFile, err := filepath.Abs(*videoArg)
@@ -53,7 +54,8 @@ func main() {
 	whereToListen, err := iptools.URLtoListenIPandPort(dmrURL)
 	check(err)
 
-	newsc, err := interactive.InitNewScreen()
+	scr, err := interactive.InitTcellNewScreen()
+
 	check(err)
 
 	// The String() method of the net/url package will properly escape the URL
@@ -74,7 +76,7 @@ func main() {
 	// We pass the tvdata here as we need the callback handlers to be able to react
 	// to the different media renderer states.
 	go func() {
-		s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile, &httphandlers.HTTPPayload{Soapcalls: tvdata, Screen: newsc})
+		s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile, &httphandlers.HTTPPayload{Soapcalls: tvdata, Screen: scr})
 	}()
 	// Wait for HTTP server to properly initialize
 	<-serverStarted
@@ -82,7 +84,7 @@ func main() {
 	err = tvdata.SendtoTV("Play1")
 	check(err)
 
-	newsc.InterInit(*tvdata)
+	scr.InterInit(*tvdata)
 }
 
 func check(err error) {

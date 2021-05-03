@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/alexballas/go2tv/internal/interactive"
+	"github.com/alexballas/go2tv/internal/screeninterfaces"
 	"github.com/alexballas/go2tv/internal/soapcalls"
 )
 
@@ -30,7 +30,7 @@ type HTTPserver struct {
 // to expose the ControlURL to the callback handler.
 type HTTPPayload struct {
 	Soapcalls *soapcalls.TVPayload
-	Screen    *interactive.NewScreen
+	Screen    screeninterfaces.Screen
 }
 
 // ServeFiles - Start HTTP server and serve the files.
@@ -131,22 +131,25 @@ func (p *HTTPPayload) callbackHandler(w http.ResponseWriter, req *http.Request) 
 	}
 
 	if newstate == "PLAYING" {
-		p.Screen.EmmitMsg("Playing")
+		screeninterfaces.Emit(p.Screen, "Playing")
 	}
 	if newstate == "PAUSED_PLAYBACK" {
-		p.Screen.EmmitMsg("Paused")
+		screeninterfaces.Emit(p.Screen, "Paused")
 	}
 	if newstate == "STOPPED" {
-		p.Screen.EmmitMsg("Stopped")
+		screeninterfaces.Emit(p.Screen, "Stopped")
 		p.Soapcalls.UnsubscribeSoapCall(uuid)
-		p.Screen.Current.Fini()
-		os.Exit(0)
+		screeninterfaces.Close(p.Screen)
 	}
 
 	// We could just not send anything here
 	// as the core server package would still
 	// default to a 200 OK empty response.
 	w.WriteHeader(http.StatusOK)
+}
+
+func (s *HTTPserver) StopServeFiles() {
+	s.http.Close()
 }
 
 // NewServer - create a new HTTP server.
