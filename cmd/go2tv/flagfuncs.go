@@ -49,20 +49,22 @@ func listFlagFunction() error {
 func checkflags() (exit bool, err error) {
 	checkVerflag()
 
-	if checkGflag() {
-		return false, nil
-	}
-
-	if err := checkVflag(); err != nil {
-		return false, err
-	}
-
 	if err := checkTflag(); err != nil {
 		return false, err
 	}
 
 	list, err := checkLflag()
 	if err != nil {
+		return false, err
+	}
+
+	if !checkIflag() {
+		if !list {
+			return false, nil
+		}
+	}
+
+	if err := checkVflag(); err != nil {
 		return false, err
 	}
 
@@ -143,8 +145,8 @@ func checkLflag() (bool, error) {
 	return false, nil
 }
 
-func checkGflag() bool {
-	return *guiPtr
+func checkIflag() bool {
+	return *intPtr
 }
 
 func checkVerflag() {

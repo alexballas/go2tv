@@ -13,21 +13,24 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/alexballas/go2tv/internal/devices"
 	"github.com/alexballas/go2tv/internal/httphandlers"
 	"github.com/alexballas/go2tv/internal/iptools"
 	"github.com/alexballas/go2tv/internal/soapcalls"
-	"github.com/gen2brain/dlgs"
 )
 
 type NewScreen struct {
-	Current fyne.Window
-	Play    *widget.Button
-	Pause   *widget.Button
-	Stop    *widget.Button
-	State   string
+	Current    fyne.Window
+	Play       *widget.Button
+	Pause      *widget.Button
+	Stop       *widget.Button
+	CustomSubs *widget.Check
+	VideoText  *widget.Entry
+	SubsText   *widget.Entry
+	State      string
 }
 
 type devType struct {
@@ -70,10 +73,10 @@ func Start(s *NewScreen) {
 	vfiletext := widget.NewEntry()
 	sfiletext := widget.NewEntry()
 
-	vfile := widget.NewButton("Select Video File", videoAction(w, vfiletext, sfiletext))
+	vfile := widget.NewButton("Select Video File", videoAction(s))
 	vfiletext.Disable()
 
-	sfile := widget.NewButton("Select Subtitle File", subsAction(w, sfiletext))
+	sfile := widget.NewButton("Select Subtitle File", subsAction(s))
 	sfile.Disable()
 	sfiletext.Disable()
 
@@ -81,14 +84,17 @@ func Start(s *NewScreen) {
 	pause := widget.NewButtonWithIcon("Pause", theme.MediaPauseIcon(), pauseAction(s))
 	stop := widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), stopAction(s))
 
+	sfilecheck := widget.NewCheck("Custom Subtitles", func(b bool) {})
+	devicelabel := widget.NewLabel("Select Device:")
+	pause.Hide()
+
 	s.Play = play
 	s.Pause = pause
 	s.Stop = stop
+	s.CustomSubs = sfilecheck
+	s.VideoText = vfiletext
+	s.SubsText = sfiletext
 
-	pause.Hide()
-	sfilecheck := widget.NewCheck("Custom Subtitles", func(b bool) {})
-
-	devicelabel := widget.NewLabel("Select Device:")
 	list = widget.NewList(
 		func() int {
 			return len(data)
@@ -122,7 +128,7 @@ func Start(s *NewScreen) {
 
 	go func() {
 		for range refreshDevices.C {
-			data2, err := getDevices(1)
+			data2, err := getDevices(2)
 			data = data2
 			if err != nil {
 				data = nil
@@ -136,51 +142,83 @@ func Start(s *NewScreen) {
 	os.Exit(0)
 }
 
-func videoAction(w fyne.Window, v, s *widget.Entry) func() {
+func videoAction(screen *NewScreen) func() {
+	w := screen.Current
 	return func() {
-		vfile, _, _ := dlgs.File("Select file", "", false)
-		absVideoFile, err := filepath.Abs(vfile)
-		videoFileURLencoded := &url.URL{Path: filepath.Base(absVideoFile)}
-		check(w, err)
-		v.Text = videoFileURLencoded.String()
-		videofile = filestruct{
-			abs:        absVideoFile,
-			urlEncoded: videoFileURLencoded.String(),
-		}
-
-		possibleSub := (absVideoFile)[0:len(absVideoFile)-
-			len(filepath.Ext(absVideoFile))] + ".srt"
-
-		if _, err = os.Stat(possibleSub); os.IsNotExist(err) {
-			s.Text = ""
-			subsfile = filestruct{}
-		} else {
-			subsFileURLencoded := &url.URL{Path: filepath.Base(possibleSub)}
-			s.Text = subsFileURLencoded.String()
-
-			subsfile = filestruct{
-				abs:        possibleSub,
-				urlEncoded: subsFileURLencoded.String(),
+		fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+			if err != nil {
+				dialog.ShowError(err, w)
+				return
 			}
-		}
-		v.Refresh()
-		s.Refresh()
+			if reader == nil {
+				return
+			}
+
+			vfile := reader.URI().Path()
+			absVideoFile, err := filepath.Abs(vfile)
+			videoFileURLencoded := &url.URL{Path: filepath.Base(absVideoFile)}
+			check(w, err)
+			screen.VideoText.Text = videoFileURLencoded.String()
+			videofile = filestruct{
+				abs:        absVideoFile,
+				urlEncoded: videoFileURLencoded.String(),
+			}
+			if !screen.CustomSubs.Checked {
+				possibleSub := (absVideoFile)[0:len(absVideoFile)-
+					len(filepath.Ext(absVideoFile))] + ".srt"
+
+				if _, err = os.Stat(possibleSub); os.IsNotExist(err) {
+					screen.SubsText.Text = ""
+					subsfile = filestruct{}
+				} else {
+					subsFileURLencoded := &url.URL{Path: filepath.Base(possibleSub)}
+					screen.SubsText.Text = subsFileURLencoded.String()
+
+					subsfile = filestruct{
+						abs:        possibleSub,
+						urlEncoded: subsFileURLencoded.String(),
+					}
+				}
+			}
+			screen.VideoText.Refresh()
+			screen.SubsText.Refresh()
+		}, w)
+
+		fd.SetFilter(storage.NewExtensionFileFilter([]string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv"}))
+		fd.Resize(fyne.NewSize(800, 500))
+		fd.Show()
+
 	}
 }
 
-func subsAction(w fyne.Window, s *widget.Entry) func() {
+func subsAction(screen *NewScreen) func() {
+	w := screen.Current
 	return func() {
-		sfile, _, _ := dlgs.File("Select file", "", false)
-		absSubtitlesFile, err := filepath.Abs(sfile)
-		subsFileURLencoded := &url.URL{Path: filepath.Base(absSubtitlesFile)}
-		check(w, err)
+		fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+			if err != nil {
+				dialog.ShowError(err, w)
+				return
+			}
+			if reader == nil {
+				return
+			}
 
-		s.Text = subsFileURLencoded.String()
-		subsfile = filestruct{
-			abs:        absSubtitlesFile,
-			urlEncoded: subsFileURLencoded.String(),
-		}
-		s.Refresh()
+			sfile := reader.URI().Path()
+			absSubtitlesFile, err := filepath.Abs(sfile)
+			subsFileURLencoded := &url.URL{Path: filepath.Base(absSubtitlesFile)}
+			check(w, err)
+
+			screen.SubsText.Text = subsFileURLencoded.String()
+			subsfile = filestruct{
+				abs:        absSubtitlesFile,
+				urlEncoded: subsFileURLencoded.String(),
+			}
+			screen.SubsText.Refresh()
+		}, w)
+
+		fd.SetFilter(storage.NewExtensionFileFilter([]string{".srt"}))
+		fd.Resize(fyne.NewSize(800, 500))
+		fd.Show()
 	}
 }
 
@@ -252,7 +290,7 @@ func stopAction(screen *NewScreen) func() {
 		tvdata = &soapcalls.TVPayload{}
 		// In theory we should expect an emit message
 		// from the media renderer, but there seems
-		// to be a race condition that prevents this
+		// to be a race condition that prevents this.
 		screen.EmitMsg("Stopped")
 	}
 }
@@ -300,8 +338,9 @@ func (p *NewScreen) Fini() {
 }
 
 func InitFyneNewScreen() *NewScreen {
-	myApp := app.New()
-	app := myApp.NewWindow("Go2TV")
+	go2tv := app.New()
+	go2tv.Settings().SetTheme(theme.LightTheme())
+	app := go2tv.NewWindow("Go2TV")
 	return &NewScreen{
 		Current: app,
 	}

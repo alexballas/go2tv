@@ -19,25 +19,29 @@ var (
 	build         string
 	dmrURL        string
 	serverStarted = make(chan struct{})
-	videoArg      = flag.String("v", "", "Path to the video file.")
-	subsArg       = flag.String("s", "", "Path to the subtitles file.")
+	videoArg      = flag.String("v", "", "Path to the video file. (only works in interactive mode)")
+	subsArg       = flag.String("s", "", "Path to the subtitles file. (only works in interactive mode) ")
 	listPtr       = flag.Bool("l", false, "List all available UPnP/DLNA MediaRenderer models and URLs.")
-	targetPtr     = flag.String("t", "", "Cast to a specific UPnP/DLNA MediaRenderer URL.")
+	targetPtr     = flag.String("t", "", "Cast to a specific UPnP/DLNA MediaRenderer URL. (only works in interactive mode)")
 	versionPtr    = flag.Bool("version", false, "Print version.")
-	guiPtr        = flag.Bool("g", false, "Graphical interface.")
+	intPtr        = flag.Bool("i", false, "non-GUI interactive mode.")
 )
 
 func main() {
+	guiEnabled := true
+
 	flag.Parse()
 
 	exit, err := checkflags()
 	check(err)
-
 	if exit {
 		os.Exit(0)
 	}
+	if *intPtr {
+		guiEnabled = false
+	}
 
-	if *guiPtr {
+	if guiEnabled {
 		scr := gui.InitFyneNewScreen()
 		gui.Start(scr)
 	}
