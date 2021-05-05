@@ -18,14 +18,13 @@ Usage
 ```
 $ go2tv -h
 Usage of go2tv:
-  -i    non-GUI interactive mode.
   -l    List all available UPnP/DLNA MediaRenderer models and URLs.
   -s string
-        Path to the subtitles file. (only works in interactive mode) 
+        Path to the subtitles file.
   -t string
-        Cast to a specific UPnP/DLNA MediaRenderer URL. (only works in interactive mode)
+        Cast to a specific UPnP/DLNA MediaRenderer URL.
   -v string
-        Path to the video file. (only works in interactive mode)
+        Path to the video file. (Triggers the non-GUI mode)
   -version
         Print version.
 ```

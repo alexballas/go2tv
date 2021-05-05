@@ -49,6 +49,10 @@ func listFlagFunction() error {
 func checkflags() (exit bool, err error) {
 	checkVerflag()
 
+	if checkGUI() {
+		return false, nil
+	}
+
 	if err := checkTflag(); err != nil {
 		return false, err
 	}
@@ -56,12 +60,6 @@ func checkflags() (exit bool, err error) {
 	list, err := checkLflag()
 	if err != nil {
 		return false, err
-	}
-
-	if !checkIflag() {
-		if !list {
-			return false, nil
-		}
 	}
 
 	if err := checkVflag(); err != nil {
@@ -81,10 +79,6 @@ func checkflags() (exit bool, err error) {
 
 func checkVflag() error {
 	if !*listPtr {
-		if *videoArg == "" {
-			err := errors.New("no video file defined")
-			return err
-		}
 		if _, err := os.Stat(*videoArg); os.IsNotExist(err) {
 			return err
 		}
@@ -145,14 +139,15 @@ func checkLflag() (bool, error) {
 	return false, nil
 }
 
-func checkIflag() bool {
-	return *intPtr
-}
-
 func checkVerflag() {
 	if *versionPtr {
 		fmt.Printf("Go2TV Version: %s, ", version)
 		fmt.Printf("Build: %s\n", build)
 		os.Exit(0)
 	}
+}
+
+func checkGUI() bool {
+	return *videoArg == "" && !*listPtr
+
 }

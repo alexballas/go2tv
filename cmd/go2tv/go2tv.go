@@ -24,7 +24,6 @@ var (
 	listPtr       = flag.Bool("l", false, "List all available UPnP/DLNA MediaRenderer models and URLs.")
 	targetPtr     = flag.String("t", "", "Cast to a specific UPnP/DLNA MediaRenderer URL. (only works in interactive mode)")
 	versionPtr    = flag.Bool("version", false, "Print version.")
-	intPtr        = flag.Bool("i", false, "non-GUI interactive mode.")
 )
 
 func main() {
@@ -37,7 +36,7 @@ func main() {
 	if exit {
 		os.Exit(0)
 	}
-	if *intPtr {
+	if *videoArg != "" {
 		guiEnabled = false
 	}
 
