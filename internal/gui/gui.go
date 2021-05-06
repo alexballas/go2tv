@@ -183,11 +183,9 @@ func videoAction(screen *NewScreen) func() {
 			screen.VideoText.Refresh()
 			screen.SubsText.Refresh()
 		}, w)
-
 		fd.SetFilter(storage.NewExtensionFileFilter([]string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv"}))
 		fd.Resize(fyne.NewSize(800, 500))
 		fd.Show()
-
 	}
 }
 
@@ -215,7 +213,6 @@ func subsAction(screen *NewScreen) func() {
 			}
 			screen.SubsText.Refresh()
 		}, w)
-
 		fd.SetFilter(storage.NewExtensionFileFilter([]string{".srt"}))
 		fd.Resize(fyne.NewSize(800, 500))
 		fd.Show()

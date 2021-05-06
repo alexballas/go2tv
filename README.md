@@ -30,7 +30,7 @@ Usage of go2tv:
   -t string
         Cast to a specific UPnP/DLNA MediaRenderer URL.
   -v string
-        Path to the video file. (Triggers the non-GUI mode)
+        Path to the video file. (Triggers the CLI mode)
   -version
         Print version.
 ```

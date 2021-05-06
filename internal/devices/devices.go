@@ -28,7 +28,7 @@ func LoadSSDPservices(delay int) error {
 			curr := []string{srv.Server, srv.Location}
 			add := true
 			for _, z := range Devices {
-				if z[0] == curr[0] && z[1] == curr[1] {
+				if z[0] == curr[0] {
 					add = false
 					break
 				}
