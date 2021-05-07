@@ -4,13 +4,17 @@
 </a>
 </p>
 <br/>
+<div align="center">
+<p>
 
 ![Go](https://github.com/alexballas/Go2TV/workflows/Go/badge.svg)
 [![Go Report Card](https://goreportcard.com/badge/github.com/alexballas/Go2TV)](https://goreportcard.com/report/github.com/alexballas/Go2TV)
 [![Release Version](https://img.shields.io/github/v/release/alexballas/Go2TV?label=Release)](https://github.com/alexballas/Go2TV/releases/latest)
-
+</p>
 Go2TV lets you cast your videos to any UPnP/DLNA MediaRenderer like Samsumg TVs.
+</div>
 
+---
 GUI mode
 -----
 ![](https://i.imgur.com/dk1NQ6g.png)
@@ -38,6 +42,10 @@ Usage of go2tv:
 Build requirements
 -----
 - Go v1.16+
+
+Quick Start
+-----
+Download one of the pre-built images here https://github.com/alexballas/Go2TV/releases/latest. A single executable. No installation or external dependencies.
 
 Tested on
 -----
