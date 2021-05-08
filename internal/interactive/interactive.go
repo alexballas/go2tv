@@ -37,8 +37,8 @@ func (p *NewScreen) emitStr(x, y int, style tcell.Style, str string) {
 	}
 }
 
-// EmmitMsg - Display the actions to the interactive terminal
-func (p *NewScreen) EmmitMsg(inputtext string) {
+// EmitMsg - Display the actions to the interactive terminal
+func (p *NewScreen) EmitMsg(inputtext string) {
 	p.lastAction = inputtext
 	s := p.Current
 	titleLen := len("Title: " + p.videoTitle)
@@ -89,13 +89,13 @@ func (p *NewScreen) InterInit(tv soapcalls.TVPayload) {
 	s.SetStyle(defStyle)
 
 	p.lastAction = "Waiting for status..."
-	p.EmmitMsg(p.lastAction)
+	p.EmitMsg(p.lastAction)
 
 	for {
 		switch ev := s.PollEvent().(type) {
 		case *tcell.EventResize:
 			s.Sync()
-			p.EmmitMsg(p.lastAction)
+			p.EmitMsg(p.lastAction)
 		case *tcell.EventKey:
 			if ev.Key() == tcell.KeyEscape {
 				tv.SendtoTV("Stop")
@@ -114,15 +114,17 @@ func (p *NewScreen) InterInit(tv soapcalls.TVPayload) {
 	}
 }
 
-// InitNewScreen - Just initializing our new tcell screen
-func InitNewScreen() (*NewScreen, error) {
+func (p *NewScreen) Fini() {
+	p.Current.Fini()
+	os.Exit(0)
+}
+
+func InitTcellNewScreen() (*NewScreen, error) {
 	s, e := tcell.NewScreen()
 	if e != nil {
 		return nil, errors.New("can't start new interactive screen")
 	}
-	q := NewScreen{
+	return &NewScreen{
 		Current: s,
-	}
-
-	return &q, nil
+	}, nil
 }

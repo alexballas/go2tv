@@ -8,10 +8,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+
+	"github.com/alexballas/go2tv/internal/devices"
 )
 
 func listFlagFunction() error {
-	if len(devices) == 0 {
+	if len(devices.Devices) == 0 {
 		err := errors.New("-l and -t can't be used together")
 		return err
 	}
@@ -20,7 +22,7 @@ func listFlagFunction() error {
 	// We loop through this map twice as we need to maintain
 	// the correct order.
 	keys := make([]int, 0)
-	for k := range devices {
+	for k := range devices.Devices {
 		keys = append(keys, k)
 	}
 
@@ -36,19 +38,19 @@ func listFlagFunction() error {
 		}
 		fmt.Printf("%sDevice %v%s\n", boldStart, k, boldEnd)
 		fmt.Printf("%s--------%s\n", boldStart, boldEnd)
-		fmt.Printf("%sModel:%s %s\n", boldStart, boldEnd, devices[k][0])
-		fmt.Printf("%sURL:%s   %s\n", boldStart, boldEnd, devices[k][1])
+		fmt.Printf("%sModel:%s %s\n", boldStart, boldEnd, devices.Devices[k][0])
+		fmt.Printf("%sURL:%s   %s\n", boldStart, boldEnd, devices.Devices[k][1])
 		fmt.Println()
 	}
 
 	return nil
 }
 
-func checkflags() (bool, error) {
+func checkflags() (exit bool, err error) {
 	checkVerflag()
 
-	if err := checkVflag(); err != nil {
-		return false, err
+	if checkGUI() {
+		return false, nil
 	}
 
 	if err := checkTflag(); err != nil {
@@ -57,6 +59,10 @@ func checkflags() (bool, error) {
 
 	list, err := checkLflag()
 	if err != nil {
+		return false, err
+	}
+
+	if err := checkVflag(); err != nil {
 		return false, err
 	}
 
@@ -73,10 +79,6 @@ func checkflags() (bool, error) {
 
 func checkVflag() error {
 	if !*listPtr {
-		if *videoArg == "" {
-			err := errors.New("no video file defined")
-			return err
-		}
 		if _, err := os.Stat(*videoArg); os.IsNotExist(err) {
 			return err
 		}
@@ -105,12 +107,12 @@ func checkSflag() error {
 
 func checkTflag() error {
 	if *targetPtr == "" {
-		err := loadSSDPservices()
+		err := devices.LoadSSDPservices(1)
 		if err != nil {
 			return err
 		}
 
-		dmrURL, err = devicePicker(1)
+		dmrURL, err = devices.DevicePicker(1)
 		if err != nil {
 			return err
 		}
@@ -143,4 +145,9 @@ func checkVerflag() {
 		fmt.Printf("Build: %s\n", build)
 		os.Exit(0)
 	}
+}
+
+func checkGUI() bool {
+	return *videoArg == "" && !*listPtr
+
 }
