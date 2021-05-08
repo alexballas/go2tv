@@ -19,10 +19,10 @@ var (
 	build         string
 	dmrURL        string
 	serverStarted = make(chan struct{})
-	videoArg      = flag.String("v", "", "Path to the video file. (only works in interactive mode)")
-	subsArg       = flag.String("s", "", "Path to the subtitles file. (only works in interactive mode) ")
+	videoArg      = flag.String("v", "", "Path to the video file. (Triggers the CLI mode)")
+	subsArg       = flag.String("s", "", "Path to the subtitles file.")
 	listPtr       = flag.Bool("l", false, "List all available UPnP/DLNA MediaRenderer models and URLs.")
-	targetPtr     = flag.String("t", "", "Cast to a specific UPnP/DLNA MediaRenderer URL. (only works in interactive mode)")
+	targetPtr     = flag.String("t", "", "Cast to a specific UPnP/DLNA MediaRenderer URL.")
 	versionPtr    = flag.Bool("version", false, "Print version.")
 )
 
