@@ -22,6 +22,7 @@ import (
 	"github.com/alexballas/go2tv/internal/soapcalls"
 )
 
+// NewScreen .
 type NewScreen struct {
 	Current    fyne.Window
 	Play       *widget.Button
@@ -53,6 +54,7 @@ var (
 	serverStarted = make(chan struct{})
 )
 
+// Start .
 func Start(s *NewScreen) {
 	w := s.Current
 	refreshDevices := time.NewTicker(20 * time.Second)
@@ -312,6 +314,7 @@ func getDevices(delay int) (dev []devType, err error) {
 	return guiDeviceList, nil
 }
 
+// EmitMsg Method to implement the screen interface
 func (p *NewScreen) EmitMsg(a string) {
 	switch a {
 	case "Playing":
@@ -331,9 +334,11 @@ func (p *NewScreen) EmitMsg(a string) {
 	}
 }
 
+// Fini Method to implement the screen interface
 func (p *NewScreen) Fini() {
 }
 
+//InitFyneNewScreen .
 func InitFyneNewScreen() *NewScreen {
 	go2tv := app.New()
 	go2tv.Settings().SetTheme(theme.LightTheme())

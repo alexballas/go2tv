@@ -8,6 +8,7 @@ import (
 )
 
 var (
+	// Devices map to maintain a list of all the discovered devices.
 	Devices = make(map[int][]string)
 )
 

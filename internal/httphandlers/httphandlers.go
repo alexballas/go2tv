@@ -148,6 +148,7 @@ func (p *HTTPPayload) callbackHandler(w http.ResponseWriter, req *http.Request) 
 	w.WriteHeader(http.StatusOK)
 }
 
+// StopServeFiles .
 func (s *HTTPserver) StopServeFiles() {
 	s.http.Close()
 }
