@@ -18,18 +18,20 @@ type states struct {
 	sequence      int
 }
 
-var mediaRenderersStates = make(map[string]*states)
-var initialMediaRenderersStates = make(map[string]interface{})
-
-var mu sync.Mutex
+var (
+	mediaRenderersStates        = make(map[string]*states)
+	initialMediaRenderersStates = make(map[string]interface{})
+	mu                          sync.Mutex
+)
 
 // TVPayload - this is the heard of Go2TV.
 type TVPayload struct {
-	TransportURL string
-	VideoURL     string
-	SubtitlesURL string
-	ControlURL   string
-	CallbackURL  string
+	TransportURL  string
+	VideoURL      string
+	SubtitlesURL  string
+	ControlURL    string
+	CallbackURL   string
+	CurrentTimers map[string]*time.Timer
 }
 
 func (p *TVPayload) setAVTransportSoapCall() error {
@@ -111,6 +113,8 @@ func (p *TVPayload) playStopPauseSoapCall(action string) error {
 // SubscribeSoapCall - Subscribe to a media renderer
 // If we explicitly pass the uuid, then we refresh it instead.
 func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
+	delete(p.CurrentTimers, uuidInput)
+
 	parsedURLcontrol, err := url.Parse(p.ControlURL)
 	if err != nil {
 		return err
@@ -154,10 +158,28 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 
 	defer resp.Body.Close()
 
-	uuid := resp.Header["Sid"][0]
-	uuid = strings.TrimLeft(uuid, "[")
-	uuid = strings.TrimLeft(uuid, "]")
-	uuid = strings.TrimLeft(uuid, "uuid:")
+	var uuid string
+
+	if resp.Status != "200 OK" {
+		if uuidInput != "" {
+			// We're calling the unsubscribe method to make sure
+			// we clean up any remaining states for the specific
+			// uuid. The actual UNSUBSCRIBE request to the media
+			// renderer may still fail with error 412, but it's fine.
+			p.UnsubscribeSoapCall(uuid)
+		}
+		return nil
+	}
+
+	if len(resp.Header["Sid"]) > 0 {
+		uuid = resp.Header["Sid"][0]
+		uuid = strings.TrimLeft(uuid, "[")
+		uuid = strings.TrimLeft(uuid, "]")
+		uuid = strings.TrimPrefix(uuid, "uuid:")
+	} else {
+		// This should be an impossible case
+		return nil
+	}
 
 	// We don't really need to initialize or set
 	// the State if we're just refreshing the uuid.
@@ -165,7 +187,11 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 		CreateMRstate(uuid)
 	}
 
-	timeoutReply := strings.TrimLeft(resp.Header["Timeout"][0], "Second-")
+	timeoutReply := "300"
+	if len(resp.Header["Timeout"]) > 0 {
+		timeoutReply = strings.TrimLeft(resp.Header["Timeout"][0], "Second-")
+	}
+
 	p.RefreshLoopUUIDSoapCall(uuid, timeoutReply)
 
 	return nil
@@ -174,6 +200,8 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 // UnsubscribeSoapCall - exported that as we use
 // it for the callback stuff in the httphandlers package.
 func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
+	DeleteMRstate(uuid)
+
 	parsedURLcontrol, err := url.Parse(p.ControlURL)
 	if err != nil {
 		return err
@@ -199,30 +227,28 @@ func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 		return err
 	}
 
-	DeleteMRstate(uuid)
-
 	return nil
 }
 
 // RefreshLoopUUIDSoapCall - Refresh the UUID.
 func (p *TVPayload) RefreshLoopUUIDSoapCall(uuid, timeout string) error {
-	var triggerTime int
+	triggerTime := 5
 	timeoutInt, err := strconv.Atoi(timeout)
 	if err != nil {
 		return err
 	}
 
 	// Refresh token after after Timeout / 2 seconds.
-	if timeoutInt > 1 {
-		triggerTime = timeoutInt / 2
+	if timeoutInt > 20 {
+		triggerTime = timeoutInt / 5
 	}
-
 	triggerTimefunc := time.Duration(triggerTime) * time.Second
 
 	// We're doing this as time.AfterFunc can't handle
 	// function arguments.
 	f := p.refreshLoopUUIDAsyncSoapCall(uuid)
-	time.AfterFunc(triggerTimefunc, f)
+	timer := time.AfterFunc(triggerTimefunc, f)
+	p.CurrentTimers[uuid] = timer
 
 	return nil
 }
@@ -249,6 +275,14 @@ func (p *TVPayload) SendtoTV(action string) error {
 		// Cleaning up all uuids on force stop.
 		for uuids := range mediaRenderersStates {
 			p.UnsubscribeSoapCall(uuids)
+		}
+
+		// Clear timers on Stop to avoid errors responses
+		// from the media renderers. If we don't clear those, we
+		// might receive a "412 Precondition Failed" error.
+		for uuid, timer := range p.CurrentTimers {
+			timer.Stop()
+			delete(p.CurrentTimers, uuid)
 		}
 	}
 	if err := p.playStopPauseSoapCall(action); err != nil {

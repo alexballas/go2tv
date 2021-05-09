@@ -17,7 +17,7 @@ Go2TV lets you cast your videos to any UPnP/DLNA MediaRenderer like Samsumg TVs.
 ---
 GUI mode
 -----
-![](https://i.imgur.com/HpJ49Ap.png)
+![](https://i.imgur.com/ok4HSG2.png)
 
 CLI mode
 -----
@@ -51,6 +51,7 @@ Tested on
 -----
 - Samsung UE50JU6400
 - Samsung UE65KS7000
+- LG 28MT49S
 - Android - BubbleUPnP app
 
 Author

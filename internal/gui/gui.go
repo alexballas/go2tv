@@ -2,14 +2,17 @@ package gui
 
 import (
 	"errors"
+	"image/color"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
@@ -24,14 +27,16 @@ import (
 
 // NewScreen .
 type NewScreen struct {
-	Current    fyne.Window
-	Play       *widget.Button
-	Pause      *widget.Button
-	Stop       *widget.Button
-	CustomSubs *widget.Check
-	VideoText  *widget.Entry
-	SubsText   *widget.Entry
-	State      string
+	Current         fyne.Window
+	Play            *widget.Button
+	Pause           *widget.Button
+	Stop            *widget.Button
+	CustomSubsCheck *widget.Check
+	VideoText       *widget.Entry
+	SubsText        *widget.Entry
+	DeviceList      *widget.List
+	Videoloop       bool
+	State           string
 }
 
 type devType struct {
@@ -52,12 +57,13 @@ var (
 	transportURL  = ""
 	controlURL    = ""
 	serverStarted = make(chan struct{})
+	mu            = sync.Mutex{}
 )
 
 // Start .
 func Start(s *NewScreen) {
 	w := s.Current
-	refreshDevices := time.NewTicker(20 * time.Second)
+	refreshDevices := time.NewTicker(10 * time.Second)
 
 	list := new(widget.List)
 
@@ -87,15 +93,12 @@ func Start(s *NewScreen) {
 	stop := widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), stopAction(s))
 
 	sfilecheck := widget.NewCheck("Custom Subtitles", func(b bool) {})
-	devicelabel := widget.NewLabel("Select Device:")
-	pause.Hide()
+	videoloop := widget.NewCheck("Loop Video", func(b bool) {})
 
-	s.Play = play
-	s.Pause = pause
-	s.Stop = stop
-	s.CustomSubs = sfilecheck
-	s.VideoText = vfiletext
-	s.SubsText = sfiletext
+	videofilelabel := canvas.NewText("Video:", color.Black)
+	subsfilelabel := canvas.NewText("Subtitle:", color.Black)
+	devicelabel := canvas.NewText("Select Device:", color.Black)
+	pause.Hide()
 
 	list = widget.NewList(
 		func() int {
@@ -108,13 +111,28 @@ func Start(s *NewScreen) {
 			o.(*fyne.Container).Objects[1].(*widget.Label).SetText(data[i].name)
 		})
 
+	s.Play = play
+	s.Pause = pause
+	s.Stop = stop
+	s.CustomSubsCheck = sfilecheck
+	s.VideoText = vfiletext
+	s.SubsText = sfiletext
+	s.DeviceList = list
+
+	// Organising widgets in the window
 	playpause := container.New(layout.NewMaxLayout(), play, pause)
 	playpausestop := container.New(layout.NewGridLayout(2), playpause, stop)
-	buttons := container.NewVBox(vfile, vfiletext, sfile, sfiletext, sfilecheck, playpausestop, devicelabel)
+	checklists := container.NewHBox(sfilecheck, videoloop)
+	videosubsbuttons := container.New(layout.NewGridLayout(2), vfile, sfile)
+	viewfilescont := container.New(layout.NewFormLayout(), videofilelabel, vfiletext, subsfilelabel, sfiletext)
 
+	buttons := container.NewVBox(videosubsbuttons, viewfilescont, checklists, playpausestop, devicelabel)
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
 
+	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
+		play.Enable()
+		pause.Enable()
 		t, c, err := soapcalls.DMRextractor(data[id].addr)
 		transportURL, controlURL = t, c
 		check(w, err)
@@ -128,6 +146,15 @@ func Start(s *NewScreen) {
 		}
 	}
 
+	videoloop.OnChanged = func(b bool) {
+		if b {
+			s.Videoloop = true
+		} else {
+			s.Videoloop = false
+		}
+	}
+
+	// Device list auto-refresh
 	go func() {
 		for range refreshDevices.C {
 			data2, err := getDevices(2)
@@ -148,24 +175,23 @@ func videoAction(screen *NewScreen) func() {
 	w := screen.Current
 	return func() {
 		fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-			if err != nil {
-				dialog.ShowError(err, w)
-				return
-			}
+			check(w, err)
+
 			if reader == nil {
 				return
 			}
 
 			vfile := reader.URI().Path()
 			absVideoFile, err := filepath.Abs(vfile)
-			videoFileURLencoded := &url.URL{Path: filepath.Base(absVideoFile)}
 			check(w, err)
+
+			videoFileURLencoded := &url.URL{Path: filepath.Base(absVideoFile)}
 			screen.VideoText.Text = videoFileURLencoded.String()
 			videofile = filestruct{
 				abs:        absVideoFile,
 				urlEncoded: videoFileURLencoded.String(),
 			}
-			if !screen.CustomSubs.Checked {
+			if !screen.CustomSubsCheck.Checked {
 				possibleSub := (absVideoFile)[0:len(absVideoFile)-
 					len(filepath.Ext(absVideoFile))] + ".srt"
 
@@ -195,10 +221,8 @@ func subsAction(screen *NewScreen) func() {
 	w := screen.Current
 	return func() {
 		fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-			if err != nil {
-				dialog.ShowError(err, w)
-				return
-			}
+			check(w, err)
+
 			if reader == nil {
 				return
 			}
@@ -224,35 +248,37 @@ func subsAction(screen *NewScreen) func() {
 func playAction(screen *NewScreen) func() {
 	w := screen.Current
 	return func() {
+		screen.Play.Disable()
 		if screen.State == "Paused" {
 			err := tvdata.SendtoTV("Play")
 			check(w, err)
 			return
 		}
 		if videofile.urlEncoded == "" {
-			check(w, errors.New("no video file defined"))
+			check(w, errors.New("please select a video file"))
+			screen.Play.Enable()
 			return
 		}
 		if transportURL == "" {
 			check(w, errors.New("please select a device"))
+			screen.Play.Enable()
 			return
 		}
-		if screen.State == "Transitioning" {
-			return
-		}
-		screen.State = "Transitioning"
 
 		if tvdata.CallbackURL != "" {
 			stopAction(screen)()
 		}
+
 		whereToListen, err := iptools.URLtoListenIPandPort(transportURL)
 		check(w, err)
+
 		tvdata = &soapcalls.TVPayload{
-			TransportURL: transportURL,
-			ControlURL:   controlURL,
-			CallbackURL:  "http://" + whereToListen + "/callback",
-			VideoURL:     "http://" + whereToListen + "/" + videofile.urlEncoded,
-			SubtitlesURL: "http://" + whereToListen + "/" + subsfile.urlEncoded,
+			TransportURL:  transportURL,
+			ControlURL:    controlURL,
+			VideoURL:      "http://" + whereToListen + "/" + videofile.urlEncoded,
+			SubtitlesURL:  "http://" + whereToListen + "/" + subsfile.urlEncoded,
+			CallbackURL:   "http://" + whereToListen + "/callback",
+			CurrentTimers: make(map[string]*time.Timer),
 		}
 
 		httpserver = httphandlers.NewServer(whereToListen)
@@ -266,12 +292,23 @@ func playAction(screen *NewScreen) func() {
 		<-serverStarted
 		err = tvdata.SendtoTV("Play1")
 		check(w, err)
-
+		if err != nil {
+			// Something failed when sent Play1 to the TV.
+			// Just force the user to re-select a device.
+			lsize := screen.DeviceList.Length()
+			for i := 0; i <= lsize; i++ {
+				screen.DeviceList.Unselect(lsize - 1)
+				screen.DeviceList.Refresh()
+			}
+			transportURL = ""
+			stopAction(screen)()
+		}
 	}
 }
 func pauseAction(screen *NewScreen) func() {
 	w := screen.Current
 	return func() {
+		screen.Pause.Disable()
 		err := tvdata.SendtoTV("Pause")
 		check(w, err)
 	}
@@ -280,11 +317,21 @@ func pauseAction(screen *NewScreen) func() {
 func stopAction(screen *NewScreen) func() {
 	w := screen.Current
 	return func() {
+		screen.Play.Enable()
+		screen.Pause.Enable()
+
 		if tvdata.CallbackURL == "" {
 			return
 		}
 		err := tvdata.SendtoTV("Stop")
+
+		// Hack to avoid potential http errors during video loop mode.
+		// Will keep the window clean during unattended usage.
+		if screen.Videoloop {
+			err = nil
+		}
 		check(w, err)
+
 		httpserver.StopServeFiles()
 		tvdata = &soapcalls.TVPayload{}
 		// In theory we should expect an emit message
@@ -320,22 +367,30 @@ func (p *NewScreen) EmitMsg(a string) {
 	case "Playing":
 		p.Pause.Show()
 		p.Play.Hide()
-		p.State = "Playing"
+		p.Play.Enable()
+		p.UpdateScreenState("Playing")
 	case "Paused":
 		p.Play.Show()
 		p.Pause.Hide()
-		p.State = "Paused"
+		p.Pause.Enable()
+		p.UpdateScreenState("Paused")
 	case "Stopped":
 		p.Play.Show()
 		p.Pause.Hide()
-		p.State = "Stopped"
+		p.UpdateScreenState("Stopped")
 	default:
 		dialog.ShowInformation("?", "Unknown callback value", p.Current)
 	}
 }
 
-// Fini Method to implement the screen interface
+// Fini Method to implement the screen interface.
+// Will only be executed when we receive a callback message,
+// not when we explicitly click the Stop button.
 func (p *NewScreen) Fini() {
+	// Main video loop logic
+	if p.Videoloop {
+		playAction(p)()
+	}
 }
 
 //InitFyneNewScreen .
@@ -352,4 +407,10 @@ func check(win fyne.Window, err error) {
 	if err != nil {
 		dialog.ShowError(err, win)
 	}
+}
+
+func (p *NewScreen) UpdateScreenState(a string) {
+	mu.Lock()
+	p.State = a
+	mu.Unlock()
 }

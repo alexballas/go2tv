@@ -101,7 +101,7 @@ func (p *HTTPPayload) callbackHandler(w http.ResponseWriter, req *http.Request) 
 	uuid := sidVal[0]
 	uuid = strings.TrimLeft(uuid, "[")
 	uuid = strings.TrimLeft(uuid, "]")
-	uuid = strings.TrimLeft(uuid, "uuid:")
+	uuid = strings.TrimPrefix(uuid, "uuid:")
 
 	// Apparently we should ignore the first message
 	// On some media renderers we receive a STOPPED message

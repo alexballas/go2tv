@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/alexballas/go2tv/internal/gui"
 	"github.com/alexballas/go2tv/internal/httphandlers"
@@ -58,7 +59,6 @@ func main() {
 	check(err)
 
 	scr, err := interactive.InitTcellNewScreen()
-
 	check(err)
 
 	// The String() method of the net/url package will properly escape the URL
@@ -67,11 +67,12 @@ func main() {
 	subsFileURLencoded := &url.URL{Path: filepath.Base(absSubtitlesFile)}
 
 	tvdata := &soapcalls.TVPayload{
-		TransportURL: transportURL,
-		ControlURL:   controlURL,
-		CallbackURL:  "http://" + whereToListen + "/callback",
-		VideoURL:     "http://" + whereToListen + "/" + videoFileURLencoded.String(),
-		SubtitlesURL: "http://" + whereToListen + "/" + subsFileURLencoded.String(),
+		TransportURL:  transportURL,
+		ControlURL:    controlURL,
+		CallbackURL:   "http://" + whereToListen + "/callback",
+		VideoURL:      "http://" + whereToListen + "/" + videoFileURLencoded.String(),
+		SubtitlesURL:  "http://" + whereToListen + "/" + subsFileURLencoded.String(),
+		CurrentTimers: make(map[string]*time.Timer),
 	}
 
 	s := httphandlers.NewServer(whereToListen)
