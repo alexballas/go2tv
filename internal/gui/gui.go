@@ -409,6 +409,9 @@ func check(win fyne.Window, err error) {
 	}
 }
 
+// UpdateScreenState updates the screen state based on
+// the emitted messages. The State variable is used across
+// the GUI interface to control certain flows.
 func (p *NewScreen) UpdateScreenState(a string) {
 	mu.Lock()
 	p.State = a
