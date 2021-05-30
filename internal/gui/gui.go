@@ -50,14 +50,15 @@ type filestruct struct {
 }
 
 var (
-	videofile     = filestruct{}
-	subsfile      = filestruct{}
-	tvdata        = &soapcalls.TVPayload{}
-	httpserver    = httphandlers.HTTPserver{}
-	transportURL  = ""
-	controlURL    = ""
-	serverStarted = make(chan struct{})
-	mu            = sync.Mutex{}
+	videofile      = filestruct{}
+	subsfile       = filestruct{}
+	tvdata         = &soapcalls.TVPayload{}
+	httpserver     = httphandlers.HTTPserver{}
+	transportURL   = ""
+	controlURL     = ""
+	currentvfolder = ""
+	serverStarted  = make(chan struct{})
+	mu             = sync.Mutex{}
 )
 
 // Start .
@@ -208,10 +209,23 @@ func videoAction(screen *NewScreen) func() {
 					}
 				}
 			}
+
+			// Remember the last file location.
+			currentvfolder = filepath.Dir(absVideoFile)
+
 			screen.VideoText.Refresh()
 			screen.SubsText.Refresh()
 		}, w)
+
 		fd.SetFilter(storage.NewExtensionFileFilter([]string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv"}))
+
+		if currentvfolder != "" {
+			vfileURI := storage.NewFileURI(currentvfolder)
+			vfileLister, err := storage.ListerForURI(vfileURI)
+			check(w, err)
+			fd.SetLocation(vfileLister)
+		}
+
 		fd.Resize(fyne.NewSize(800, 500))
 		fd.Show()
 	}
@@ -240,6 +254,14 @@ func subsAction(screen *NewScreen) func() {
 			screen.SubsText.Refresh()
 		}, w)
 		fd.SetFilter(storage.NewExtensionFileFilter([]string{".srt"}))
+
+		if currentvfolder != "" {
+			vfileURI := storage.NewFileURI(currentvfolder)
+			vfileLister, err := storage.ListerForURI(vfileURI)
+			check(w, err)
+			fd.SetLocation(vfileLister)
+		}
+
 		fd.Resize(fyne.NewSize(800, 500))
 		fd.Show()
 	}
@@ -288,7 +310,7 @@ func playAction(screen *NewScreen) func() {
 		go func() {
 			httpserver.ServeFiles(serverStarted, videofile.abs, subsfile.abs, &httphandlers.HTTPPayload{Soapcalls: tvdata, Screen: screen})
 		}()
-		// Wait for HTTP server to properly initialize
+		// Wait for the HTTP server to properly initialize.
 		<-serverStarted
 		err = tvdata.SendtoTV("Play1")
 		check(w, err)
