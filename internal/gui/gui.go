@@ -187,7 +187,7 @@ func videoAction(screen *NewScreen) func() {
 			check(w, err)
 
 			videoFileURLencoded := &url.URL{Path: filepath.Base(absVideoFile)}
-			screen.VideoText.Text = videoFileURLencoded.String()
+			screen.VideoText.Text = filepath.Base(vfile)
 			videofile = filestruct{
 				abs:        absVideoFile,
 				urlEncoded: videoFileURLencoded.String(),
@@ -201,7 +201,7 @@ func videoAction(screen *NewScreen) func() {
 					subsfile = filestruct{}
 				} else {
 					subsFileURLencoded := &url.URL{Path: filepath.Base(possibleSub)}
-					screen.SubsText.Text = subsFileURLencoded.String()
+					screen.SubsText.Text = filepath.Base(possibleSub)
 
 					subsfile = filestruct{
 						abs:        possibleSub,
@@ -246,7 +246,7 @@ func subsAction(screen *NewScreen) func() {
 			subsFileURLencoded := &url.URL{Path: filepath.Base(absSubtitlesFile)}
 			check(w, err)
 
-			screen.SubsText.Text = subsFileURLencoded.String()
+			screen.SubsText.Text = filepath.Base(sfile)
 			subsfile = filestruct{
 				abs:        absSubtitlesFile,
 				urlEncoded: subsFileURLencoded.String(),
