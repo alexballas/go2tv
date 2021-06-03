@@ -36,6 +36,7 @@ type NewScreen struct {
 	SubsText        *widget.Entry
 	DeviceList      *widget.List
 	Videoloop       bool
+	NextVideo       bool
 	State           string
 }
 
@@ -59,6 +60,7 @@ var (
 	currentvfolder = ""
 	serverStarted  = make(chan struct{})
 	mu             = sync.Mutex{}
+	videoFormats   = []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv"}
 )
 
 // Start .
@@ -94,7 +96,8 @@ func Start(s *NewScreen) {
 	stop := widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), stopAction(s))
 
 	sfilecheck := widget.NewCheck("Custom Subtitles", func(b bool) {})
-	videoloop := widget.NewCheck("Loop Video", func(b bool) {})
+	videoloop := widget.NewCheck("Loop Selected Video", func(b bool) {})
+	nextvideo := widget.NewCheck("Auto-Select Next Video", func(b bool) {})
 
 	videofilelabel := canvas.NewText("Video:", color.Black)
 	subsfilelabel := canvas.NewText("Subtitle:", color.Black)
@@ -123,7 +126,7 @@ func Start(s *NewScreen) {
 	// Organising widgets in the window
 	playpause := container.New(layout.NewMaxLayout(), play, pause)
 	playpausestop := container.New(layout.NewGridLayout(2), playpause, stop)
-	checklists := container.NewHBox(sfilecheck, videoloop)
+	checklists := container.NewHBox(sfilecheck, videoloop, nextvideo)
 	videosubsbuttons := container.New(layout.NewGridLayout(2), vfile, sfile)
 	viewfilescont := container.New(layout.NewFormLayout(), videofilelabel, vfiletext, subsfilelabel, sfiletext)
 
@@ -152,6 +155,14 @@ func Start(s *NewScreen) {
 			s.Videoloop = true
 		} else {
 			s.Videoloop = false
+		}
+	}
+
+	nextvideo.OnChanged = func(b bool) {
+		if b {
+			s.NextVideo = true
+		} else {
+			s.NextVideo = false
 		}
 	}
 
@@ -217,7 +228,7 @@ func videoAction(screen *NewScreen) func() {
 			screen.SubsText.Refresh()
 		}, w)
 
-		fd.SetFilter(storage.NewExtensionFileFilter([]string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv"}))
+		fd.SetFilter(storage.NewExtensionFileFilter(videoFormats))
 
 		if currentvfolder != "" {
 			vfileURI := storage.NewFileURI(currentvfolder)
@@ -409,6 +420,9 @@ func (p *NewScreen) EmitMsg(a string) {
 // Will only be executed when we receive a callback message,
 // not when we explicitly click the Stop button.
 func (p *NewScreen) Fini() {
+	if p.NextVideo {
+		SelectNextVideo(p)
+	}
 	// Main video loop logic
 	if p.Videoloop {
 		playAction(p)()
@@ -438,4 +452,43 @@ func (p *NewScreen) UpdateScreenState(a string) {
 	mu.Lock()
 	p.State = a
 	mu.Unlock()
+}
+
+func SelectNextVideo(screen *NewScreen) {
+	w := screen.Current
+	filedir := filepath.Dir(videofile.abs)
+	filelist, err := os.ReadDir(filedir)
+	check(w, err)
+
+	breaknext := false
+	for _, f := range filelist {
+
+		isVideo := false
+		for _, vext := range videoFormats {
+			if filepath.Ext(filepath.Join(filedir, f.Name())) == vext {
+				isVideo = true
+				break
+			}
+		}
+
+		if !isVideo {
+			continue
+		}
+
+		if f.Name() == filepath.Base(videofile.abs) {
+			breaknext = true
+			continue
+		}
+
+		if breaknext {
+			videoFileURLencoded := &url.URL{Path: f.Name()}
+			screen.VideoText.Text = f.Name()
+			videofile = filestruct{
+				abs:        filepath.Join(filedir, f.Name()),
+				urlEncoded: videoFileURLencoded.String(),
+			}
+			screen.VideoText.Refresh()
+			break
+		}
+	}
 }
