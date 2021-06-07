@@ -84,16 +84,28 @@ func Start(s *NewScreen) {
 	vfiletext := widget.NewEntry()
 	sfiletext := widget.NewEntry()
 
-	vfile := widget.NewButton("Select Video File", videoAction(s))
+	vfile := widget.NewButton("Select Video File", func() {
+		go videoAction(s)
+	})
+
 	vfiletext.Disable()
 
-	sfile := widget.NewButton("Select Subtitle File", subsAction(s))
+	sfile := widget.NewButton("Select Subtitle File", func() {
+		go subsAction(s)
+	})
+
 	sfile.Disable()
 	sfiletext.Disable()
 
-	play := widget.NewButtonWithIcon("Play", theme.MediaPlayIcon(), playAction(s))
-	pause := widget.NewButtonWithIcon("Pause", theme.MediaPauseIcon(), pauseAction(s))
-	stop := widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), stopAction(s))
+	play := widget.NewButtonWithIcon("Play", theme.MediaPlayIcon(), func() {
+		go playAction(s)
+	})
+	pause := widget.NewButtonWithIcon("Pause", theme.MediaPauseIcon(), func() {
+		go pauseAction(s)
+	})
+	stop := widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
+		go stopAction(s)
+	})
 
 	sfilecheck := widget.NewCheck("Custom Subtitles", func(b bool) {})
 	videoloop := widget.NewCheck("Loop Selected Video", func(b bool) {})
@@ -183,195 +195,189 @@ func Start(s *NewScreen) {
 	os.Exit(0)
 }
 
-func videoAction(screen *NewScreen) func() {
+func videoAction(screen *NewScreen) {
 	w := screen.Current
-	return func() {
-		fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-			check(w, err)
+	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+		check(w, err)
 
-			if reader == nil {
-				return
-			}
+		if reader == nil {
+			return
+		}
 
-			vfile := reader.URI().Path()
-			absVideoFile, err := filepath.Abs(vfile)
-			check(w, err)
+		vfile := reader.URI().Path()
+		absVideoFile, err := filepath.Abs(vfile)
+		check(w, err)
 
-			videoFileURLencoded := &url.URL{Path: filepath.Base(absVideoFile)}
-			screen.VideoText.Text = filepath.Base(vfile)
-			videofile = filestruct{
-				abs:        absVideoFile,
-				urlEncoded: videoFileURLencoded.String(),
-			}
-			if !screen.CustomSubsCheck.Checked {
-				possibleSub := (absVideoFile)[0:len(absVideoFile)-
-					len(filepath.Ext(absVideoFile))] + ".srt"
+		videoFileURLencoded := &url.URL{Path: filepath.Base(absVideoFile)}
+		screen.VideoText.Text = filepath.Base(vfile)
+		videofile = filestruct{
+			abs:        absVideoFile,
+			urlEncoded: videoFileURLencoded.String(),
+		}
+		if !screen.CustomSubsCheck.Checked {
+			possibleSub := (absVideoFile)[0:len(absVideoFile)-
+				len(filepath.Ext(absVideoFile))] + ".srt"
 
-				if _, err = os.Stat(possibleSub); os.IsNotExist(err) {
-					screen.SubsText.Text = ""
-					subsfile = filestruct{}
-				} else {
-					subsFileURLencoded := &url.URL{Path: filepath.Base(possibleSub)}
-					screen.SubsText.Text = filepath.Base(possibleSub)
+			if _, err = os.Stat(possibleSub); os.IsNotExist(err) {
+				screen.SubsText.Text = ""
+				subsfile = filestruct{}
+			} else {
+				subsFileURLencoded := &url.URL{Path: filepath.Base(possibleSub)}
+				screen.SubsText.Text = filepath.Base(possibleSub)
 
-					subsfile = filestruct{
-						abs:        possibleSub,
-						urlEncoded: subsFileURLencoded.String(),
-					}
+				subsfile = filestruct{
+					abs:        possibleSub,
+					urlEncoded: subsFileURLencoded.String(),
 				}
 			}
-
-			// Remember the last file location.
-			currentvfolder = filepath.Dir(absVideoFile)
-
-			screen.VideoText.Refresh()
-			screen.SubsText.Refresh()
-		}, w)
-
-		fd.SetFilter(storage.NewExtensionFileFilter(videoFormats))
-
-		if currentvfolder != "" {
-			vfileURI := storage.NewFileURI(currentvfolder)
-			vfileLister, err := storage.ListerForURI(vfileURI)
-			check(w, err)
-			fd.SetLocation(vfileLister)
 		}
 
-		fd.Resize(fyne.NewSize(800, 500))
-		fd.Show()
+		// Remember the last file location.
+		currentvfolder = filepath.Dir(absVideoFile)
+
+		screen.VideoText.Refresh()
+		screen.SubsText.Refresh()
+	}, w)
+
+	fd.SetFilter(storage.NewExtensionFileFilter(videoFormats))
+
+	if currentvfolder != "" {
+		vfileURI := storage.NewFileURI(currentvfolder)
+		vfileLister, err := storage.ListerForURI(vfileURI)
+		check(w, err)
+		fd.SetLocation(vfileLister)
 	}
+
+	fd.Resize(fyne.NewSize(800, 500))
+	fd.Show()
 }
 
-func subsAction(screen *NewScreen) func() {
+func subsAction(screen *NewScreen) {
 	w := screen.Current
-	return func() {
-		fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-			check(w, err)
+	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+		check(w, err)
 
-			if reader == nil {
-				return
-			}
-
-			sfile := reader.URI().Path()
-			absSubtitlesFile, err := filepath.Abs(sfile)
-			subsFileURLencoded := &url.URL{Path: filepath.Base(absSubtitlesFile)}
-			check(w, err)
-
-			screen.SubsText.Text = filepath.Base(sfile)
-			subsfile = filestruct{
-				abs:        absSubtitlesFile,
-				urlEncoded: subsFileURLencoded.String(),
-			}
-			screen.SubsText.Refresh()
-		}, w)
-		fd.SetFilter(storage.NewExtensionFileFilter([]string{".srt"}))
-
-		if currentvfolder != "" {
-			vfileURI := storage.NewFileURI(currentvfolder)
-			vfileLister, err := storage.ListerForURI(vfileURI)
-			check(w, err)
-			fd.SetLocation(vfileLister)
-		}
-
-		fd.Resize(fyne.NewSize(800, 500))
-		fd.Show()
-	}
-}
-
-func playAction(screen *NewScreen) func() {
-	w := screen.Current
-	return func() {
-		screen.Play.Disable()
-		if screen.State == "Paused" {
-			err := tvdata.SendtoTV("Play")
-			check(w, err)
-			return
-		}
-		if videofile.urlEncoded == "" {
-			check(w, errors.New("please select a video file"))
-			screen.Play.Enable()
-			return
-		}
-		if transportURL == "" {
-			check(w, errors.New("please select a device"))
-			screen.Play.Enable()
+		if reader == nil {
 			return
 		}
 
-		if tvdata.CallbackURL != "" {
-			stopAction(screen)()
-		}
-
-		whereToListen, err := iptools.URLtoListenIPandPort(transportURL)
+		sfile := reader.URI().Path()
+		absSubtitlesFile, err := filepath.Abs(sfile)
+		subsFileURLencoded := &url.URL{Path: filepath.Base(absSubtitlesFile)}
 		check(w, err)
 
-		tvdata = &soapcalls.TVPayload{
-			TransportURL:  transportURL,
-			ControlURL:    controlURL,
-			VideoURL:      "http://" + whereToListen + "/" + videofile.urlEncoded,
-			SubtitlesURL:  "http://" + whereToListen + "/" + subsfile.urlEncoded,
-			CallbackURL:   "http://" + whereToListen + "/callback",
-			CurrentTimers: make(map[string]*time.Timer),
+		screen.SubsText.Text = filepath.Base(sfile)
+		subsfile = filestruct{
+			abs:        absSubtitlesFile,
+			urlEncoded: subsFileURLencoded.String(),
 		}
+		screen.SubsText.Refresh()
+	}, w)
+	fd.SetFilter(storage.NewExtensionFileFilter([]string{".srt"}))
 
-		httpserver = httphandlers.NewServer(whereToListen)
-
-		// We pass the tvdata here as we need the callback handlers to be able to react
-		// to the different media renderer states.
-		go func() {
-			httpserver.ServeFiles(serverStarted, videofile.abs, subsfile.abs, &httphandlers.HTTPPayload{Soapcalls: tvdata, Screen: screen})
-		}()
-		// Wait for the HTTP server to properly initialize.
-		<-serverStarted
-		err = tvdata.SendtoTV("Play1")
+	if currentvfolder != "" {
+		vfileURI := storage.NewFileURI(currentvfolder)
+		vfileLister, err := storage.ListerForURI(vfileURI)
 		check(w, err)
-		if err != nil {
-			// Something failed when sent Play1 to the TV.
-			// Just force the user to re-select a device.
-			lsize := screen.DeviceList.Length()
-			for i := 0; i <= lsize; i++ {
-				screen.DeviceList.Unselect(lsize - 1)
-				screen.DeviceList.Refresh()
-			}
-			transportURL = ""
-			stopAction(screen)()
-		}
+		fd.SetLocation(vfileLister)
 	}
-}
-func pauseAction(screen *NewScreen) func() {
-	w := screen.Current
-	return func() {
-		screen.Pause.Disable()
-		err := tvdata.SendtoTV("Pause")
-		check(w, err)
-	}
+
+	fd.Resize(fyne.NewSize(800, 500))
+	fd.Show()
 }
 
-func stopAction(screen *NewScreen) func() {
+func playAction(screen *NewScreen) {
 	w := screen.Current
-	return func() {
+	screen.Play.Disable()
+
+	if screen.State == "Paused" {
+		err := tvdata.SendtoTV("Play")
+		check(w, err)
+		return
+	}
+	if videofile.urlEncoded == "" {
+		check(w, errors.New("please select a video file"))
 		screen.Play.Enable()
-		screen.Pause.Enable()
-
-		if tvdata.CallbackURL == "" {
-			return
-		}
-		err := tvdata.SendtoTV("Stop")
-
-		// Hack to avoid potential http errors during video loop mode.
-		// Will keep the window clean during unattended usage.
-		if screen.Videoloop {
-			err = nil
-		}
-		check(w, err)
-
-		httpserver.StopServeFiles()
-		tvdata = &soapcalls.TVPayload{}
-		// In theory we should expect an emit message
-		// from the media renderer, but there seems
-		// to be a race condition that prevents this.
-		screen.EmitMsg("Stopped")
+		return
 	}
+	if transportURL == "" {
+		check(w, errors.New("please select a device"))
+		screen.Play.Enable()
+		return
+	}
+
+	if tvdata.CallbackURL != "" {
+		stopAction(screen)
+	}
+
+	whereToListen, err := iptools.URLtoListenIPandPort(transportURL)
+	check(w, err)
+
+	tvdata = &soapcalls.TVPayload{
+		TransportURL:  transportURL,
+		ControlURL:    controlURL,
+		VideoURL:      "http://" + whereToListen + "/" + videofile.urlEncoded,
+		SubtitlesURL:  "http://" + whereToListen + "/" + subsfile.urlEncoded,
+		CallbackURL:   "http://" + whereToListen + "/callback",
+		CurrentTimers: make(map[string]*time.Timer),
+	}
+
+	httpserver = httphandlers.NewServer(whereToListen)
+
+	// We pass the tvdata here as we need the callback handlers to be able to react
+	// to the different media renderer states.
+	go func() {
+		httpserver.ServeFiles(serverStarted, videofile.abs, subsfile.abs, &httphandlers.HTTPPayload{Soapcalls: tvdata, Screen: screen})
+	}()
+	// Wait for the HTTP server to properly initialize.
+	<-serverStarted
+	err = tvdata.SendtoTV("Play1")
+	check(w, err)
+	if err != nil {
+		// Something failed when sent Play1 to the TV.
+		// Just force the user to re-select a device.
+		lsize := screen.DeviceList.Length()
+		for i := 0; i <= lsize; i++ {
+			screen.DeviceList.Unselect(lsize - 1)
+			screen.DeviceList.Refresh()
+		}
+		transportURL = ""
+		stopAction(screen)
+	}
+}
+func pauseAction(screen *NewScreen) {
+	w := screen.Current
+	screen.Pause.Disable()
+
+	err := tvdata.SendtoTV("Pause")
+	check(w, err)
+}
+
+func stopAction(screen *NewScreen) {
+	w := screen.Current
+
+	screen.Play.Enable()
+	screen.Pause.Enable()
+
+	if tvdata.CallbackURL == "" {
+		return
+	}
+	err := tvdata.SendtoTV("Stop")
+
+	// Hack to avoid potential http errors during video loop mode.
+	// Will keep the window clean during unattended usage.
+	if screen.Videoloop {
+		err = nil
+	}
+	check(w, err)
+
+	httpserver.StopServeFiles()
+	tvdata = &soapcalls.TVPayload{}
+	// In theory we should expect an emit message
+	// from the media renderer, but there seems
+	// to be a race condition that prevents this.
+	screen.EmitMsg("Stopped")
+
 }
 
 func getDevices(delay int) (dev []devType, err error) {
@@ -425,7 +431,7 @@ func (p *NewScreen) Fini() {
 	}
 	// Main video loop logic
 	if p.Videoloop {
-		playAction(p)()
+		playAction(p)
 	}
 }
 
