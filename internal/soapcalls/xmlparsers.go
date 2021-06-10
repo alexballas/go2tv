@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 // Root - root node.
@@ -87,8 +88,8 @@ func DMRextractor(dmrurl string) (string, string, error) {
 	xml.Unmarshal(xmlbody, &root)
 	for i := 0; i < len(root.Device.ServiceList.Services); i++ {
 		if root.Device.ServiceList.Services[i].ID == "urn:upnp-org:serviceId:AVTransport" {
-			avtransportControlURL := parsedURL.Scheme + "://" + parsedURL.Host + root.Device.ServiceList.Services[i].ControlURL
-			avtransportEventSubURL := parsedURL.Scheme + "://" + parsedURL.Host + root.Device.ServiceList.Services[i].EventSubURL
+			avtransportControlURL := parsedURL.Scheme + "://" + parsedURL.Host + "/" + strings.TrimLeft(root.Device.ServiceList.Services[i].ControlURL, "/")
+			avtransportEventSubURL := parsedURL.Scheme + "://" + parsedURL.Host + "/" + strings.TrimLeft(root.Device.ServiceList.Services[i].EventSubURL, "/")
 			return avtransportControlURL, avtransportEventSubURL, nil
 		}
 	}
