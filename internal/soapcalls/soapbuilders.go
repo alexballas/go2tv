@@ -3,9 +3,10 @@ package soapcalls
 import (
 	"bytes"
 	"encoding/xml"
-	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 // PlayEnvelope - As in Play Pause Stop.
@@ -193,8 +194,7 @@ func setAVTransportSoapBuild(videoURL, subtitleURL string) ([]byte, error) {
 	}
 	a, err := xml.Marshal(l)
 	if err != nil {
-		fmt.Println(err)
-		return make([]byte, 0), err
+		return nil, errors.Wrap(err, "setAVTransportSoapBuild #1 Marshal error")
 	}
 
 	d := SetAVTransportEnvelope{
@@ -218,8 +218,7 @@ func setAVTransportSoapBuild(videoURL, subtitleURL string) ([]byte, error) {
 	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
 	b, err := xml.Marshal(d)
 	if err != nil {
-		fmt.Println(err)
-		return make([]byte, 0), err
+		return nil, errors.Wrap(err, "setAVTransportSoapBuild #2 Marshal error")
 	}
 	// That looks like an issue just with my Samsung TV.
 	b = bytes.ReplaceAll(b, []byte("&#34;"), []byte(`"`))
@@ -246,8 +245,7 @@ func playSoapBuild() ([]byte, error) {
 	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
 	b, err := xml.Marshal(d)
 	if err != nil {
-		fmt.Println(err)
-		return make([]byte, 0), err
+		return nil, errors.Wrap(err, "playSoapBuild Marshal error")
 	}
 
 	return append(xmlStart, b...), nil
@@ -271,8 +269,7 @@ func stopSoapBuild() ([]byte, error) {
 	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
 	b, err := xml.Marshal(d)
 	if err != nil {
-		fmt.Println(err)
-		return make([]byte, 0), err
+		return nil, errors.Wrap(err, "stopSoapBuild Marshal error")
 	}
 
 	return append(xmlStart, b...), nil
@@ -296,8 +293,7 @@ func pauseSoapBuild() ([]byte, error) {
 	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
 	b, err := xml.Marshal(d)
 	if err != nil {
-		fmt.Println(err)
-		return make([]byte, 0), err
+		return nil, errors.Wrap(err, "pauseSoapBuild Marshal error")
 	}
 
 	return append(xmlStart, b...), nil

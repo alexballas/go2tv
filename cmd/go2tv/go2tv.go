@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"net/url"
@@ -17,6 +16,7 @@ import (
 	"github.com/alexballas/go2tv/internal/interactive"
 	"github.com/alexballas/go2tv/internal/iptools"
 	"github.com/alexballas/go2tv/internal/soapcalls"
+	"github.com/pkg/errors"
 )
 
 var (
@@ -84,7 +84,8 @@ func main() {
 	// We pass the tvdata here as we need the callback handlers to be able to react
 	// to the different media renderer states.
 	go func() {
-		s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile, &httphandlers.HTTPPayload{Soapcalls: tvdata, Screen: scr})
+		err := s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile, &httphandlers.HTTPPayload{Soapcalls: tvdata, Screen: scr})
+		check(err)
 	}()
 	// Wait for HTTP server to properly initialize
 	<-serverStarted
@@ -104,8 +105,7 @@ func check(err error) {
 
 func listFlagFunction() error {
 	if len(devices.Devices) == 0 {
-		err := errors.New("-l and -t can't be used together")
-		return err
+		return errors.New("-l and -t can't be used together")
 	}
 	fmt.Println()
 
@@ -144,16 +144,16 @@ func checkflags() (exit bool, err error) {
 	}
 
 	if err := checkTflag(); err != nil {
-		return false, err
+		return false, errors.Wrap(err, "checkflags error")
 	}
 
 	list, err := checkLflag()
 	if err != nil {
-		return false, err
+		return false, errors.Wrap(err, "checkflags error")
 	}
 
 	if err := checkVflag(); err != nil {
-		return false, err
+		return false, errors.Wrap(err, "checkflags error")
 	}
 
 	if list {
@@ -161,7 +161,7 @@ func checkflags() (exit bool, err error) {
 	}
 
 	if err := checkSflag(); err != nil {
-		return false, err
+		return false, errors.Wrap(err, "checkflags error")
 	}
 
 	return false, nil
@@ -170,7 +170,7 @@ func checkflags() (exit bool, err error) {
 func checkVflag() error {
 	if !*listPtr {
 		if _, err := os.Stat(*videoArg); os.IsNotExist(err) {
-			return err
+			return errors.Wrap(err, "checkVflag error")
 		}
 	}
 
@@ -180,7 +180,7 @@ func checkVflag() error {
 func checkSflag() error {
 	if *subsArg != "" {
 		if _, err := os.Stat(*subsArg); os.IsNotExist(err) {
-			return err
+			return errors.Wrap(err, "checkSflag error")
 		}
 	} else {
 		// The checkVflag should happen before
@@ -199,18 +199,18 @@ func checkTflag() error {
 	if *targetPtr == "" {
 		err := devices.LoadSSDPservices(1)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "checkTflag service loading error")
 		}
 
 		dmrURL, err = devices.DevicePicker(1)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "checkTflag device picker error")
 		}
 	} else {
 		// Validate URL before proceeding.
 		_, err := url.ParseRequestURI(*targetPtr)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "checkTflag parse error")
 		}
 		dmrURL = *targetPtr
 	}
@@ -221,7 +221,7 @@ func checkTflag() error {
 func checkLflag() (bool, error) {
 	if *listPtr {
 		if err := listFlagFunction(); err != nil {
-			return false, err
+			return false, errors.Wrap(err, "checkLflag error")
 		}
 		return true, nil
 	}
@@ -239,5 +239,4 @@ func checkVerflag() {
 
 func checkGUI() bool {
 	return *videoArg == "" && !*listPtr
-
 }

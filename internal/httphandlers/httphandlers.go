@@ -12,6 +12,7 @@ import (
 
 	"github.com/alexballas/go2tv/internal/screeninterfaces"
 	"github.com/alexballas/go2tv/internal/soapcalls"
+	"github.com/pkg/errors"
 )
 
 // filesToServe defines the files we need to serve.
@@ -34,7 +35,7 @@ type HTTPPayload struct {
 }
 
 // ServeFiles - Start HTTP server and serve the files.
-func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtitlesPath string, tvpayload *HTTPPayload) {
+func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtitlesPath string, tvpayload *HTTPPayload) error {
 	files := &filesToServe{
 		Video:     videoPath,
 		Subtitles: subtitlesPath,
@@ -45,10 +46,12 @@ func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtit
 	s.mux.HandleFunc("/callback", tvpayload.callbackHandler)
 
 	ln, err := net.Listen("tcp", s.http.Addr)
-	check(err)
-
 	serverStarted <- struct{}{}
+	if err != nil {
+		return errors.Wrap(err, "Server Listen fail")
+	}
 	s.http.Serve(ln)
+	return nil
 }
 
 func (f *filesToServe) serveVideoHandler(w http.ResponseWriter, req *http.Request) {
@@ -56,11 +59,17 @@ func (f *filesToServe) serveVideoHandler(w http.ResponseWriter, req *http.Reques
 	w.Header().Set("contentFeatures.dlna.org", "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=017000 00000000000000000000000000")
 
 	filePath, err := os.Open(f.Video)
-	check(err)
+	if err != nil {
+		http.Error(w, "", 404)
+		return
+	}
 	defer filePath.Close()
 
 	fileStat, err := filePath.Stat()
-	check(err)
+	if err != nil {
+		http.Error(w, "", 404)
+		return
+	}
 
 	http.ServeContent(w, req, filepath.Base(f.Video), fileStat.ModTime(), filePath)
 }
@@ -154,19 +163,12 @@ func (s *HTTPserver) StopServeFiles() {
 }
 
 // NewServer - create a new HTTP server.
-func NewServer(a string) HTTPserver {
+func NewServer(a string) *HTTPserver {
+	mux := http.NewServeMux()
 	srv := HTTPserver{
-		http: &http.Server{Addr: a},
-		mux:  http.NewServeMux(),
+		http: &http.Server{Addr: a, Handler: mux},
+		mux:  mux,
 	}
-	srv.http.Handler = srv.mux
 
-	return srv
-}
-
-func check(err error) {
-	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-		os.Exit(1)
-	}
+	return &srv
 }

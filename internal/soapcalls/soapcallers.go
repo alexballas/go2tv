@@ -2,7 +2,6 @@ package soapcalls
 
 import (
 	"bytes"
-	"errors"
 	"net/http"
 	"net/url"
 	"runtime"
@@ -10,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 type states struct {
@@ -37,18 +38,18 @@ type TVPayload struct {
 func (p *TVPayload) setAVTransportSoapCall() error {
 	parsedURLtransport, err := url.Parse(p.TransportURL)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "setAVTransportSoapCall parse failure")
 	}
 
 	xml, err := setAVTransportSoapBuild(p.VideoURL, p.SubtitlesURL)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "setAVTransportSoapCall soap build failure")
 	}
 
 	client := &http.Client{}
 	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xml))
 	if err != nil {
-		return err
+		return errors.Wrap(err, "setAVTransportSoapCall POST failure")
 	}
 
 	headers := http.Header{
@@ -60,18 +61,14 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 	req.Header = headers
 
 	_, err = client.Do(req)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return errors.Wrap(err, "setAVTransportSoapCall Do POST failure")
 }
 
 // PlayStopSoapCall - Build and call the play soap call.
 func (p *TVPayload) playStopPauseSoapCall(action string) error {
 	parsedURLtransport, err := url.Parse(p.TransportURL)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "playStopPauseSoapCall parse failure")
 	}
 
 	var xml []byte
@@ -85,13 +82,13 @@ func (p *TVPayload) playStopPauseSoapCall(action string) error {
 		xml, err = pauseSoapBuild()
 	}
 	if err != nil {
-		return err
+		return errors.Wrap(err, "playStopPauseSoapCall action failure")
 	}
 
 	client := &http.Client{}
 	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xml))
 	if err != nil {
-		return err
+		return errors.Wrap(err, "playStopPauseSoapCall POST failure")
 	}
 
 	headers := http.Header{
@@ -103,11 +100,7 @@ func (p *TVPayload) playStopPauseSoapCall(action string) error {
 	req.Header = headers
 
 	_, err = client.Do(req)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return errors.Wrap(err, "playStopPauseSoapCall Do POST failure")
 }
 
 // SubscribeSoapCall - Subscribe to a media renderer
@@ -117,19 +110,19 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 
 	parsedURLcontrol, err := url.Parse(p.ControlURL)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "SubscribeSoapCall #1 parse failure")
 	}
 
 	parsedURLcallback, err := url.Parse(p.CallbackURL)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "SubscribeSoapCall #2 parse failure")
 	}
 
 	client := &http.Client{}
 
 	req, err := http.NewRequest("SUBSCRIBE", parsedURLcontrol.String(), nil)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "SubscribeSoapCall SUBSCRIBE failure")
 	}
 
 	var headers http.Header
@@ -153,7 +146,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "SubscribeSoapCall Do SUBSCRIBE failure")
 	}
 
 	defer resp.Body.Close()
@@ -204,14 +197,14 @@ func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 
 	parsedURLcontrol, err := url.Parse(p.ControlURL)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "UnsubscribeSoapCall parse failure")
 	}
 
 	client := &http.Client{}
 
 	req, err := http.NewRequest("UNSUBSCRIBE", parsedURLcontrol.String(), nil)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "UnsubscribeSoapCall UNSUBSCRIBE failure")
 	}
 
 	headers := http.Header{
@@ -223,11 +216,7 @@ func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 	req.Header.Del("User-Agent")
 
 	_, err = client.Do(req)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return errors.Wrap(err, "UnsubscribeSoapCall Do UNSUBSCRIBE failure")
 }
 
 // RefreshLoopUUIDSoapCall - Refresh the UUID.
@@ -235,7 +224,7 @@ func (p *TVPayload) RefreshLoopUUIDSoapCall(uuid, timeout string) error {
 	triggerTime := 5
 	timeoutInt, err := strconv.Atoi(timeout)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "RefreshLoopUUIDSoapCall convert to int failure")
 	}
 
 	// Refresh token after after Timeout / 2 seconds.
@@ -263,10 +252,10 @@ func (p *TVPayload) refreshLoopUUIDAsyncSoapCall(uuid string) func() {
 func (p *TVPayload) SendtoTV(action string) error {
 	if action == "Play1" {
 		if err := p.SubscribeSoapCall(""); err != nil {
-			return err
+			return errors.Wrap(err, "SendtoTV subscribe call failure")
 		}
 		if err := p.setAVTransportSoapCall(); err != nil {
-			return err
+			return errors.Wrap(err, "SendtoTV set AVT Transport failure")
 		}
 		action = "Play"
 	}
@@ -274,7 +263,9 @@ func (p *TVPayload) SendtoTV(action string) error {
 	if action == "Stop" {
 		// Cleaning up all uuids on force stop.
 		for uuids := range mediaRenderersStates {
-			p.UnsubscribeSoapCall(uuids)
+			if err := p.UnsubscribeSoapCall(uuids); err != nil {
+				return errors.Wrap(err, "SendtoTV unsubscribe call failure")
+			}
 		}
 
 		// Clear timers on Stop to avoid errors responses
@@ -285,11 +276,8 @@ func (p *TVPayload) SendtoTV(action string) error {
 			delete(p.CurrentTimers, uuid)
 		}
 	}
-	if err := p.playStopPauseSoapCall(action); err != nil {
-		return err
-	}
-
-	return nil
+	err := p.playStopPauseSoapCall(action)
+	return errors.Wrap(err, "SendtoTV Play/Stop/Pause action failure")
 }
 
 // UpdateMRstate - Update the mediaRenderersStates map

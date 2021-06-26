@@ -1,7 +1,6 @@
 package gui
 
 import (
-	"errors"
 	"image/color"
 	"net/url"
 	"os"
@@ -23,6 +22,7 @@ import (
 	"github.com/alexballas/go2tv/internal/httphandlers"
 	"github.com/alexballas/go2tv/internal/iptools"
 	"github.com/alexballas/go2tv/internal/soapcalls"
+	"github.com/pkg/errors"
 )
 
 // NewScreen .
@@ -54,7 +54,7 @@ var (
 	videofile      = filestruct{}
 	subsfile       = filestruct{}
 	tvdata         = &soapcalls.TVPayload{}
-	httpserver     = httphandlers.HTTPserver{}
+	httpserver     = &httphandlers.HTTPserver{}
 	transportURL   = ""
 	controlURL     = ""
 	currentvfolder = ""
@@ -328,7 +328,10 @@ func playAction(screen *NewScreen) {
 	// We pass the tvdata here as we need the callback handlers to be able to react
 	// to the different media renderer states.
 	go func() {
-		httpserver.ServeFiles(serverStarted, videofile.abs, subsfile.abs, &httphandlers.HTTPPayload{Soapcalls: tvdata, Screen: screen})
+		err := httpserver.ServeFiles(serverStarted, videofile.abs, subsfile.abs, &httphandlers.HTTPPayload{Soapcalls: tvdata, Screen: screen})
+		if err != nil {
+			check(w, err)
+		}
 	}()
 	// Wait for the HTTP server to properly initialize.
 	<-serverStarted
@@ -383,7 +386,7 @@ func stopAction(screen *NewScreen) {
 
 func getDevices(delay int) (dev []devType, err error) {
 	if err := devices.LoadSSDPservices(delay); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "getDevices failure")
 	}
 	// We loop through this map twice as we need to maintain
 	// the correct order.
