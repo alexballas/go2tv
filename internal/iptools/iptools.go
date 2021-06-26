@@ -13,7 +13,7 @@ import (
 func URLtoListenIPandPort(u string) (string, error) {
 	parsedURL, err := url.Parse(u)
 	if err != nil {
-		return "", errors.Wrap(err, "URLtoListenIPandPort parse failure")
+		return "", errors.Wrap(err, "URLtoListenIPandPort parse error")
 	}
 
 	conn, err := net.Dial("udp", parsedURL.Host)

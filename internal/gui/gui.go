@@ -386,7 +386,7 @@ func stopAction(screen *NewScreen) {
 
 func getDevices(delay int) (dev []devType, err error) {
 	if err := devices.LoadSSDPservices(delay); err != nil {
-		return nil, errors.Wrap(err, "getDevices failure")
+		return nil, errors.Wrap(err, "getDevices error")
 	}
 	// We loop through this map twice as we need to maintain
 	// the correct order.
