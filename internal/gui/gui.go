@@ -1,7 +1,6 @@
 package gui
 
 import (
-	"image/color"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -111,9 +110,9 @@ func Start(s *NewScreen) {
 	videoloop := widget.NewCheck("Loop Selected Video", func(b bool) {})
 	nextvideo := widget.NewCheck("Auto-Select Next Video", func(b bool) {})
 
-	videofilelabel := canvas.NewText("Video:", color.Black)
-	subsfilelabel := canvas.NewText("Subtitle:", color.Black)
-	devicelabel := canvas.NewText("Select Device:", color.Black)
+	videofilelabel := canvas.NewText("Video:", theme.ForegroundColor())
+	subsfilelabel := canvas.NewText("Subtitle:", theme.ForegroundColor())
+	devicelabel := canvas.NewText("Select Device:", theme.ForegroundColor())
 	pause.Hide()
 
 	list = widget.NewList(
