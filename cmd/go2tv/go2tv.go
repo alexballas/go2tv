@@ -84,7 +84,7 @@ func main() {
 	// We pass the tvdata here as we need the callback handlers to be able to react
 	// to the different media renderer states.
 	go func() {
-		err := s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile, &httphandlers.HTTPPayload{Soapcalls: tvdata, Screen: scr})
+		err := s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile, tvdata, scr)
 		check(err)
 	}()
 	// Wait for HTTP server to properly initialize

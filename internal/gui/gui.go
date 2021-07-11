@@ -315,7 +315,7 @@ func playAction(screen *NewScreen) {
 	// We pass the tvdata here as we need the callback handlers to be able to react
 	// to the different media renderer states.
 	go func() {
-		err := httpserver.ServeFiles(serverStarted, videofile.abs, subsfile.abs, &httphandlers.HTTPPayload{Soapcalls: tvdata, Screen: screen})
+		err := httpserver.ServeFiles(serverStarted, videofile.abs, subsfile.abs, tvdata, screen)
 		if err != nil {
 			check(w, err)
 		}
