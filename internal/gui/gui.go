@@ -203,6 +203,7 @@ func videoAction(screen *NewScreen) {
 		if reader == nil {
 			return
 		}
+		defer reader.Close()
 
 		vfile := reader.URI().Path()
 		absVideoFile, err := filepath.Abs(vfile)
@@ -260,6 +261,7 @@ func subsAction(screen *NewScreen) {
 		if reader == nil {
 			return
 		}
+		defer reader.Close()
 
 		sfile := reader.URI().Path()
 		absSubtitlesFile, err := filepath.Abs(sfile)
