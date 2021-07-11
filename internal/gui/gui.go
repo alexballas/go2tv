@@ -215,29 +215,15 @@ func videoAction(screen *NewScreen) {
 			abs:        absVideoFile,
 			urlEncoded: videoFileURLencoded.String(),
 		}
+
 		if !screen.CustomSubsCheck.Checked {
-			possibleSub := (absVideoFile)[0:len(absVideoFile)-
-				len(filepath.Ext(absVideoFile))] + ".srt"
-
-			if _, err = os.Stat(possibleSub); os.IsNotExist(err) {
-				screen.SubsText.Text = ""
-				subsfile = filestruct{}
-			} else {
-				subsFileURLencoded := &url.URL{Path: filepath.Base(possibleSub)}
-				screen.SubsText.Text = filepath.Base(possibleSub)
-
-				subsfile = filestruct{
-					abs:        possibleSub,
-					urlEncoded: subsFileURLencoded.String(),
-				}
-			}
+			selectSubs(absVideoFile, screen)
 		}
 
 		// Remember the last file location.
 		currentvfolder = filepath.Dir(absVideoFile)
 
 		screen.VideoText.Refresh()
-		screen.SubsText.Refresh()
 	}, w)
 
 	fd.SetFilter(storage.NewExtensionFileFilter(videoFormats))
@@ -432,7 +418,7 @@ func (p *NewScreen) EmitMsg(a string) {
 // not when we explicitly click the Stop button.
 func (p *NewScreen) Fini() {
 	if p.NextVideo {
-		SelectNextVideo(p)
+		selectNextVideo(p)
 	}
 	// Main video loop logic
 	if p.Videoloop {
@@ -464,7 +450,7 @@ func (p *NewScreen) UpdateScreenState(a string) {
 	mu.Unlock()
 }
 
-func SelectNextVideo(screen *NewScreen) {
+func selectNextVideo(screen *NewScreen) {
 	w := screen.Current
 	filedir := filepath.Dir(videofile.abs)
 	filelist, err := os.ReadDir(filedir)
@@ -498,7 +484,31 @@ func SelectNextVideo(screen *NewScreen) {
 				urlEncoded: videoFileURLencoded.String(),
 			}
 			screen.VideoText.Refresh()
+
+			if !screen.CustomSubsCheck.Checked {
+				selectSubs(videofile.abs, screen)
+			}
+
 			break
 		}
 	}
+}
+
+func selectSubs(v string, screen *NewScreen) {
+	possibleSub := (v)[0:len(v)-
+		len(filepath.Ext(v))] + ".srt"
+
+	if _, err := os.Stat(possibleSub); os.IsNotExist(err) {
+		screen.SubsText.Text = ""
+		subsfile = filestruct{}
+	} else {
+		subsFileURLencoded := &url.URL{Path: filepath.Base(possibleSub)}
+		screen.SubsText.Text = filepath.Base(possibleSub)
+
+		subsfile = filestruct{
+			abs:        possibleSub,
+			urlEncoded: subsFileURLencoded.String(),
+		}
+	}
+	screen.SubsText.Refresh()
 }
