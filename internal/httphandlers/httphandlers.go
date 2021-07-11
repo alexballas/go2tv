@@ -112,7 +112,7 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen screeninter
 
 		if seq == 0 {
 			soapcalls.IncreaseSequence(uuid)
-			_, _ = fmt.Fprintf(w, "OK\n")
+			fmt.Fprintf(w, "OK\n")
 			return
 		}
 
@@ -128,22 +128,16 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen screeninter
 			return
 		}
 
-		if newstate == "PLAYING" {
+		switch newstate {
+		case "PLAYING":
 			screeninterfaces.Emit(screen, "Playing")
-		}
-		if newstate == "PAUSED_PLAYBACK" {
+		case "PAUSED_PLAYBACK":
 			screeninterfaces.Emit(screen, "Paused")
-		}
-		if newstate == "STOPPED" {
+		case "STOPPED":
 			screeninterfaces.Emit(screen, "Stopped")
 			tv.UnsubscribeSoapCall(uuid)
 			screeninterfaces.Close(screen)
 		}
-
-		// We could just not send anything here
-		// as the core server package would still
-		// default to a 200 OK empty response.
-		w.WriteHeader(http.StatusOK)
 	}
 }
 
