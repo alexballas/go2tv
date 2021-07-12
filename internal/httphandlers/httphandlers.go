@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/alexballas/go2tv/internal/screeninterfaces"
 	"github.com/alexballas/go2tv/internal/soapcalls"
 	"github.com/pkg/errors"
 )
@@ -21,19 +20,36 @@ type HTTPserver struct {
 	mux  *http.ServeMux
 }
 
+// Screen interface.
+type Screen interface {
+	EmitMsg(string)
+	Fini()
+}
+
+// Emit .
+func Emit(scr Screen, s string) {
+	scr.EmitMsg(s)
+}
+
+// Close .
+func Close(scr Screen) {
+	scr.Fini()
+}
+
 // ServeFiles - Start HTTP server and serve the files.
 func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtitlesPath string,
-	tvpayload *soapcalls.TVPayload, screen screeninterfaces.Screen) error {
+	tvpayload *soapcalls.TVPayload, screen Screen) error {
 
 	s.mux.HandleFunc("/"+filepath.Base(videoPath), s.serveVideoHandler(videoPath))
 	s.mux.HandleFunc("/"+filepath.Base(subtitlesPath), s.serveSubtitlesHandler(subtitlesPath))
 	s.mux.HandleFunc("/callback", s.callbackHandler(tvpayload, screen))
 
 	ln, err := net.Listen("tcp", s.http.Addr)
-	serverStarted <- struct{}{}
 	if err != nil {
 		return errors.Wrap(err, "Server Listen fail")
 	}
+
+	serverStarted <- struct{}{}
 	s.http.Serve(ln)
 	return nil
 }
@@ -81,7 +97,7 @@ func (s *HTTPserver) serveSubtitlesHandler(subs string) http.HandlerFunc {
 	}
 }
 
-func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen screeninterfaces.Screen) http.HandlerFunc {
+func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		reqParsed, _ := io.ReadAll(req.Body)
 		sidVal, sidExists := req.Header["Sid"]
@@ -130,13 +146,13 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen screeninter
 
 		switch newstate {
 		case "PLAYING":
-			screeninterfaces.Emit(screen, "Playing")
+			Emit(screen, "Playing")
 		case "PAUSED_PLAYBACK":
-			screeninterfaces.Emit(screen, "Paused")
+			Emit(screen, "Paused")
 		case "STOPPED":
-			screeninterfaces.Emit(screen, "Stopped")
+			Emit(screen, "Stopped")
 			tv.UnsubscribeSoapCall(uuid)
-			screeninterfaces.Close(screen)
+			Close(screen)
 		}
 	}
 }

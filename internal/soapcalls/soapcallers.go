@@ -25,7 +25,7 @@ var (
 	mu                          sync.Mutex
 )
 
-// TVPayload - this is the heard of Go2TV.
+// TVPayload - this is the heart of Go2TV.
 type TVPayload struct {
 	TransportURL  string
 	VideoURL      string
@@ -72,13 +72,13 @@ func (p *TVPayload) playStopPauseSoapCall(action string) error {
 	}
 
 	var xml []byte
-	if action == "Play" {
+
+	switch action {
+	case "Play":
 		xml, err = playSoapBuild()
-	}
-	if action == "Stop" {
+	case "Stop":
 		xml, err = stopSoapBuild()
-	}
-	if action == "Pause" {
+	case "Pause":
 		xml, err = pauseSoapBuild()
 	}
 	if err != nil {
