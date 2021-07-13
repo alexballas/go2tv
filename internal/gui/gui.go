@@ -37,6 +37,15 @@ type NewScreen struct {
 	Videoloop       bool
 	NextVideo       bool
 	State           string
+	videofile       filestruct
+	subsfile        filestruct
+	tvdata          *soapcalls.TVPayload
+	transportURL    string
+	controlURL      string
+	currentvfolder  string
+	mu              sync.Mutex
+	httpserver      *httphandlers.HTTPserver
+	videoFormats    []string
 }
 
 type devType struct {
@@ -48,19 +57,6 @@ type filestruct struct {
 	abs        string
 	urlEncoded string
 }
-
-var (
-	videofile      = filestruct{}
-	subsfile       = filestruct{}
-	tvdata         = &soapcalls.TVPayload{}
-	httpserver     = &httphandlers.HTTPserver{}
-	transportURL   = ""
-	controlURL     = ""
-	currentvfolder = ""
-	serverStarted  = make(chan struct{})
-	mu             = sync.Mutex{}
-	videoFormats   = []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv"}
-)
 
 // Start .
 func Start(s *NewScreen) {
@@ -149,7 +145,7 @@ func Start(s *NewScreen) {
 		play.Enable()
 		pause.Enable()
 		t, c, err := soapcalls.DMRextractor(data[id].addr)
-		transportURL, controlURL = t, c
+		s.transportURL, s.controlURL = t, c
 		check(w, err)
 	}
 
@@ -189,7 +185,7 @@ func Start(s *NewScreen) {
 		}
 	}()
 	w.SetContent(content)
-	w.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.6))
+	w.Resize(fyne.NewSize(w.Canvas().Size().Width*1.5, w.Canvas().Size().Height*1.6))
 	w.CenterOnScreen()
 	w.ShowAndRun()
 	os.Exit(0)
@@ -211,7 +207,7 @@ func videoAction(screen *NewScreen) {
 
 		videoFileURLencoded := &url.URL{Path: filepath.Base(absVideoFile)}
 		screen.VideoText.Text = filepath.Base(vfile)
-		videofile = filestruct{
+		screen.videofile = filestruct{
 			abs:        absVideoFile,
 			urlEncoded: videoFileURLencoded.String(),
 		}
@@ -221,21 +217,21 @@ func videoAction(screen *NewScreen) {
 		}
 
 		// Remember the last file location.
-		currentvfolder = filepath.Dir(absVideoFile)
+		screen.currentvfolder = filepath.Dir(absVideoFile)
 
 		screen.VideoText.Refresh()
 	}, w)
 
-	fd.SetFilter(storage.NewExtensionFileFilter(videoFormats))
+	fd.SetFilter(storage.NewExtensionFileFilter(screen.videoFormats))
 
-	if currentvfolder != "" {
-		vfileURI := storage.NewFileURI(currentvfolder)
+	if screen.currentvfolder != "" {
+		vfileURI := storage.NewFileURI(screen.currentvfolder)
 		vfileLister, err := storage.ListerForURI(vfileURI)
 		check(w, err)
 		fd.SetLocation(vfileLister)
 	}
 
-	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.6))
+	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.5, w.Canvas().Size().Height*1.6))
 	fd.Show()
 }
 
@@ -255,7 +251,7 @@ func subsAction(screen *NewScreen) {
 		check(w, err)
 
 		screen.SubsText.Text = filepath.Base(sfile)
-		subsfile = filestruct{
+		screen.subsfile = filestruct{
 			abs:        absSubtitlesFile,
 			urlEncoded: subsFileURLencoded.String(),
 		}
@@ -263,13 +259,13 @@ func subsAction(screen *NewScreen) {
 	}, w)
 	fd.SetFilter(storage.NewExtensionFileFilter([]string{".srt"}))
 
-	if currentvfolder != "" {
-		vfileURI := storage.NewFileURI(currentvfolder)
+	if screen.currentvfolder != "" {
+		vfileURI := storage.NewFileURI(screen.currentvfolder)
 		vfileLister, err := storage.ListerForURI(vfileURI)
 		check(w, err)
 		fd.SetLocation(vfileLister)
 	}
-	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.6))
+	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.5, w.Canvas().Size().Height*1.6))
 
 	fd.Show()
 }
@@ -279,50 +275,51 @@ func playAction(screen *NewScreen) {
 	screen.Play.Disable()
 
 	if screen.State == "Paused" {
-		err := tvdata.SendtoTV("Play")
+		err := screen.tvdata.SendtoTV("Play")
 		check(w, err)
 		return
 	}
-	if videofile.urlEncoded == "" {
+	if screen.videofile.urlEncoded == "" {
 		check(w, errors.New("please select a video file"))
 		screen.Play.Enable()
 		return
 	}
-	if transportURL == "" {
+	if screen.transportURL == "" {
 		check(w, errors.New("please select a device"))
 		screen.Play.Enable()
 		return
 	}
 
-	if tvdata.CallbackURL != "" {
+	if screen.tvdata == nil {
 		stopAction(screen)
 	}
 
-	whereToListen, err := iptools.URLtoListenIPandPort(transportURL)
+	whereToListen, err := iptools.URLtoListenIPandPort(screen.transportURL)
 	check(w, err)
 
-	tvdata = &soapcalls.TVPayload{
-		TransportURL:  transportURL,
-		ControlURL:    controlURL,
-		VideoURL:      "http://" + whereToListen + "/" + videofile.urlEncoded,
-		SubtitlesURL:  "http://" + whereToListen + "/" + subsfile.urlEncoded,
+	screen.tvdata = &soapcalls.TVPayload{
+		TransportURL:  screen.transportURL,
+		ControlURL:    screen.controlURL,
+		VideoURL:      "http://" + whereToListen + "/" + screen.videofile.urlEncoded,
+		SubtitlesURL:  "http://" + whereToListen + "/" + screen.subsfile.urlEncoded,
 		CallbackURL:   "http://" + whereToListen + "/callback",
 		CurrentTimers: make(map[string]*time.Timer),
 	}
 
-	httpserver = httphandlers.NewServer(whereToListen)
+	screen.httpserver = httphandlers.NewServer(whereToListen)
+	serverStarted := make(chan struct{})
 
 	// We pass the tvdata here as we need the callback handlers to be able to react
 	// to the different media renderer states.
 	go func() {
-		err := httpserver.ServeFiles(serverStarted, videofile.abs, subsfile.abs, tvdata, screen)
+		err := screen.httpserver.ServeFiles(serverStarted, screen.videofile.abs, screen.subsfile.abs, screen.tvdata, screen)
 		if err != nil {
 			check(w, err)
 		}
 	}()
 	// Wait for the HTTP server to properly initialize.
 	<-serverStarted
-	err = tvdata.SendtoTV("Play1")
+	err = screen.tvdata.SendtoTV("Play1")
 	check(w, err)
 	if err != nil {
 		// Something failed when sent Play1 to the TV.
@@ -332,7 +329,7 @@ func playAction(screen *NewScreen) {
 			screen.DeviceList.Unselect(lsize - 1)
 			screen.DeviceList.Refresh()
 		}
-		transportURL = ""
+		screen.transportURL = ""
 		stopAction(screen)
 	}
 }
@@ -340,7 +337,7 @@ func pauseAction(screen *NewScreen) {
 	w := screen.Current
 	screen.Pause.Disable()
 
-	err := tvdata.SendtoTV("Pause")
+	err := screen.tvdata.SendtoTV("Pause")
 	check(w, err)
 }
 
@@ -350,10 +347,10 @@ func stopAction(screen *NewScreen) {
 	screen.Play.Enable()
 	screen.Pause.Enable()
 
-	if tvdata.CallbackURL == "" {
+	if screen.tvdata == nil {
 		return
 	}
-	err := tvdata.SendtoTV("Stop")
+	err := screen.tvdata.SendtoTV("Stop")
 
 	// Hack to avoid potential http errors during video loop mode.
 	// Will keep the window clean during unattended usage.
@@ -362,8 +359,8 @@ func stopAction(screen *NewScreen) {
 	}
 	check(w, err)
 
-	httpserver.StopServeFiles()
-	tvdata = &soapcalls.TVPayload{}
+	screen.httpserver.StopServeFiles()
+	screen.tvdata = nil
 	// In theory we should expect an emit message
 	// from the media renderer, but there seems
 	// to be a race condition that prevents this.
@@ -431,7 +428,8 @@ func InitFyneNewScreen() *NewScreen {
 	go2tv := app.New()
 	app := go2tv.NewWindow("Go2TV")
 	return &NewScreen{
-		Current: app,
+		Current:      app,
+		videoFormats: []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv"},
 	}
 }
 
@@ -445,22 +443,21 @@ func check(win fyne.Window, err error) {
 // the emitted messages. The State variable is used across
 // the GUI interface to control certain flows.
 func (p *NewScreen) UpdateScreenState(a string) {
-	mu.Lock()
+	p.mu.Lock()
 	p.State = a
-	mu.Unlock()
+	p.mu.Unlock()
 }
 
 func selectNextVideo(screen *NewScreen) {
 	w := screen.Current
-	filedir := filepath.Dir(videofile.abs)
+	filedir := filepath.Dir(screen.videofile.abs)
 	filelist, err := os.ReadDir(filedir)
 	check(w, err)
 
 	breaknext := false
 	for _, f := range filelist {
-
 		isVideo := false
-		for _, vext := range videoFormats {
+		for _, vext := range screen.videoFormats {
 			if filepath.Ext(filepath.Join(filedir, f.Name())) == vext {
 				isVideo = true
 				break
@@ -471,7 +468,7 @@ func selectNextVideo(screen *NewScreen) {
 			continue
 		}
 
-		if f.Name() == filepath.Base(videofile.abs) {
+		if f.Name() == filepath.Base(screen.videofile.abs) {
 			breaknext = true
 			continue
 		}
@@ -479,16 +476,15 @@ func selectNextVideo(screen *NewScreen) {
 		if breaknext {
 			videoFileURLencoded := &url.URL{Path: f.Name()}
 			screen.VideoText.Text = f.Name()
-			videofile = filestruct{
+			screen.videofile = filestruct{
 				abs:        filepath.Join(filedir, f.Name()),
 				urlEncoded: videoFileURLencoded.String(),
 			}
 			screen.VideoText.Refresh()
 
 			if !screen.CustomSubsCheck.Checked {
-				selectSubs(videofile.abs, screen)
+				selectSubs(screen.videofile.abs, screen)
 			}
-
 			break
 		}
 	}
@@ -500,12 +496,12 @@ func selectSubs(v string, screen *NewScreen) {
 
 	if _, err := os.Stat(possibleSub); os.IsNotExist(err) {
 		screen.SubsText.Text = ""
-		subsfile = filestruct{}
+		screen.subsfile = filestruct{}
 	} else {
 		subsFileURLencoded := &url.URL{Path: filepath.Base(possibleSub)}
 		screen.SubsText.Text = filepath.Base(possibleSub)
 
-		subsfile = filestruct{
+		screen.subsfile = filestruct{
 			abs:        possibleSub,
 			urlEncoded: subsFileURLencoded.String(),
 		}

@@ -20,15 +20,14 @@ import (
 )
 
 var (
-	version       string
-	build         string
-	dmrURL        string
-	serverStarted = make(chan struct{})
-	videoArg      = flag.String("v", "", "Path to the video file. (Triggers the CLI mode)")
-	subsArg       = flag.String("s", "", "Path to the subtitles file.")
-	listPtr       = flag.Bool("l", false, "List all available UPnP/DLNA MediaRenderer models and URLs.")
-	targetPtr     = flag.String("t", "", "Cast to a specific UPnP/DLNA MediaRenderer URL.")
-	versionPtr    = flag.Bool("version", false, "Print version.")
+	version    string
+	build      string
+	dmrURL     string
+	videoArg   = flag.String("v", "", "Path to the video file. (Triggers the CLI mode)")
+	subsArg    = flag.String("s", "", "Path to the subtitles file.")
+	listPtr    = flag.Bool("l", false, "List all available UPnP/DLNA MediaRenderer models and URLs.")
+	targetPtr  = flag.String("t", "", "Cast to a specific UPnP/DLNA MediaRenderer URL.")
+	versionPtr = flag.Bool("version", false, "Print version.")
 )
 
 func main() {
@@ -80,6 +79,7 @@ func main() {
 	}
 
 	s := httphandlers.NewServer(whereToListen)
+	serverStarted := make(chan struct{})
 
 	// We pass the tvdata here as we need the callback handlers to be able to react
 	// to the different media renderer states.
