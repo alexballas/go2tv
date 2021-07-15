@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -435,7 +436,8 @@ func InitFyneNewScreen() *NewScreen {
 
 func check(win fyne.Window, err error) {
 	if err != nil {
-		dialog.ShowError(err, win)
+		cleanErr := strings.ReplaceAll(err.Error(), ": ", "\n")
+		dialog.ShowError(errors.New(cleanErr), win)
 	}
 }
 
