@@ -186,7 +186,7 @@ func Start(s *NewScreen) {
 		}
 	}()
 	w.SetContent(content)
-	w.Resize(fyne.NewSize(w.Canvas().Size().Width*1.5, w.Canvas().Size().Height*1.6))
+	w.Resize(fyne.NewSize(w.Canvas().Size().Width*1.4, w.Canvas().Size().Height*1.6))
 	w.CenterOnScreen()
 	w.ShowAndRun()
 	os.Exit(0)
@@ -232,7 +232,7 @@ func videoAction(screen *NewScreen) {
 		fd.SetLocation(vfileLister)
 	}
 
-	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.5, w.Canvas().Size().Height*1.6))
+	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.4, w.Canvas().Size().Height*1.6))
 	fd.Show()
 }
 
@@ -266,7 +266,7 @@ func subsAction(screen *NewScreen) {
 		check(w, err)
 		fd.SetLocation(vfileLister)
 	}
-	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.5, w.Canvas().Size().Height*1.6))
+	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.4, w.Canvas().Size().Height*1.6))
 
 	fd.Show()
 }
