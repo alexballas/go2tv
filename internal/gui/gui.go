@@ -428,9 +428,15 @@ func (p *NewScreen) Fini() {
 func InitFyneNewScreen() *NewScreen {
 	go2tv := app.New()
 	app := go2tv.NewWindow("Go2TV")
+	currentdir, err := os.Getwd()
+	if err != nil {
+		currentdir = ""
+	}
+
 	return &NewScreen{
-		Current:      app,
-		videoFormats: []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv"},
+		Current:        app,
+		currentvfolder: currentdir,
+		videoFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv"},
 	}
 }
 
