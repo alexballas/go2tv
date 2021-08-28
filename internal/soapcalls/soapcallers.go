@@ -2,6 +2,7 @@ package soapcalls
 
 import (
 	"bytes"
+	"encoding/xml"
 	"net/http"
 	"net/url"
 	"runtime"
@@ -27,16 +28,32 @@ var (
 
 // TVPayload - this is the heart of Go2TV.
 type TVPayload struct {
-	TransportURL  string
-	VideoURL      string
-	SubtitlesURL  string
-	ControlURL    string
-	CallbackURL   string
-	CurrentTimers map[string]*time.Timer
+	ControlURL          string
+	VideoURL            string
+	SubtitlesURL        string
+	EventURL            string
+	CallbackURL         string
+	RenderingControlURL string
+	CurrentTimers       map[string]*time.Timer
+}
+
+type GetMuteRespBody struct {
+	XMLName       xml.Name `xml:"Envelope"`
+	Text          string   `xml:",chardata"`
+	EncodingStyle string   `xml:"encodingStyle,attr"`
+	S             string   `xml:"s,attr"`
+	Body          struct {
+		Text            string `xml:",chardata"`
+		GetMuteResponse struct {
+			Text        string `xml:",chardata"`
+			U           string `xml:"u,attr"`
+			CurrentMute string `xml:"CurrentMute"`
+		} `xml:"GetMuteResponse"`
+	} `xml:"Body"`
 }
 
 func (p *TVPayload) setAVTransportSoapCall() error {
-	parsedURLtransport, err := url.Parse(p.TransportURL)
+	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
 		return errors.Wrap(err, "setAVTransportSoapCall parse error")
 	}
@@ -66,7 +83,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 
 // PlayStopSoapCall - Build and call the play soap call.
 func (p *TVPayload) playStopPauseSoapCall(action string) error {
-	parsedURLtransport, err := url.Parse(p.TransportURL)
+	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
 		return errors.Wrap(err, "playStopPauseSoapCall parse error")
 	}
@@ -108,7 +125,7 @@ func (p *TVPayload) playStopPauseSoapCall(action string) error {
 func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 	delete(p.CurrentTimers, uuidInput)
 
-	parsedURLcontrol, err := url.Parse(p.ControlURL)
+	parsedURLcontrol, err := url.Parse(p.EventURL)
 	if err != nil {
 		return errors.Wrap(err, "SubscribeSoapCall #1 parse error")
 	}
@@ -195,7 +212,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 	DeleteMRstate(uuid)
 
-	parsedURLcontrol, err := url.Parse(p.ControlURL)
+	parsedURLcontrol, err := url.Parse(p.EventURL)
 	if err != nil {
 		return errors.Wrap(err, "UnsubscribeSoapCall parse error")
 	}
@@ -246,6 +263,64 @@ func (p *TVPayload) refreshLoopUUIDAsyncSoapCall(uuid string) func() {
 	return func() {
 		p.SubscribeSoapCall(uuid)
 	}
+}
+
+// GetMuteSoapCall - Return mute status for target device
+func (p *TVPayload) GetMuteSoapCall() (string, error) {
+	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
+	if err != nil {
+		return "", errors.Wrap(err, "GetMuteSoapCall parse error")
+	}
+
+	var xmlbuilder []byte
+
+	xmlbuilder, err = getMuteSoapBuild()
+	if err != nil {
+		return "", errors.Wrap(err, "GetMuteSoapCall build error")
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
+	if err != nil {
+		return "", errors.Wrap(err, "GetMuteSoapCall POST error")
+	}
+
+	headers := http.Header{
+		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:RenderingControl:1#GetMute"`},
+		"content-type": []string{"text/xml"},
+		"charset":      []string{"utf-8"},
+		"Connection":   []string{"close"},
+	}
+	req.Header = headers
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", errors.Wrap(err, "GetMuteSoapCall Do POST error")
+	}
+
+	var respGetMute GetMuteRespBody
+	if err = xml.NewDecoder(resp.Body).Decode(&respGetMute); err != nil {
+		return "", errors.Wrap(err, "GetMuteSoapCall XML Decode error")
+	}
+
+	return respGetMute.Body.GetMuteResponse.CurrentMute, nil
+}
+
+// SetMuteSoapCall - Return true if muted and false if not muted/
+func (p *TVPayload) SetMuteSoapCall(number string) error {
+	/* parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
+	if err != nil {
+		return errors.Wrap(err, "GetMuteSoapCall parse error")
+	}
+
+	var xmlbuilder []byte
+
+	xmlbuilder, err = getMuteSoapBuild()
+	if err != nil {
+		return errors.Wrap(err, "GetMuteSoapCall build error")
+	} */
+
+	return nil
 }
 
 // SendtoTV - Send to TV.

@@ -158,8 +158,8 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 }
 
 // StopServeFiles .
-func (s *HTTPserver) StopServeFiles() {
-	s.http.Close()
+func (s *HTTPserver) StopServeFiles() error {
+	return s.http.Close()
 }
 
 // NewServer - create a new HTTP server.

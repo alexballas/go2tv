@@ -60,41 +60,55 @@ type EventTransportState struct {
 	Value string `xml:"val,attr"`
 }
 
+type DMRextracted struct {
+	AvtransportControlURL  string
+	AvtransportEventSubURL string
+	RenderingControlURL    string
+}
+
 // DMRextractor - Get the AVTransport URL from the main DMR xml.
-func DMRextractor(dmrurl string) (string, string, error) {
+func DMRextractor(dmrurl string) (*DMRextracted, error) {
 	var root Root
+	ex := &DMRextracted{}
 
 	parsedURL, err := url.Parse(dmrurl)
 	if err != nil {
-		return "", "", errors.Wrap(err, "DMRextractor parse error")
+		return nil, errors.Wrap(err, "DMRextractor parse error")
 	}
 
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", dmrurl, nil)
 	if err != nil {
-		return "", "", errors.Wrap(err, "DMRextractor GET error")
+		return nil, errors.Wrap(err, "DMRextractor GET error")
 	}
 
 	xmlresp, err := client.Do(req)
 	if err != nil {
-		return "", "", errors.Wrap(err, "DMRextractor Do GET error")
+		return nil, errors.Wrap(err, "DMRextractor Do GET error")
 	}
 	defer xmlresp.Body.Close()
 
 	xmlbody, err := io.ReadAll(xmlresp.Body)
 	if err != nil {
-		return "", "", errors.Wrap(err, "DMRextractor read error")
+		return nil, errors.Wrap(err, "DMRextractor read error")
 	}
 	xml.Unmarshal(xmlbody, &root)
 	for i := 0; i < len(root.Device.ServiceList.Services); i++ {
 		if root.Device.ServiceList.Services[i].ID == "urn:upnp-org:serviceId:AVTransport" {
-			avtransportControlURL := parsedURL.Scheme + "://" + parsedURL.Host + root.Device.ServiceList.Services[i].ControlURL
-			avtransportEventSubURL := parsedURL.Scheme + "://" + parsedURL.Host + root.Device.ServiceList.Services[i].EventSubURL
-			return avtransportControlURL, avtransportEventSubURL, nil
+			ex.AvtransportControlURL = parsedURL.Scheme + "://" + parsedURL.Host + root.Device.ServiceList.Services[i].ControlURL
+			ex.AvtransportEventSubURL = parsedURL.Scheme + "://" + parsedURL.Host + root.Device.ServiceList.Services[i].EventSubURL
+		}
+
+		if root.Device.ServiceList.Services[i].ID == "urn:upnp-org:serviceId:RenderingControl" {
+			ex.RenderingControlURL = parsedURL.Scheme + "://" + parsedURL.Host + root.Device.ServiceList.Services[i].ControlURL
 		}
 	}
 
-	return "", "", errors.New("something broke somewhere - wrong DMR URL?")
+	if ex.AvtransportControlURL != "" {
+		return ex, nil
+	}
+
+	return nil, errors.New("something broke somewhere - wrong DMR URL?")
 }
 
 // EventNotifyParser - Parse the Notify messages from the media renderer.
