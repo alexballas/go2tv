@@ -94,7 +94,7 @@ func main() {
 	err = tvdata.SendtoTV("Play1")
 	check(err)
 
-	scr.InterInit(*tvdata)
+	scr.InterInit(tvdata)
 }
 
 func check(err error) {

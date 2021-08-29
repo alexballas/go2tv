@@ -32,6 +32,8 @@ type NewScreen struct {
 	Play                *widget.Button
 	Pause               *widget.Button
 	Stop                *widget.Button
+	Mute                *widget.Button
+	Unmute              *widget.Button
 	CustomSubsCheck     *widget.Check
 	VideoText           *widget.Entry
 	SubsText            *widget.Entry
@@ -76,11 +78,21 @@ func (d *mainButtonsLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
 
 func (d *mainButtonsLayout) Layout(objects []fyne.CanvasObject, containerSize fyne.Size) {
 	pos := fyne.NewPos(0, 0)
+
+	bigButtonSize := containerSize.Width
+	for q, o := range objects {
+		z := q + 1
+		if z%2 == 0 {
+			bigButtonSize = bigButtonSize - o.MinSize().Width
+		}
+	}
+	bigButtonSize = bigButtonSize / 2
+
 	for q, o := range objects {
 		var size fyne.Size
 		switch q % 2 {
 		case 0:
-			size = fyne.NewSize(o.MinSize().Width*4, o.MinSize().Height)
+			size = fyne.NewSize(bigButtonSize, o.MinSize().Height)
 		default:
 			size = o.MinSize()
 		}
@@ -95,6 +107,7 @@ func (d *mainButtonsLayout) Layout(objects []fyne.CanvasObject, containerSize fy
 func Start(s *NewScreen) {
 	w := s.Current
 	refreshDevices := time.NewTicker(10 * time.Second)
+	checkMute := time.NewTicker(1 * time.Second)
 
 	list := new(widget.List)
 
@@ -137,6 +150,9 @@ func Start(s *NewScreen) {
 	mute := widget.NewButtonWithIcon("", theme.VolumeMuteIcon(), func() {
 		go muteAction(s)
 	})
+	unmute := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() {
+		go unmuteAction(s)
+	})
 
 	sfilecheck := widget.NewCheck("Custom Subtitles", func(b bool) {})
 	videoloop := widget.NewCheck("Loop Selected Video", func(b bool) {})
@@ -146,6 +162,7 @@ func Start(s *NewScreen) {
 	subsfilelabel := canvas.NewText("Subtitle:", theme.ForegroundColor())
 	devicelabel := canvas.NewText("Select Device:", theme.ForegroundColor())
 	pause.Hide()
+	unmute.Hide()
 
 	list = widget.NewList(
 		func() int {
@@ -161,6 +178,8 @@ func Start(s *NewScreen) {
 	s.Play = play
 	s.Pause = pause
 	s.Stop = stop
+	s.Mute = mute
+	s.Unmute = unmute
 	s.CustomSubsCheck = sfilecheck
 	s.VideoText = vfiletext
 	s.SubsText = sfiletext
@@ -168,13 +187,14 @@ func Start(s *NewScreen) {
 
 	// Organising widgets in the window
 	playpause := container.New(layout.NewMaxLayout(), play, pause)
-	playpausestop := container.New(&mainButtonsLayout{}, playpause, mute, stop)
+	muteunmute := container.New(layout.NewMaxLayout(), mute, unmute)
+	playpausemutestop := container.New(&mainButtonsLayout{}, playpause, muteunmute, stop)
 
 	checklists := container.NewHBox(sfilecheck, videoloop, nextvideo)
 	videosubsbuttons := container.New(layout.NewGridLayout(2), vfile, sfile)
 	viewfilescont := container.New(layout.NewFormLayout(), videofilelabel, vfiletext, subsfilelabel, sfiletext)
 
-	buttons := container.NewVBox(videosubsbuttons, viewfilescont, checklists, playpausestop, devicelabel)
+	buttons := container.NewVBox(videosubsbuttons, viewfilescont, checklists, playpausemutestop, devicelabel)
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
 
 	// Widgets actions
@@ -221,6 +241,35 @@ func Start(s *NewScreen) {
 			list.Refresh()
 		}
 	}()
+
+	go func() {
+		for range checkMute.C {
+			if s.renderingControlURL == "" {
+				continue
+			}
+
+			if s.tvdata == nil {
+				s.tvdata = &soapcalls.TVPayload{RenderingControlURL: s.renderingControlURL}
+			}
+
+			isMuted, err := s.tvdata.GetMuteSoapCall()
+
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+
+			switch isMuted {
+			case "1":
+				mute.Hide()
+				unmute.Show()
+			case "0":
+				mute.Show()
+				unmute.Hide()
+			}
+		}
+	}()
+
 	w.SetContent(content)
 	w.Resize(fyne.NewSize(w.Canvas().Size().Width*1.4, w.Canvas().Size().Height*1.6))
 	w.CenterOnScreen()
@@ -240,9 +289,34 @@ func muteAction(screen *NewScreen) {
 		// populate our tvdata type.
 		screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
 	}
-	a, b := screen.tvdata.GetMuteSoapCall()
-	fmt.Println(a, b)
+	//isMuted, _ := screen.tvdata.GetMuteSoapCall()
+	if err := screen.tvdata.SetMuteSoapCall("1"); err != nil {
+		check(w, errors.New("could not send mute action"))
+		return
+	}
+	screen.Unmute.Show()
+	screen.Mute.Hide()
+}
 
+func unmuteAction(screen *NewScreen) {
+	w := screen.Current
+	if screen.renderingControlURL == "" {
+		check(w, errors.New("please select a device"))
+		return
+	}
+	if screen.tvdata == nil {
+		// If tvdata is nil, we just need to set RenderingControlURL if we want
+		// to control the sound. We should still rely on the play action to properly
+		// populate our tvdata type.
+		screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
+	}
+	//isMuted, _ := screen.tvdata.GetMuteSoapCall()
+	if err := screen.tvdata.SetMuteSoapCall("0"); err != nil {
+		check(w, errors.New("could not send mute action"))
+		return
+	}
+	screen.Unmute.Hide()
+	screen.Mute.Show()
 }
 
 func videoAction(screen *NewScreen) {
@@ -402,7 +476,7 @@ func stopAction(screen *NewScreen) {
 	screen.Play.Enable()
 	screen.Pause.Enable()
 
-	if screen.tvdata == nil {
+	if screen.tvdata == nil || screen.tvdata.ControlURL == "" {
 		return
 	}
 	err := screen.tvdata.SendtoTV("Stop")

@@ -308,17 +308,36 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 
 // SetMuteSoapCall - Return true if muted and false if not muted/
 func (p *TVPayload) SetMuteSoapCall(number string) error {
-	/* parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
+	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
 	if err != nil {
-		return errors.Wrap(err, "GetMuteSoapCall parse error")
+		return errors.Wrap(err, "SetMuteSoapCall parse error")
 	}
 
 	var xmlbuilder []byte
 
-	xmlbuilder, err = getMuteSoapBuild()
+	xmlbuilder, err = setMuteSoapBuild(number)
 	if err != nil {
-		return errors.Wrap(err, "GetMuteSoapCall build error")
-	} */
+		return errors.Wrap(err, "SetMuteSoapCall build error")
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
+	if err != nil {
+		return errors.Wrap(err, "SetMuteSoapCall POST error")
+	}
+
+	headers := http.Header{
+		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:RenderingControl:1#SetMute"`},
+		"content-type": []string{"text/xml"},
+		"charset":      []string{"utf-8"},
+		"Connection":   []string{"close"},
+	}
+	req.Header = headers
+
+	_, err = client.Do(req)
+	if err != nil {
+		return errors.Wrap(err, "SetMuteSoapCall Do POST error")
+	}
 
 	return nil
 }
