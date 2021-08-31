@@ -202,8 +202,11 @@ func Start(s *NewScreen) {
 		play.Enable()
 		pause.Enable()
 		t, err := soapcalls.DMRextractor(data[id].addr)
-		s.controlURL, s.eventlURL, s.renderingControlURL = t.AvtransportControlURL, t.AvtransportEventSubURL, t.RenderingControlURL
 		check(w, err)
+
+		if err == nil {
+			s.controlURL, s.eventlURL, s.renderingControlURL = t.AvtransportControlURL, t.AvtransportEventSubURL, t.RenderingControlURL
+		}
 	}
 
 	sfilecheck.OnChanged = func(b bool) {
@@ -233,11 +236,8 @@ func Start(s *NewScreen) {
 	// Device list auto-refresh
 	go func() {
 		for range refreshDevices.C {
-			data2, err := getDevices(2)
+			data2, _ := getDevices(2)
 			data = data2
-			if err != nil {
-				data = nil
-			}
 			list.Refresh()
 		}
 	}()
@@ -253,7 +253,6 @@ func Start(s *NewScreen) {
 			}
 
 			isMuted, err := s.tvdata.GetMuteSoapCall()
-
 			if err != nil {
 				fmt.Println(err)
 				continue
@@ -375,8 +374,11 @@ func subsAction(screen *NewScreen) {
 
 		sfile := reader.URI().Path()
 		absSubtitlesFile, err := filepath.Abs(sfile)
-		subsFileURLencoded := &url.URL{Path: filepath.Base(absSubtitlesFile)}
 		check(w, err)
+		if err != nil {
+			return
+		}
+		subsFileURLencoded := &url.URL{Path: filepath.Base(absSubtitlesFile)}
 
 		screen.SubsText.Text = filepath.Base(sfile)
 		screen.subsfile = filestruct{
@@ -391,6 +393,9 @@ func subsAction(screen *NewScreen) {
 		vfileURI := storage.NewFileURI(screen.currentvfolder)
 		vfileLister, err := storage.ListerForURI(vfileURI)
 		check(w, err)
+		if err != nil {
+			return
+		}
 		fd.SetLocation(vfileLister)
 	}
 	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.4, w.Canvas().Size().Height*1.6))
@@ -424,6 +429,9 @@ func playAction(screen *NewScreen) {
 
 	whereToListen, err := iptools.URLtoListenIPandPort(screen.controlURL)
 	check(w, err)
+	if err != nil {
+		return
+	}
 
 	screen.tvdata = &soapcalls.TVPayload{
 		ControlURL:          screen.controlURL,
@@ -442,8 +450,9 @@ func playAction(screen *NewScreen) {
 	// to the different media renderer states.
 	go func() {
 		err := screen.httpserver.ServeFiles(serverStarted, screen.videofile.abs, screen.subsfile.abs, screen.tvdata, screen)
+		check(w, err)
 		if err != nil {
-			check(w, err)
+			return
 		}
 	}()
 	// Wait for the HTTP server to properly initialize.
