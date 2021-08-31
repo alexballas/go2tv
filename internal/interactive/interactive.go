@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/alexballas/go2tv/internal/soapcalls"
 	"github.com/gdamore/tcell/v2"
@@ -18,6 +19,7 @@ type NewScreen struct {
 	Current    tcell.Screen
 	videoTitle string
 	lastAction string
+	TV         *soapcalls.TVPayload
 }
 
 var flipflop bool = true
@@ -60,14 +62,30 @@ func (p *NewScreen) EmitMsg(inputtext string) {
 		p.emitStr(w/2-len(inputtext)/2, h/2, boldStyle, inputtext)
 	}
 	p.emitStr(1, 1, tcell.StyleDefault, "Press ESC to stop and exit.")
-	p.emitStr(w/2-len("Press p to Pause/Play.")/2, h/2+2, tcell.StyleDefault, "Press p to Pause/Play.")
+
+	isMute, err := p.TV.GetMuteSoapCall()
+	if err != nil || isMute == "0" {
+		p.emitStr(w/2-len("")/2, h/2+2, tcell.StyleDefault, "")
+	} else {
+		p.emitStr(w/2-len("MUTED")/2, h/2+2, blinkStyle, "MUTED")
+	}
+	p.emitStr(w/2-len(`Press "p" to Pause/Play, "m" to Mute/Unmute`)/2, h/2+4, tcell.StyleDefault, `Press "p" to Pause/Play, "m" to Mute/Unmute`)
 
 	s.Show()
 }
 
 // InterInit - Start the interactive terminal
-func (p *NewScreen) InterInit(tv soapcalls.TVPayload) {
+func (p *NewScreen) InterInit(tv *soapcalls.TVPayload) {
 	var videoTitle string
+	p.TV = tv
+
+	muteChecker := time.NewTicker(1 * time.Second)
+
+	go func() {
+		for range muteChecker.C {
+			p.EmitMsg(p.lastAction)
+		}
+	}()
 
 	videoTitlefromURL, err := url.Parse(tv.VideoURL)
 	if err != nil {
@@ -109,6 +127,22 @@ func (p *NewScreen) InterInit(tv soapcalls.TVPayload) {
 				} else {
 					flipflop = true
 					tv.SendtoTV("Play")
+				}
+			} else if ev.Rune() == 'm' {
+				currentMute, err := tv.GetMuteSoapCall()
+				if err != nil {
+					continue
+				}
+
+				switch currentMute {
+				case "1":
+					if err = tv.SetMuteSoapCall("0"); err == nil {
+						p.EmitMsg(p.lastAction)
+					}
+				case "0":
+					if err = tv.SetMuteSoapCall("1"); err == nil {
+						p.EmitMsg(p.lastAction)
+					}
 				}
 			}
 		}

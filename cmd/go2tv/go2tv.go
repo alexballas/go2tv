@@ -55,7 +55,7 @@ func main() {
 	absSubtitlesFile, err := filepath.Abs(*subsArg)
 	check(err)
 
-	transportURL, controlURL, err := soapcalls.DMRextractor(dmrURL)
+	upnpServicesURLs, err := soapcalls.DMRextractor(dmrURL)
 	check(err)
 
 	whereToListen, err := iptools.URLtoListenIPandPort(dmrURL)
@@ -70,12 +70,13 @@ func main() {
 	subsFileURLencoded := &url.URL{Path: filepath.Base(absSubtitlesFile)}
 
 	tvdata := &soapcalls.TVPayload{
-		TransportURL:  transportURL,
-		ControlURL:    controlURL,
-		CallbackURL:   "http://" + whereToListen + "/callback",
-		VideoURL:      "http://" + whereToListen + "/" + videoFileURLencoded.String(),
-		SubtitlesURL:  "http://" + whereToListen + "/" + subsFileURLencoded.String(),
-		CurrentTimers: make(map[string]*time.Timer),
+		ControlURL:          upnpServicesURLs.AvtransportControlURL,
+		EventURL:            upnpServicesURLs.AvtransportEventSubURL,
+		RenderingControlURL: upnpServicesURLs.RenderingControlURL,
+		CallbackURL:         "http://" + whereToListen + "/callback",
+		VideoURL:            "http://" + whereToListen + "/" + videoFileURLencoded.String(),
+		SubtitlesURL:        "http://" + whereToListen + "/" + subsFileURLencoded.String(),
+		CurrentTimers:       make(map[string]*time.Timer),
 	}
 
 	s := httphandlers.NewServer(whereToListen)
@@ -93,7 +94,7 @@ func main() {
 	err = tvdata.SendtoTV("Play1")
 	check(err)
 
-	scr.InterInit(*tvdata)
+	scr.InterInit(tvdata)
 }
 
 func check(err error) {

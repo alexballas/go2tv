@@ -148,6 +148,51 @@ type SecCaptionInfoEx struct {
 	Value   string   `xml:",chardata"`
 }
 
+// SetMuteEnvelope - As in Play Pause Stop.
+type SetMuteEnvelope struct {
+	XMLName     xml.Name    `xml:"s:Envelope"`
+	Schema      string      `xml:"xmlns:s,attr"`
+	Encoding    string      `xml:"s:encodingStyle,attr"`
+	SetMuteBody SetMuteBody `xml:"s:Body"`
+}
+
+// SetMuteBody .
+type SetMuteBody struct {
+	XMLName       xml.Name      `xml:"s:Body"`
+	SetMuteAction SetMuteAction `xml:"u:SetMute"`
+}
+
+// SetMuteAction .
+type SetMuteAction struct {
+	XMLName          xml.Name `xml:"u:SetMute"`
+	RenderingControl string   `xml:"xmlns:u,attr"`
+	InstanceID       string
+	Channel          string
+	DesiredMute      string
+}
+
+// GetMuteEnvelope - As in Play Pause Stop.
+type GetMuteEnvelope struct {
+	XMLName     xml.Name    `xml:"s:Envelope"`
+	Schema      string      `xml:"xmlns:s,attr"`
+	Encoding    string      `xml:"s:encodingStyle,attr"`
+	GetMuteBody GetMuteBody `xml:"s:Body"`
+}
+
+// GetMuteBody .
+type GetMuteBody struct {
+	XMLName       xml.Name      `xml:"s:Body"`
+	GetMuteAction GetMuteAction `xml:"u:GetMute"`
+}
+
+// SetMuteAction .
+type GetMuteAction struct {
+	XMLName          xml.Name `xml:"u:GetMute"`
+	RenderingControl string   `xml:"xmlns:u,attr"`
+	InstanceID       string
+	Channel          string
+}
+
 func setAVTransportSoapBuild(videoURL, subtitleURL string) ([]byte, error) {
 	var videoTitle string
 
@@ -294,6 +339,55 @@ func pauseSoapBuild() ([]byte, error) {
 	b, err := xml.Marshal(d)
 	if err != nil {
 		return nil, errors.Wrap(err, "pauseSoapBuild Marshal error")
+	}
+
+	return append(xmlStart, b...), nil
+}
+
+func setMuteSoapBuild(m string) ([]byte, error) {
+	d := SetMuteEnvelope{
+		XMLName:  xml.Name{},
+		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
+		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
+		SetMuteBody: SetMuteBody{
+			XMLName: xml.Name{},
+			SetMuteAction: SetMuteAction{
+				XMLName:          xml.Name{},
+				RenderingControl: "urn:schemas-upnp-org:service:RenderingControl:1",
+				InstanceID:       "0",
+				Channel:          "Master",
+				DesiredMute:      m,
+			},
+		},
+	}
+	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
+	b, err := xml.Marshal(d)
+	if err != nil {
+		return nil, errors.Wrap(err, "setMuteSoapBuild Marshal error")
+	}
+
+	return append(xmlStart, b...), nil
+}
+
+func getMuteSoapBuild() ([]byte, error) {
+	d := GetMuteEnvelope{
+		XMLName:  xml.Name{},
+		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
+		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
+		GetMuteBody: GetMuteBody{
+			XMLName: xml.Name{},
+			GetMuteAction: GetMuteAction{
+				XMLName:          xml.Name{},
+				RenderingControl: "urn:schemas-upnp-org:service:RenderingControl:1",
+				InstanceID:       "0",
+				Channel:          "Master",
+			},
+		},
+	}
+	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
+	b, err := xml.Marshal(d)
+	if err != nil {
+		return nil, errors.Wrap(err, "getMuteSoapBuild Marshal error")
 	}
 
 	return append(xmlStart, b...), nil

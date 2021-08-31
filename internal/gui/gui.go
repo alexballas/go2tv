@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -27,26 +28,29 @@ import (
 
 // NewScreen .
 type NewScreen struct {
-	Current         fyne.Window
-	Play            *widget.Button
-	Pause           *widget.Button
-	Stop            *widget.Button
-	CustomSubsCheck *widget.Check
-	VideoText       *widget.Entry
-	SubsText        *widget.Entry
-	DeviceList      *widget.List
-	Videoloop       bool
-	NextVideo       bool
-	State           string
-	videofile       filestruct
-	subsfile        filestruct
-	tvdata          *soapcalls.TVPayload
-	transportURL    string
-	controlURL      string
-	currentvfolder  string
-	mu              sync.Mutex
-	httpserver      *httphandlers.HTTPserver
-	videoFormats    []string
+	Current             fyne.Window
+	Play                *widget.Button
+	Pause               *widget.Button
+	Stop                *widget.Button
+	Mute                *widget.Button
+	Unmute              *widget.Button
+	CustomSubsCheck     *widget.Check
+	VideoText           *widget.Entry
+	SubsText            *widget.Entry
+	DeviceList          *widget.List
+	Videoloop           bool
+	NextVideo           bool
+	State               string
+	videofile           filestruct
+	subsfile            filestruct
+	tvdata              *soapcalls.TVPayload
+	controlURL          string
+	eventlURL           string
+	renderingControlURL string
+	currentvfolder      string
+	mu                  sync.Mutex
+	httpserver          *httphandlers.HTTPserver
+	videoFormats        []string
 }
 
 type devType struct {
@@ -59,10 +63,51 @@ type filestruct struct {
 	urlEncoded string
 }
 
+type mainButtonsLayout struct {
+}
+
+func (d *mainButtonsLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	w, h := float32(0), float32(0)
+	for _, o := range objects {
+		childSize := o.MinSize()
+		w += childSize.Width
+		h = childSize.Height
+	}
+	return fyne.NewSize(w, h)
+}
+
+func (d *mainButtonsLayout) Layout(objects []fyne.CanvasObject, containerSize fyne.Size) {
+	pos := fyne.NewPos(0, 0)
+
+	bigButtonSize := containerSize.Width
+	for q, o := range objects {
+		z := q + 1
+		if z%2 == 0 {
+			bigButtonSize = bigButtonSize - o.MinSize().Width
+		}
+	}
+	bigButtonSize = bigButtonSize / 2
+
+	for q, o := range objects {
+		var size fyne.Size
+		switch q % 2 {
+		case 0:
+			size = fyne.NewSize(bigButtonSize, o.MinSize().Height)
+		default:
+			size = o.MinSize()
+		}
+		o.Resize(size)
+		o.Move(pos)
+
+		pos = pos.Add(fyne.NewPos(size.Width, 0))
+	}
+}
+
 // Start .
 func Start(s *NewScreen) {
 	w := s.Current
 	refreshDevices := time.NewTicker(10 * time.Second)
+	checkMute := time.NewTicker(1 * time.Second)
 
 	list := new(widget.List)
 
@@ -102,6 +147,12 @@ func Start(s *NewScreen) {
 	stop := widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
 		go stopAction(s)
 	})
+	mute := widget.NewButtonWithIcon("", theme.VolumeMuteIcon(), func() {
+		go muteAction(s)
+	})
+	unmute := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() {
+		go unmuteAction(s)
+	})
 
 	sfilecheck := widget.NewCheck("Custom Subtitles", func(b bool) {})
 	videoloop := widget.NewCheck("Loop Selected Video", func(b bool) {})
@@ -111,6 +162,7 @@ func Start(s *NewScreen) {
 	subsfilelabel := canvas.NewText("Subtitle:", theme.ForegroundColor())
 	devicelabel := canvas.NewText("Select Device:", theme.ForegroundColor())
 	pause.Hide()
+	unmute.Hide()
 
 	list = widget.NewList(
 		func() int {
@@ -126,6 +178,8 @@ func Start(s *NewScreen) {
 	s.Play = play
 	s.Pause = pause
 	s.Stop = stop
+	s.Mute = mute
+	s.Unmute = unmute
 	s.CustomSubsCheck = sfilecheck
 	s.VideoText = vfiletext
 	s.SubsText = sfiletext
@@ -133,21 +187,26 @@ func Start(s *NewScreen) {
 
 	// Organising widgets in the window
 	playpause := container.New(layout.NewMaxLayout(), play, pause)
-	playpausestop := container.New(layout.NewGridLayout(2), playpause, stop)
+	muteunmute := container.New(layout.NewMaxLayout(), mute, unmute)
+	playpausemutestop := container.New(&mainButtonsLayout{}, playpause, muteunmute, stop)
+
 	checklists := container.NewHBox(sfilecheck, videoloop, nextvideo)
 	videosubsbuttons := container.New(layout.NewGridLayout(2), vfile, sfile)
 	viewfilescont := container.New(layout.NewFormLayout(), videofilelabel, vfiletext, subsfilelabel, sfiletext)
 
-	buttons := container.NewVBox(videosubsbuttons, viewfilescont, checklists, playpausestop, devicelabel)
+	buttons := container.NewVBox(videosubsbuttons, viewfilescont, checklists, playpausemutestop, devicelabel)
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
 
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
 		play.Enable()
 		pause.Enable()
-		t, c, err := soapcalls.DMRextractor(data[id].addr)
-		s.transportURL, s.controlURL = t, c
+		t, err := soapcalls.DMRextractor(data[id].addr)
 		check(w, err)
+
+		if err == nil {
+			s.controlURL, s.eventlURL, s.renderingControlURL = t.AvtransportControlURL, t.AvtransportEventSubURL, t.RenderingControlURL
+		}
 	}
 
 	sfilecheck.OnChanged = func(b bool) {
@@ -177,19 +236,86 @@ func Start(s *NewScreen) {
 	// Device list auto-refresh
 	go func() {
 		for range refreshDevices.C {
-			data2, err := getDevices(2)
+			data2, _ := getDevices(2)
 			data = data2
-			if err != nil {
-				data = nil
-			}
 			list.Refresh()
 		}
 	}()
+
+	go func() {
+		for range checkMute.C {
+			if s.renderingControlURL == "" {
+				continue
+			}
+
+			if s.tvdata == nil {
+				s.tvdata = &soapcalls.TVPayload{RenderingControlURL: s.renderingControlURL}
+			}
+
+			isMuted, err := s.tvdata.GetMuteSoapCall()
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+
+			switch isMuted {
+			case "1":
+				mute.Hide()
+				unmute.Show()
+			case "0":
+				mute.Show()
+				unmute.Hide()
+			}
+		}
+	}()
+
 	w.SetContent(content)
 	w.Resize(fyne.NewSize(w.Canvas().Size().Width*1.4, w.Canvas().Size().Height*1.6))
 	w.CenterOnScreen()
 	w.ShowAndRun()
 	os.Exit(0)
+}
+
+func muteAction(screen *NewScreen) {
+	w := screen.Current
+	if screen.renderingControlURL == "" {
+		check(w, errors.New("please select a device"))
+		return
+	}
+	if screen.tvdata == nil {
+		// If tvdata is nil, we just need to set RenderingControlURL if we want
+		// to control the sound. We should still rely on the play action to properly
+		// populate our tvdata type.
+		screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
+	}
+	//isMuted, _ := screen.tvdata.GetMuteSoapCall()
+	if err := screen.tvdata.SetMuteSoapCall("1"); err != nil {
+		check(w, errors.New("could not send mute action"))
+		return
+	}
+	screen.Unmute.Show()
+	screen.Mute.Hide()
+}
+
+func unmuteAction(screen *NewScreen) {
+	w := screen.Current
+	if screen.renderingControlURL == "" {
+		check(w, errors.New("please select a device"))
+		return
+	}
+	if screen.tvdata == nil {
+		// If tvdata is nil, we just need to set RenderingControlURL if we want
+		// to control the sound. We should still rely on the play action to properly
+		// populate our tvdata type.
+		screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
+	}
+	//isMuted, _ := screen.tvdata.GetMuteSoapCall()
+	if err := screen.tvdata.SetMuteSoapCall("0"); err != nil {
+		check(w, errors.New("could not send mute action"))
+		return
+	}
+	screen.Unmute.Hide()
+	screen.Mute.Show()
 }
 
 func videoAction(screen *NewScreen) {
@@ -248,8 +374,11 @@ func subsAction(screen *NewScreen) {
 
 		sfile := reader.URI().Path()
 		absSubtitlesFile, err := filepath.Abs(sfile)
-		subsFileURLencoded := &url.URL{Path: filepath.Base(absSubtitlesFile)}
 		check(w, err)
+		if err != nil {
+			return
+		}
+		subsFileURLencoded := &url.URL{Path: filepath.Base(absSubtitlesFile)}
 
 		screen.SubsText.Text = filepath.Base(sfile)
 		screen.subsfile = filestruct{
@@ -264,6 +393,9 @@ func subsAction(screen *NewScreen) {
 		vfileURI := storage.NewFileURI(screen.currentvfolder)
 		vfileLister, err := storage.ListerForURI(vfileURI)
 		check(w, err)
+		if err != nil {
+			return
+		}
 		fd.SetLocation(vfileLister)
 	}
 	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.4, w.Canvas().Size().Height*1.6))
@@ -285,7 +417,7 @@ func playAction(screen *NewScreen) {
 		screen.Play.Enable()
 		return
 	}
-	if screen.transportURL == "" {
+	if screen.controlURL == "" {
 		check(w, errors.New("please select a device"))
 		screen.Play.Enable()
 		return
@@ -295,16 +427,20 @@ func playAction(screen *NewScreen) {
 		stopAction(screen)
 	}
 
-	whereToListen, err := iptools.URLtoListenIPandPort(screen.transportURL)
+	whereToListen, err := iptools.URLtoListenIPandPort(screen.controlURL)
 	check(w, err)
+	if err != nil {
+		return
+	}
 
 	screen.tvdata = &soapcalls.TVPayload{
-		TransportURL:  screen.transportURL,
-		ControlURL:    screen.controlURL,
-		VideoURL:      "http://" + whereToListen + "/" + screen.videofile.urlEncoded,
-		SubtitlesURL:  "http://" + whereToListen + "/" + screen.subsfile.urlEncoded,
-		CallbackURL:   "http://" + whereToListen + "/callback",
-		CurrentTimers: make(map[string]*time.Timer),
+		ControlURL:          screen.controlURL,
+		EventURL:            screen.eventlURL,
+		RenderingControlURL: screen.renderingControlURL,
+		VideoURL:            "http://" + whereToListen + "/" + screen.videofile.urlEncoded,
+		SubtitlesURL:        "http://" + whereToListen + "/" + screen.subsfile.urlEncoded,
+		CallbackURL:         "http://" + whereToListen + "/callback",
+		CurrentTimers:       make(map[string]*time.Timer),
 	}
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)
@@ -314,8 +450,9 @@ func playAction(screen *NewScreen) {
 	// to the different media renderer states.
 	go func() {
 		err := screen.httpserver.ServeFiles(serverStarted, screen.videofile.abs, screen.subsfile.abs, screen.tvdata, screen)
+		check(w, err)
 		if err != nil {
-			check(w, err)
+			return
 		}
 	}()
 	// Wait for the HTTP server to properly initialize.
@@ -330,7 +467,7 @@ func playAction(screen *NewScreen) {
 			screen.DeviceList.Unselect(lsize - 1)
 			screen.DeviceList.Refresh()
 		}
-		screen.transportURL = ""
+		screen.controlURL = ""
 		stopAction(screen)
 	}
 }
@@ -348,7 +485,7 @@ func stopAction(screen *NewScreen) {
 	screen.Play.Enable()
 	screen.Pause.Enable()
 
-	if screen.tvdata == nil {
+	if screen.tvdata == nil || screen.tvdata.ControlURL == "" {
 		return
 	}
 	err := screen.tvdata.SendtoTV("Stop")
