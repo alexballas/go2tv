@@ -76,7 +76,6 @@ func (p *NewScreen) EmitMsg(inputtext string) {
 
 // InterInit - Start the interactive terminal
 func (p *NewScreen) InterInit(tv *soapcalls.TVPayload) {
-	var videoTitle string
 	p.TV = tv
 
 	muteChecker := time.NewTicker(1 * time.Second)
@@ -87,13 +86,11 @@ func (p *NewScreen) InterInit(tv *soapcalls.TVPayload) {
 		}
 	}()
 
+	p.videoTitle = tv.VideoURL
 	videoTitlefromURL, err := url.Parse(tv.VideoURL)
-	if err != nil {
-		videoTitle = tv.VideoURL
-	} else {
-		videoTitle = strings.TrimLeft(videoTitlefromURL.Path, "/")
+	if err == nil {
+		p.videoTitle = strings.TrimLeft(videoTitlefromURL.Path, "/")
 	}
-	p.videoTitle = videoTitle
 
 	encoding.Register()
 	s := p.Current
@@ -116,34 +113,44 @@ func (p *NewScreen) InterInit(tv *soapcalls.TVPayload) {
 			s.Sync()
 			p.EmitMsg(p.lastAction)
 		case *tcell.EventKey:
-			if ev.Key() == tcell.KeyEscape {
-				tv.SendtoTV("Stop")
-				s.Fini()
-				os.Exit(0)
-			} else if ev.Rune() == 'p' {
-				if flipflop {
-					flipflop = false
-					tv.SendtoTV("Pause")
-				} else {
-					flipflop = true
-					tv.SendtoTV("Play")
-				}
-			} else if ev.Rune() == 'm' {
-				currentMute, err := tv.GetMuteSoapCall()
-				if err != nil {
-					continue
-				}
+			p.HandleKeyEvent(ev)
+		}
+	}
+}
 
-				switch currentMute {
-				case "1":
-					if err = tv.SetMuteSoapCall("0"); err == nil {
-						p.EmitMsg(p.lastAction)
-					}
-				case "0":
-					if err = tv.SetMuteSoapCall("1"); err == nil {
-						p.EmitMsg(p.lastAction)
-					}
-				}
+// HandleKeyEvent Method to handle all key press events
+func (p *NewScreen) HandleKeyEvent(ev *tcell.EventKey) {
+	s := p.Current
+	tv := p.TV
+
+	if ev.Key() == tcell.KeyEscape {
+		tv.SendtoTV("Stop")
+		s.Fini()
+		os.Exit(0)
+	}
+
+	switch ev.Rune() {
+	case 'p':
+		if flipflop {
+			flipflop = false
+			tv.SendtoTV("Pause")
+		} else {
+			flipflop = true
+			tv.SendtoTV("Play")
+		}
+	case 'm':
+		currentMute, err := tv.GetMuteSoapCall()
+		if err != nil {
+			break
+		}
+		switch currentMute {
+		case "1":
+			if err = tv.SetMuteSoapCall("0"); err == nil {
+				p.EmitMsg(p.lastAction)
+			}
+		case "0":
+			if err = tv.SetMuteSoapCall("1"); err == nil {
+				p.EmitMsg(p.lastAction)
 			}
 		}
 	}

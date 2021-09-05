@@ -63,8 +63,7 @@ type filestruct struct {
 	urlEncoded string
 }
 
-type mainButtonsLayout struct {
-}
+type mainButtonsLayout struct{}
 
 func (d *mainButtonsLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
 	w, h := float32(0), float32(0)
@@ -471,6 +470,7 @@ func playAction(screen *NewScreen) {
 		stopAction(screen)
 	}
 }
+
 func pauseAction(screen *NewScreen) {
 	w := screen.Current
 	screen.Pause.Disable()
@@ -533,16 +533,16 @@ func (p *NewScreen) EmitMsg(a string) {
 		p.Pause.Show()
 		p.Play.Hide()
 		p.Play.Enable()
-		p.UpdateScreenState("Playing")
+		p.updateScreenState("Playing")
 	case "Paused":
 		p.Play.Show()
 		p.Pause.Hide()
 		p.Pause.Enable()
-		p.UpdateScreenState("Paused")
+		p.updateScreenState("Paused")
 	case "Stopped":
 		p.Play.Show()
 		p.Pause.Hide()
-		p.UpdateScreenState("Stopped")
+		p.updateScreenState("Stopped")
 	default:
 		dialog.ShowInformation("?", "Unknown callback value", p.Current)
 	}
@@ -584,10 +584,10 @@ func check(win fyne.Window, err error) {
 	}
 }
 
-// UpdateScreenState updates the screen state based on
+// updateScreenState updates the screen state based on
 // the emitted messages. The State variable is used across
 // the GUI interface to control certain flows.
-func (p *NewScreen) UpdateScreenState(a string) {
+func (p *NewScreen) updateScreenState(a string) {
 	p.mu.Lock()
 	p.State = a
 	p.mu.Unlock()
@@ -636,7 +636,7 @@ func selectNextVideo(screen *NewScreen) {
 }
 
 func selectSubs(v string, screen *NewScreen) {
-	possibleSub := (v)[0:len(v)-
+	possibleSub := v[0:len(v)-
 		len(filepath.Ext(v))] + ".srt"
 
 	if _, err := os.Stat(possibleSub); os.IsNotExist(err) {
