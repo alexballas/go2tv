@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/alexballas/go2tv/internal/soapcalls"
-	"github.com/pkg/errors"
 )
 
 // HTTPserver - new http.Server instance.
@@ -46,7 +45,7 @@ func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtit
 
 	ln, err := net.Listen("tcp", s.http.Addr)
 	if err != nil {
-		return errors.Wrap(err, "Server Listen fail")
+		return fmt.Errorf("server listen error: %w", err)
 	}
 
 	serverStarted <- struct{}{}

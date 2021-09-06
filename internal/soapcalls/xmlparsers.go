@@ -2,6 +2,7 @@ package soapcalls
 
 import (
 	"encoding/xml"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -60,6 +61,7 @@ type EventTransportState struct {
 	Value string `xml:"val,attr"`
 }
 
+// DMRextracted .
 type DMRextracted struct {
 	AvtransportControlURL  string
 	AvtransportEventSubURL string
@@ -73,24 +75,24 @@ func DMRextractor(dmrurl string) (*DMRextracted, error) {
 
 	parsedURL, err := url.Parse(dmrurl)
 	if err != nil {
-		return nil, errors.Wrap(err, "DMRextractor parse error")
+		return nil, fmt.Errorf("DMRextractor parse error: %w", err)
 	}
 
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", dmrurl, nil)
 	if err != nil {
-		return nil, errors.Wrap(err, "DMRextractor GET error")
+		return nil, fmt.Errorf("DMRextractor GET error: %w", err)
 	}
 
 	xmlresp, err := client.Do(req)
 	if err != nil {
-		return nil, errors.Wrap(err, "DMRextractor Do GET error")
+		return nil, fmt.Errorf("DMRextractor Do GET error: %w", err)
 	}
 	defer xmlresp.Body.Close()
 
 	xmlbody, err := io.ReadAll(xmlresp.Body)
 	if err != nil {
-		return nil, errors.Wrap(err, "DMRextractor read error")
+		return nil, fmt.Errorf("DMRextractor read error: %w", err)
 	}
 	xml.Unmarshal(xmlbody, &root)
 	for i := 0; i < len(root.Device.ServiceList.Services); i++ {
@@ -116,7 +118,7 @@ func EventNotifyParser(xmlbody string) (string, string, error) {
 	var root EventPropertySet
 	err := xml.Unmarshal([]byte(xmlbody), &root)
 	if err != nil {
-		return "", "", errors.Wrap(err, "EventNotifyParser unmarshal error")
+		return "", "", fmt.Errorf("EventNotifyParser unmarshal error: %w", err)
 	}
 	previousstate := root.EventInstance.EventCurrentTransportActions.Value
 	newstate := root.EventInstance.EventTransportState.Value

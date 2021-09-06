@@ -145,16 +145,16 @@ func checkflags() (exit bool, err error) {
 	}
 
 	if err := checkTflag(); err != nil {
-		return false, errors.Wrap(err, "checkflags error")
+		return false, fmt.Errorf("checkflags error: %w", err)
 	}
 
 	list, err := checkLflag()
 	if err != nil {
-		return false, errors.Wrap(err, "checkflags error")
+		return false, fmt.Errorf("checkflags error: %w", err)
 	}
 
 	if err := checkVflag(); err != nil {
-		return false, errors.Wrap(err, "checkflags error")
+		return false, fmt.Errorf("checkflags error: %w", err)
 	}
 
 	if list {
@@ -162,7 +162,7 @@ func checkflags() (exit bool, err error) {
 	}
 
 	if err := checkSflag(); err != nil {
-		return false, errors.Wrap(err, "checkflags error")
+		return false, fmt.Errorf("checkflags error: %w", err)
 	}
 
 	return false, nil
@@ -171,7 +171,7 @@ func checkflags() (exit bool, err error) {
 func checkVflag() error {
 	if !*listPtr {
 		if _, err := os.Stat(*videoArg); os.IsNotExist(err) {
-			return errors.Wrap(err, "checkVflag error")
+			return fmt.Errorf("checkVflags error: %w", err)
 		}
 	}
 
@@ -181,7 +181,7 @@ func checkVflag() error {
 func checkSflag() error {
 	if *subsArg != "" {
 		if _, err := os.Stat(*subsArg); os.IsNotExist(err) {
-			return errors.Wrap(err, "checkSflag error")
+			return fmt.Errorf("checkSflags error: %w", err)
 		}
 	} else {
 		// The checkVflag should happen before
@@ -200,18 +200,18 @@ func checkTflag() error {
 	if *targetPtr == "" {
 		err := devices.LoadSSDPservices(1)
 		if err != nil {
-			return errors.Wrap(err, "checkTflag service loading error")
+			return fmt.Errorf("checkTflag service loading error: %w", err)
 		}
 
 		dmrURL, err = devices.DevicePicker(1)
 		if err != nil {
-			return errors.Wrap(err, "checkTflag device picker error")
+			return fmt.Errorf("checkTflag device picker error: %w", err)
 		}
 	} else {
 		// Validate URL before proceeding.
 		_, err := url.ParseRequestURI(*targetPtr)
 		if err != nil {
-			return errors.Wrap(err, "checkTflag parse error")
+			return fmt.Errorf("checkTflag parse error: %w", err)
 		}
 		dmrURL = *targetPtr
 	}
@@ -222,7 +222,7 @@ func checkTflag() error {
 func checkLflag() (bool, error) {
 	if *listPtr {
 		if err := listFlagFunction(); err != nil {
-			return false, errors.Wrap(err, "checkLflag error")
+			return false, fmt.Errorf("checkLflag error: %w", err)
 		}
 		return true, nil
 	}

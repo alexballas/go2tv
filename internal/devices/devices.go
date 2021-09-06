@@ -1,6 +1,7 @@
 package devices
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/koron/go-ssdp"
@@ -17,7 +18,7 @@ func LoadSSDPservices(delay int) error {
 	Devices = make(map[int][]string)
 	list, err := ssdp.Search(ssdp.All, delay, "")
 	if err != nil {
-		return errors.Wrap(err, "LoadSSDPservices search error")
+		return fmt.Errorf("LoadSSDPservices search error: %w", err)
 	}
 
 	counter := 0

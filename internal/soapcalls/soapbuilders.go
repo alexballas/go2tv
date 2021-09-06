@@ -3,10 +3,9 @@ package soapcalls
 import (
 	"bytes"
 	"encoding/xml"
+	"fmt"
 	"net/url"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 // PlayEnvelope - As in Play Pause Stop.
@@ -185,7 +184,7 @@ type GetMuteBody struct {
 	GetMuteAction GetMuteAction `xml:"u:GetMute"`
 }
 
-// SetMuteAction .
+// GetMuteAction .
 type GetMuteAction struct {
 	XMLName          xml.Name `xml:"u:GetMute"`
 	RenderingControl string   `xml:"xmlns:u,attr"`
@@ -239,7 +238,7 @@ func setAVTransportSoapBuild(videoURL, subtitleURL string) ([]byte, error) {
 	}
 	a, err := xml.Marshal(l)
 	if err != nil {
-		return nil, errors.Wrap(err, "setAVTransportSoapBuild #1 Marshal error")
+		return nil, fmt.Errorf("setAVTransportSoapBuild #1 Marshal error: %w", err)
 	}
 
 	d := SetAVTransportEnvelope{
@@ -263,7 +262,7 @@ func setAVTransportSoapBuild(videoURL, subtitleURL string) ([]byte, error) {
 	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
 	b, err := xml.Marshal(d)
 	if err != nil {
-		return nil, errors.Wrap(err, "setAVTransportSoapBuild #2 Marshal error")
+		return nil, fmt.Errorf("setAVTransportSoapBuild #2 Marshal error: %w", err)
 	}
 	// That looks like an issue just with my Samsung TV.
 	b = bytes.ReplaceAll(b, []byte("&#34;"), []byte(`"`))
@@ -290,7 +289,7 @@ func playSoapBuild() ([]byte, error) {
 	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
 	b, err := xml.Marshal(d)
 	if err != nil {
-		return nil, errors.Wrap(err, "playSoapBuild Marshal error")
+		return nil, fmt.Errorf("playSoapBuild Marshal error: %w", err)
 	}
 
 	return append(xmlStart, b...), nil
@@ -314,7 +313,7 @@ func stopSoapBuild() ([]byte, error) {
 	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
 	b, err := xml.Marshal(d)
 	if err != nil {
-		return nil, errors.Wrap(err, "stopSoapBuild Marshal error")
+		return nil, fmt.Errorf("stopSoapBuild Marshal error: %w", err)
 	}
 
 	return append(xmlStart, b...), nil
@@ -338,7 +337,7 @@ func pauseSoapBuild() ([]byte, error) {
 	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
 	b, err := xml.Marshal(d)
 	if err != nil {
-		return nil, errors.Wrap(err, "pauseSoapBuild Marshal error")
+		return nil, fmt.Errorf("pauseSoapBuild Marshal error: %w", err)
 	}
 
 	return append(xmlStart, b...), nil
@@ -363,7 +362,7 @@ func setMuteSoapBuild(m string) ([]byte, error) {
 	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
 	b, err := xml.Marshal(d)
 	if err != nil {
-		return nil, errors.Wrap(err, "setMuteSoapBuild Marshal error")
+		return nil, fmt.Errorf("setMuteSoapBuild Marshal error: %w", err)
 	}
 
 	return append(xmlStart, b...), nil
@@ -387,7 +386,7 @@ func getMuteSoapBuild() ([]byte, error) {
 	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
 	b, err := xml.Marshal(d)
 	if err != nil {
-		return nil, errors.Wrap(err, "getMuteSoapBuild Marshal error")
+		return nil, fmt.Errorf("getMuteSoapBuild Marshal error: %w", err)
 	}
 
 	return append(xmlStart, b...), nil
