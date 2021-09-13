@@ -1,6 +1,6 @@
 <br/>
 <p align="center">
-<img src="https://raw.githubusercontent.com/alexballas/Go2TV/feature/gui/assets/go2tv-red.svg" width="225" alt="Go2TV logo">
+<img src="https://raw.githubusercontent.com/alexballas/go2tv/main/assets/go2tv-red.svg" width="225" alt="Go2TV logo">
 </a>
 </p>
 <br/>
