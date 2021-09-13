@@ -242,7 +242,16 @@ func Start(s *NewScreen) {
 	}()
 
 	go func() {
+		var checkMuteCounter int
 		for range checkMute.C {
+
+			// Stop trying after 5 failures
+			// to get the mute status
+			if checkMuteCounter == 5 {
+				s.renderingControlURL = ""
+				checkMuteCounter = 0
+			}
+
 			if s.renderingControlURL == "" {
 				continue
 			}
@@ -253,9 +262,12 @@ func Start(s *NewScreen) {
 
 			isMuted, err := s.tvdata.GetMuteSoapCall()
 			if err != nil {
+				checkMuteCounter++
 				fmt.Println(err)
 				continue
 			}
+
+			checkMuteCounter = 0
 
 			switch isMuted {
 			case "1":
