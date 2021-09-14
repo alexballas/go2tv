@@ -299,7 +299,7 @@ func muteAction(screen *NewScreen) {
 		// populate our tvdata type.
 		screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
 	}
-	//isMuted, _ := screen.tvdata.GetMuteSoapCall()
+
 	if err := screen.tvdata.SetMuteSoapCall("1"); err != nil {
 		check(w, errors.New("could not send mute action"))
 		return

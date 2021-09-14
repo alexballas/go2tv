@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/alexballas/go2tv/internal/dlnatools"
 	"github.com/alexballas/go2tv/internal/soapcalls"
 )
 
@@ -55,8 +56,9 @@ func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtit
 
 func (s *HTTPserver) serveVideoHandler(video string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		w.Header().Set("transferMode.dlna.org", "Streaming")
-		w.Header().Set("contentFeatures.dlna.org", "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=017000 00000000000000000000000000")
+		respHeader := w.Header()
+		respHeader["transferMode.dlna.org"] = []string{"Streaming"}
+		respHeader["contentFeatures.dlna.org"] = []string{dlnatools.BuildContentFeatures(video)}
 
 		filePath, err := os.Open(video)
 		if err != nil {
@@ -77,8 +79,8 @@ func (s *HTTPserver) serveVideoHandler(video string) http.HandlerFunc {
 
 func (s *HTTPserver) serveSubtitlesHandler(subs string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		w.Header().Set("transferMode.dlna.org", "Streaming")
-		w.Header().Set("contentFeatures.dlna.org", "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=017000 00000000000000000000000000")
+		respHeader := w.Header()
+		respHeader["transferMode.dlna.org"] = []string{"Interactive"}
 
 		filePath, err := os.Open(subs)
 		if err != nil {
