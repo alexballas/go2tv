@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
 )
 
@@ -65,7 +66,11 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 		return fmt.Errorf("setAVTransportSoapCall soap build error: %w", err)
 	}
 
-	client := &http.Client{}
+	retryClient := retryablehttp.NewClient()
+	retryClient.RetryMax = 3
+	retryClient.Logger = nil
+	client := retryClient.StandardClient()
+
 	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xml))
 	if err != nil {
 		return fmt.Errorf("setAVTransportSoapCall POST error: %w", err)
@@ -95,12 +100,14 @@ func (p *TVPayload) playStopPauseSoapCall(action string) error {
 	}
 
 	var xml []byte
+	retry := false
 
 	switch action {
 	case "Play":
 		xml, err = playSoapBuild()
 	case "Stop":
 		xml, err = stopSoapBuild()
+		retry = true
 	case "Pause":
 		xml, err = pauseSoapBuild()
 	}
@@ -109,6 +116,14 @@ func (p *TVPayload) playStopPauseSoapCall(action string) error {
 	}
 
 	client := &http.Client{}
+
+	if retry {
+		retryClient := retryablehttp.NewClient()
+		retryClient.RetryMax = 3
+		retryClient.Logger = nil
+		client = retryClient.StandardClient()
+	}
+
 	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xml))
 	if err != nil {
 		return fmt.Errorf("playStopPauseSoapCall POST error: %w", err)
@@ -145,7 +160,11 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 		return fmt.Errorf("SubscribeSoapCall #2 parse error: %w", err)
 	}
 
-	client := &http.Client{}
+	retryClient := retryablehttp.NewClient()
+	retryClient.RetryMax = 3
+	retryClient.Logger = nil
+
+	client := retryClient.StandardClient()
 
 	req, err := http.NewRequest("SUBSCRIBE", parsedURLcontrol.String(), nil)
 	if err != nil {

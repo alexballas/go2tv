@@ -152,6 +152,12 @@ func Start(s *NewScreen) {
 	unmute := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() {
 		go unmuteAction(s)
 	})
+	clearvideo := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+		go clearvideoAction(s)
+	})
+	clearsubs := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+		go clearsubsAction(s)
+	})
 
 	sfilecheck := widget.NewCheck("Custom Subtitles", func(b bool) {})
 	videoloop := widget.NewCheck("Loop Selected Video", func(b bool) {})
@@ -191,8 +197,10 @@ func Start(s *NewScreen) {
 
 	checklists := container.NewHBox(sfilecheck, videoloop, nextvideo)
 	videosubsbuttons := container.New(layout.NewGridLayout(2), vfile, sfile)
-	viewfilescont := container.New(layout.NewFormLayout(), videofilelabel, vfiletext, subsfilelabel, sfiletext)
+	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
+	vfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearvideo), clearvideo, vfiletext)
 
+	viewfilescont := container.New(layout.NewFormLayout(), videofilelabel, vfiletextArea, subsfilelabel, sfiletextArea)
 	buttons := container.NewVBox(videosubsbuttons, viewfilescont, checklists, playpausemutestop, devicelabel)
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
 
@@ -489,6 +497,18 @@ func pauseAction(screen *NewScreen) {
 
 	err := screen.tvdata.SendtoTV("Pause")
 	check(w, err)
+}
+
+func clearvideoAction(screen *NewScreen) {
+	screen.VideoText.Text = ""
+	screen.videofile.urlEncoded = ""
+	screen.VideoText.Refresh()
+}
+
+func clearsubsAction(screen *NewScreen) {
+	screen.SubsText.Text = ""
+	screen.subsfile.urlEncoded = ""
+	screen.SubsText.Refresh()
 }
 
 func stopAction(screen *NewScreen) {
