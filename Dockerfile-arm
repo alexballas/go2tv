@@ -1,0 +1,10 @@
+
+FROM golang:1.17.1-bullseye
+
+RUN apt-get -q update\
+	&& apt install -y xorg-dev
+
+COPY ./ /root/go2tv/
+
+ENV GODEBUG=asyncpreemptoff=1
+RUN cd /root/go2tv/ && make
