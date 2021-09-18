@@ -45,8 +45,7 @@ Build requirements
 
 Quick Start
 -----
-Download the app here https://github.com/alexballas/Go2TV/releases/latest.
-A single executable. No installation or external dependencies.
+Download the app here https://github.com/alexballas/Go2TV/releases/latest. A single executable. No installation or external dependencies.
 
 Tested on
 -----
