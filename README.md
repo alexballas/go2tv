@@ -17,7 +17,7 @@ Go2TV lets you cast your videos to any UPnP/DLNA MediaRenderer like Samsumg and 
 ---
 GUI mode
 -----
-![](https://i.imgur.com/JdNWK4X.png)
+![](https://i.imgur.com/ppDNWBx.png)
 
 CLI mode
 -----
