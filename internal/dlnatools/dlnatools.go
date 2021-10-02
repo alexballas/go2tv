@@ -8,20 +8,23 @@ import (
 )
 
 var (
-	//DLNA_ORG_FLAG_SENDER_PACED               = 1 << 31
-	//DLNA_ORG_FLAG_TIME_BASED_SEEK            = 1 << 30
-	DLNA_ORG_FLAG_BYTE_BASED_SEEK = 1 << 29
-	//DLNA_ORG_FLAG_PLAY_CONTAINER             = 1 << 28
-	//DLNA_ORG_FLAG_S0_INCREASE                = 1 << 27
-	//DLNA_ORG_FLAG_SN_INCREASE                = 1 << 26
-	//DLNA_ORG_FLAG_RTSP_PAUSE                 = 1 << 25
-	DLNA_ORG_FLAG_STREAMING_TRANSFER_MODE = 1 << 24
-	//DLNA_ORG_FLAG_INTERACTIVE_TRANSFERT_MODE = 1 << 23
-	DLNA_ORG_FLAG_BACKGROUND_TRANSFERT_MODE = 1 << 22
-	DLNA_ORG_FLAG_CONNECTION_STALL          = 1 << 21
-	DLNA_ORG_FLAG_DLNA_V15                  = 1 << 20
+	// If we're looking to use the dlnaOrgFlagSenderPaced
+	// flag for a 32bit build, we need to make sure that we
+	// first convert all the flag types to int64
+	//dlnaOrgFlagSenderPaced               = 1 << 31
+	//dlnaOrgFlagTimeBasedSeek            = 1 << 30
+	dlnaOrgFlagByteBasedSeek = 1 << 29
+	//dlnaOrgFlagPlayContainer             = 1 << 28
+	//dlnaOrgFlagS0Increase                = 1 << 27
+	//dlnaOrgFlagSnIncrease                = 1 << 26
+	//dlnaOrgFlagRtspPause                 = 1 << 25
+	dlnaOrgFlagStreamingTransferMode = 1 << 24
+	//dlnaOrgFlagInteractiveTransfertMode = 1 << 23
+	dlnaOrgFlagBackgroundTransfertMode = 1 << 22
+	dlnaOrgFlagConnectionStall         = 1 << 21
+	dlnaOrgFlagDlnaV15                 = 1 << 20
 
-	DLNAprofiles = map[string]string{
+	dlnaprofiles = map[string]string{
 		"video/x-mkv":             "DLNA.ORG_PN=MATROSKA",
 		"video/x-msvideo":         "DLNA.ORG_PN=AVI",
 		"video/mpeg":              "DLNA.ORG_PN=MPEG1",
@@ -34,21 +37,23 @@ var (
 )
 
 func defaultStreamingFlags() string {
-	return fmt.Sprintf("%.8x%.24x\n", DLNA_ORG_FLAG_STREAMING_TRANSFER_MODE|
-		DLNA_ORG_FLAG_BACKGROUND_TRANSFERT_MODE|
-		DLNA_ORG_FLAG_CONNECTION_STALL|
-		DLNA_ORG_FLAG_BYTE_BASED_SEEK|
-		DLNA_ORG_FLAG_DLNA_V15, 0)
+	return fmt.Sprintf("%.8x%.24x\n", dlnaOrgFlagStreamingTransferMode|
+		dlnaOrgFlagBackgroundTransfertMode|
+		dlnaOrgFlagConnectionStall|
+		dlnaOrgFlagByteBasedSeek|
+		dlnaOrgFlagDlnaV15, 0)
 }
 
+// BuildContentFeatures - Build the content features string
+// for the "contentFeatures.dlna.org" header.
 func BuildContentFeatures(file string) string {
 	var cf strings.Builder
 
 	ctype := mime.TypeByExtension(filepath.Ext(file))
 
-	dlna_prof, profExists := DLNAprofiles[ctype]
+	dlnaProf, profExists := dlnaprofiles[ctype]
 	if profExists {
-		cf.WriteString(dlna_prof + ";")
+		cf.WriteString(dlnaProf + ";")
 	}
 
 	cf.WriteString("DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=")
