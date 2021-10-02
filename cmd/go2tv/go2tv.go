@@ -16,6 +16,7 @@ import (
 	"github.com/alexballas/go2tv/internal/interactive"
 	"github.com/alexballas/go2tv/internal/iptools"
 	"github.com/alexballas/go2tv/internal/soapcalls"
+	"github.com/alexballas/go2tv/internal/utils"
 	"github.com/pkg/errors"
 )
 
@@ -64,18 +65,13 @@ func main() {
 	scr, err := interactive.InitTcellNewScreen()
 	check(err)
 
-	// The String() method of the net/url package will properly escape the URL
-	// compared to the url.QueryEscape() method.
-	videoFileURLencoded := &url.URL{Path: filepath.Base(absVideoFile)}
-	subsFileURLencoded := &url.URL{Path: filepath.Base(absSubtitlesFile)}
-
 	tvdata := &soapcalls.TVPayload{
 		ControlURL:          upnpServicesURLs.AvtransportControlURL,
 		EventURL:            upnpServicesURLs.AvtransportEventSubURL,
 		RenderingControlURL: upnpServicesURLs.RenderingControlURL,
 		CallbackURL:         "http://" + whereToListen + "/callback",
-		VideoURL:            "http://" + whereToListen + "/" + videoFileURLencoded.String(),
-		SubtitlesURL:        "http://" + whereToListen + "/" + subsFileURLencoded.String(),
+		VideoURL:            "http://" + whereToListen + "/" + utils.ConvertFilename(absVideoFile),
+		SubtitlesURL:        "http://" + whereToListen + "/" + utils.ConvertFilename(absSubtitlesFile),
 		CurrentTimers:       make(map[string]*time.Timer),
 	}
 

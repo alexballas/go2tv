@@ -2,7 +2,6 @@ package gui
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -23,6 +22,7 @@ import (
 	"github.com/alexballas/go2tv/internal/httphandlers"
 	"github.com/alexballas/go2tv/internal/iptools"
 	"github.com/alexballas/go2tv/internal/soapcalls"
+	"github.com/alexballas/go2tv/internal/utils"
 	"github.com/pkg/errors"
 )
 
@@ -351,11 +351,10 @@ func videoAction(screen *NewScreen) {
 		absVideoFile, err := filepath.Abs(vfile)
 		check(w, err)
 
-		videoFileURLencoded := &url.URL{Path: filepath.Base(absVideoFile)}
 		screen.VideoText.Text = filepath.Base(vfile)
 		screen.videofile = filestruct{
 			abs:        absVideoFile,
-			urlEncoded: videoFileURLencoded.String(),
+			urlEncoded: utils.ConvertFilename(absVideoFile),
 		}
 
 		if !screen.CustomSubsCheck.Checked {
@@ -397,12 +396,11 @@ func subsAction(screen *NewScreen) {
 		if err != nil {
 			return
 		}
-		subsFileURLencoded := &url.URL{Path: filepath.Base(absSubtitlesFile)}
 
 		screen.SubsText.Text = filepath.Base(sfile)
 		screen.subsfile = filestruct{
 			abs:        absSubtitlesFile,
-			urlEncoded: subsFileURLencoded.String(),
+			urlEncoded: utils.ConvertFilename(absSubtitlesFile),
 		}
 		screen.SubsText.Refresh()
 	}, w)
@@ -651,11 +649,10 @@ func selectNextVideo(screen *NewScreen) {
 		}
 
 		if breaknext {
-			videoFileURLencoded := &url.URL{Path: f.Name()}
 			screen.VideoText.Text = f.Name()
 			screen.videofile = filestruct{
 				abs:        filepath.Join(filedir, f.Name()),
-				urlEncoded: videoFileURLencoded.String(),
+				urlEncoded: utils.ConvertFilename(f.Name()),
 			}
 			screen.VideoText.Refresh()
 
@@ -675,12 +672,11 @@ func selectSubs(v string, screen *NewScreen) {
 		screen.SubsText.Text = ""
 		screen.subsfile = filestruct{}
 	} else {
-		subsFileURLencoded := &url.URL{Path: filepath.Base(possibleSub)}
 		screen.SubsText.Text = filepath.Base(possibleSub)
 
 		screen.subsfile = filestruct{
 			abs:        possibleSub,
-			urlEncoded: subsFileURLencoded.String(),
+			urlEncoded: utils.ConvertFilename(possibleSub),
 		}
 	}
 	screen.SubsText.Refresh()
