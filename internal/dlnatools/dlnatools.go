@@ -11,13 +11,13 @@ var (
 	// If we're looking to use the dlnaOrgFlagSenderPaced
 	// flag for a 32bit build, we need to make sure that we
 	// first convert all the flag types to int64
-	//dlnaOrgFlagSenderPaced               = 1 << 31
-	//dlnaOrgFlagTimeBasedSeek            = 1 << 30
-	dlnaOrgFlagByteBasedSeek = 1 << 29
-	//dlnaOrgFlagPlayContainer             = 1 << 28
-	//dlnaOrgFlagS0Increase                = 1 << 27
-	//dlnaOrgFlagSnIncrease                = 1 << 26
-	//dlnaOrgFlagRtspPause                 = 1 << 25
+	//dlnaOrgFlagSenderPaced = 1 << 31
+	//dlnaOrgFlagTimeBasedSeek = 1 << 30
+	//dlnaOrgFlagByteBasedSeek = 1 << 29
+	//dlnaOrgFlagPlayContainer = 1 << 28
+	//dlnaOrgFlagS0Increase = 1 << 27
+	//dlnaOrgFlagSnIncrease = 1 << 26
+	//dlnaOrgFlagRtspPause = 1 << 25
 	dlnaOrgFlagStreamingTransferMode = 1 << 24
 	//dlnaOrgFlagInteractiveTransfertMode = 1 << 23
 	dlnaOrgFlagBackgroundTransfertMode = 1 << 22
@@ -40,7 +40,6 @@ func defaultStreamingFlags() string {
 	return fmt.Sprintf("%.8x%.24x\n", dlnaOrgFlagStreamingTransferMode|
 		dlnaOrgFlagBackgroundTransfertMode|
 		dlnaOrgFlagConnectionStall|
-		dlnaOrgFlagByteBasedSeek|
 		dlnaOrgFlagDlnaV15, 0)
 }
 

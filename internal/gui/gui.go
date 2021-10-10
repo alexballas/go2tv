@@ -271,7 +271,6 @@ func Start(s *NewScreen) {
 			isMuted, err := s.tvdata.GetMuteSoapCall()
 			if err != nil {
 				checkMuteCounter++
-				fmt.Println(err)
 				continue
 			}
 

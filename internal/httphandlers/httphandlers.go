@@ -58,7 +58,11 @@ func (s *HTTPserver) serveVideoHandler(video string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		respHeader := w.Header()
 		respHeader["transferMode.dlna.org"] = []string{"Streaming"}
-		respHeader["contentFeatures.dlna.org"] = []string{dlnatools.BuildContentFeatures(video)}
+		respHeader["realTimeInfo.dlna.org"] = []string{"DLNA.ORG_TLAG=*"}
+
+		if req.Header.Get("getcontentFeatures.dlna.org") == "1" {
+			respHeader["contentFeatures.dlna.org"] = []string{dlnatools.BuildContentFeatures(video)}
+		}
 
 		filePath, err := os.Open(video)
 		if err != nil {
