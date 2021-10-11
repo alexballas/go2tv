@@ -130,7 +130,7 @@ func Start(s *NewScreen) {
 
 	mfiletext.Disable()
 
-	sfile := widget.NewButton("Select Subtitle File", func() {
+	sfile := widget.NewButton("Select Subtitles File", func() {
 		go subsAction(s)
 	})
 
@@ -164,7 +164,7 @@ func Start(s *NewScreen) {
 	nextmedia := widget.NewCheck("Auto-Select Next Media File", func(b bool) {})
 
 	mediafilelabel := canvas.NewText("File:", theme.ForegroundColor())
-	subsfilelabel := canvas.NewText("Subtitle:", theme.ForegroundColor())
+	subsfilelabel := canvas.NewText("Subtitles:", theme.ForegroundColor())
 	devicelabel := canvas.NewText("Select Device:", theme.ForegroundColor())
 	pause.Hide()
 	unmute.Hide()
@@ -602,7 +602,7 @@ func InitFyneNewScreen() *NewScreen {
 	return &NewScreen{
 		Current:        app,
 		currentmfolder: currentdir,
-		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".mp3"},
+		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".mp3", ".flac"},
 	}
 }
 
