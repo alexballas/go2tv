@@ -37,10 +37,10 @@ func Close(scr Screen) {
 }
 
 // ServeFiles - Start HTTP server and serve the files.
-func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtitlesPath string,
+func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, mediaPath, subtitlesPath string,
 	tvpayload *soapcalls.TVPayload, screen Screen) error {
 
-	s.mux.HandleFunc("/"+filepath.Base(videoPath), s.serveVideoHandler(videoPath))
+	s.mux.HandleFunc("/"+filepath.Base(mediaPath), s.serveMediaHandler(mediaPath))
 	s.mux.HandleFunc("/"+filepath.Base(subtitlesPath), s.serveSubtitlesHandler(subtitlesPath))
 	s.mux.HandleFunc("/callback", s.callbackHandler(tvpayload, screen))
 
@@ -54,17 +54,17 @@ func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, videoPath, subtit
 	return nil
 }
 
-func (s *HTTPserver) serveVideoHandler(video string) http.HandlerFunc {
+func (s *HTTPserver) serveMediaHandler(media string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		respHeader := w.Header()
 		respHeader["transferMode.dlna.org"] = []string{"Streaming"}
 		respHeader["realTimeInfo.dlna.org"] = []string{"DLNA.ORG_TLAG=*"}
 
 		if req.Header.Get("getcontentFeatures.dlna.org") == "1" {
-			respHeader["contentFeatures.dlna.org"] = []string{dlnatools.BuildContentFeatures(video)}
+			respHeader["contentFeatures.dlna.org"] = []string{dlnatools.BuildContentFeatures(media)}
 		}
 
-		filePath, err := os.Open(video)
+		filePath, err := os.Open(media)
 		if err != nil {
 			http.NotFound(w, req)
 			return
@@ -77,7 +77,7 @@ func (s *HTTPserver) serveVideoHandler(video string) http.HandlerFunc {
 			return
 		}
 
-		http.ServeContent(w, req, filepath.Base(video), fileStat.ModTime(), filePath)
+		http.ServeContent(w, req, filepath.Base(media), fileStat.ModTime(), filePath)
 	}
 }
 

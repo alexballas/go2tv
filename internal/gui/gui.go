@@ -35,22 +35,22 @@ type NewScreen struct {
 	Mute                *widget.Button
 	Unmute              *widget.Button
 	CustomSubsCheck     *widget.Check
-	VideoText           *widget.Entry
+	MediaText           *widget.Entry
 	SubsText            *widget.Entry
 	DeviceList          *widget.List
-	Videoloop           bool
-	NextVideo           bool
+	Medialoop           bool
+	NextMedia           bool
 	State               string
-	videofile           filestruct
+	mediafile           filestruct
 	subsfile            filestruct
 	tvdata              *soapcalls.TVPayload
 	controlURL          string
 	eventlURL           string
 	renderingControlURL string
-	currentvfolder      string
+	currentmfolder      string
 	mu                  sync.Mutex
 	httpserver          *httphandlers.HTTPserver
-	videoFormats        []string
+	mediaFormats        []string
 }
 
 type devType struct {
@@ -121,14 +121,14 @@ func Start(s *NewScreen) {
 		list.Refresh()
 	}()
 
-	vfiletext := widget.NewEntry()
+	mfiletext := widget.NewEntry()
 	sfiletext := widget.NewEntry()
 
-	vfile := widget.NewButton("Select Video File", func() {
-		go videoAction(s)
+	mfile := widget.NewButton("Select Media File", func() {
+		go mediaAction(s)
 	})
 
-	vfiletext.Disable()
+	mfiletext.Disable()
 
 	sfile := widget.NewButton("Select Subtitle File", func() {
 		go subsAction(s)
@@ -152,18 +152,18 @@ func Start(s *NewScreen) {
 	unmute := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() {
 		go unmuteAction(s)
 	})
-	clearvideo := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		go clearvideoAction(s)
+	clearmedia := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+		go clearmediaAction(s)
 	})
 	clearsubs := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		go clearsubsAction(s)
 	})
 
 	sfilecheck := widget.NewCheck("Custom Subtitles", func(b bool) {})
-	videoloop := widget.NewCheck("Loop Selected Video", func(b bool) {})
-	nextvideo := widget.NewCheck("Auto-Select Next Video", func(b bool) {})
+	medialoop := widget.NewCheck("Loop Selected Media File", func(b bool) {})
+	nextmedia := widget.NewCheck("Auto-Select Next Media File", func(b bool) {})
 
-	videofilelabel := canvas.NewText("Video:", theme.ForegroundColor())
+	mediafilelabel := canvas.NewText("File:", theme.ForegroundColor())
 	subsfilelabel := canvas.NewText("Subtitle:", theme.ForegroundColor())
 	devicelabel := canvas.NewText("Select Device:", theme.ForegroundColor())
 	pause.Hide()
@@ -186,7 +186,7 @@ func Start(s *NewScreen) {
 	s.Mute = mute
 	s.Unmute = unmute
 	s.CustomSubsCheck = sfilecheck
-	s.VideoText = vfiletext
+	s.MediaText = mfiletext
 	s.SubsText = sfiletext
 	s.DeviceList = list
 
@@ -195,13 +195,13 @@ func Start(s *NewScreen) {
 	muteunmute := container.New(layout.NewMaxLayout(), mute, unmute)
 	playpausemutestop := container.New(&mainButtonsLayout{}, playpause, muteunmute, stop)
 
-	checklists := container.NewHBox(sfilecheck, videoloop, nextvideo)
-	videosubsbuttons := container.New(layout.NewGridLayout(2), vfile, sfile)
+	checklists := container.NewHBox(sfilecheck, medialoop, nextmedia)
+	mediasubsbuttons := container.New(layout.NewGridLayout(2), mfile, sfile)
 	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
-	vfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearvideo), clearvideo, vfiletext)
+	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearmedia), clearmedia, mfiletext)
 
-	viewfilescont := container.New(layout.NewFormLayout(), videofilelabel, vfiletextArea, subsfilelabel, sfiletextArea)
-	buttons := container.NewVBox(videosubsbuttons, viewfilescont, checklists, playpausemutestop, devicelabel)
+	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
+	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, playpausemutestop, devicelabel)
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
 
 	// Widgets actions
@@ -224,19 +224,19 @@ func Start(s *NewScreen) {
 		}
 	}
 
-	videoloop.OnChanged = func(b bool) {
+	medialoop.OnChanged = func(b bool) {
 		if b {
-			s.Videoloop = true
+			s.Medialoop = true
 		} else {
-			s.Videoloop = false
+			s.Medialoop = false
 		}
 	}
 
-	nextvideo.OnChanged = func(b bool) {
+	nextmedia.OnChanged = func(b bool) {
 		if b {
-			s.NextVideo = true
+			s.NextMedia = true
 		} else {
-			s.NextVideo = false
+			s.NextMedia = false
 		}
 	}
 
@@ -336,7 +336,7 @@ func unmuteAction(screen *NewScreen) {
 	screen.Mute.Show()
 }
 
-func videoAction(screen *NewScreen) {
+func mediaAction(screen *NewScreen) {
 	w := screen.Current
 	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 		check(w, err)
@@ -346,33 +346,33 @@ func videoAction(screen *NewScreen) {
 		}
 		defer reader.Close()
 
-		vfile := reader.URI().Path()
-		absVideoFile, err := filepath.Abs(vfile)
+		mfile := reader.URI().Path()
+		absMediaFile, err := filepath.Abs(mfile)
 		check(w, err)
 
-		screen.VideoText.Text = filepath.Base(vfile)
-		screen.videofile = filestruct{
-			abs:        absVideoFile,
-			urlEncoded: utils.ConvertFilename(absVideoFile),
+		screen.MediaText.Text = filepath.Base(mfile)
+		screen.mediafile = filestruct{
+			abs:        absMediaFile,
+			urlEncoded: utils.ConvertFilename(absMediaFile),
 		}
 
 		if !screen.CustomSubsCheck.Checked {
-			selectSubs(absVideoFile, screen)
+			selectSubs(absMediaFile, screen)
 		}
 
 		// Remember the last file location.
-		screen.currentvfolder = filepath.Dir(absVideoFile)
+		screen.currentmfolder = filepath.Dir(absMediaFile)
 
-		screen.VideoText.Refresh()
+		screen.MediaText.Refresh()
 	}, w)
 
-	fd.SetFilter(storage.NewExtensionFileFilter(screen.videoFormats))
+	fd.SetFilter(storage.NewExtensionFileFilter(screen.mediaFormats))
 
-	if screen.currentvfolder != "" {
-		vfileURI := storage.NewFileURI(screen.currentvfolder)
-		vfileLister, err := storage.ListerForURI(vfileURI)
+	if screen.currentmfolder != "" {
+		mfileURI := storage.NewFileURI(screen.currentmfolder)
+		mfileLister, err := storage.ListerForURI(mfileURI)
 		check(w, err)
-		fd.SetLocation(vfileLister)
+		fd.SetLocation(mfileLister)
 	}
 
 	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.4, w.Canvas().Size().Height*1.6))
@@ -405,14 +405,14 @@ func subsAction(screen *NewScreen) {
 	}, w)
 	fd.SetFilter(storage.NewExtensionFileFilter([]string{".srt"}))
 
-	if screen.currentvfolder != "" {
-		vfileURI := storage.NewFileURI(screen.currentvfolder)
-		vfileLister, err := storage.ListerForURI(vfileURI)
+	if screen.currentmfolder != "" {
+		mfileURI := storage.NewFileURI(screen.currentmfolder)
+		mfileLister, err := storage.ListerForURI(mfileURI)
 		check(w, err)
 		if err != nil {
 			return
 		}
-		fd.SetLocation(vfileLister)
+		fd.SetLocation(mfileLister)
 	}
 	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.4, w.Canvas().Size().Height*1.6))
 
@@ -428,8 +428,8 @@ func playAction(screen *NewScreen) {
 		check(w, err)
 		return
 	}
-	if screen.videofile.urlEncoded == "" {
-		check(w, errors.New("please select a video file"))
+	if screen.mediafile.urlEncoded == "" {
+		check(w, errors.New("please select a media file"))
 		screen.Play.Enable()
 		return
 	}
@@ -453,7 +453,7 @@ func playAction(screen *NewScreen) {
 		ControlURL:          screen.controlURL,
 		EventURL:            screen.eventlURL,
 		RenderingControlURL: screen.renderingControlURL,
-		VideoURL:            "http://" + whereToListen + "/" + screen.videofile.urlEncoded,
+		MediaURL:            "http://" + whereToListen + "/" + screen.mediafile.urlEncoded,
 		SubtitlesURL:        "http://" + whereToListen + "/" + screen.subsfile.urlEncoded,
 		CallbackURL:         "http://" + whereToListen + "/callback",
 		CurrentTimers:       make(map[string]*time.Timer),
@@ -465,7 +465,7 @@ func playAction(screen *NewScreen) {
 	// We pass the tvdata here as we need the callback handlers to be able to react
 	// to the different media renderer states.
 	go func() {
-		err := screen.httpserver.ServeFiles(serverStarted, screen.videofile.abs, screen.subsfile.abs, screen.tvdata, screen)
+		err := screen.httpserver.ServeFiles(serverStarted, screen.mediafile.abs, screen.subsfile.abs, screen.tvdata, screen)
 		check(w, err)
 		if err != nil {
 			return
@@ -496,10 +496,10 @@ func pauseAction(screen *NewScreen) {
 	check(w, err)
 }
 
-func clearvideoAction(screen *NewScreen) {
-	screen.VideoText.Text = ""
-	screen.videofile.urlEncoded = ""
-	screen.VideoText.Refresh()
+func clearmediaAction(screen *NewScreen) {
+	screen.MediaText.Text = ""
+	screen.mediafile.urlEncoded = ""
+	screen.MediaText.Refresh()
 }
 
 func clearsubsAction(screen *NewScreen) {
@@ -519,9 +519,9 @@ func stopAction(screen *NewScreen) {
 	}
 	err := screen.tvdata.SendtoTV("Stop")
 
-	// Hack to avoid potential http errors during video loop mode.
+	// Hack to avoid potential http errors during media loop mode.
 	// Will keep the window clean during unattended usage.
-	if screen.Videoloop {
+	if screen.Medialoop {
 		err = nil
 	}
 	check(w, err)
@@ -581,11 +581,11 @@ func (p *NewScreen) EmitMsg(a string) {
 // Will only be executed when we receive a callback message,
 // not when we explicitly click the Stop button.
 func (p *NewScreen) Fini() {
-	if p.NextVideo {
-		selectNextVideo(p)
+	if p.NextMedia {
+		selectNextMedia(p)
 	}
-	// Main video loop logic
-	if p.Videoloop {
+	// Main media loop logic
+	if p.Medialoop {
 		playAction(p)
 	}
 }
@@ -601,8 +601,8 @@ func InitFyneNewScreen() *NewScreen {
 
 	return &NewScreen{
 		Current:        app,
-		currentvfolder: currentdir,
-		videoFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv"},
+		currentmfolder: currentdir,
+		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".mp3"},
 	}
 }
 
@@ -622,41 +622,41 @@ func (p *NewScreen) updateScreenState(a string) {
 	p.mu.Unlock()
 }
 
-func selectNextVideo(screen *NewScreen) {
+func selectNextMedia(screen *NewScreen) {
 	w := screen.Current
-	filedir := filepath.Dir(screen.videofile.abs)
+	filedir := filepath.Dir(screen.mediafile.abs)
 	filelist, err := os.ReadDir(filedir)
 	check(w, err)
 
 	breaknext := false
 	for _, f := range filelist {
-		isVideo := false
-		for _, vext := range screen.videoFormats {
+		isMedia := false
+		for _, vext := range screen.mediaFormats {
 			if filepath.Ext(filepath.Join(filedir, f.Name())) == vext {
-				isVideo = true
+				isMedia = true
 				break
 			}
 		}
 
-		if !isVideo {
+		if !isMedia {
 			continue
 		}
 
-		if f.Name() == filepath.Base(screen.videofile.abs) {
+		if f.Name() == filepath.Base(screen.mediafile.abs) {
 			breaknext = true
 			continue
 		}
 
 		if breaknext {
-			screen.VideoText.Text = f.Name()
-			screen.videofile = filestruct{
+			screen.MediaText.Text = f.Name()
+			screen.mediafile = filestruct{
 				abs:        filepath.Join(filedir, f.Name()),
 				urlEncoded: utils.ConvertFilename(f.Name()),
 			}
-			screen.VideoText.Refresh()
+			screen.MediaText.Refresh()
 
 			if !screen.CustomSubsCheck.Checked {
-				selectSubs(screen.videofile.abs, screen)
+				selectSubs(screen.mediafile.abs, screen)
 			}
 			break
 		}

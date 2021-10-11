@@ -24,7 +24,7 @@ var (
 	version    string
 	build      string
 	dmrURL     string
-	videoArg   = flag.String("v", "", "Path to the video file. (Triggers the CLI mode)")
+	mediaArg   = flag.String("v", "", "Path to the video/audio file. (Triggers the CLI mode)")
 	subsArg    = flag.String("s", "", "Path to the subtitles file.")
 	listPtr    = flag.Bool("l", false, "List all available UPnP/DLNA MediaRenderer models and URLs.")
 	targetPtr  = flag.String("t", "", "Cast to a specific UPnP/DLNA MediaRenderer URL.")
@@ -41,7 +41,7 @@ func main() {
 	if exit {
 		os.Exit(0)
 	}
-	if *videoArg != "" {
+	if *mediaArg != "" {
 		guiEnabled = false
 	}
 
@@ -50,7 +50,7 @@ func main() {
 		gui.Start(scr)
 	}
 
-	absVideoFile, err := filepath.Abs(*videoArg)
+	absMediaFile, err := filepath.Abs(*mediaArg)
 	check(err)
 
 	absSubtitlesFile, err := filepath.Abs(*subsArg)
@@ -70,7 +70,7 @@ func main() {
 		EventURL:            upnpServicesURLs.AvtransportEventSubURL,
 		RenderingControlURL: upnpServicesURLs.RenderingControlURL,
 		CallbackURL:         "http://" + whereToListen + "/callback",
-		VideoURL:            "http://" + whereToListen + "/" + utils.ConvertFilename(absVideoFile),
+		MediaURL:            "http://" + whereToListen + "/" + utils.ConvertFilename(absMediaFile),
 		SubtitlesURL:        "http://" + whereToListen + "/" + utils.ConvertFilename(absSubtitlesFile),
 		CurrentTimers:       make(map[string]*time.Timer),
 	}
@@ -81,7 +81,7 @@ func main() {
 	// We pass the tvdata here as we need the callback handlers to be able to react
 	// to the different media renderer states.
 	go func() {
-		err := s.ServeFiles(serverStarted, absVideoFile, absSubtitlesFile, tvdata, scr)
+		err := s.ServeFiles(serverStarted, absMediaFile, absSubtitlesFile, tvdata, scr)
 		check(err)
 	}()
 	// Wait for HTTP server to properly initialize
@@ -166,7 +166,7 @@ func checkflags() (exit bool, err error) {
 
 func checkVflag() error {
 	if !*listPtr {
-		if _, err := os.Stat(*videoArg); os.IsNotExist(err) {
+		if _, err := os.Stat(*mediaArg); os.IsNotExist(err) {
 			return fmt.Errorf("checkVflags error: %w", err)
 		}
 	}
@@ -181,12 +181,12 @@ func checkSflag() error {
 		}
 	} else {
 		// The checkVflag should happen before
-		// checkSflag so we're safe to call *videoArg
+		// checkSflag so we're safe to call *mediaArg
 		// here. If *subsArg is empty, try to
 		// automatically find the srt from the
 		// video filename.
-		*subsArg = (*videoArg)[0:len(*videoArg)-
-			len(filepath.Ext(*videoArg))] + ".srt"
+		*subsArg = (*mediaArg)[0:len(*mediaArg)-
+			len(filepath.Ext(*mediaArg))] + ".srt"
 	}
 
 	return nil
@@ -235,5 +235,5 @@ func checkVerflag() {
 }
 
 func checkGUI() bool {
-	return *videoArg == "" && !*listPtr
+	return *mediaArg == "" && !*listPtr
 }

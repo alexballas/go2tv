@@ -191,14 +191,14 @@ type GetMuteAction struct {
 	Channel          string
 }
 
-func setAVTransportSoapBuild(videoURL, subtitleURL string) ([]byte, error) {
-	var videoTitle string
+func setAVTransportSoapBuild(mediaURL, subtitleURL string) ([]byte, error) {
+	var mediaTitle string
 
-	videoTitlefromURL, err := url.Parse(videoURL)
+	mediaTitlefromURL, err := url.Parse(mediaURL)
 	if err != nil {
-		videoTitle = videoURL
+		mediaTitle = mediaURL
 	} else {
-		videoTitle = strings.TrimLeft(videoTitlefromURL.Path, "/")
+		mediaTitle = strings.TrimLeft(mediaTitlefromURL.Path, "/")
 	}
 	l := DIDLLite{
 		XMLName:    xml.Name{},
@@ -212,11 +212,11 @@ func setAVTransportSoapBuild(videoURL, subtitleURL string) ([]byte, error) {
 			ParentID:   "-1",
 			Restricted: "false",
 			UPNPClass:  "object.item.videoItem.movie",
-			DCtitle:    videoTitle,
+			DCtitle:    mediaTitle,
 			ResNode: []ResNode{{
 				XMLName:      xml.Name{},
 				ProtocolInfo: "http-get:*:video/mp4:*",
-				Value:        videoURL,
+				Value:        mediaURL,
 			}, {
 				XMLName:      xml.Name{},
 				ProtocolInfo: "http-get:*:text/srt:*",
@@ -250,7 +250,7 @@ func setAVTransportSoapBuild(videoURL, subtitleURL string) ([]byte, error) {
 				XMLName:     xml.Name{},
 				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
 				InstanceID:  "0",
-				CurrentURI:  videoURL,
+				CurrentURI:  mediaURL,
 				CurrentURIMetaData: CurrentURIMetaData{
 					XMLName: xml.Name{},
 					Value:   a,

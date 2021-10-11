@@ -17,7 +17,7 @@ import (
 // NewScreen .
 type NewScreen struct {
 	Current    tcell.Screen
-	videoTitle string
+	mediaTitle string
 	lastAction string
 	TV         *soapcalls.TVPayload
 }
@@ -44,7 +44,7 @@ func (p *NewScreen) emitStr(x, y int, style tcell.Style, str string) {
 func (p *NewScreen) EmitMsg(inputtext string) {
 	p.lastAction = inputtext
 	s := p.Current
-	titleLen := len("Title: " + p.videoTitle)
+	titleLen := len("Title: " + p.mediaTitle)
 	w, h := s.Size()
 	boldStyle := tcell.StyleDefault.
 		Background(tcell.ColorBlack).
@@ -55,7 +55,7 @@ func (p *NewScreen) EmitMsg(inputtext string) {
 
 	s.Clear()
 
-	p.emitStr(w/2-titleLen/2, h/2-2, tcell.StyleDefault, "Title: "+p.videoTitle)
+	p.emitStr(w/2-titleLen/2, h/2-2, tcell.StyleDefault, "Title: "+p.mediaTitle)
 	if inputtext == "Waiting for status..." {
 		p.emitStr(w/2-len(inputtext)/2, h/2, blinkStyle, inputtext)
 	} else {
@@ -86,10 +86,10 @@ func (p *NewScreen) InterInit(tv *soapcalls.TVPayload) {
 		}
 	}()
 
-	p.videoTitle = tv.VideoURL
-	videoTitlefromURL, err := url.Parse(tv.VideoURL)
+	p.mediaTitle = tv.MediaURL
+	mediaTitlefromURL, err := url.Parse(tv.MediaURL)
 	if err == nil {
-		p.videoTitle = strings.TrimLeft(videoTitlefromURL.Path, "/")
+		p.mediaTitle = strings.TrimLeft(mediaTitlefromURL.Path, "/")
 	}
 
 	encoding.Register()

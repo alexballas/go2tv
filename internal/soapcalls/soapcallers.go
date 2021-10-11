@@ -31,7 +31,7 @@ var (
 // TVPayload - this is the heart of Go2TV.
 type TVPayload struct {
 	ControlURL          string
-	VideoURL            string
+	MediaURL            string
 	SubtitlesURL        string
 	EventURL            string
 	CallbackURL         string
@@ -61,7 +61,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 		return fmt.Errorf("setAVTransportSoapCall parse error: %w", err)
 	}
 
-	xml, err := setAVTransportSoapBuild(p.VideoURL, p.SubtitlesURL)
+	xml, err := setAVTransportSoapBuild(p.MediaURL, p.SubtitlesURL)
 	if err != nil {
 		return fmt.Errorf("setAVTransportSoapCall soap build error: %w", err)
 	}
