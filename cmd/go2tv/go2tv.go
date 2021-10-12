@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/alexballas/go2tv/internal/devices"
-	"github.com/alexballas/go2tv/internal/dlnatools"
 	"github.com/alexballas/go2tv/internal/gui"
 	"github.com/alexballas/go2tv/internal/httphandlers"
 	"github.com/alexballas/go2tv/internal/interactive"
@@ -66,7 +65,7 @@ func main() {
 	scr, err := interactive.InitTcellNewScreen()
 	check(err)
 
-	mediaType, err := dlnatools.GetMimeDetails(absMediaFile)
+	mediaType, err := utils.GetMimeDetails(absMediaFile)
 	check(err)
 
 	tvdata := &soapcalls.TVPayload{

@@ -19,7 +19,6 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/alexballas/go2tv/internal/devices"
-	"github.com/alexballas/go2tv/internal/dlnatools"
 	"github.com/alexballas/go2tv/internal/httphandlers"
 	"github.com/alexballas/go2tv/internal/iptools"
 	"github.com/alexballas/go2tv/internal/soapcalls"
@@ -450,7 +449,7 @@ func playAction(screen *NewScreen) {
 		return
 	}
 
-	mediaType, err := dlnatools.GetMimeDetails(screen.mediafile.abs)
+	mediaType, err := utils.GetMimeDetails(screen.mediafile.abs)
 	check(w, err)
 	if err != nil {
 		return

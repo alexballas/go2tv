@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/alexballas/go2tv/internal/dlnatools"
 	"github.com/alexballas/go2tv/internal/soapcalls"
+	"github.com/alexballas/go2tv/internal/utils"
 )
 
 // HTTPserver - new http.Server instance.
@@ -60,7 +60,7 @@ func (s *HTTPserver) serveMediaHandler(media string) http.HandlerFunc {
 		respHeader["transferMode.dlna.org"] = []string{"Streaming"}
 		respHeader["realTimeInfo.dlna.org"] = []string{"DLNA.ORG_TLAG=*"}
 
-		contentFeatures, err := dlnatools.BuildContentFeatures(media)
+		contentFeatures, err := utils.BuildContentFeatures(media)
 		if err != nil {
 			http.NotFound(w, req)
 			return
