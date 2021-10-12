@@ -11,7 +11,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/alexballas/Go2TV)](https://goreportcard.com/report/github.com/alexballas/Go2TV)
 [![Release Version](https://img.shields.io/github/v/release/alexballas/Go2TV?label=Release)](https://github.com/alexballas/Go2TV/releases/latest)
 </p>
-Go2TV lets you cast your videos to any UPnP/DLNA MediaRenderer like Samsumg and LG TVs.
+Go2TV lets you cast your media files to any UPnP/DLNA MediaRenderer like Samsumg and LG TVs.
 </div>
 
 ---
@@ -34,7 +34,7 @@ Usage of go2tv:
   -t string
         Cast to a specific UPnP/DLNA MediaRenderer URL.
   -v string
-        Path to the video file. (Triggers the CLI mode)
+        Path to the media file. (Triggers the CLI mode)
   -version
         Print version.
 ```

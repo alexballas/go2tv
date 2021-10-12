@@ -9,6 +9,7 @@ require (
 	github.com/go-gl/gl v0.0.0-20210905235341-f7a045908259 // indirect
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20210727001814-0db043d8d5be // indirect
 	github.com/godbus/dbus/v5 v5.0.5 // indirect
+	github.com/h2non/filetype v1.1.1
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.0
 	github.com/koron/go-ssdp v0.0.2

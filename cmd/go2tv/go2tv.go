@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/alexballas/go2tv/internal/devices"
+	"github.com/alexballas/go2tv/internal/dlnatools"
 	"github.com/alexballas/go2tv/internal/gui"
 	"github.com/alexballas/go2tv/internal/httphandlers"
 	"github.com/alexballas/go2tv/internal/interactive"
@@ -65,6 +66,9 @@ func main() {
 	scr, err := interactive.InitTcellNewScreen()
 	check(err)
 
+	mediaType, err := dlnatools.GetMimeDetails(absMediaFile)
+	check(err)
+
 	tvdata := &soapcalls.TVPayload{
 		ControlURL:          upnpServicesURLs.AvtransportControlURL,
 		EventURL:            upnpServicesURLs.AvtransportEventSubURL,
@@ -72,6 +76,7 @@ func main() {
 		CallbackURL:         "http://" + whereToListen + "/callback",
 		MediaURL:            "http://" + whereToListen + "/" + utils.ConvertFilename(absMediaFile),
 		SubtitlesURL:        "http://" + whereToListen + "/" + utils.ConvertFilename(absSubtitlesFile),
+		MediaType:           mediaType,
 		CurrentTimers:       make(map[string]*time.Timer),
 	}
 
@@ -184,7 +189,7 @@ func checkSflag() error {
 		// checkSflag so we're safe to call *mediaArg
 		// here. If *subsArg is empty, try to
 		// automatically find the srt from the
-		// video filename.
+		// media file filename.
 		*subsArg = (*mediaArg)[0:len(*mediaArg)-
 			len(filepath.Ext(*mediaArg))] + ".srt"
 	}

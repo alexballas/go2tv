@@ -60,8 +60,14 @@ func (s *HTTPserver) serveMediaHandler(media string) http.HandlerFunc {
 		respHeader["transferMode.dlna.org"] = []string{"Streaming"}
 		respHeader["realTimeInfo.dlna.org"] = []string{"DLNA.ORG_TLAG=*"}
 
+		contentFeatures, err := dlnatools.BuildContentFeatures(media)
+		if err != nil {
+			http.NotFound(w, req)
+			return
+		}
+
 		if req.Header.Get("getcontentFeatures.dlna.org") == "1" {
-			respHeader["contentFeatures.dlna.org"] = []string{dlnatools.BuildContentFeatures(media)}
+			respHeader["contentFeatures.dlna.org"] = []string{contentFeatures}
 		}
 
 		filePath, err := os.Open(media)

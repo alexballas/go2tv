@@ -32,6 +32,7 @@ var (
 type TVPayload struct {
 	ControlURL          string
 	MediaURL            string
+	MediaType           string
 	SubtitlesURL        string
 	EventURL            string
 	CallbackURL         string
@@ -61,7 +62,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 		return fmt.Errorf("setAVTransportSoapCall parse error: %w", err)
 	}
 
-	xml, err := setAVTransportSoapBuild(p.MediaURL, p.SubtitlesURL)
+	xml, err := setAVTransportSoapBuild(p.MediaURL, p.MediaType, p.SubtitlesURL)
 	if err != nil {
 		return fmt.Errorf("setAVTransportSoapCall soap build error: %w", err)
 	}

@@ -19,6 +19,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/alexballas/go2tv/internal/devices"
+	"github.com/alexballas/go2tv/internal/dlnatools"
 	"github.com/alexballas/go2tv/internal/httphandlers"
 	"github.com/alexballas/go2tv/internal/iptools"
 	"github.com/alexballas/go2tv/internal/soapcalls"
@@ -449,6 +450,12 @@ func playAction(screen *NewScreen) {
 		return
 	}
 
+	mediaType, err := dlnatools.GetMimeDetails(screen.mediafile.abs)
+	check(w, err)
+	if err != nil {
+		return
+	}
+
 	screen.tvdata = &soapcalls.TVPayload{
 		ControlURL:          screen.controlURL,
 		EventURL:            screen.eventlURL,
@@ -456,6 +463,7 @@ func playAction(screen *NewScreen) {
 		MediaURL:            "http://" + whereToListen + "/" + screen.mediafile.urlEncoded,
 		SubtitlesURL:        "http://" + whereToListen + "/" + screen.subsfile.urlEncoded,
 		CallbackURL:         "http://" + whereToListen + "/callback",
+		MediaType:           mediaType,
 		CurrentTimers:       make(map[string]*time.Timer),
 	}
 
@@ -572,6 +580,7 @@ func (p *NewScreen) EmitMsg(a string) {
 		p.Play.Show()
 		p.Pause.Hide()
 		p.updateScreenState("Stopped")
+		stopAction(p)
 	default:
 		dialog.ShowInformation("?", "Unknown callback value", p.Current)
 	}
