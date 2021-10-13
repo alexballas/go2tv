@@ -46,7 +46,7 @@ func main() {
 	}
 
 	if guiEnabled {
-		scr := gui.InitFyneNewScreen()
+		scr := gui.InitFyneNewScreen(version + " / " + build)
 		gui.Start(scr)
 	}
 

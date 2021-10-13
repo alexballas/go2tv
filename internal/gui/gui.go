@@ -51,6 +51,7 @@ type NewScreen struct {
 	mu                  sync.Mutex
 	httpserver          *httphandlers.HTTPserver
 	mediaFormats        []string
+	version             string
 }
 
 type devType struct {
@@ -105,6 +106,49 @@ func (d *mainButtonsLayout) Layout(objects []fyne.CanvasObject, containerSize fy
 // Start .
 func Start(s *NewScreen) {
 	w := s.Current
+
+	tabs := container.NewAppTabs(
+		container.NewTabItem("Go2TV", container.NewPadded(mainWindow(s))),
+		container.NewTabItem("About", aboutWindow(s)),
+	)
+	w.SetContent(tabs)
+	w.Resize(fyne.NewSize(w.Canvas().Size().Width*1.4, w.Canvas().Size().Height*1.6))
+	w.CenterOnScreen()
+	w.ShowAndRun()
+	os.Exit(0)
+}
+
+func aboutWindow(s *NewScreen) fyne.CanvasObject {
+	rich := widget.NewRichTextFromMarkdown(`
+# Go2TV
+
+Cast your media files to UPnP/DLNA Media Renderers and Smart TVs
+
+---
+
+## Author
+Alex Ballas - alex@ballas.org
+
+## License
+MIT
+
+## Version
+
+` + s.version)
+	for i := range rich.Segments {
+		if seg, ok := rich.Segments[i].(*widget.TextSegment); ok {
+			seg.Style.Alignment = fyne.TextAlignCenter
+		}
+		if seg, ok := rich.Segments[i].(*widget.HyperlinkSegment); ok {
+			seg.Alignment = fyne.TextAlignCenter
+		}
+	}
+	return rich
+}
+
+func mainWindow(s *NewScreen) fyne.CanvasObject {
+	w := s.Current
+
 	refreshDevices := time.NewTicker(10 * time.Second)
 	checkMute := time.NewTicker(1 * time.Second)
 
@@ -287,13 +331,8 @@ func Start(s *NewScreen) {
 		}
 	}()
 
-	w.SetContent(content)
-	w.Resize(fyne.NewSize(w.Canvas().Size().Width*1.4, w.Canvas().Size().Height*1.6))
-	w.CenterOnScreen()
-	w.ShowAndRun()
-	os.Exit(0)
+	return content
 }
-
 func muteAction(screen *NewScreen) {
 	w := screen.Current
 	if screen.renderingControlURL == "" {
@@ -599,18 +638,19 @@ func (p *NewScreen) Fini() {
 }
 
 //InitFyneNewScreen .
-func InitFyneNewScreen() *NewScreen {
+func InitFyneNewScreen(v string) *NewScreen {
 	go2tv := app.New()
-	app := go2tv.NewWindow("Go2TV")
+	w := go2tv.NewWindow("Go2TV")
 	currentdir, err := os.Getwd()
 	if err != nil {
 		currentdir = ""
 	}
 
 	return &NewScreen{
-		Current:        app,
+		Current:        w,
 		currentmfolder: currentdir,
 		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".mp3", ".flac"},
+		version:        v,
 	}
 }
 
