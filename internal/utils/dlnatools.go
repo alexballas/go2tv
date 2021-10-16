@@ -14,7 +14,7 @@ var (
 	// first convert all the flag types to int64
 	//dlnaOrgFlagSenderPaced = 1 << 31
 	//dlnaOrgFlagTimeBasedSeek = 1 << 30
-	dlnaOrgFlagByteBasedSeek = 1 << 29
+	//dlnaOrgFlagByteBasedSeek = 1 << 29
 	//dlnaOrgFlagPlayContainer = 1 << 28
 	//dlnaOrgFlagS0Increase = 1 << 27
 	//dlnaOrgFlagSnIncrease = 1 << 26
