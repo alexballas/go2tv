@@ -11,7 +11,6 @@ import (
 	"fyne.io/fyne/v2/storage"
 	"github.com/alexballas/go2tv/internal/devices"
 	"github.com/alexballas/go2tv/internal/httphandlers"
-	"github.com/alexballas/go2tv/internal/iptools"
 	"github.com/alexballas/go2tv/internal/soapcalls"
 	"github.com/alexballas/go2tv/internal/utils"
 	"github.com/pkg/errors"
@@ -166,7 +165,7 @@ func playAction(screen *NewScreen) {
 		stopAction(screen)
 	}
 
-	whereToListen, err := iptools.URLtoListenIPandPort(screen.controlURL)
+	whereToListen, err := utils.URLtoListenIPandPort(screen.controlURL)
 	check(w, err)
 	if err != nil {
 		return

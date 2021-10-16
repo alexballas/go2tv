@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"net/url"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -10,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/alexballas/go2tv/internal/soapcalls"
+	"github.com/alexballas/go2tv/internal/utils"
 )
 
 func mainWindow(s *NewScreen) fyne.CanvasObject {
@@ -23,8 +25,8 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	data := make([]devType, 0)
 
 	go func() {
-		data2, err := getDevices(1)
-		data = data2
+		datanew, err := getDevices(1)
+		data = datanew
 		if err != nil {
 			data = nil
 		}
@@ -122,6 +124,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		check(w, err)
 
 		if err == nil {
+			s.selectedDevice = data[id]
 			s.controlURL, s.eventlURL, s.renderingControlURL = t.AvtransportControlURL, t.AvtransportEventSubURL, t.RenderingControlURL
 		}
 	}
@@ -153,8 +156,24 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	// Device list auto-refresh
 	go func() {
 		for range refreshDevices.C {
-			data2, _ := getDevices(2)
-			data = data2
+			datanew, _ := getDevices(2)
+			// check to see if the new refresh includes
+			// one of the already selected devices
+			var includes bool
+			u, _ := url.Parse(s.controlURL)
+			for _, d := range datanew {
+				n, _ := url.Parse(d.addr)
+				if n.Host == u.Host {
+					includes = true
+				}
+			}
+
+			data = datanew
+
+			if !includes && utils.HostPortIsAlive(u.Host) {
+				data = append(data, s.selectedDevice)
+			}
+
 			list.Refresh()
 		}
 	}()

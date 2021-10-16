@@ -36,6 +36,7 @@ type NewScreen struct {
 	mediafile           filestruct
 	subsfile            filestruct
 	tvdata              *soapcalls.TVPayload
+	selectedDevice      devType
 	controlURL          string
 	eventlURL           string
 	renderingControlURL string

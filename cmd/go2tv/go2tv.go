@@ -14,7 +14,6 @@ import (
 	"github.com/alexballas/go2tv/internal/gui"
 	"github.com/alexballas/go2tv/internal/httphandlers"
 	"github.com/alexballas/go2tv/internal/interactive"
-	"github.com/alexballas/go2tv/internal/iptools"
 	"github.com/alexballas/go2tv/internal/soapcalls"
 	"github.com/alexballas/go2tv/internal/utils"
 	"github.com/pkg/errors"
@@ -59,7 +58,7 @@ func main() {
 	upnpServicesURLs, err := soapcalls.DMRextractor(dmrURL)
 	check(err)
 
-	whereToListen, err := iptools.URLtoListenIPandPort(dmrURL)
+	whereToListen, err := utils.URLtoListenIPandPort(dmrURL)
 	check(err)
 
 	scr, err := interactive.InitTcellNewScreen()

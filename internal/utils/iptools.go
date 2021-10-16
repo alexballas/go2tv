@@ -1,4 +1,4 @@
-package iptools
+package utils
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // URLtoListenIPandPort for a given internal URL, find the correct IP/Interface to listen to.
@@ -26,7 +27,8 @@ func URLtoListenIPandPort(u string) (string, error) {
 		return "", fmt.Errorf("URLtoListenIPandPort port error: %w", err)
 	}
 
-	res := ipToListen + ":" + portToListen
+	res := net.JoinHostPort(ipToListen, portToListen)
+
 	return res, nil
 }
 
@@ -34,7 +36,7 @@ func checkAndPickPort(ip string, port int) (string, error) {
 	var numberOfchecks int
 CHECK:
 	numberOfchecks++
-	conn, err := net.Listen("tcp", ip+":"+strconv.Itoa(port))
+	conn, err := net.Listen("tcp", net.JoinHostPort(ip, strconv.Itoa(port)))
 	if err != nil {
 		if strings.Contains(err.Error(), "address already in use") {
 			if numberOfchecks == 1000 {
@@ -48,4 +50,13 @@ CHECK:
 	}
 	conn.Close()
 	return strconv.Itoa(port), nil
+}
+
+func HostPortIsAlive(h string) bool {
+	conn, err := net.DialTimeout("tcp", h, time.Duration(1*time.Second))
+	if err != nil {
+		return false
+	}
+	defer conn.Close()
+	return true
 }
