@@ -45,7 +45,7 @@ MIT
 	githubbutton := widget.NewButton("Github page", func() {
 		go func() {
 			u, _ := url.Parse("https://github.com/alexballas/go2tv")
-			_ = s.App.OpenURL(u)
+			_ = fyne.CurrentApp().OpenURL(u)
 		}()
 	})
 	checkversion := widget.NewButton("Check version", func() {
@@ -64,7 +64,15 @@ func checkVersion(s *NewScreen) {
 	errRedirectChecker := fmt.Errorf("redirect")
 	errVersioncomp := fmt.Errorf("cant compare versions - on develop or non-compiled version")
 	errVersionGet := fmt.Errorf("failed to get version info - check your internet connection")
-	errNoNewVersion := fmt.Errorf("no new version")
+
+	extractVer := strings.Split(s.version, "/")
+	str := strings.ReplaceAll(extractVer[0], ".", "")
+	str = strings.TrimSpace(str)
+	currversion, err := strconv.Atoi(str)
+	if err != nil {
+		dialog.ShowError(errVersioncomp, s.Current)
+		return
+	}
 
 	req, err := http.NewRequest("GET", "https://github.com/alexballas/Go2TV/releases/latest", nil)
 	if err != nil {
@@ -92,21 +100,12 @@ func checkVersion(s *NewScreen) {
 			return
 		}
 
-		extractVer := strings.Split(s.version, "/")
-		str = strings.ReplaceAll(extractVer[0], ".", "")
-		str = strings.TrimSpace(str)
-		currversion, err := strconv.Atoi(str)
-		if err != nil {
-			dialog.ShowError(errVersioncomp, s.Current)
-			return
-		}
-
 		switch {
 		case chversion > currversion:
-			dialog.ShowInformation("New Version Available", filepath.Base(url.Path), s.Current)
+			dialog.ShowInformation("Version checker", "New version: "+filepath.Base(url.Path), s.Current)
 			return
 		default:
-			dialog.ShowError(errNoNewVersion, s.Current)
+			dialog.ShowInformation("Version checker", "No new version", s.Current)
 			return
 		}
 	}

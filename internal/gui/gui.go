@@ -19,7 +19,6 @@ import (
 
 // NewScreen .
 type NewScreen struct {
-	App                 fyne.App
 	Current             fyne.Window
 	Play                *widget.Button
 	Pause               *widget.Button
@@ -120,7 +119,6 @@ func InitFyneNewScreen(v string) *NewScreen {
 	}
 
 	return &NewScreen{
-		App:            go2tv,
 		Current:        w,
 		currentmfolder: currentdir,
 		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".mp3", ".flac"},
