@@ -102,7 +102,7 @@ func checkVersion(s *NewScreen) {
 
 		switch {
 		case chversion > currversion:
-			dialog.ShowInformation("Version checker", "New version: "+filepath.Base(url.Path), s.Current)
+			dialog.ShowInformation("Version checker", "New version: "+strings.Trim(filepath.Base(url.Path), "v"), s.Current)
 			return
 		default:
 			dialog.ShowInformation("Version checker", "No new version", s.Current)
