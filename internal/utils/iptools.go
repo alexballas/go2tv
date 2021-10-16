@@ -53,7 +53,7 @@ CHECK:
 }
 
 func HostPortIsAlive(h string) bool {
-	conn, err := net.DialTimeout("tcp", h, time.Duration(1*time.Second))
+	conn, err := net.DialTimeout("tcp", h, time.Duration(2*time.Second))
 	if err != nil {
 		return false
 	}

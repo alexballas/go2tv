@@ -17,7 +17,7 @@ import (
 func mainWindow(s *NewScreen) fyne.CanvasObject {
 	w := s.Current
 
-	refreshDevices := time.NewTicker(10 * time.Second)
+	refreshDevices := time.NewTicker(5 * time.Second)
 	checkMute := time.NewTicker(1 * time.Second)
 
 	list := new(widget.List)
@@ -170,10 +170,14 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 			data = datanew
 
-			if !includes && utils.HostPortIsAlive(u.Host) {
-				data = append(data, s.selectedDevice)
+			if !includes {
+				if utils.HostPortIsAlive(u.Host) {
+					data = append(data, s.selectedDevice)
+				} else {
+					s.controlURL = ""
+					s.DeviceList.UnselectAll()
+				}
 			}
-
 			list.Refresh()
 		}
 	}()
