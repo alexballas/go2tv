@@ -62,7 +62,7 @@ func checkVersion(s *NewScreen) {
 	s.CheckVersion.Disable()
 	defer s.CheckVersion.Enable()
 	errRedirectChecker := fmt.Errorf("redirect")
-	errVersioncomp := fmt.Errorf("cant compare versions - on develop or non-compiled version")
+	errVersioncomp := fmt.Errorf("failed to get version info - on develop or non-compiled version")
 	errVersionGet := fmt.Errorf("failed to get version info - check your internet connection")
 
 	extractVer := strings.Split(s.version, "/")

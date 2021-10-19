@@ -138,19 +138,11 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	}
 
 	medialoop.OnChanged = func(b bool) {
-		if b {
-			s.Medialoop = true
-		} else {
-			s.Medialoop = false
-		}
+		s.Medialoop = b
 	}
 
 	nextmedia.OnChanged = func(b bool) {
-		if b {
-			s.NextMedia = true
-		} else {
-			s.NextMedia = false
-		}
+		s.NextMedia = b
 	}
 
 	// Device list auto-refresh

@@ -24,7 +24,7 @@ type states struct {
 
 var (
 	mediaRenderersStates        = make(map[string]*states)
-	initialMediaRenderersStates = make(map[string]interface{})
+	initialMediaRenderersStates = make(map[string]bool)
 	mu                          sync.Mutex
 )
 
@@ -425,7 +425,7 @@ func UpdateMRstate(previous, new, uuid string) bool {
 	// probably result in a 412 error as per the upnpn documentation
 	// http://upnp.org/specs/arch/UPnP-arch-DeviceArchitecture-v1.1.pdf
 	// (page 94).
-	if initialMediaRenderersStates[uuid] == true {
+	if initialMediaRenderersStates[uuid] {
 		mediaRenderersStates[uuid].previousState = previous
 		mediaRenderersStates[uuid].newState = new
 		mediaRenderersStates[uuid].sequence++
@@ -464,7 +464,7 @@ func IncreaseSequence(uuid string) {
 
 // GetSequence .
 func GetSequence(uuid string) (int, error) {
-	if initialMediaRenderersStates[uuid] == true {
+	if initialMediaRenderersStates[uuid] {
 		return mediaRenderersStates[uuid].sequence, nil
 	}
 
