@@ -24,6 +24,21 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 	data := make([]devType, 0)
 
+	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
+		if k.Name == "Space" || k.Name == "P" {
+			switch s.State {
+			case "Playing":
+				go pauseAction(s)
+			case "Paused":
+				go playAction(s)
+			}
+		}
+
+		if k.Name == "S" {
+			go stopAction(s)
+		}
+	})
+
 	go func() {
 		datanew, err := getDevices(1)
 		data = datanew

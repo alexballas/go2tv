@@ -25,7 +25,7 @@ type states struct {
 var (
 	mediaRenderersStates        = make(map[string]*states)
 	initialMediaRenderersStates = make(map[string]bool)
-	mu                          sync.Mutex
+	mu                          sync.RWMutex
 )
 
 // TVPayload - this is the heart of Go2TV.
@@ -389,8 +389,16 @@ func (p *TVPayload) SendtoTV(action string) error {
 	}
 
 	if action == "Stop" {
+
+		mu.RLock()
+		localStates := make(map[string]*states)
+		for key, value := range mediaRenderersStates {
+			localStates[key] = value
+		}
+		mu.RUnlock()
+
 		// Cleaning up all uuids on force stop.
-		for uuids := range mediaRenderersStates {
+		for uuids := range localStates {
 			if err := p.UnsubscribeSoapCall(uuids); err != nil {
 				return fmt.Errorf("SendtoTV unsubscribe call error: %w", err)
 			}
@@ -464,6 +472,8 @@ func IncreaseSequence(uuid string) {
 
 // GetSequence .
 func GetSequence(uuid string) (int, error) {
+	mu.RLock()
+	defer mu.RUnlock()
 	if initialMediaRenderersStates[uuid] {
 		return mediaRenderersStates[uuid].sequence, nil
 	}

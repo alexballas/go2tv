@@ -15,6 +15,7 @@ var (
 
 // LoadSSDPservices .
 func LoadSSDPservices(delay int) error {
+	// Reset device list every time we call this.
 	Devices = make(map[int][]string)
 	list, err := ssdp.Search(ssdp.All, delay, "")
 	if err != nil {
