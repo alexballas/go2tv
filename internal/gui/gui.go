@@ -122,7 +122,7 @@ func InitFyneNewScreen(v string) *NewScreen {
 	return &NewScreen{
 		Current:        w,
 		currentmfolder: currentdir,
-		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".mp3", ".flac"},
+		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".mp3", ".flac", ".wav"},
 		version:        v,
 	}
 }
