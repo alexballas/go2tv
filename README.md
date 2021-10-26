@@ -39,6 +39,10 @@ Usage of go2tv:
         Print version.
 ```
 
+Allowed media files in the GUI
+-----
+- mp4, avi, mkv, mpeg, mov, webm, m4v, mpv, mp3, flac, wav
+
 Build requirements
 -----
 - Go v1.16+
@@ -51,7 +55,6 @@ Tested on
 -----
 - Samsung UE50JU6400
 - Samsung UE65KS7000
-- LG 28MT49S
 - Android - BubbleUPnP app
 
 Author

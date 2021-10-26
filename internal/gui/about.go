@@ -79,13 +79,21 @@ func checkVersion(s *NewScreen) {
 		dialog.ShowError(errVersionGet, s.Current)
 	}
 
-	client := new(http.Client)
-	client.Timeout = time.Duration(3 * time.Second)
-	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		return errRedirectChecker
+	client := &http.Client{
+		Timeout: time.Duration(3 * time.Second),
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return errRedirectChecker
+		},
 	}
 
 	response, err := client.Do(req)
+	if err != nil && !errors.Is(err, errRedirectChecker) {
+		dialog.ShowError(errVersionGet, s.Current)
+		return
+	}
+
+	defer response.Body.Close()
+
 	if errors.Is(err, errRedirectChecker) {
 		url, err := response.Location()
 		if err != nil {
