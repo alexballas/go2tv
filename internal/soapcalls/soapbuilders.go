@@ -1,6 +1,7 @@
 package soapcalls
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
 	"net/url"
@@ -273,6 +274,10 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string) ([]byte, e
 	if err != nil {
 		return nil, fmt.Errorf("setAVTransportSoapBuild #2 Marshal error: %w", err)
 	}
+
+	// That looks like an issue just with my Samsung TV.
+	b = bytes.ReplaceAll(b, []byte("&#34;"), []byte(`"`))
+	b = bytes.ReplaceAll(b, []byte("&amp;"), []byte("&"))
 
 	return append(xmlStart, b...), nil
 }

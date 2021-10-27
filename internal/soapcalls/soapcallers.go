@@ -332,6 +332,8 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 		return "", fmt.Errorf("GetMuteSoapCall Do POST error: %w", err)
 	}
 
+	defer resp.Body.Close()
+
 	var respGetMute GetMuteRespBody
 	if err = xml.NewDecoder(resp.Body).Decode(&respGetMute); err != nil {
 		return "", fmt.Errorf("GetMuteSoapCall XML Decode error: %w", err)
