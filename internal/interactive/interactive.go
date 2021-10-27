@@ -63,7 +63,13 @@ func (p *NewScreen) EmitMsg(inputtext string) {
 	}
 	p.emitStr(1, 1, tcell.StyleDefault, "Press ESC to stop and exit.")
 
-	isMute, err := p.TV.GetMuteSoapCall()
+	isMute := "0"
+	var err error
+
+	if p.TV != nil {
+		isMute, err = p.TV.GetMuteSoapCall()
+	}
+
 	if err != nil || isMute == "0" {
 		p.emitStr(w/2-len("")/2, h/2+2, tcell.StyleDefault, "")
 	} else {
