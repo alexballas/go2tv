@@ -17,7 +17,7 @@ Cast your media files to UPnP/DLNA Media Renderers and Smart TVs.
 ---
 GUI mode
 -----
-![](https://i.imgur.com/ppDNWBx.png)
+![](https://i.imgur.com/jCJZbxW.png)
 
 CLI mode
 -----
@@ -28,13 +28,13 @@ Parameters
 ```
 $ go2tv -h
 Usage of go2tv:
-  -l    List all available UPnP/DLNA MediaRenderer models and URLs.
+  -l    List all available UPnP/DLNA Media Renderer models and URLs.
   -s string
         Path to the subtitles file.
   -t string
-        Cast to a specific UPnP/DLNA MediaRenderer URL.
+        Cast to a specific UPnP/DLNA Media Renderer URL.
   -v string
-        Path to the media file. (Triggers the CLI mode)
+        Path to the video/audio file. (Triggers the CLI mode)
   -version
         Print version.
 ```
@@ -42,6 +42,8 @@ Usage of go2tv:
 Allowed media files in the GUI
 -----
 - mp4, avi, mkv, mpeg, mov, webm, m4v, mpv, mp3, flac, wav
+
+This is a GUI only limitation.
 
 Build requirements
 -----

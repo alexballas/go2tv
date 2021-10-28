@@ -25,8 +25,8 @@ var (
 	dmrURL     string
 	mediaArg   = flag.String("v", "", "Path to the video/audio file. (Triggers the CLI mode)")
 	subsArg    = flag.String("s", "", "Path to the subtitles file.")
-	listPtr    = flag.Bool("l", false, "List all available UPnP/DLNA MediaRenderer models and URLs.")
-	targetPtr  = flag.String("t", "", "Cast to a specific UPnP/DLNA MediaRenderer URL.")
+	listPtr    = flag.Bool("l", false, "List all available UPnP/DLNA Media Renderer models and URLs.")
+	targetPtr  = flag.String("t", "", "Cast to a specific UPnP/DLNA Media Renderer URL.")
 	versionPtr = flag.Bool("version", false, "Print version.")
 )
 

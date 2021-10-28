@@ -275,7 +275,7 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string) ([]byte, e
 		return nil, fmt.Errorf("setAVTransportSoapBuild #2 Marshal error: %w", err)
 	}
 
-	// That looks like an issue just with my Samsung TV.
+	// Samsung TV hack.
 	b = bytes.ReplaceAll(b, []byte("&#34;"), []byte(`"`))
 	b = bytes.ReplaceAll(b, []byte("&amp;"), []byte("&"))
 
