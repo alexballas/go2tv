@@ -111,14 +111,14 @@ func listFlagFunction() error {
 
 	// We loop through this map twice as we need to maintain
 	// the correct order.
-	keys := make([]int, 0)
+	keys := make([]string, 0)
 	for k := range devices.Devices {
 		keys = append(keys, k)
 	}
 
-	sort.Ints(keys)
+	sort.Strings(keys)
 
-	for _, k := range keys {
+	for q, k := range keys {
 		boldStart := ""
 		boldEnd := ""
 
@@ -126,10 +126,10 @@ func listFlagFunction() error {
 			boldStart = "\033[1m"
 			boldEnd = "\033[0m"
 		}
-		fmt.Printf("%sDevice %v%s\n", boldStart, k, boldEnd)
+		fmt.Printf("%sDevice %v%s\n", boldStart, q+1, boldEnd)
 		fmt.Printf("%s--------%s\n", boldStart, boldEnd)
-		fmt.Printf("%sModel:%s %s\n", boldStart, boldEnd, devices.Devices[k][0])
-		fmt.Printf("%sURL:%s   %s\n", boldStart, boldEnd, devices.Devices[k][1])
+		fmt.Printf("%sModel:%s %s\n", boldStart, boldEnd, k)
+		fmt.Printf("%sURL:%s   %s\n", boldStart, boldEnd, devices.Devices[k])
 		fmt.Println()
 	}
 

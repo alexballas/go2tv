@@ -2,6 +2,7 @@ package gui
 
 import (
 	"net/url"
+	"sort"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -10,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/alexballas/go2tv/internal/devices"
 	"github.com/alexballas/go2tv/internal/soapcalls"
 	"github.com/alexballas/go2tv/internal/utils"
 )
@@ -137,10 +139,12 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		pause.Enable()
 		t, err := soapcalls.DMRextractor(data[id].addr)
 		check(w, err)
-
 		if err == nil {
 			s.selectedDevice = data[id]
 			s.controlURL, s.eventlURL, s.renderingControlURL = t.AvtransportControlURL, t.AvtransportEventSubURL, t.RenderingControlURL
+			if s.tvdata != nil {
+				s.tvdata.RenderingControlURL = s.renderingControlURL
+			}
 		}
 	}
 
@@ -163,6 +167,8 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	// Device list auto-refresh
 	go func() {
 		for range refreshDevices.C {
+			oldListSize := len(devices.Devices)
+
 			datanew, _ := getDevices(2)
 			// check to see if the new refresh includes
 			// one of the already selected devices
@@ -180,9 +186,23 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			if !includes {
 				if utils.HostPortIsAlive(u.Host) {
 					data = append(data, s.selectedDevice)
+					sort.Slice(data, func(i, j int) bool {
+						return data[i].name < data[j].name
+					})
+
 				} else {
 					s.controlURL = ""
 					s.DeviceList.UnselectAll()
+				}
+			}
+
+			if oldListSize != len(data) {
+				// Something changed in the list, so we need to
+				// also refresh the active selection.
+				for n, a := range data {
+					if s.selectedDevice == a {
+						list.Select(n)
+					}
 				}
 			}
 			list.Refresh()

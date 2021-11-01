@@ -270,16 +270,17 @@ func getDevices(delay int) (dev []devType, err error) {
 	}
 	// We loop through this map twice as we need to maintain
 	// the correct order.
-	keys := make([]int, 0)
+	keys := make([]string, 0)
 	for k := range devices.Devices {
 		keys = append(keys, k)
 	}
 
-	sort.Ints(keys)
+	sort.Strings(keys)
 
 	guiDeviceList := make([]devType, 0)
 	for _, k := range keys {
-		guiDeviceList = append(guiDeviceList, devType{devices.Devices[k][0], devices.Devices[k][1]})
+		guiDeviceList = append(guiDeviceList, devType{k, devices.Devices[k]})
 	}
+
 	return guiDeviceList, nil
 }
