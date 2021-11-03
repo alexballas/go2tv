@@ -16,7 +16,17 @@ func URLtoListenIPandPort(u string) (string, error) {
 		return "", fmt.Errorf("URLtoListenIPandPort parse error: %w", err)
 	}
 
-	conn, err := net.Dial("udp", parsedURL.Host)
+	callURL := parsedURL.Host
+	if parsedURL.Port() == "" {
+		switch parsedURL.Scheme {
+		case "http":
+			callURL = callURL + ":80"
+		case "https":
+			callURL = callURL + ":443"
+		}
+	}
+
+	conn, err := net.Dial("udp", callURL)
 	if err != nil {
 		return "", fmt.Errorf("URLtoListenIPandPort UDP call error: %w", err)
 	}
