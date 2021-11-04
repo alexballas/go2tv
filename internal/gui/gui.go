@@ -19,9 +19,9 @@ import (
 
 // NewScreen .
 type NewScreen struct {
+	mu                  sync.Mutex
 	Current             fyne.Window
-	Play                *widget.Button
-	Pause               *widget.Button
+	tvdata              *soapcalls.TVPayload
 	Stop                *widget.Button
 	Mute                *widget.Button
 	Unmute              *widget.Button
@@ -30,21 +30,21 @@ type NewScreen struct {
 	MediaText           *widget.Entry
 	SubsText            *widget.Entry
 	DeviceList          *widget.List
-	Medialoop           bool
-	NextMedia           bool
-	State               string
+	httpserver          *httphandlers.HTTPserver
+	Pause               *widget.Button
+	Play                *widget.Button
 	mediafile           filestruct
 	subsfile            filestruct
-	tvdata              *soapcalls.TVPayload
 	selectedDevice      devType
+	State               string
 	controlURL          string
 	eventlURL           string
 	renderingControlURL string
 	currentmfolder      string
-	mu                  sync.Mutex
-	httpserver          *httphandlers.HTTPserver
-	mediaFormats        []string
 	version             string
+	mediaFormats        []string
+	NextMedia           bool
+	Medialoop           bool
 }
 
 type devType struct {

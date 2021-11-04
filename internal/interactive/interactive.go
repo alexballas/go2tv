@@ -17,9 +17,9 @@ import (
 // NewScreen .
 type NewScreen struct {
 	Current    tcell.Screen
+	TV         *soapcalls.TVPayload
 	mediaTitle string
 	lastAction string
-	TV         *soapcalls.TVPayload
 }
 
 var flipflop bool = true

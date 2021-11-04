@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 // PlayEnvelope - As in Play Pause Stop.
@@ -115,15 +117,15 @@ type DIDLLite struct {
 
 // DIDLLiteItem .
 type DIDLLiteItem struct {
+	SecCaptionInfo   SecCaptionInfo   `xml:"sec:CaptionInfo"`
+	SecCaptionInfoEx SecCaptionInfoEx `xml:"sec:CaptionInfoEx"`
 	XMLName          xml.Name         `xml:"item"`
-	ID               string           `xml:"id,attr"`
-	ParentID         string           `xml:"parentID,attr"`
 	Restricted       string           `xml:"restricted,attr"`
 	UPNPClass        string           `xml:"upnp:class"`
 	DCtitle          string           `xml:"dc:title"`
+	ID               string           `xml:"id,attr"`
+	ParentID         string           `xml:"parentID,attr"`
 	ResNode          []ResNode        `xml:"res"`
-	SecCaptionInfo   SecCaptionInfo   `xml:"sec:CaptionInfo"`
-	SecCaptionInfoEx SecCaptionInfoEx `xml:"sec:CaptionInfoEx"`
 }
 
 // ResNode .
@@ -355,6 +357,10 @@ func pauseSoapBuild() ([]byte, error) {
 }
 
 func setMuteSoapBuild(m string) ([]byte, error) {
+	if m != "0" && m != "1" {
+		return nil, errors.New("setMuteSoapBuild input error. Was expecting 0 or 1.")
+	}
+
 	d := SetMuteEnvelope{
 		XMLName:  xml.Name{},
 		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
