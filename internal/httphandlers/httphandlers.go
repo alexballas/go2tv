@@ -1,14 +1,17 @@
 package httphandlers
 
 import (
+	"bytes"
 	"fmt"
 	"html"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/alexballas/go2tv/internal/soapcalls"
 	"github.com/alexballas/go2tv/internal/utils"
@@ -37,11 +40,21 @@ func Close(scr Screen) {
 }
 
 // ServeFiles - Start HTTP server and serve the files.
-func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, mediaPath, subtitlesPath string,
+func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, media, subtitles interface{},
 	tvpayload *soapcalls.TVPayload, screen Screen) error {
 
-	s.mux.HandleFunc("/"+filepath.Base(mediaPath), s.serveMediaHandler(mediaPath))
-	s.mux.HandleFunc("/"+filepath.Base(subtitlesPath), s.serveSubtitlesHandler(subtitlesPath))
+	mURL, err := url.Parse(tvpayload.MediaURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse MediaURL: %w", err)
+	}
+
+	sURL, err := url.Parse(tvpayload.SubtitlesURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse SubtitlesURL: %w", err)
+	}
+
+	s.mux.HandleFunc(mURL.Path, s.serveMediaHandler(media))
+	s.mux.HandleFunc(sURL.Path, s.serveSubtitlesHandler(subtitles))
 	s.mux.HandleFunc("/callback", s.callbackHandler(tvpayload, screen))
 
 	ln, err := net.Listen("tcp", s.http.Addr)
@@ -51,60 +64,19 @@ func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, mediaPath, subtit
 
 	serverStarted <- struct{}{}
 	s.http.Serve(ln)
+
 	return nil
 }
 
-func (s *HTTPserver) serveMediaHandler(media string) http.HandlerFunc {
+func (s *HTTPserver) serveMediaHandler(media interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		respHeader := w.Header()
-		respHeader["transferMode.dlna.org"] = []string{"Streaming"}
-		respHeader["realTimeInfo.dlna.org"] = []string{"DLNA.ORG_TLAG=*"}
-
-		contentFeatures, err := utils.BuildContentFeatures(media)
-		if err != nil {
-			http.NotFound(w, req)
-			return
-		}
-
-		if req.Header.Get("getcontentFeatures.dlna.org") == "1" {
-			respHeader["contentFeatures.dlna.org"] = []string{contentFeatures}
-		}
-
-		filePath, err := os.Open(media)
-		if err != nil {
-			http.NotFound(w, req)
-			return
-		}
-		defer filePath.Close()
-
-		fileStat, err := filePath.Stat()
-		if err != nil {
-			http.NotFound(w, req)
-			return
-		}
-
-		http.ServeContent(w, req, filepath.Base(media), fileStat.ModTime(), filePath)
+		serveContent(w, req, media, true)
 	}
 }
 
-func (s *HTTPserver) serveSubtitlesHandler(subs string) http.HandlerFunc {
+func (s *HTTPserver) serveSubtitlesHandler(subs interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		respHeader := w.Header()
-		respHeader["transferMode.dlna.org"] = []string{"Interactive"}
-
-		filePath, err := os.Open(subs)
-		if err != nil {
-			http.NotFound(w, req)
-			return
-		}
-		defer filePath.Close()
-
-		fileStat, err := filePath.Stat()
-		if err != nil {
-			http.NotFound(w, req)
-			return
-		}
-		http.ServeContent(w, req, filepath.Base(subs), fileStat.ModTime(), filePath)
+		serveContent(w, req, subs, false)
 	}
 }
 
@@ -182,4 +154,65 @@ func NewServer(a string) *HTTPserver {
 	}
 
 	return &srv
+}
+
+func serveContent(w http.ResponseWriter, r *http.Request, s interface{}, isMedia bool) {
+	respHeader := w.Header()
+	if isMedia {
+		respHeader["transferMode.dlna.org"] = []string{"Streaming"}
+		respHeader["realTimeInfo.dlna.org"] = []string{"DLNA.ORG_TLAG=*"}
+	} else {
+		respHeader["transferMode.dlna.org"] = []string{"Interactive"}
+	}
+
+	switch f := s.(type) {
+	case string:
+		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
+			contentFeatures, err := utils.BuildContentFeatures(f)
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			respHeader["contentFeatures.dlna.org"] = []string{contentFeatures}
+		}
+
+		filePath, err := os.Open(f)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		defer filePath.Close()
+
+		fileStat, err := filePath.Stat()
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+
+		http.ServeContent(w, r, filepath.Base(f), fileStat.ModTime(), filePath)
+
+	case []byte:
+		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
+			contentFeatures, _ := utils.BuildContentFeatures("")
+			respHeader["contentFeatures.dlna.org"] = []string{contentFeatures}
+		}
+
+		bReader := bytes.NewReader(f)
+
+		http.ServeContent(w, r, "", time.Now(), bReader)
+
+	case io.Reader:
+		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
+			contentFeatures, _ := utils.BuildContentFeatures("")
+			respHeader["contentFeatures.dlna.org"] = []string{contentFeatures}
+		}
+
+		// No seek support
+		io.Copy(w, f)
+
+	default:
+		http.NotFound(w, r)
+		return
+	}
+
 }

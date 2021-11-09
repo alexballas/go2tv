@@ -210,7 +210,7 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string) ([]byte, e
 	mediaTitle = mediaURL
 	mediaTitlefromURL, err := url.Parse(mediaURL)
 	if err == nil {
-		mediaTitle = strings.TrimLeft(mediaTitlefromURL.Path, "/")
+		mediaTitle = strings.TrimLeft(mediaTitlefromURL.RawPath, "/")
 	}
 
 	l := DIDLLite{

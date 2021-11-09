@@ -51,14 +51,16 @@ func defaultStreamingFlags() string {
 func BuildContentFeatures(file string) (string, error) {
 	var cf strings.Builder
 
-	ctype, err := GetMimeDetails(file)
-	if err != nil {
-		return "", fmt.Errorf("BuildContentFeatures error: %w", err)
-	}
+	if file != "" {
+		ctype, err := GetMimeDetails(file)
+		if err != nil {
+			return "", fmt.Errorf("BuildContentFeatures error: %w", err)
+		}
 
-	dlnaProf, profExists := dlnaprofiles[ctype]
-	if profExists {
-		cf.WriteString(dlnaProf + ";")
+		dlnaProf, profExists := dlnaprofiles[ctype]
+		if profExists {
+			cf.WriteString(dlnaProf + ";")
+		}
 	}
 
 	cf.WriteString("DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=")
