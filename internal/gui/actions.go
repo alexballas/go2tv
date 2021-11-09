@@ -241,7 +241,7 @@ func stopAction(screen *NewScreen) {
 	w := screen.Current
 
 	screen.Play.Enable()
-	screen.Pause.Enable()
+	screen.Pause.Hide()
 
 	if screen.tvdata == nil || screen.tvdata.ControlURL == "" {
 		return
