@@ -144,6 +144,7 @@ func subsAction(screen *NewScreen) {
 func playAction(screen *NewScreen) {
 	w := screen.Current
 	screen.Play.Disable()
+	screen.Play.Refresh()
 
 	if screen.State == "Paused" {
 		err := screen.tvdata.SendtoTV("Play")
@@ -220,6 +221,7 @@ func playAction(screen *NewScreen) {
 func pauseAction(screen *NewScreen) {
 	w := screen.Current
 	screen.Pause.Disable()
+	screen.Pause.Refresh()
 
 	err := screen.tvdata.SendtoTV("Pause")
 	check(w, err)
@@ -241,7 +243,7 @@ func stopAction(screen *NewScreen) {
 	w := screen.Current
 
 	screen.Play.Enable()
-	screen.Pause.Hide()
+	screen.Pause.Enable()
 
 	if screen.tvdata == nil || screen.tvdata.ControlURL == "" {
 		return

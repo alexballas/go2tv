@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -189,7 +188,8 @@ func serveContent(w http.ResponseWriter, r *http.Request, s interface{}, isMedia
 			return
 		}
 
-		http.ServeContent(w, r, filepath.Base(f), fileStat.ModTime(), filePath)
+		name := strings.TrimLeft(r.URL.Path, "/")
+		http.ServeContent(w, r, name, fileStat.ModTime(), filePath)
 
 	case []byte:
 		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
@@ -199,7 +199,8 @@ func serveContent(w http.ResponseWriter, r *http.Request, s interface{}, isMedia
 
 		bReader := bytes.NewReader(f)
 
-		http.ServeContent(w, r, "", time.Now(), bReader)
+		name := strings.TrimLeft(r.URL.Path, "/")
+		http.ServeContent(w, r, name, time.Now(), bReader)
 
 	case io.Reader:
 		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
