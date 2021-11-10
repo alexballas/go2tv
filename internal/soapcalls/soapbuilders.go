@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -195,8 +196,6 @@ type GetMuteAction struct {
 }
 
 func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string) ([]byte, error) {
-	var mediaTitle string
-
 	mediaTypeSlice := strings.Split(mediaType, "/")
 
 	var class string
@@ -207,11 +206,17 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string) ([]byte, e
 		class = "object.item.videoItem.movie"
 	}
 
-	mediaTitle = mediaURL
+	mediaTitle := mediaURL
 	mediaTitlefromURL, err := url.Parse(mediaURL)
 	if err == nil {
-		mediaTitle = strings.TrimLeft(mediaTitlefromURL.RawPath, "/")
+		mediaTitle = strings.TrimLeft(mediaTitlefromURL.Path, "/")
 	}
+
+	re, err := regexp.Compile("[^a-zA-Z0-9.]+")
+	if err != nil {
+		return nil, fmt.Errorf("setAVTransportSoapBuild regex compile error: %w", err)
+	}
+	mediaTitle = re.ReplaceAllString(mediaTitle, " ")
 
 	l := DIDLLite{
 		XMLName:    xml.Name{},
