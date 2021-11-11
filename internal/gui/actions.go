@@ -172,7 +172,7 @@ func playAction(screen *NewScreen) {
 		return
 	}
 
-	mediaType, err := utils.GetMimeDetails(screen.mediafile.abs)
+	mediaType, err := utils.GetMimeDetailsFromFile(screen.mediafile.abs)
 	check(w, err)
 	if err != nil {
 		return

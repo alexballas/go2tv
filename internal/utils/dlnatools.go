@@ -52,7 +52,7 @@ func BuildContentFeatures(file string) (string, error) {
 	var cf strings.Builder
 
 	if file != "" {
-		ctype, err := GetMimeDetails(file)
+		ctype, err := GetMimeDetailsFromFile(file)
 		if err != nil {
 			return "", fmt.Errorf("BuildContentFeatures error: %w", err)
 		}
@@ -69,18 +69,18 @@ func BuildContentFeatures(file string) (string, error) {
 	return cf.String(), nil
 }
 
-// GetMimeDetails - Get media file mime details.
-func GetMimeDetails(f string) (string, error) {
+// GetMimeDetailsFromFile - Get media file mime details.
+func GetMimeDetailsFromFile(f string) (string, error) {
 	file, err := os.Open(f)
 	if err != nil {
-		return "", fmt.Errorf("getMimeDetails error: %w", err)
+		return "", fmt.Errorf("getMimeDetailsFromFile error: %w", err)
 	}
 	head := make([]byte, 261)
 	file.Read(head)
 
 	kind, err := filetype.Match(head)
 	if err != nil {
-		return "", fmt.Errorf("getMimeDetails error #2: %w", err)
+		return "", fmt.Errorf("getMimeDetailsFromFile error #2: %w", err)
 	}
 
 	return fmt.Sprintf("%s/%s", kind.MIME.Type, kind.MIME.Subtype), nil

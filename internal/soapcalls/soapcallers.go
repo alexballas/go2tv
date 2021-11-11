@@ -77,13 +77,12 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 		return fmt.Errorf("setAVTransportSoapCall POST error: %w", err)
 	}
 
-	headers := http.Header{
+	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI"`},
 		"content-type": []string{"text/xml"},
 		"charset":      []string{"utf-8"},
 		"Connection":   []string{"close"},
 	}
-	req.Header = headers
 
 	_, err = client.Do(req)
 	if err != nil {
@@ -130,13 +129,12 @@ func (p *TVPayload) playStopPauseSoapCall(action string) error {
 		return fmt.Errorf("playStopPauseSoapCall POST error: %w", err)
 	}
 
-	headers := http.Header{
+	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#` + action + `"`},
 		"content-type": []string{"text/xml"},
 		"charset":      []string{"utf-8"},
 		"Connection":   []string{"close"},
 	}
-	req.Header = headers
 
 	_, err = client.Do(req)
 	if err != nil {
@@ -254,12 +252,11 @@ func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 		return fmt.Errorf("UnsubscribeSoapCall UNSUBSCRIBE error: %w", err)
 	}
 
-	headers := http.Header{
+	req.Header = http.Header{
 		"SID":        []string{"uuid:" + uuid},
 		"Connection": []string{"close"},
 	}
 
-	req.Header = headers
 	req.Header.Del("User-Agent")
 
 	_, err = client.Do(req)
@@ -319,13 +316,12 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 		return "", fmt.Errorf("GetMuteSoapCall POST error: %w", err)
 	}
 
-	headers := http.Header{
+	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:RenderingControl:1#GetMute"`},
 		"content-type": []string{"text/xml"},
 		"charset":      []string{"utf-8"},
 		"Connection":   []string{"close"},
 	}
-	req.Header = headers
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -362,13 +358,12 @@ func (p *TVPayload) SetMuteSoapCall(number string) error {
 		return fmt.Errorf("SetMuteSoapCall POST error: %w", err)
 	}
 
-	headers := http.Header{
+	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:RenderingControl:1#SetMute"`},
 		"content-type": []string{"text/xml"},
 		"charset":      []string{"utf-8"},
 		"Connection":   []string{"close"},
 	}
-	req.Header = headers
 
 	_, err = client.Do(req)
 	if err != nil {

@@ -64,7 +64,7 @@ func main() {
 	scr, err := interactive.InitTcellNewScreen()
 	check(err)
 
-	mediaType, err := utils.GetMimeDetails(absMediaFile)
+	mediaType, err := utils.GetMimeDetailsFromFile(absMediaFile)
 	check(err)
 
 	tvdata := &soapcalls.TVPayload{
