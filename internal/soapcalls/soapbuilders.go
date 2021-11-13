@@ -212,11 +212,11 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string) ([]byte, e
 		mediaTitle = strings.TrimLeft(mediaTitlefromURL.Path, "/")
 	}
 
-	re, err := regexp.Compile("[^a-zA-Z0-9.]+")
+	re, err := regexp.Compile(`[&<>\\]+`)
 	if err != nil {
 		return nil, fmt.Errorf("setAVTransportSoapBuild regex compile error: %w", err)
 	}
-	mediaTitle = re.ReplaceAllString(mediaTitle, " ")
+	mediaTitle = re.ReplaceAllString(mediaTitle, "")
 
 	l := DIDLLite{
 		XMLName:    xml.Name{},
