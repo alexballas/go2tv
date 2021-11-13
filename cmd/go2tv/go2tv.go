@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net/url"
@@ -15,6 +16,7 @@ import (
 	"github.com/alexballas/go2tv/internal/httphandlers"
 	"github.com/alexballas/go2tv/internal/interactive"
 	"github.com/alexballas/go2tv/internal/soapcalls"
+	"github.com/alexballas/go2tv/internal/urldownloader"
 	"github.com/alexballas/go2tv/internal/utils"
 	"github.com/pkg/errors"
 )
@@ -24,6 +26,7 @@ var (
 	build      string
 	dmrURL     string
 	mediaArg   = flag.String("v", "", "Path to the video/audio file. (Triggers the CLI mode)")
+	urlArg     = flag.String("u", "", "Path to the URL media file. (Triggers the CLI mode)")
 	subsArg    = flag.String("s", "", "Path to the subtitles file.")
 	listPtr    = flag.Bool("l", false, "List all available UPnP/DLNA Media Renderer models and URLs.")
 	targetPtr  = flag.String("t", "", "Cast to a specific UPnP/DLNA Media Renderer URL.")
@@ -32,7 +35,7 @@ var (
 
 func main() {
 	guiEnabled := true
-
+	var mediaFile interface{}
 	flag.Parse()
 
 	exit, err := checkflags()
@@ -40,8 +43,18 @@ func main() {
 	if exit {
 		os.Exit(0)
 	}
-	if *mediaArg != "" {
+	if *mediaArg != "" || *urlArg != "" {
 		guiEnabled = false
+	}
+
+	if *mediaArg != "" {
+		mediaFile = *mediaArg
+	}
+
+	if *mediaArg == "" && *urlArg != "" {
+		file, err := urldownloader.NewDownloadURL(context.Background(), *urlArg)
+		check(err)
+		mediaFile = file
 	}
 
 	if guiEnabled {
@@ -49,8 +62,19 @@ func main() {
 		gui.Start(scr)
 	}
 
-	absMediaFile, err := filepath.Abs(*mediaArg)
-	check(err)
+	var absMediaFile string
+
+	switch t := mediaFile.(type) {
+	case string:
+		absMediaFile, err = filepath.Abs(t)
+		check(err)
+	case *urldownloader.TFile:
+		absMediaFile = t.F.Name()
+
+		if err := t.WaitForValidMedia(); err != nil {
+			check(err)
+		}
+	}
 
 	absSubtitlesFile, err := filepath.Abs(*subsArg)
 	check(err)
@@ -75,6 +99,7 @@ func main() {
 		MediaURL:            "http://" + whereToListen + "/" + utils.ConvertFilename(absMediaFile),
 		SubtitlesURL:        "http://" + whereToListen + "/" + utils.ConvertFilename(absSubtitlesFile),
 		MediaType:           mediaType,
+		MediaFile:           mediaFile,
 		CurrentTimers:       make(map[string]*time.Timer),
 	}
 
@@ -168,7 +193,7 @@ func checkflags() (exit bool, err error) {
 }
 
 func checkVflag() error {
-	if !*listPtr {
+	if !*listPtr && *urlArg == "" {
 		if _, err := os.Stat(*mediaArg); os.IsNotExist(err) {
 			return fmt.Errorf("checkVflags error: %w", err)
 		}
@@ -238,5 +263,5 @@ func checkVerflag() {
 }
 
 func checkGUI() bool {
-	return *mediaArg == "" && !*listPtr
+	return *mediaArg == "" && !*listPtr && *urlArg == ""
 }

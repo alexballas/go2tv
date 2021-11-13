@@ -30,14 +30,15 @@ var (
 
 // TVPayload - this is the heart of Go2TV.
 type TVPayload struct {
+	MediaFile           interface{}
 	CurrentTimers       map[string]*time.Timer
 	ControlURL          string
-	MediaType           string
 	SubtitlesURL        string
 	EventURL            string
 	CallbackURL         string
 	RenderingControlURL string
 	MediaURL            string
+	MediaType           string
 }
 
 // GetMuteRespBody - Build the Get Mute response body
