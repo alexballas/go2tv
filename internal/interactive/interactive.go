@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/alexballas/go2tv/internal/soapcalls"
+	"github.com/alexballas/go2tv/internal/urldownloader"
 	"github.com/gdamore/tcell/v2"
 	"github.com/gdamore/tcell/v2/encoding"
 	"github.com/mattn/go-runewidth"
@@ -126,13 +127,11 @@ func (p *NewScreen) InterInit(tv *soapcalls.TVPayload) {
 
 // HandleKeyEvent Method to handle all key press events
 func (p *NewScreen) HandleKeyEvent(ev *tcell.EventKey) {
-	s := p.Current
 	tv := p.TV
 
 	if ev.Key() == tcell.KeyEscape {
 		tv.SendtoTV("Stop")
-		s.Fini()
-		os.Exit(0)
+		p.Fini()
 	}
 
 	switch ev.Rune() {
@@ -165,6 +164,12 @@ func (p *NewScreen) HandleKeyEvent(ev *tcell.EventKey) {
 // Fini Method to implement the screen interface
 func (p *NewScreen) Fini() {
 	p.Current.Fini()
+
+	switch t := p.TV.MediaFile.(type) {
+	case *urldownloader.TFile:
+		t.Close()
+	}
+
 	os.Exit(0)
 }
 
