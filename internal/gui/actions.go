@@ -178,13 +178,18 @@ func playAction(screen *NewScreen) {
 		return
 	}
 
+	callbackPath, err := utils.RandomString()
+	if err != nil {
+		return
+	}
+
 	screen.tvdata = &soapcalls.TVPayload{
 		ControlURL:          screen.controlURL,
 		EventURL:            screen.eventlURL,
 		RenderingControlURL: screen.renderingControlURL,
 		MediaURL:            "http://" + whereToListen + "/" + screen.mediafile.urlEncoded,
 		SubtitlesURL:        "http://" + whereToListen + "/" + screen.subsfile.urlEncoded,
-		CallbackURL:         "http://" + whereToListen + "/callback",
+		CallbackURL:         "http://" + whereToListen + "/" + callbackPath,
 		MediaType:           mediaType,
 		CurrentTimers:       make(map[string]*time.Timer),
 	}
