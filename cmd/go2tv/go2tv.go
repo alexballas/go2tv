@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -16,7 +17,7 @@ import (
 	"github.com/alexballas/go2tv/internal/httphandlers"
 	"github.com/alexballas/go2tv/internal/interactive"
 	"github.com/alexballas/go2tv/internal/soapcalls"
-	"github.com/alexballas/go2tv/internal/urldownloader"
+	"github.com/alexballas/go2tv/internal/urlstreamer"
 	"github.com/alexballas/go2tv/internal/utils"
 	"github.com/pkg/errors"
 )
@@ -26,7 +27,7 @@ var (
 	build      string
 	dmrURL     string
 	mediaArg   = flag.String("v", "", "Path to the video/audio file. (Triggers the CLI mode)")
-	urlArg     = flag.String("u", "", "Path to the URL media file. (Triggers the CLI mode)")
+	urlArg     = flag.String("u", "", "Path to the URL media file. URL streaming does not support seek operations. (Triggers the CLI mode)")
 	subsArg    = flag.String("s", "", "Path to the subtitles file.")
 	listPtr    = flag.Bool("l", false, "List all available UPnP/DLNA Media Renderer models and URLs.")
 	targetPtr  = flag.String("t", "", "Cast to a specific UPnP/DLNA Media Renderer URL.")
@@ -52,9 +53,8 @@ func main() {
 	}
 
 	if *mediaArg == "" && *urlArg != "" {
-		file, err := urldownloader.NewDownloadURL(context.Background(), *urlArg)
+		mediaFile, err = urlstreamer.StreamURL(context.Background(), *urlArg)
 		check(err)
-		mediaFile = file
 	}
 
 	if guiEnabled {
@@ -63,17 +63,18 @@ func main() {
 	}
 
 	var absMediaFile string
+	var mediaType string
 
 	switch t := mediaFile.(type) {
 	case string:
 		absMediaFile, err = filepath.Abs(t)
 		check(err)
-	case *urldownloader.TFile:
-		absMediaFile = t.F.Name()
+		mediaFile = absMediaFile
 
-		if err := t.WaitForValidMedia(); err != nil {
-			check(err)
-		}
+		mediaType, err = utils.GetMimeDetailsFromFile(absMediaFile)
+		check(err)
+	case *io.PipeReader:
+		absMediaFile = *urlArg
 	}
 
 	absSubtitlesFile, err := filepath.Abs(*subsArg)
@@ -88,18 +89,17 @@ func main() {
 	scr, err := interactive.InitTcellNewScreen()
 	check(err)
 
-	mediaType, err := utils.GetMimeDetailsFromFile(absMediaFile)
+	callbackPath, err := utils.RandomString()
 	check(err)
 
 	tvdata := &soapcalls.TVPayload{
 		ControlURL:          upnpServicesURLs.AvtransportControlURL,
 		EventURL:            upnpServicesURLs.AvtransportEventSubURL,
 		RenderingControlURL: upnpServicesURLs.RenderingControlURL,
-		CallbackURL:         "http://" + whereToListen + "/callback",
+		CallbackURL:         "http://" + whereToListen + "/" + callbackPath,
 		MediaURL:            "http://" + whereToListen + "/" + utils.ConvertFilename(absMediaFile),
 		SubtitlesURL:        "http://" + whereToListen + "/" + utils.ConvertFilename(absSubtitlesFile),
 		MediaType:           mediaType,
-		MediaFile:           mediaFile,
 		CurrentTimers:       make(map[string]*time.Timer),
 	}
 
@@ -109,7 +109,7 @@ func main() {
 	// We pass the tvdata here as we need the callback handlers to be able to react
 	// to the different media renderer states.
 	go func() {
-		err := s.ServeFiles(serverStarted, absMediaFile, absSubtitlesFile, tvdata, scr)
+		err := s.ServeFiles(serverStarted, mediaFile, absSubtitlesFile, tvdata, scr)
 		check(err)
 	}()
 	// Wait for HTTP server to properly initialize

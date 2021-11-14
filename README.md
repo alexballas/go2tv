@@ -33,10 +33,11 @@ Usage of go2tv:
         Path to the subtitles file.
   -t string
         Cast to a specific UPnP/DLNA Media Renderer URL.
+  -u string
+        Path to the URL media file. URL streaming does not support seek operations. (Triggers the CLI mode)
   -v string
         Path to the video/audio file. (Triggers the CLI mode)
   -version
-        Print version.
 ```
 
 Allowed media files in the GUI

@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -48,7 +49,7 @@ func defaultStreamingFlags() string {
 
 // BuildContentFeatures - Build the content features string
 // for the "contentFeatures.dlna.org" header.
-func BuildContentFeatures(file string) (string, error) {
+func BuildContentFeatures(file string, seek string, transcode bool) (string, error) {
 	var cf strings.Builder
 
 	if file != "" {
@@ -63,7 +64,27 @@ func BuildContentFeatures(file string) (string, error) {
 		}
 	}
 
-	cf.WriteString("DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=")
+	switch seek {
+	case "00":
+		cf.WriteString("DLNA.ORG_OP=00;")
+	case "01":
+		cf.WriteString("DLNA.ORG_OP=01;")
+	case "10":
+		cf.WriteString("DLNA.ORG_OP=10;")
+	case "11":
+		cf.WriteString("DLNA.ORG_OP=11;")
+	default:
+		return "", errors.New("invalid seek flag")
+	}
+
+	switch transcode {
+	case true:
+		cf.WriteString("DLNA.ORG_CI=1;")
+	default:
+		cf.WriteString("DLNA.ORG_CI=0")
+	}
+
+	cf.WriteString("DLNA.ORG_FLAGS=")
 	cf.WriteString(defaultStreamingFlags())
 
 	return cf.String(), nil
