@@ -126,13 +126,11 @@ func (p *NewScreen) InterInit(tv *soapcalls.TVPayload) {
 
 // HandleKeyEvent Method to handle all key press events
 func (p *NewScreen) HandleKeyEvent(ev *tcell.EventKey) {
-	s := p.Current
 	tv := p.TV
 
 	if ev.Key() == tcell.KeyEscape {
 		tv.SendtoTV("Stop")
-		s.Fini()
-		os.Exit(0)
+		p.Fini()
 	}
 
 	switch ev.Rune() {
