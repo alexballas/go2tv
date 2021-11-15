@@ -99,10 +99,7 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 			return
 		}
 
-		uuid := sidVal[0]
-		uuid = strings.TrimLeft(uuid, "[")
-		uuid = strings.TrimLeft(uuid, "]")
-		uuid = strings.TrimPrefix(uuid, "uuid:")
+		uuid := strings.TrimPrefix(sidVal[0], "uuid:")
 
 		// Apparently we should ignore the first message
 		// On some media renderers we receive a STOPPED message
