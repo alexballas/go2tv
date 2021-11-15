@@ -73,7 +73,8 @@ func main() {
 
 		mediaType, err = utils.GetMimeDetailsFromFile(absMediaFile)
 		check(err)
-	case *io.PipeReader:
+
+	case io.ReadCloser:
 		absMediaFile = *urlArg
 	}
 

@@ -2,6 +2,7 @@ package urlstreamer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,30 +10,28 @@ import (
 )
 
 // StreamURL - Start the URL media streaming
-func StreamURL(ctx context.Context, s string) (*io.PipeReader, error) {
+func StreamURL(ctx context.Context, s string) (io.ReadCloser, error) {
 	_, err := url.ParseRequestURI(s)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse url: %w", err)
+		return nil, fmt.Errorf("streamURL failed to parse url: %w", err)
 	}
 
-	pr, pw := io.Pipe()
-	go func() {
-		defer pw.Close()
+	client := &http.Client{}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s, nil)
+	if err != nil {
+		return nil, fmt.Errorf("streamURL failed to call NewRequest: %w", err)
+	}
 
-		client := &http.Client{}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, s, nil)
-		if err != nil {
-			return
-		}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("streamURL failed to client.Do: %w", err)
+	}
 
-		resp, err := client.Do(req)
-		if err != nil {
-			return
-		}
-		defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, errors.New("streamURL bad status code: " + resp.Status)
+	}
 
-		io.Copy(pw, resp.Body)
-	}()
+	body := resp.Body
 
-	return pr, nil
+	return body, nil
 }
