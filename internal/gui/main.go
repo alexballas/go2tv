@@ -28,7 +28,10 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
 		if k.Name == "Space" || k.Name == "P" {
-			switch s.State {
+
+			currentState := s.getScreenState()
+
+			switch currentState {
 			case "Playing":
 				go pauseAction(s)
 			case "Paused":
@@ -89,6 +92,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	})
 
 	sfilecheck := widget.NewCheck("Custom Subtitles", func(b bool) {})
+	externalmedia := widget.NewCheck("Media File from URL", func(b bool) {})
 	medialoop := widget.NewCheck("Loop Selected Media File", func(b bool) {})
 	nextmedia := widget.NewCheck("Auto-Select Next Media File", func(b bool) {})
 
@@ -115,6 +119,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	s.Mute = mute
 	s.Unmute = unmute
 	s.CustomSubsCheck = sfilecheck
+	s.ExternalMediaURL = externalmedia
 	s.MediaText = mfiletext
 	s.SubsText = sfiletext
 	s.DeviceList = list
@@ -124,7 +129,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	muteunmute := container.New(layout.NewMaxLayout(), mute, unmute)
 	playpausemutestop := container.New(&mainButtonsLayout{}, playpause, muteunmute, stop)
 
-	checklists := container.NewHBox(sfilecheck, medialoop, nextmedia)
+	checklists := container.NewHBox(externalmedia, sfilecheck, medialoop, nextmedia)
 	mediasubsbuttons := container.New(layout.NewGridLayout(2), mfile, sfile)
 	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
 	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearmedia), clearmedia, mfiletext)
@@ -153,6 +158,35 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			sfile.Enable()
 		} else {
 			sfile.Disable()
+		}
+	}
+
+	externalmedia.OnChanged = func(b bool) {
+		if b {
+			nextmedia.SetChecked(false)
+			nextmedia.Disable()
+			mfile.Disable()
+
+			// rename the label
+			mediafilelabel.Text = "URL:"
+			mediafilelabel.Refresh()
+
+			// Clear the Media Text Area
+			clearmediaAction(s)
+
+			// Set some Media text defaults
+			// to indicate that we're expecting a URL
+			mfiletext.SetPlaceHolder("Enter URL here")
+			mfiletext.Enable()
+		} else {
+			medialoop.Enable()
+			nextmedia.Enable()
+			mfile.Enable()
+			mediafilelabel.Text = "File:"
+			mfiletext.SetPlaceHolder("")
+			mfiletext.Text = ""
+			mediafilelabel.Refresh()
+			mfiletext.Disable()
 		}
 	}
 

@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -12,6 +13,7 @@ import (
 	"github.com/alexballas/go2tv/internal/devices"
 	"github.com/alexballas/go2tv/internal/httphandlers"
 	"github.com/alexballas/go2tv/internal/soapcalls"
+	"github.com/alexballas/go2tv/internal/urlstreamer"
 	"github.com/alexballas/go2tv/internal/utils"
 	"github.com/pkg/errors"
 )
@@ -73,10 +75,7 @@ func mediaAction(screen *NewScreen) {
 		check(w, err)
 
 		screen.MediaText.Text = filepath.Base(mfile)
-		screen.mediafile = filestruct{
-			abs:        absMediaFile,
-			urlEncoded: utils.ConvertFilename(absMediaFile),
-		}
+		screen.mediafile = absMediaFile
 
 		if !screen.CustomSubsCheck.Checked {
 			selectSubs(absMediaFile, screen)
@@ -97,7 +96,7 @@ func mediaAction(screen *NewScreen) {
 		fd.SetLocation(mfileLister)
 	}
 
-	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.4, w.Canvas().Size().Height*1.3))
+	fd.Resize(fyne.NewSize(w.Canvas().Size().Width, w.Canvas().Size().Height*1.3))
 	fd.Show()
 }
 
@@ -119,10 +118,7 @@ func subsAction(screen *NewScreen) {
 		}
 
 		screen.SubsText.Text = filepath.Base(sfile)
-		screen.subsfile = filestruct{
-			abs:        absSubtitlesFile,
-			urlEncoded: utils.ConvertFilename(absSubtitlesFile),
-		}
+		screen.subsfile = absSubtitlesFile
 		screen.SubsText.Refresh()
 	}, w)
 	fd.SetFilter(storage.NewExtensionFileFilter([]string{".srt"}))
@@ -136,23 +132,38 @@ func subsAction(screen *NewScreen) {
 		}
 		fd.SetLocation(mfileLister)
 	}
-	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.4, w.Canvas().Size().Height*1.3))
+	fd.Resize(fyne.NewSize(w.Canvas().Size().Width, w.Canvas().Size().Height*1.3))
 
 	fd.Show()
 }
 
 func playAction(screen *NewScreen) {
+	var mediaFile interface{}
+
 	w := screen.Current
 	screen.Play.Disable()
 	screen.Play.Refresh()
 
-	if screen.State == "Paused" {
+	currentState := screen.getScreenState()
+
+	if currentState == "Paused" {
 		err := screen.tvdata.SendtoTV("Play")
 		check(w, err)
 		return
 	}
-	if screen.mediafile.urlEncoded == "" {
-		check(w, errors.New("please select a media file"))
+
+	// With this check we're covering the edge case
+	// where we're able to click 'Play' while a media
+	// is looping repeatedly and throws an error that
+	// it's not supported by our media renderer.
+	// Without this check we'd end up spinning more
+	// webservers while keeping the old ones open.
+	if screen.httpserver != nil {
+		screen.httpserver.StopServeFiles()
+	}
+
+	if screen.mediafile == "" && screen.MediaText.Text == "" {
+		check(w, errors.New("please select a media file or enter a media URL"))
 		screen.Play.Enable()
 		return
 	}
@@ -169,26 +180,55 @@ func playAction(screen *NewScreen) {
 	whereToListen, err := utils.URLtoListenIPandPort(screen.controlURL)
 	check(w, err)
 	if err != nil {
+		screen.Play.Enable()
 		return
 	}
 
-	mediaType, err := utils.GetMimeDetailsFromFile(screen.mediafile.abs)
-	check(w, err)
-	if err != nil {
-		return
+	var mediaType string
+
+	if !screen.ExternalMediaURL.Checked {
+		mediaType, err = utils.GetMimeDetailsFromFile(screen.mediafile)
+		check(w, err)
+		if err != nil {
+			screen.Play.Enable()
+			return
+		}
 	}
 
 	callbackPath, err := utils.RandomString()
 	if err != nil {
+		screen.Play.Enable()
 		return
+	}
+
+	mediaFile = screen.mediafile
+
+	if screen.ExternalMediaURL.Checked {
+		// We need to define the screen.mediafile
+		// as this is the core item in our structure
+		// that define that something is being streammed.
+		// We use its value for many checks in our code.
+		screen.mediafile = screen.MediaText.Text
+
+		// We're not using any context here. The reason is
+		// that when the webserver shuts down it causes the
+		// the io.Copy operation to fail with "broken pipe".
+		// That's good enough for us since right after that
+		// we close the io.ReadCloser.
+		mediaFile, err = urlstreamer.StreamURL(context.Background(), screen.MediaText.Text)
+		check(screen.Current, err)
+		if err != nil {
+			screen.Play.Enable()
+			return
+		}
 	}
 
 	screen.tvdata = &soapcalls.TVPayload{
 		ControlURL:          screen.controlURL,
 		EventURL:            screen.eventlURL,
 		RenderingControlURL: screen.renderingControlURL,
-		MediaURL:            "http://" + whereToListen + "/" + screen.mediafile.urlEncoded,
-		SubtitlesURL:        "http://" + whereToListen + "/" + screen.subsfile.urlEncoded,
+		MediaURL:            "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile),
+		SubtitlesURL:        "http://" + whereToListen + "/" + utils.ConvertFilename(screen.subsfile),
 		CallbackURL:         "http://" + whereToListen + "/" + callbackPath,
 		MediaType:           mediaType,
 		CurrentTimers:       make(map[string]*time.Timer),
@@ -200,7 +240,7 @@ func playAction(screen *NewScreen) {
 	// We pass the tvdata here as we need the callback handlers to be able to react
 	// to the different media renderer states.
 	go func() {
-		err := screen.httpserver.ServeFiles(serverStarted, screen.mediafile.abs, screen.subsfile.abs, screen.tvdata, screen)
+		err := screen.httpserver.ServeFiles(serverStarted, mediaFile, screen.subsfile, screen.tvdata, screen)
 		check(w, err)
 		if err != nil {
 			return
@@ -234,13 +274,13 @@ func pauseAction(screen *NewScreen) {
 
 func clearmediaAction(screen *NewScreen) {
 	screen.MediaText.Text = ""
-	screen.mediafile.urlEncoded = ""
+	screen.mediafile = ""
 	screen.MediaText.Refresh()
 }
 
 func clearsubsAction(screen *NewScreen) {
 	screen.SubsText.Text = ""
-	screen.subsfile.urlEncoded = ""
+	screen.subsfile = ""
 	screen.SubsText.Refresh()
 }
 
@@ -253,6 +293,7 @@ func stopAction(screen *NewScreen) {
 	if screen.tvdata == nil || screen.tvdata.ControlURL == "" {
 		return
 	}
+
 	err := screen.tvdata.SendtoTV("Stop")
 
 	// Hack to avoid potential http errors during media loop mode.
@@ -268,7 +309,6 @@ func stopAction(screen *NewScreen) {
 	// from the media renderer, but there seems
 	// to be a race condition that prevents this.
 	screen.EmitMsg("Stopped")
-
 }
 
 func getDevices(delay int) (dev []devType, err error) {

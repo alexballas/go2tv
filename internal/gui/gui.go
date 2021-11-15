@@ -13,13 +13,12 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/alexballas/go2tv/internal/httphandlers"
 	"github.com/alexballas/go2tv/internal/soapcalls"
-	"github.com/alexballas/go2tv/internal/utils"
 	"github.com/pkg/errors"
 )
 
 // NewScreen .
 type NewScreen struct {
-	mu                  sync.Mutex
+	mu                  sync.RWMutex
 	Current             fyne.Window
 	tvdata              *soapcalls.TVPayload
 	Stop                *widget.Button
@@ -27,14 +26,15 @@ type NewScreen struct {
 	Unmute              *widget.Button
 	CheckVersion        *widget.Button
 	CustomSubsCheck     *widget.Check
+	ExternalMediaURL    *widget.Check
 	MediaText           *widget.Entry
 	SubsText            *widget.Entry
 	DeviceList          *widget.List
 	httpserver          *httphandlers.HTTPserver
 	Pause               *widget.Button
 	Play                *widget.Button
-	mediafile           filestruct
-	subsfile            filestruct
+	mediafile           string
+	subsfile            string
 	selectedDevice      devType
 	State               string
 	controlURL          string
@@ -52,11 +52,6 @@ type devType struct {
 	addr string
 }
 
-type filestruct struct {
-	abs        string
-	urlEncoded string
-}
-
 type mainButtonsLayout struct{}
 
 // Start .
@@ -68,7 +63,7 @@ func Start(s *NewScreen) {
 		container.NewTabItem("About", aboutWindow(s)),
 	)
 	w.SetContent(tabs)
-	w.Resize(fyne.NewSize(w.Canvas().Size().Width*1.4, w.Canvas().Size().Height*1.3))
+	w.Resize(fyne.NewSize(w.Canvas().Size().Width, w.Canvas().Size().Height*1.3))
 	w.CenterOnScreen()
 	w.ShowAndRun()
 	os.Exit(0)
@@ -143,9 +138,16 @@ func (p *NewScreen) updateScreenState(a string) {
 	p.mu.Unlock()
 }
 
+// getScreenState returns the current screen state
+func (p *NewScreen) getScreenState() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.State
+}
+
 func selectNextMedia(screen *NewScreen) {
 	w := screen.Current
-	filedir := filepath.Dir(screen.mediafile.abs)
+	filedir := filepath.Dir(screen.mediafile)
 	filelist, err := os.ReadDir(filedir)
 	check(w, err)
 
@@ -163,21 +165,18 @@ func selectNextMedia(screen *NewScreen) {
 			continue
 		}
 
-		if f.Name() == filepath.Base(screen.mediafile.abs) {
+		if f.Name() == filepath.Base(screen.mediafile) {
 			breaknext = true
 			continue
 		}
 
 		if breaknext {
 			screen.MediaText.Text = f.Name()
-			screen.mediafile = filestruct{
-				abs:        filepath.Join(filedir, f.Name()),
-				urlEncoded: utils.ConvertFilename(f.Name()),
-			}
+			screen.mediafile = filepath.Join(filedir, f.Name())
 			screen.MediaText.Refresh()
 
 			if !screen.CustomSubsCheck.Checked {
-				selectSubs(screen.mediafile.abs, screen)
+				selectSubs(screen.mediafile, screen)
 			}
 			break
 		}
@@ -190,14 +189,11 @@ func selectSubs(v string, screen *NewScreen) {
 
 	if _, err := os.Stat(possibleSub); os.IsNotExist(err) {
 		screen.SubsText.Text = ""
-		screen.subsfile = filestruct{}
+		screen.subsfile = ""
 	} else {
 		screen.SubsText.Text = filepath.Base(possibleSub)
 
-		screen.subsfile = filestruct{
-			abs:        possibleSub,
-			urlEncoded: utils.ConvertFilename(possibleSub),
-		}
+		screen.subsfile = possibleSub
 	}
 	screen.SubsText.Refresh()
 }
