@@ -6,9 +6,9 @@ require (
 	fyne.io/fyne/v2 v2.1.1
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/gdamore/tcell/v2 v2.4.0
-	github.com/go-gl/gl v0.0.0-20210905235341-f7a045908259 // indirect
-	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20210727001814-0db043d8d5be // indirect
-	github.com/godbus/dbus/v5 v5.0.5 // indirect
+	github.com/go-gl/gl v0.0.0-20211025173605-bda47ffaa784 // indirect
+	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20211024062804-40e447a793be // indirect
+	github.com/godbus/dbus/v5 v5.0.6 // indirect
 	github.com/h2non/filetype v1.1.1
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.0
@@ -16,13 +16,14 @@ require (
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-runewidth v0.0.13
 	github.com/pkg/errors v0.9.1
-	github.com/srwiley/oksvg v0.0.0-20210519022825-9fc0c575d5fe // indirect
+	github.com/srwiley/oksvg v0.0.0-20211104221756-aeb4ca2c1505 // indirect
 	github.com/srwiley/rasterx v0.0.0-20210519020934-456a8d69b780 // indirect
 	github.com/stretchr/testify v1.7.0 // indirect
-	github.com/yuin/goldmark v1.4.1 // indirect
-	golang.org/x/image v0.0.0-20210628002857-a66eb6448b8d // indirect
-	golang.org/x/net v0.0.0-20210917163549-3c21e5b27794 // indirect
-	golang.org/x/sys v0.0.0-20211007075335-d3039528d8ac // indirect
-	golang.org/x/term v0.0.0-20210916214954-140adaaadfaf // indirect
+	github.com/yuin/goldmark v1.4.4 // indirect
+	golang.org/x/image v0.0.0-20211028202545-6944b10bf410 // indirect
+	golang.org/x/net v0.0.0-20211116231205-47ca1ff31462 // indirect
+	golang.org/x/sys v0.0.0-20211117180635-dee7805ff2e1 // indirect
+	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
 	golang.org/x/text v0.3.7 // indirect
+	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
