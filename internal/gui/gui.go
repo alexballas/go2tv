@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/alexballas/go2tv/internal/httphandlers"
 	"github.com/alexballas/go2tv/internal/soapcalls"
@@ -22,8 +23,7 @@ type NewScreen struct {
 	Current             fyne.Window
 	tvdata              *soapcalls.TVPayload
 	Stop                *widget.Button
-	Mute                *widget.Button
-	Unmute              *widget.Button
+	MuteUnmute          *widget.Button
 	CheckVersion        *widget.Button
 	CustomSubsCheck     *widget.Check
 	ExternalMediaURL    *widget.Check
@@ -31,8 +31,7 @@ type NewScreen struct {
 	SubsText            *widget.Entry
 	DeviceList          *widget.List
 	httpserver          *httphandlers.HTTPserver
-	Pause               *widget.Button
-	Play                *widget.Button
+	PlayPause           *widget.Button
 	mediafile           string
 	subsfile            string
 	selectedDevice      devType
@@ -73,18 +72,13 @@ func Start(s *NewScreen) {
 func (p *NewScreen) EmitMsg(a string) {
 	switch a {
 	case "Playing":
-		p.Pause.Show()
-		p.Play.Hide()
-		p.Play.Enable()
+		setPlayPauseView("Pause", p)
 		p.updateScreenState("Playing")
 	case "Paused":
-		p.Play.Show()
-		p.Pause.Hide()
-		p.Pause.Enable()
+		setPlayPauseView("Play", p)
 		p.updateScreenState("Paused")
 	case "Stopped":
-		p.Play.Show()
-		p.Pause.Hide()
+		setPlayPauseView("Play", p)
 		p.updateScreenState("Stopped")
 		stopAction(p)
 	default:
@@ -151,7 +145,32 @@ func selectNextMedia(screen *NewScreen) {
 	filelist, err := os.ReadDir(filedir)
 	check(w, err)
 
-	breaknext := false
+	var breaknext bool
+	var n int
+	var totalMedia int
+	var firstMedia string
+
+	for _, f := range filelist {
+		isMedia := false
+		for _, vext := range screen.mediaFormats {
+			if filepath.Ext(filepath.Join(filedir, f.Name())) == vext {
+
+				if firstMedia == "" {
+					firstMedia = f.Name()
+				}
+
+				isMedia = true
+				break
+			}
+		}
+
+		if !isMedia {
+			continue
+		}
+
+		totalMedia += 1
+	}
+
 	for _, f := range filelist {
 		isMedia := false
 		for _, vext := range screen.mediaFormats {
@@ -165,7 +184,16 @@ func selectNextMedia(screen *NewScreen) {
 			continue
 		}
 
+		n += 1
+
 		if f.Name() == filepath.Base(screen.mediafile) {
+			if totalMedia == n {
+				// start over
+				screen.MediaText.Text = firstMedia
+				screen.mediafile = filepath.Join(filedir, firstMedia)
+				screen.MediaText.Refresh()
+			}
+
 			breaknext = true
 			continue
 		}
@@ -196,4 +224,29 @@ func selectSubs(v string, screen *NewScreen) {
 		screen.subsfile = possibleSub
 	}
 	screen.SubsText.Refresh()
+}
+
+func setPlayPauseView(s string, screen *NewScreen) {
+	screen.PlayPause.Enable()
+	switch s {
+	case "Play":
+		screen.PlayPause.Text = "Play"
+		screen.PlayPause.Icon = theme.MediaPlayIcon()
+		screen.PlayPause.Refresh()
+	case "Pause":
+		screen.PlayPause.Text = "Pause"
+		screen.PlayPause.Icon = theme.MediaPauseIcon()
+		screen.PlayPause.Refresh()
+	}
+}
+
+func setMuteUnmuteView(s string, screen *NewScreen) {
+	switch s {
+	case "Mute":
+		screen.MuteUnmute.Icon = theme.VolumeMuteIcon()
+		screen.MuteUnmute.Refresh()
+	case "Unmute":
+		screen.MuteUnmute.Icon = theme.VolumeUpIcon()
+		screen.MuteUnmute.Refresh()
+	}
 }

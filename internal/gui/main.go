@@ -69,16 +69,14 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	sfile.Disable()
 	sfiletext.Disable()
 
-	play := widget.NewButtonWithIcon("Play", theme.MediaPlayIcon(), func() {
+	playpause := widget.NewButtonWithIcon("Play", theme.MediaPlayIcon(), func() {
 		go playAction(s)
 	})
-	pause := widget.NewButtonWithIcon("Pause", theme.MediaPauseIcon(), func() {
-		go pauseAction(s)
-	})
+
 	stop := widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
 		go stopAction(s)
 	})
-	mute := widget.NewButtonWithIcon("", theme.VolumeMuteIcon(), func() {
+	muteunmute := widget.NewButtonWithIcon("", theme.VolumeMuteIcon(), func() {
 		go muteAction(s)
 	})
 	unmute := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() {
@@ -99,7 +97,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	mediafilelabel := canvas.NewText("File:", theme.ForegroundColor())
 	subsfilelabel := canvas.NewText("Subtitles:", theme.ForegroundColor())
 	devicelabel := canvas.NewText("Select Device:", theme.ForegroundColor())
-	pause.Hide()
+
 	unmute.Hide()
 
 	list = widget.NewList(
@@ -113,20 +111,15 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			o.(*fyne.Container).Objects[1].(*widget.Label).SetText(data[i].name)
 		})
 
-	s.Play = play
-	s.Pause = pause
+	s.PlayPause = playpause
 	s.Stop = stop
-	s.Mute = mute
-	s.Unmute = unmute
+	s.MuteUnmute = muteunmute
 	s.CustomSubsCheck = sfilecheck
 	s.ExternalMediaURL = externalmedia
 	s.MediaText = mfiletext
 	s.SubsText = sfiletext
 	s.DeviceList = list
 
-	// Organising widgets in the window
-	playpause := container.New(layout.NewMaxLayout(), play, pause)
-	muteunmute := container.New(layout.NewMaxLayout(), mute, unmute)
 	playpausemutestop := container.New(&mainButtonsLayout{}, playpause, muteunmute, stop)
 
 	checklists := container.NewHBox(externalmedia, sfilecheck, medialoop, nextmedia)
@@ -140,8 +133,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
-		play.Enable()
-		pause.Enable()
+		playpause.Enable()
 		t, err := soapcalls.DMRextractor(data[id].addr)
 		check(w, err)
 		if err == nil {
@@ -272,11 +264,9 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 			switch isMuted {
 			case "1":
-				mute.Hide()
-				unmute.Show()
+				setMuteUnmuteView("Unmute", s)
 			case "0":
-				mute.Show()
-				unmute.Hide()
+				setMuteUnmuteView("Mute", s)
 			}
 		}
 	}()

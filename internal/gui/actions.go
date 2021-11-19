@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/storage"
+	"fyne.io/fyne/v2/theme"
 	"github.com/alexballas/go2tv/internal/devices"
 	"github.com/alexballas/go2tv/internal/httphandlers"
 	"github.com/alexballas/go2tv/internal/soapcalls"
@@ -24,6 +25,12 @@ func muteAction(screen *NewScreen) {
 		check(w, errors.New("please select a device"))
 		return
 	}
+
+	if screen.MuteUnmute.Icon == theme.VolumeUpIcon() {
+		unmuteAction(screen)
+		return
+	}
+
 	if screen.tvdata == nil {
 		// If tvdata is nil, we just need to set RenderingControlURL if we want
 		// to control the sound. We should still rely on the play action to properly
@@ -35,29 +42,32 @@ func muteAction(screen *NewScreen) {
 		check(w, errors.New("could not send mute action"))
 		return
 	}
-	screen.Unmute.Show()
-	screen.Mute.Hide()
+
+	setMuteUnmuteView("Unmute", screen)
 }
 
 func unmuteAction(screen *NewScreen) {
 	w := screen.Current
+
 	if screen.renderingControlURL == "" {
 		check(w, errors.New("please select a device"))
 		return
 	}
+
 	if screen.tvdata == nil {
 		// If tvdata is nil, we just need to set RenderingControlURL if we want
 		// to control the sound. We should still rely on the play action to properly
 		// populate our tvdata type.
 		screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
 	}
+
 	//isMuted, _ := screen.tvdata.GetMuteSoapCall()
 	if err := screen.tvdata.SetMuteSoapCall("0"); err != nil {
 		check(w, errors.New("could not send mute action"))
 		return
 	}
-	screen.Unmute.Hide()
-	screen.Mute.Show()
+
+	setMuteUnmuteView("Mute", screen)
 }
 
 func mediaAction(screen *NewScreen) {
@@ -141,14 +151,19 @@ func playAction(screen *NewScreen) {
 	var mediaFile interface{}
 
 	w := screen.Current
-	screen.Play.Disable()
-	screen.Play.Refresh()
+	screen.PlayPause.Disable()
+	screen.PlayPause.Refresh()
 
 	currentState := screen.getScreenState()
 
 	if currentState == "Paused" {
 		err := screen.tvdata.SendtoTV("Play")
 		check(w, err)
+		return
+	}
+
+	if screen.PlayPause.Text == "Pause" {
+		pauseAction(screen)
 		return
 	}
 
@@ -164,12 +179,12 @@ func playAction(screen *NewScreen) {
 
 	if screen.mediafile == "" && screen.MediaText.Text == "" {
 		check(w, errors.New("please select a media file or enter a media URL"))
-		screen.Play.Enable()
+		screen.PlayPause.Enable()
 		return
 	}
 	if screen.controlURL == "" {
 		check(w, errors.New("please select a device"))
-		screen.Play.Enable()
+		screen.PlayPause.Enable()
 		return
 	}
 
@@ -180,7 +195,7 @@ func playAction(screen *NewScreen) {
 	whereToListen, err := utils.URLtoListenIPandPort(screen.controlURL)
 	check(w, err)
 	if err != nil {
-		screen.Play.Enable()
+		screen.PlayPause.Enable()
 		return
 	}
 
@@ -190,14 +205,14 @@ func playAction(screen *NewScreen) {
 		mediaType, err = utils.GetMimeDetailsFromFile(screen.mediafile)
 		check(w, err)
 		if err != nil {
-			screen.Play.Enable()
+			screen.PlayPause.Enable()
 			return
 		}
 	}
 
 	callbackPath, err := utils.RandomString()
 	if err != nil {
-		screen.Play.Enable()
+		screen.PlayPause.Enable()
 		return
 	}
 
@@ -218,7 +233,7 @@ func playAction(screen *NewScreen) {
 		mediaFile, err = urlstreamer.StreamURL(context.Background(), screen.MediaText.Text)
 		check(screen.Current, err)
 		if err != nil {
-			screen.Play.Enable()
+			screen.PlayPause.Enable()
 			return
 		}
 	}
@@ -265,8 +280,8 @@ func playAction(screen *NewScreen) {
 
 func pauseAction(screen *NewScreen) {
 	w := screen.Current
-	screen.Pause.Disable()
-	screen.Pause.Refresh()
+	screen.PlayPause.Disable()
+	screen.PlayPause.Refresh()
 
 	err := screen.tvdata.SendtoTV("Pause")
 	check(w, err)
@@ -287,8 +302,7 @@ func clearsubsAction(screen *NewScreen) {
 func stopAction(screen *NewScreen) {
 	w := screen.Current
 
-	screen.Play.Enable()
-	screen.Pause.Enable()
+	screen.PlayPause.Enable()
 
 	if screen.tvdata == nil || screen.tvdata.ControlURL == "" {
 		return
