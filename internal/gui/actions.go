@@ -151,8 +151,6 @@ func playAction(screen *NewScreen) {
 	var mediaFile interface{}
 
 	w := screen.Current
-	screen.PlayPause.Disable()
-	screen.PlayPause.Refresh()
 
 	currentState := screen.getScreenState()
 
@@ -280,8 +278,6 @@ func playAction(screen *NewScreen) {
 
 func pauseAction(screen *NewScreen) {
 	w := screen.Current
-	screen.PlayPause.Disable()
-	screen.PlayPause.Refresh()
 
 	err := screen.tvdata.SendtoTV("Pause")
 	check(w, err)

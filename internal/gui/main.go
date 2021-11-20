@@ -69,7 +69,10 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	sfile.Disable()
 	sfiletext.Disable()
 
-	playpause := widget.NewButtonWithIcon("Play", theme.MediaPlayIcon(), func() {
+	var playpause *widget.Button
+	playpause = widget.NewButtonWithIcon("Play", theme.MediaPlayIcon(), func() {
+		playpause.Disable()
+		playpause.Refresh()
 		go playAction(s)
 	})
 
@@ -126,7 +129,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	mediasubsbuttons := container.New(layout.NewGridLayout(2), mfile, sfile)
 	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
 	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearmedia), clearmedia, mfiletext)
-
 	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
 	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, playpausemutestop, devicelabel)
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
