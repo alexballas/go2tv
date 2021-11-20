@@ -1,10 +1,9 @@
-//go:build !(android || ios)
+//go:build android || ios
 
 package gui
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 
@@ -34,17 +33,15 @@ type NewScreen struct {
 	DeviceList          *widget.List
 	httpserver          *httphandlers.HTTPserver
 	PlayPause           *widget.Button
-	mediafile           string
-	subsfile            string
+	mediafile           fyne.URI
+	subsfile            fyne.URI
 	selectedDevice      devType
 	State               string
 	controlURL          string
 	eventlURL           string
 	renderingControlURL string
-	currentmfolder      string
 	version             string
 	mediaFormats        []string
-	NextMedia           bool
 	Medialoop           bool
 }
 
@@ -60,11 +57,10 @@ func Start(s *NewScreen) {
 	w := s.Current
 
 	tabs := container.NewAppTabs(
-		container.NewTabItem("Go2TV", container.NewPadded(mainWindow(s))),
-		container.NewTabItem("About", aboutWindow(s)),
+		container.NewTabItem("Go2TV", container.NewVScroll(container.NewPadded(mainWindow(s)))),
+		container.NewTabItem("About", container.NewVScroll(aboutWindow(s))),
 	)
 	w.SetContent(tabs)
-	w.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
 	w.CenterOnScreen()
 	w.ShowAndRun()
 	os.Exit(0)
@@ -92,9 +88,6 @@ func (p *NewScreen) EmitMsg(a string) {
 // Will only be executed when we receive a callback message,
 // not when we explicitly click the Stop button.
 func (p *NewScreen) Fini() {
-	if p.NextMedia {
-		selectNextMedia(p)
-	}
 	// Main media loop logic
 	if p.Medialoop {
 		playAction(p)
@@ -104,17 +97,14 @@ func (p *NewScreen) Fini() {
 //InitFyneNewScreen .
 func InitFyneNewScreen(v string) *NewScreen {
 	go2tv := app.New()
+	go2tv.Settings().SetTheme(theme.DarkTheme())
+
 	w := go2tv.NewWindow("Go2TV")
-	currentdir, err := os.Getwd()
-	if err != nil {
-		currentdir = ""
-	}
 
 	return &NewScreen{
-		Current:        w,
-		currentmfolder: currentdir,
-		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".mp3", ".flac", ".wav"},
-		version:        v,
+		Current:      w,
+		mediaFormats: []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".mp3", ".flac", ".wav"},
+		version:      v,
 	}
 }
 
@@ -139,93 +129,6 @@ func (p *NewScreen) getScreenState() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.State
-}
-
-func selectNextMedia(screen *NewScreen) {
-	w := screen.Current
-	filedir := filepath.Dir(screen.mediafile)
-	filelist, err := os.ReadDir(filedir)
-	check(w, err)
-
-	var breaknext bool
-	var n int
-	var totalMedia int
-	var firstMedia string
-
-	for _, f := range filelist {
-		isMedia := false
-		for _, vext := range screen.mediaFormats {
-			if filepath.Ext(filepath.Join(filedir, f.Name())) == vext {
-
-				if firstMedia == "" {
-					firstMedia = f.Name()
-				}
-
-				isMedia = true
-				break
-			}
-		}
-
-		if !isMedia {
-			continue
-		}
-
-		totalMedia += 1
-	}
-
-	for _, f := range filelist {
-		isMedia := false
-		for _, vext := range screen.mediaFormats {
-			if filepath.Ext(filepath.Join(filedir, f.Name())) == vext {
-				isMedia = true
-				break
-			}
-		}
-
-		if !isMedia {
-			continue
-		}
-
-		n += 1
-
-		if f.Name() == filepath.Base(screen.mediafile) {
-			if totalMedia == n {
-				// start over
-				screen.MediaText.Text = firstMedia
-				screen.mediafile = filepath.Join(filedir, firstMedia)
-				screen.MediaText.Refresh()
-			}
-
-			breaknext = true
-			continue
-		}
-
-		if breaknext {
-			screen.MediaText.Text = f.Name()
-			screen.mediafile = filepath.Join(filedir, f.Name())
-			screen.MediaText.Refresh()
-
-			if !screen.CustomSubsCheck.Checked {
-				selectSubs(screen.mediafile, screen)
-			}
-			break
-		}
-	}
-}
-
-func selectSubs(v string, screen *NewScreen) {
-	possibleSub := v[0:len(v)-
-		len(filepath.Ext(v))] + ".srt"
-
-	if _, err := os.Stat(possibleSub); os.IsNotExist(err) {
-		screen.SubsText.Text = ""
-		screen.subsfile = ""
-	} else {
-		screen.SubsText.Text = filepath.Base(possibleSub)
-
-		screen.subsfile = possibleSub
-	}
-	screen.SubsText.Refresh()
 }
 
 func setPlayPauseView(s string, screen *NewScreen) {

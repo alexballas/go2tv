@@ -1,4 +1,4 @@
-//go:build !(android || ios)
+//go:build android || ios
 
 package gui
 
@@ -21,7 +21,9 @@ func aboutWindow(s *NewScreen) fyne.CanvasObject {
 	richhead := widget.NewRichTextFromMarkdown(`
 # Go2TV
 
-Cast your media files to UPnP/DLNA Media Renderers and Smart TVs
+Cast your media files to UPnP/DLNA
+
+Media Renderers and Smart TVs
 
 ---
 
@@ -63,8 +65,8 @@ func checkVersion(s *NewScreen) {
 	s.CheckVersion.Disable()
 	defer s.CheckVersion.Enable()
 	errRedirectChecker := errors.New("redirect")
-	errVersioncomp := errors.New("failed to get version info - on develop or non-compiled version")
-	errVersionGet := errors.New("failed to get version info - check your internet connection")
+	errVersioncomp := errors.New("failed to get version info\non develop or non-compiled version")
+	errVersionGet := errors.New("failed to get version info\ncheck your internet connection")
 
 	str := strings.ReplaceAll(s.version, ".", "")
 	str = strings.TrimSpace(str)

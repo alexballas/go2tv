@@ -1,4 +1,4 @@
-//go:build !(android || ios)
+//go:build android || ios
 
 package gui
 
@@ -68,7 +68,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		go subsAction(s)
 	})
 
-	sfile.Disable()
 	sfiletext.Disable()
 
 	var playpause *widget.Button
@@ -93,10 +92,8 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		go clearsubsAction(s)
 	})
 
-	sfilecheck := widget.NewCheck("Custom Subtitles", func(b bool) {})
 	externalmedia := widget.NewCheck("Media from URL", func(b bool) {})
 	medialoop := widget.NewCheck("Loop Selected", func(b bool) {})
-	nextmedia := widget.NewCheck("Auto-Select Next File", func(b bool) {})
 
 	mediafilelabel := canvas.NewText("File:", nil)
 	subsfilelabel := canvas.NewText("Subtitles:", nil)
@@ -118,7 +115,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	s.PlayPause = playpause
 	s.Stop = stop
 	s.MuteUnmute = muteunmute
-	s.CustomSubsCheck = sfilecheck
 	s.ExternalMediaURL = externalmedia
 	s.MediaText = mfiletext
 	s.SubsText = sfiletext
@@ -126,7 +122,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 	playpausemutestop := container.New(&mainButtonsLayout{}, playpause, muteunmute, stop)
 
-	checklists := container.NewHBox(externalmedia, sfilecheck, medialoop, nextmedia)
+	checklists := container.NewHBox(externalmedia, medialoop)
 	mediasubsbuttons := container.New(layout.NewGridLayout(2), mfile, sfile)
 	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
 	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearmedia), clearmedia, mfiletext)
@@ -148,18 +144,8 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		}
 	}
 
-	sfilecheck.OnChanged = func(b bool) {
-		if b {
-			sfile.Enable()
-		} else {
-			sfile.Disable()
-		}
-	}
-
 	externalmedia.OnChanged = func(b bool) {
 		if b {
-			nextmedia.SetChecked(false)
-			nextmedia.Disable()
 			mfile.Disable()
 
 			// rename the label
@@ -175,7 +161,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			mfiletext.Enable()
 		} else {
 			medialoop.Enable()
-			nextmedia.Enable()
 			mfile.Enable()
 			mediafilelabel.Text = "File:"
 			mfiletext.SetPlaceHolder("")
@@ -187,10 +172,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 	medialoop.OnChanged = func(b bool) {
 		s.Medialoop = b
-	}
-
-	nextmedia.OnChanged = func(b bool) {
-		s.NextMedia = b
 	}
 
 	// Device list auto-refresh

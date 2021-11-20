@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"flag"
 	"fmt"
 	"io"
@@ -23,8 +24,8 @@ import (
 )
 
 var (
+	//go:embed version.txt
 	version    string
-	build      string
 	dmrURL     string
 	mediaArg   = flag.String("v", "", "Path to the video/audio file. (Triggers the CLI mode)")
 	urlArg     = flag.String("u", "", "Path to the URL media file. URL streaming does not support seek operations. (Triggers the CLI mode)")
@@ -58,7 +59,7 @@ func main() {
 	}
 
 	if guiEnabled {
-		scr := gui.InitFyneNewScreen(version + " / " + build)
+		scr := gui.InitFyneNewScreen(version)
 		gui.Start(scr)
 	}
 
@@ -162,7 +163,7 @@ func listFlagFunction() error {
 	return nil
 }
 
-func checkflags() (exit bool, err error) {
+func checkflags() (bool, error) {
 	checkVerflag()
 
 	if checkGUI() {
@@ -257,8 +258,7 @@ func checkLflag() (bool, error) {
 
 func checkVerflag() {
 	if *versionPtr {
-		fmt.Printf("Go2TV Version: %s, ", version)
-		fmt.Printf("Build: %s\n", build)
+		fmt.Printf("Go2TV Version: %s\n", version)
 		os.Exit(0)
 	}
 }
