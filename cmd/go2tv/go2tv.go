@@ -27,9 +27,9 @@ var (
 	//go:embed version.txt
 	version    string
 	dmrURL     string
-	mediaArg   = flag.String("v", "", "Path to the video/audio file. (Triggers the CLI mode)")
-	urlArg     = flag.String("u", "", "Path to the URL media file. URL streaming does not support seek operations. (Triggers the CLI mode)")
-	subsArg    = flag.String("s", "", "Path to the subtitles file.")
+	mediaArg   = flag.String("v", "", "Local path to the video/audio file. (Triggers the CLI mode)")
+	urlArg     = flag.String("u", "", "HTTP URL to the media file. URL streaming does not support seek operations. (Triggers the CLI mode)")
+	subsArg    = flag.String("s", "", "Local path to the subtitles file.")
 	listPtr    = flag.Bool("l", false, "List all available UPnP/DLNA Media Renderer models and URLs.")
 	targetPtr  = flag.String("t", "", "Cast to a specific UPnP/DLNA Media Renderer URL.")
 	versionPtr = flag.Bool("version", false, "Print version.")

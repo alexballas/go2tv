@@ -17,8 +17,8 @@ Cast your media files to UPnP/DLNA Media Renderers and Smart TVs.
 ---
 GUI mode
 -----
-![](https://i.imgur.com/zc9CEsS.png)
-![](https://i.imgur.com/UrKMEtY.png)
+![](https://i.imgur.com/pD5P6Fz.png)
+![](https://i.imgur.com/karpZgp.png)
 
 CLI mode
 -----
@@ -31,14 +31,15 @@ $ go2tv -h
 Usage of go2tv:
   -l    List all available UPnP/DLNA Media Renderer models and URLs.
   -s string
-        Path to the subtitles file.
+        Local path to the subtitles file.
   -t string
         Cast to a specific UPnP/DLNA Media Renderer URL.
   -u string
-        Path to the URL media file. URL streaming does not support seek operations. (Triggers the CLI mode)
+        HTTP URL to the media file. URL streaming does not support seek operations. (Triggers the CLI mode)
   -v string
-        Path to the video/audio file. (Triggers the CLI mode)
+        Local path to the video/audio file. (Triggers the CLI mode)
   -version
+        Print version.
 ```
 
 Allowed media files in the GUI
