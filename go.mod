@@ -7,7 +7,6 @@ require (
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/gdamore/tcell/v2 v2.4.0
 	github.com/go-gl/gl v0.0.0-20211025173605-bda47ffaa784 // indirect
-	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20211024062804-40e447a793be // indirect
 	github.com/godbus/dbus/v5 v5.0.6 // indirect
 	github.com/h2non/filetype v1.1.1
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
