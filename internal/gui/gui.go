@@ -126,22 +126,6 @@ func check(win fyne.Window, err error) {
 	}
 }
 
-// updateScreenState updates the screen state based on
-// the emitted messages. The State variable is used across
-// the GUI interface to control certain flows.
-func (p *NewScreen) updateScreenState(a string) {
-	p.mu.Lock()
-	p.State = a
-	p.mu.Unlock()
-}
-
-// getScreenState returns the current screen state
-func (p *NewScreen) getScreenState() string {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.State
-}
-
 func selectNextMedia(screen *NewScreen) {
 	w := screen.Current
 	filedir := filepath.Dir(screen.mediafile)
@@ -252,4 +236,20 @@ func setMuteUnmuteView(s string, screen *NewScreen) {
 		screen.MuteUnmute.Icon = theme.VolumeUpIcon()
 		screen.MuteUnmute.Refresh()
 	}
+}
+
+// updateScreenState updates the screen state based on
+// the emitted messages. The State variable is used across
+// the GUI interface to control certain flows.
+func (p *NewScreen) updateScreenState(a string) {
+	p.mu.Lock()
+	p.State = a
+	p.mu.Unlock()
+}
+
+// getScreenState returns the current screen state
+func (p *NewScreen) getScreenState() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.State
 }

@@ -62,6 +62,9 @@ CHECK:
 	return strconv.Itoa(port), nil
 }
 
+// HostPortIsAlive - We use this function to periodically
+// health check the selected device and decide if we want
+// to keep the entry in the list or to remove it.
 func HostPortIsAlive(h string) bool {
 	conn, err := net.DialTimeout("tcp", h, time.Duration(2*time.Second))
 	if err != nil {

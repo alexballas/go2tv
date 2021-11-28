@@ -22,9 +22,6 @@ import (
 func mainWindow(s *NewScreen) fyne.CanvasObject {
 	w := s.Current
 
-	refreshDevices := time.NewTicker(5 * time.Second)
-	checkMute := time.NewTicker(1 * time.Second)
-
 	list := new(widget.List)
 
 	data := make([]devType, 0)
@@ -81,15 +78,19 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	stop := widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
 		go stopAction(s)
 	})
+
 	muteunmute := widget.NewButtonWithIcon("", theme.VolumeMuteIcon(), func() {
 		go muteAction(s)
 	})
+
 	unmute := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() {
 		go unmuteAction(s)
 	})
+
 	clearmedia := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		go clearmediaAction(s)
 	})
+
 	clearsubs := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		go clearsubsAction(s)
 	})
@@ -195,87 +196,95 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	}
 
 	// Device list auto-refresh
-	go func() {
-		for range refreshDevices.C {
-			oldListSize := len(devices.Devices)
+	go refreshDevList(s, &data)
 
-			datanew, _ := getDevices(2)
-
-			// check to see if the new refresh includes
-			// one of the already selected devices
-			var includes bool
-			u, _ := url.Parse(s.controlURL)
-			for _, d := range datanew {
-				n, _ := url.Parse(d.addr)
-				if n.Host == u.Host {
-					includes = true
-				}
-			}
-
-			data = datanew
-
-			if !includes {
-				if utils.HostPortIsAlive(u.Host) {
-					data = append(data, s.selectedDevice)
-					sort.Slice(data, func(i, j int) bool {
-						return data[i].name < data[j].name
-					})
-
-				} else {
-					s.controlURL = ""
-					s.DeviceList.UnselectAll()
-				}
-			}
-
-			if oldListSize != len(data) {
-				// Something changed in the list, so we need to
-				// also refresh the active selection.
-				for n, a := range data {
-					if s.selectedDevice == a {
-						list.Select(n)
-					}
-				}
-			}
-
-			list.Refresh()
-		}
-	}()
-
-	go func() {
-		var checkMuteCounter int
-		for range checkMute.C {
-
-			// Stop trying after 5 failures
-			// to get the mute status
-			if checkMuteCounter == 5 {
-				s.renderingControlURL = ""
-				checkMuteCounter = 0
-			}
-
-			if s.renderingControlURL == "" {
-				continue
-			}
-
-			if s.tvdata == nil {
-				s.tvdata = &soapcalls.TVPayload{RenderingControlURL: s.renderingControlURL}
-			}
-
-			isMuted, err := s.tvdata.GetMuteSoapCall()
-			if err != nil {
-				checkMuteCounter++
-				continue
-			}
-
-			checkMuteCounter = 0
-
-			switch isMuted {
-			case "1":
-				setMuteUnmuteView("Unmute", s)
-			case "0":
-				setMuteUnmuteView("Mute", s)
-			}
-		}
-	}()
+	// Check mute status for selected device
+	go checkMutefunc(s)
 
 	return content
+}
+
+func refreshDevList(s *NewScreen, data *[]devType) {
+	refreshDevices := time.NewTicker(5 * time.Second)
+	for range refreshDevices.C {
+		oldListSize := len(devices.Devices)
+
+		datanew, _ := getDevices(2)
+
+		// check to see if the new refresh includes
+		// one of the already selected devices
+		var includes bool
+		u, _ := url.Parse(s.controlURL)
+		for _, d := range datanew {
+			n, _ := url.Parse(d.addr)
+			if n.Host == u.Host {
+				includes = true
+			}
+		}
+
+		*data = datanew
+
+		if !includes {
+			if utils.HostPortIsAlive(u.Host) {
+				*data = append(*data, s.selectedDevice)
+				sort.Slice(*data, func(i, j int) bool {
+					return (*data)[i].name < (*data)[j].name
+				})
+
+			} else {
+				s.controlURL = ""
+				s.DeviceList.UnselectAll()
+			}
+		}
+
+		if oldListSize != len(*data) {
+			// Something changed in the list, so we need to
+			// also refresh the active selection.
+			for n, a := range *data {
+				if s.selectedDevice == a {
+					s.DeviceList.Select(n)
+				}
+			}
+		}
+
+		s.DeviceList.Refresh()
+	}
+}
+
+func checkMutefunc(s *NewScreen) {
+	checkMute := time.NewTicker(1 * time.Second)
+
+	var checkMuteCounter int
+	for range checkMute.C {
+
+		// Stop trying after 5 failures
+		// to get the mute status
+		if checkMuteCounter == 5 {
+			s.renderingControlURL = ""
+			checkMuteCounter = 0
+		}
+
+		if s.renderingControlURL == "" {
+			continue
+		}
+
+		if s.tvdata == nil {
+			s.tvdata = &soapcalls.TVPayload{RenderingControlURL: s.renderingControlURL}
+		}
+
+		isMuted, err := s.tvdata.GetMuteSoapCall()
+		if err != nil {
+			checkMuteCounter++
+			continue
+		}
+
+		checkMuteCounter = 0
+
+		switch isMuted {
+		case "1":
+			setMuteUnmuteView("Unmute", s)
+		case "0":
+			setMuteUnmuteView("Mute", s)
+		}
+	}
 }

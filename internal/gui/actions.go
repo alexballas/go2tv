@@ -183,6 +183,7 @@ func playAction(screen *NewScreen) {
 		screen.PlayPause.Enable()
 		return
 	}
+
 	if screen.controlURL == "" {
 		check(w, errors.New("please select a device"))
 		screen.PlayPause.Enable()
