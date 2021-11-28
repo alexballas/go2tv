@@ -52,9 +52,14 @@ func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, media, subtitles 
 		return fmt.Errorf("failed to parse SubtitlesURL: %w", err)
 	}
 
+	callbackURL, err := url.Parse(tvpayload.CallbackURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse CallbackURL: %w", err)
+	}
+
 	s.mux.HandleFunc(mURL.Path, s.serveMediaHandler(media))
 	s.mux.HandleFunc(sURL.Path, s.serveSubtitlesHandler(subtitles))
-	s.mux.HandleFunc("/callback", s.callbackHandler(tvpayload, screen))
+	s.mux.HandleFunc(callbackURL.Path, s.callbackHandler(tvpayload, screen))
 
 	ln, err := net.Listen("tcp", s.http.Addr)
 	if err != nil {
@@ -94,10 +99,7 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 			return
 		}
 
-		uuid := sidVal[0]
-		uuid = strings.TrimLeft(uuid, "[")
-		uuid = strings.TrimLeft(uuid, "]")
-		uuid = strings.TrimPrefix(uuid, "uuid:")
+		uuid := strings.TrimPrefix(sidVal[0], "uuid:")
 
 		// Apparently we should ignore the first message
 		// On some media renderers we receive a STOPPED message
@@ -167,7 +169,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, s interface{}, isMedia
 	switch f := s.(type) {
 	case string:
 		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-			contentFeatures, err := utils.BuildContentFeatures(f)
+			contentFeatures, err := utils.BuildContentFeatures(f, "01", false)
 			if err != nil {
 				http.NotFound(w, r)
 				return
@@ -193,7 +195,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, s interface{}, isMedia
 
 	case []byte:
 		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-			contentFeatures, _ := utils.BuildContentFeatures("")
+			contentFeatures, _ := utils.BuildContentFeatures("", "01", false)
 			respHeader["contentFeatures.dlna.org"] = []string{contentFeatures}
 		}
 
@@ -202,18 +204,22 @@ func serveContent(w http.ResponseWriter, r *http.Request, s interface{}, isMedia
 		name := strings.TrimLeft(r.URL.Path, "/")
 		http.ServeContent(w, r, name, time.Now(), bReader)
 
-	case io.Reader:
+	case io.ReadCloser:
 		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-			contentFeatures, _ := utils.BuildContentFeatures("")
+			contentFeatures, _ := utils.BuildContentFeatures("", "00", false)
 			respHeader["contentFeatures.dlna.org"] = []string{contentFeatures}
 		}
 
 		// No seek support
-		io.Copy(w, f)
+		if r.Method == http.MethodGet {
+			io.Copy(w, f)
+			f.Close()
+		} else {
+			w.WriteHeader(http.StatusOK)
+		}
 
 	default:
 		http.NotFound(w, r)
 		return
 	}
-
 }

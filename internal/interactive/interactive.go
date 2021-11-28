@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alexballas/go2tv/internal/soapcalls"
@@ -16,6 +17,7 @@ import (
 
 // NewScreen .
 type NewScreen struct {
+	mu         sync.RWMutex
 	Current    tcell.Screen
 	TV         *soapcalls.TVPayload
 	mediaTitle string
@@ -42,9 +44,14 @@ func (p *NewScreen) emitStr(x, y int, style tcell.Style, str string) {
 // EmitMsg - Display the actions to the interactive terminal.
 // Method to implement the screen interface
 func (p *NewScreen) EmitMsg(inputtext string) {
-	p.lastAction = inputtext
+	p.updateLastAction(inputtext)
 	s := p.Current
-	titleLen := len("Title: " + p.mediaTitle)
+
+	p.mu.RLock()
+	mediaTitle := p.mediaTitle
+	p.mu.RUnlock()
+
+	titleLen := len("Title: " + mediaTitle)
 	w, h := s.Size()
 	boldStyle := tcell.StyleDefault.
 		Background(tcell.ColorBlack).
@@ -55,7 +62,7 @@ func (p *NewScreen) EmitMsg(inputtext string) {
 
 	s.Clear()
 
-	p.emitStr(w/2-titleLen/2, h/2-2, tcell.StyleDefault, "Title: "+p.mediaTitle)
+	p.emitStr(w/2-titleLen/2, h/2-2, tcell.StyleDefault, "Title: "+mediaTitle)
 	if inputtext == "Waiting for status..." {
 		p.emitStr(w/2-len(inputtext)/2, h/2, blinkStyle, inputtext)
 	} else {
@@ -88,15 +95,17 @@ func (p *NewScreen) InterInit(tv *soapcalls.TVPayload) {
 
 	go func() {
 		for range muteChecker.C {
-			p.EmitMsg(p.lastAction)
+			p.EmitMsg(p.getLastAction())
 		}
 	}()
 
+	p.mu.Lock()
 	p.mediaTitle = tv.MediaURL
 	mediaTitlefromURL, err := url.Parse(tv.MediaURL)
 	if err == nil {
 		p.mediaTitle = strings.TrimLeft(mediaTitlefromURL.Path, "/")
 	}
+	p.mu.Unlock()
 
 	encoding.Register()
 	s := p.Current
@@ -110,14 +119,14 @@ func (p *NewScreen) InterInit(tv *soapcalls.TVPayload) {
 		Foreground(tcell.ColorWhite)
 	s.SetStyle(defStyle)
 
-	p.lastAction = "Waiting for status..."
-	p.EmitMsg(p.lastAction)
+	p.updateLastAction("Waiting for status...")
+	p.EmitMsg(p.getLastAction())
 
 	for {
 		switch ev := s.PollEvent().(type) {
 		case *tcell.EventResize:
 			s.Sync()
-			p.EmitMsg(p.lastAction)
+			p.EmitMsg(p.getLastAction())
 		case *tcell.EventKey:
 			p.HandleKeyEvent(ev)
 		}
@@ -150,11 +159,11 @@ func (p *NewScreen) HandleKeyEvent(ev *tcell.EventKey) {
 		switch currentMute {
 		case "1":
 			if err = tv.SetMuteSoapCall("0"); err == nil {
-				p.EmitMsg(p.lastAction)
+				p.EmitMsg(p.getLastAction())
 			}
 		case "0":
 			if err = tv.SetMuteSoapCall("1"); err == nil {
-				p.EmitMsg(p.lastAction)
+				p.EmitMsg(p.getLastAction())
 			}
 		}
 	}
@@ -172,7 +181,20 @@ func InitTcellNewScreen() (*NewScreen, error) {
 	if e != nil {
 		return nil, errors.New("can't start new interactive screen")
 	}
+
 	return &NewScreen{
 		Current: s,
 	}, nil
+}
+
+func (p *NewScreen) getLastAction() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.lastAction
+}
+
+func (p *NewScreen) updateLastAction(s string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.lastAction = s
 }

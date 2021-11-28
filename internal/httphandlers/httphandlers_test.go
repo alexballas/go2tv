@@ -2,6 +2,7 @@ package httphandlers
 
 import (
 	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,7 +18,7 @@ func TestServeContent(t *testing.T) {
 			`Check []byte input`,
 		},
 		{
-			bytes.NewReader([]byte("")),
+			io.NopCloser(bytes.NewReader([]byte(""))),
 			`Check io.Reader input #2`,
 		},
 	}
