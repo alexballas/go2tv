@@ -41,7 +41,7 @@ var (
 )
 
 func defaultStreamingFlags() string {
-	return fmt.Sprintf("%.8x%.24x\n", dlnaOrgFlagStreamingTransferMode|
+	return fmt.Sprintf("%.8x%.24x", dlnaOrgFlagStreamingTransferMode|
 		dlnaOrgFlagBackgroundTransfertMode|
 		dlnaOrgFlagConnectionStall|
 		dlnaOrgFlagDlnaV15, 0)
@@ -96,6 +96,8 @@ func GetMimeDetailsFromFile(f string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("getMimeDetailsFromFile error: %w", err)
 	}
+	defer file.Close()
+
 	head := make([]byte, 261)
 	file.Read(head)
 
