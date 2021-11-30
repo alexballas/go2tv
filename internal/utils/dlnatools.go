@@ -81,7 +81,7 @@ func BuildContentFeatures(file string, seek string, transcode bool) (string, err
 	case true:
 		cf.WriteString("DLNA.ORG_CI=1;")
 	default:
-		cf.WriteString("DLNA.ORG_CI=0")
+		cf.WriteString("DLNA.ORG_CI=0;")
 	}
 
 	cf.WriteString("DLNA.ORG_FLAGS=")
