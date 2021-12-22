@@ -11,7 +11,7 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Set env
-      run: echo "GO2TV_VERSION=$(cat cmd/go2tv/version.txt)" >> $GITHUB_ENV
+      run: if grep -Fxq "devel" cmd/go2tv/version.txt;then echo "GO2TV_VERSION=$(cat cmd/go2tv/version.txt)";else echo "GO2TV_VERSION=v$(cat cmd/go2tv/version.txt)";fi  >> $GITHUB_ENV
 
     - uses: WillAbides/setup-go-faster@v1.6.0
       id: setup-go-faster
@@ -26,7 +26,7 @@ jobs:
 
     - uses: actions/upload-artifact@v2
       with:
-        name: go2tv_v${{ env.GO2TV_VERSION }}_macOS_amd64
+        name: go2tv_${{ env.GO2TV_VERSION }}_macOS_amd64
         path: |
           LICENSE
           README.md
