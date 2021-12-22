@@ -26,7 +26,7 @@ jobs:
 
     - uses: actions/upload-artifact@v2
       with:
-        name: go2tv_${{ env.GO2TV_VERSION }}_macOS_amd64
+        name: go2tv_v${{ env.GO2TV_VERSION }}_macOS_amd64
         path: |
           LICENSE
           README.md
