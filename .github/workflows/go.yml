@@ -18,11 +18,8 @@ jobs:
       with:
         go-version: 1.17.2
 
-    - name: Update ubuntu packages
-      run: sudo apt update
-
     - name: Install xorg-dev
-      run: sudo apt install xorg-dev
+      run: sudo apt update && sudo apt install xorg-dev
 
     - name: Build
       run: go build -v ./...

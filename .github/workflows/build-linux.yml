@@ -19,16 +19,16 @@ jobs:
         go-version: "*"
 
     - name: Get dependencies
-      run: sudo apt update && sudo apt install gcc libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev libx11-dev xorg-dev gcc-mingw-w64
+      run: sudo apt update && sudo apt install xorg-dev
 
-    - name: Package (Windows)
-      run: CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ GOOS=windows GOARCH=amd64 go build -ldflags " -H=windowsgui -s -w" -o go2tv.exe cmd/go2tv/go2tv.go
+    - name: Package (Linux)
+      run: GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o go2tv cmd/go2tv/go2tv.go
     
     - uses: actions/upload-artifact@v2
       with:
-        name: go2tv_${{ env.GO2TV_VERSION }}_windows_amd64
+        name: go2tv_${{ env.GO2TV_VERSION }}_linux_amd64
         path: |
           LICENSE
           README.md
-          go2tv.exe
+          go2tv
         retention-days: 5
