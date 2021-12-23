@@ -31,4 +31,4 @@ jobs:
           LICENSE
           README.md
           go2tv.exe
-        retention-days: 5
+        retention-days: 1
