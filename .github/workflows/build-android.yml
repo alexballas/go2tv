@@ -1,4 +1,4 @@
-name: Build for Linux
+name: Build for Android
 on: [push]
 
 jobs:
