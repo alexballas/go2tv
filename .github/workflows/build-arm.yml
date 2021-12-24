@@ -1,0 +1,21 @@
+name: Build for ARM
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: alexballas/arm-runner-action@v1.0.7
+      id: main_image
+      with:
+        commands: |
+            uname -a
+    
+    - name: Getting info
+      run: |
+        ls -al
+        echo ${{ steps.main_image.outputs.image }}
+        mkdir extractfolder
+        mount -o loop ${{ steps.main_image.outputs.image }} extractfolder
+        ls -al extractfolder
