@@ -41,7 +41,7 @@ var (
 )
 
 func defaultStreamingFlags() string {
-	return fmt.Sprintf("%.8x%.24x\n", dlnaOrgFlagStreamingTransferMode|
+	return fmt.Sprintf("%.8x%.24x", dlnaOrgFlagStreamingTransferMode|
 		dlnaOrgFlagBackgroundTransfertMode|
 		dlnaOrgFlagConnectionStall|
 		dlnaOrgFlagDlnaV15, 0)
@@ -81,7 +81,7 @@ func BuildContentFeatures(file string, seek string, transcode bool) (string, err
 	case true:
 		cf.WriteString("DLNA.ORG_CI=1;")
 	default:
-		cf.WriteString("DLNA.ORG_CI=0")
+		cf.WriteString("DLNA.ORG_CI=0;")
 	}
 
 	cf.WriteString("DLNA.ORG_FLAGS=")
@@ -96,6 +96,8 @@ func GetMimeDetailsFromFile(f string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("getMimeDetailsFromFile error: %w", err)
 	}
+	defer file.Close()
+
 	head := make([]byte, 261)
 	file.Read(head)
 

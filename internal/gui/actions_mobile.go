@@ -6,7 +6,6 @@ package gui
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"sort"
 	"time"
 
@@ -84,9 +83,7 @@ func mediaAction(screen *NewScreen) {
 
 		defer reader.Close()
 
-		mfile := reader.URI().Path()
-
-		screen.MediaText.Text = filepath.Base(mfile)
+		screen.MediaText.Text = reader.URI().Name()
 		screen.mediafile = reader.URI()
 
 		screen.MediaText.Refresh()
@@ -108,13 +105,12 @@ func subsAction(screen *NewScreen) {
 
 		defer reader.Close()
 
-		sfile := reader.URI().Path()
 		check(w, err)
 		if err != nil {
 			return
 		}
 
-		screen.SubsText.Text = filepath.Base(sfile)
+		screen.SubsText.Text = reader.URI().Name()
 		screen.subsfile = reader.URI()
 		screen.SubsText.Refresh()
 	}, w)
@@ -156,6 +152,7 @@ func playAction(screen *NewScreen) {
 		screen.PlayPause.Enable()
 		return
 	}
+
 	if screen.controlURL == "" {
 		check(w, errors.New("please select a device"))
 		screen.PlayPause.Enable()

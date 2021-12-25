@@ -1,10 +1,5 @@
-name: Go
-
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+name: Tests
+on: [push]
 
 jobs:
 
@@ -13,16 +8,13 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: Set up Go
-      uses: actions/setup-go@v2
+    - uses: WillAbides/setup-go-faster@v1.7.0
+      id: setup-go-faster
       with:
-        go-version: 1.17.2
-
-    - name: Update ubuntu packages
-      run: sudo apt update
+        go-version: "*"
 
     - name: Install xorg-dev
-      run: sudo apt install xorg-dev
+      run: sudo apt update && sudo apt install xorg-dev
 
     - name: Build
       run: go build -v ./...

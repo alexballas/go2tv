@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/alexballas/go2tv/internal/soapcalls"
 	"github.com/koron/go-ssdp"
 	"github.com/pkg/errors"
 )
@@ -27,7 +28,12 @@ func LoadSSDPservices(delay int) error {
 		// (stop,play,pause). If we need support other functionalities
 		// like volume control we need to use the RenderingControl service.
 		if srv.Type == "urn:schemas-upnp-org:service:AVTransport:1" {
-			Devices[srv.Server] = srv.Location
+			friendlyName, err := soapcalls.GetFriendlyName(srv.Location)
+			if err != nil {
+				friendlyName = srv.Server
+			}
+
+			Devices[friendlyName] = srv.Location
 		}
 	}
 

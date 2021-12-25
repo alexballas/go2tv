@@ -1,0 +1,34 @@
+name: Build for MacOS
+on: [push]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set env
+      run: if grep -Fxq "devel" cmd/go2tv/version.txt;then echo "GO2TV_VERSION=$(cat cmd/go2tv/version.txt)";else echo "GO2TV_VERSION=v$(cat cmd/go2tv/version.txt)";fi  >> $GITHUB_ENV
+
+    - uses: WillAbides/setup-go-faster@v1.7.0
+      id: setup-go-faster
+      with:
+        go-version: "*"
+
+    - name: Install fyne
+      run: go get fyne.io/fyne/v2/cmd/fyne
+      
+    - name: Package (macOS)
+      run: cd cmd/go2tv && fyne package --release -os darwin -icon  ../../assets/go2tv-icon.png  && mv go2tv.app ../../
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: go2tv_${{ env.GO2TV_VERSION }}_macOS_amd64
+        path: |
+          LICENSE
+          README.md
+          go2tv.app/
+        retention-days: 2

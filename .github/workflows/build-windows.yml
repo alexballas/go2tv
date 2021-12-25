@@ -1,0 +1,34 @@
+name: Build for Windows
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set env
+      run: if grep -Fxq "devel" cmd/go2tv/version.txt;then echo "GO2TV_VERSION=$(cat cmd/go2tv/version.txt)";else echo "GO2TV_VERSION=v$(cat cmd/go2tv/version.txt)";fi  >> $GITHUB_ENV
+
+    - uses: WillAbides/setup-go-faster@v1.7.0
+      id: setup-go-faster
+      with:
+        go-version: "*"
+
+    - name: Get dependencies
+      run: sudo apt update && sudo apt install gcc xorg-dev gcc-mingw-w64
+
+    - name: Package (Windows)
+      run: CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ GOOS=windows GOARCH=amd64 go build -ldflags " -H=windowsgui -s -w" -o go2tv.exe cmd/go2tv/go2tv.go
+    
+    - uses: actions/upload-artifact@v2
+      with:
+        name: go2tv_${{ env.GO2TV_VERSION }}_windows_amd64
+        path: |
+          LICENSE
+          README.md
+          go2tv.exe
+        retention-days: 2
