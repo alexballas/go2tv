@@ -9,13 +9,22 @@ jobs:
     - uses: alexballas/arm-runner-action@v1.0.7
       id: main_image
       with:
+        copy_repository_path: /go2tv_dir
+        copy_artifact_path: go2tv
+        image_additional_mb: 500
         commands: |
-            uname -a
-    
-    - name: Getting info
-      run: |
-        ls -al
-        echo ${{ steps.main_image.outputs.image }}
-        mkdir extractfolder
-        mount -o loop ${{ steps.main_image.outputs.image }} extractfolder
-        ls -al extractfolder
+            cd /
+            sudo apt update
+            sudo apt install -y xorg-dev
+            sudo apt clean
+            wget -nv https://go.dev/dl/go1.17.5.linux-armv6l.tar.gz
+            tar -xzf go1.17.5.linux-armv6l.tar.gz
+            rm go1.17.5.linux-armv6l.tar.gz
+            export GOROOT=/go
+            cd /go2tv_dir
+            /go/bin/go build -ldflags "-s -w" -o go2tv cmd/go2tv/go2tv.go
+
+    - name: List files
+      run: pwd && ls /
+            
+ 
