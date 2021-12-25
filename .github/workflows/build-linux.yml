@@ -24,11 +24,11 @@ jobs:
     - name: Package (Linux)
       run: GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o go2tv cmd/go2tv/go2tv.go && chmod +x go2tv
     
+    - name: Tar files
+      run: tar -cvf go2tv_${{ env.GO2TV_VERSION }}_linux_amd64.tar LICENSE README.md go2tv
+
     - uses: actions/upload-artifact@v2
       with:
         name: go2tv_${{ env.GO2TV_VERSION }}_linux_amd64
-        path: |
-          LICENSE
-          README.md
-          go2tv
+        path: go2tv_${{ env.GO2TV_VERSION }}_linux_amd64.tar
         retention-days: 2
