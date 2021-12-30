@@ -30,7 +30,7 @@ jobs:
             
     - uses: actions/upload-artifact@v2
       with:
-        name: go2tv_${{ env.GO2TV_VERSION }}_linux_armv6
+        name: go2tv_${{ env.GO2TV_VERSION }}_linux_arm
         path: |
           LICENSE
           README.md
