@@ -68,6 +68,7 @@ func Start(s *NewScreen) {
 	w.SetContent(tabs)
 	w.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
 	w.CenterOnScreen()
+	w.SetMaster()
 	w.ShowAndRun()
 	os.Exit(0)
 }

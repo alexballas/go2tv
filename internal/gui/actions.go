@@ -313,16 +313,15 @@ func previewmedia(screen *NewScreen) {
 	check(w, err)
 
 	mediaTypeSlice := strings.Split(mediaType, "/")
-
 	switch mediaTypeSlice[0] {
 	case "image":
 		img := canvas.NewImageFromFile(screen.mediafile)
 		img.FillMode = 1
-		w := fyne.CurrentApp().NewWindow(filepath.Base(screen.mediafile))
-		w.SetContent(img)
-		w.Resize(fyne.NewSize(800, 600))
-		w.CenterOnScreen()
-		w.Show()
+		imgw := fyne.CurrentApp().NewWindow(filepath.Base(screen.mediafile))
+		imgw.SetContent(img)
+		imgw.Resize(fyne.NewSize(800, 600))
+		imgw.CenterOnScreen()
+		imgw.Show()
 	default:
 		err := open.Run(screen.mediafile)
 		check(w, err)
