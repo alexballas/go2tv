@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
@@ -20,6 +22,7 @@ import (
 	"github.com/alexballas/go2tv/internal/urlstreamer"
 	"github.com/alexballas/go2tv/internal/utils"
 	"github.com/pkg/errors"
+	"github.com/skratchdot/open-golang/open"
 )
 
 func muteAction(screen *NewScreen) {
@@ -296,6 +299,34 @@ func clearsubsAction(screen *NewScreen) {
 	screen.SubsText.Text = ""
 	screen.subsfile = ""
 	screen.SubsText.Refresh()
+}
+
+func previewmedia(screen *NewScreen) {
+	w := screen.Current
+
+	if screen.mediafile == "" {
+		check(w, errors.New("please select a media file"))
+		return
+	}
+
+	mediaType, err := utils.GetMimeDetailsFromFile(screen.mediafile)
+	check(w, err)
+
+	mediaTypeSlice := strings.Split(mediaType, "/")
+
+	switch mediaTypeSlice[0] {
+	case "image":
+		img := canvas.NewImageFromFile(screen.mediafile)
+		img.FillMode = 1
+		w := fyne.CurrentApp().NewWindow(filepath.Base(screen.mediafile))
+		w.SetContent(img)
+		w.Resize(fyne.NewSize(800, 600))
+		w.CenterOnScreen()
+		w.Show()
+	default:
+		err := open.Run(screen.mediafile)
+		check(w, err)
+	}
 }
 
 func stopAction(screen *NewScreen) {

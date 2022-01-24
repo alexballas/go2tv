@@ -202,6 +202,8 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string) ([]byte, e
 	switch mediaTypeSlice[0] {
 	case "audio":
 		class = "object.item.audioItem.musicTrack"
+	case "image":
+		class = "object.item.imageItem.photo"
 	default:
 		class = "object.item.videoItem.movie"
 	}

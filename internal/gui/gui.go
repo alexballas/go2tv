@@ -64,6 +64,7 @@ func Start(s *NewScreen) {
 		container.NewTabItem("Go2TV", container.NewPadded(mainWindow(s))),
 		container.NewTabItem("About", aboutWindow(s)),
 	)
+
 	w.SetContent(tabs)
 	w.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
 	w.CenterOnScreen()
@@ -114,7 +115,7 @@ func InitFyneNewScreen(v string) *NewScreen {
 	return &NewScreen{
 		Current:        w,
 		currentmfolder: currentdir,
-		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".mp3", ".flac", ".wav"},
+		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".mp3", ".flac", ".wav", ".jpg", ".jpeg", ".png"},
 		version:        v,
 	}
 }
