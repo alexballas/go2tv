@@ -68,9 +68,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 	sfiletext.Disable()
 
-	var playpause *widget.Button
-	playpause = widget.NewButtonWithIcon("Play", theme.MediaPlayIcon(), func() {
-		playpause.Disable()
+	playpause := widget.NewButtonWithIcon("Play", theme.MediaPlayIcon(), func() {
 		go playAction(s)
 	})
 
@@ -89,7 +87,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	clearmedia := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		go clearmediaAction(s)
 	})
-	
+
 	clearsubs := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		go clearsubsAction(s)
 	})

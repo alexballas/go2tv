@@ -156,6 +156,8 @@ func subsAction(screen *NewScreen) {
 func playAction(screen *NewScreen) {
 	var mediaFile interface{}
 
+	screen.PlayPause.Disable()
+
 	w := screen.Current
 
 	currentState := screen.getScreenState()
@@ -191,10 +193,6 @@ func playAction(screen *NewScreen) {
 		check(w, errors.New("please select a device"))
 		screen.PlayPause.Enable()
 		return
-	}
-
-	if screen.tvdata == nil {
-		stopAction(screen)
 	}
 
 	whereToListen, err := utils.URLtoListenIPandPort(screen.controlURL)
