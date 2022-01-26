@@ -14,7 +14,6 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/alexballas/go2tv/internal/devices"
 	"github.com/alexballas/go2tv/internal/soapcalls"
 	"github.com/alexballas/go2tv/internal/utils"
 	"golang.org/x/time/rate"
@@ -220,10 +219,10 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 func refreshDevList(s *NewScreen, data *[]devType) {
 	refreshDevices := time.NewTicker(5 * time.Second)
-	for range refreshDevices.C {
-		oldListSize := len(devices.Devices)
 
+	for range refreshDevices.C {
 		datanew, _ := getDevices(2)
+		oldListSize := len(*data)
 
 		// check to see if the new refresh includes
 		// one of the already selected devices
