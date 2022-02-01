@@ -291,13 +291,14 @@ func stopAction(screen *NewScreen) {
 }
 
 func getDevices(delay int) ([]devType, error) {
-	if err := devices.LoadSSDPservices(delay); err != nil {
+	deviceList, err := devices.LoadSSDPservices(delay)
+	if err != nil {
 		return nil, fmt.Errorf("getDevices error: %w", err)
 	}
 	// We loop through this map twice as we need to maintain
 	// the correct order.
 	keys := make([]string, 0)
-	for k := range devices.Devices {
+	for k := range deviceList {
 		keys = append(keys, k)
 	}
 
@@ -305,7 +306,7 @@ func getDevices(delay int) ([]devType, error) {
 
 	guiDeviceList := make([]devType, 0)
 	for _, k := range keys {
-		guiDeviceList = append(guiDeviceList, devType{k, devices.Devices[k]})
+		guiDeviceList = append(guiDeviceList, devType{k, deviceList[k]})
 	}
 
 	return guiDeviceList, nil

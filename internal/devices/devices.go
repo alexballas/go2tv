@@ -9,18 +9,13 @@ import (
 	"github.com/pkg/errors"
 )
 
-var (
-	// Devices map to maintain a list of all the discovered devices.
-	Devices = make(map[string]string)
-)
-
 // LoadSSDPservices .
-func LoadSSDPservices(delay int) error {
+func LoadSSDPservices(delay int) (map[string]string, error) {
 	// Reset device list every time we call this.
-	Devices = make(map[string]string)
+	Devices := make(map[string]string)
 	list, err := ssdp.Search(ssdp.All, delay, "")
 	if err != nil {
-		return fmt.Errorf("LoadSSDPservices search error: %w", err)
+		return nil, fmt.Errorf("LoadSSDPservices search error: %w", err)
 	}
 
 	for _, srv := range list {
@@ -38,26 +33,28 @@ func LoadSSDPservices(delay int) error {
 	}
 
 	if len(Devices) > 0 {
-		return nil
+		return Devices, nil
 	}
 
-	return errors.New("loadSSDPservices: No available Media Renderers")
+	return nil, errors.New("loadSSDPservices: No available Media Renderers")
 }
 
 // DevicePicker .
-func DevicePicker(i int) (string, error) {
-	if i > len(Devices) || len(Devices) == 0 || i <= 0 {
+func DevicePicker(devices map[string]string, i int) (string, error) {
+	if i > len(devices) || len(devices) == 0 || i <= 0 {
 		return "", errors.New("devicePicker: Requested device not available")
 	}
 
 	keys := make([]string, 0)
-	for k := range Devices {
+	for k := range devices {
 		keys = append(keys, k)
 	}
+
 	sort.Strings(keys)
+
 	for q, k := range keys {
 		if i == q+1 {
-			return Devices[k], nil
+			return devices[k], nil
 		}
 	}
 	return "", errors.New("devicePicker: Something went terribly wrong")
