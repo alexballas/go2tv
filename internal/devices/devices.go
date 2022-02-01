@@ -12,7 +12,7 @@ import (
 // LoadSSDPservices .
 func LoadSSDPservices(delay int) (map[string]string, error) {
 	// Reset device list every time we call this.
-	Devices := make(map[string]string)
+	deviceList := make(map[string]string)
 	list, err := ssdp.Search(ssdp.All, delay, "")
 	if err != nil {
 		return nil, fmt.Errorf("LoadSSDPservices search error: %w", err)
@@ -28,12 +28,12 @@ func LoadSSDPservices(delay int) (map[string]string, error) {
 				friendlyName = srv.Server
 			}
 
-			Devices[friendlyName] = srv.Location
+			deviceList[friendlyName] = srv.Location
 		}
 	}
 
-	if len(Devices) > 0 {
-		return Devices, nil
+	if len(deviceList) > 0 {
+		return deviceList, nil
 	}
 
 	return nil, errors.New("loadSSDPservices: No available Media Renderers")
