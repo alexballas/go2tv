@@ -24,8 +24,8 @@ Cast your media files to UPnP/DLNA Media Renderers and Smart TVs.
 ---
 GUI mode
 -----
-![](https://i.imgur.com/pD5P6Fz.png)
-![](https://i.imgur.com/karpZgp.png)
+![](https://i.imgur.com/KpTs7rJ.png)
+![](https://i.imgur.com/gCWIMyh.png)
 
 CLI mode
 -----

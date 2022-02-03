@@ -176,6 +176,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			nextmedia.SetChecked(false)
 			nextmedia.Disable()
 			mfile.Disable()
+			previewmedia.Disable()
 
 			// rename the label
 			mediafilelabel.Text = "URL:"
@@ -192,6 +193,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			medialoop.Enable()
 			nextmedia.Enable()
 			mfile.Enable()
+			previewmedia.Enable()
 			mediafilelabel.Text = "File:"
 			mfiletext.SetPlaceHolder("")
 			mfiletext.Text = ""
