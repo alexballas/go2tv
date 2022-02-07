@@ -311,3 +311,40 @@ func getDevices(delay int) ([]devType, error) {
 
 	return guiDeviceList, nil
 }
+
+func volumeAction(screen *NewScreen, up bool) {
+	w := screen.Current
+	if screen.renderingControlURL == "" {
+		check(w, errors.New("please select a device"))
+		return
+	}
+
+	if screen.tvdata == nil {
+		// If tvdata is nil, we just need to set RenderingControlURL if we want
+		// to control the sound. We should still rely on the play action to properly
+		// populate our tvdata type.
+		screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
+	}
+
+	currentVolume, err := screen.tvdata.GetVolumeSoapCall()
+	if err != nil {
+		check(w, errors.New("could not get the volume levels"))
+	}
+
+	setVolume := currentVolume - 1
+	if up {
+		setVolume = setVolume + 2
+	}
+
+	if setVolume < 0 {
+		setVolume = 0
+	}
+
+	stringVolume := strconv.Itoa(setVolume)
+
+	if err := screen.tvdata.SetVolumeSoapCall(stringVolume); err != nil {
+		check(w, errors.New("could not send volume action"))
+		return
+	}
+
+}

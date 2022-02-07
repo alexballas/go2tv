@@ -41,7 +41,7 @@ type TVPayload struct {
 	MediaType           string
 }
 
-// GetMuteRespBody - Build the Get Mute response body
+// GetMuteRespBody - Build the GetMute response body
 type GetMuteRespBody struct {
 	XMLName       xml.Name `xml:"Envelope"`
 	Text          string   `xml:",chardata"`
@@ -54,6 +54,22 @@ type GetMuteRespBody struct {
 			U           string `xml:"u,attr"`
 			CurrentMute string `xml:"CurrentMute"`
 		} `xml:"GetMuteResponse"`
+	} `xml:"Body"`
+}
+
+// GetVolumeRespBody - Build the GetVolume response body
+type GetVolumeRespBody struct {
+	XMLName       xml.Name `xml:"Envelope"`
+	Text          string   `xml:",chardata"`
+	EncodingStyle string   `xml:"encodingStyle,attr"`
+	S             string   `xml:"s,attr"`
+	Body          struct {
+		Text              string `xml:",chardata"`
+		GetVolumeResponse struct {
+			Text          string `xml:",chardata"`
+			U             string `xml:"u,attr"`
+			CurrentVolume string `xml:"CurrentVolume"`
+		} `xml:"GetVolumeResponse"`
 	} `xml:"Body"`
 }
 
@@ -361,6 +377,92 @@ func (p *TVPayload) SetMuteSoapCall(number string) error {
 
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:RenderingControl:1#SetMute"`},
+		"content-type": []string{"text/xml"},
+		"charset":      []string{"utf-8"},
+		"Connection":   []string{"close"},
+	}
+
+	_, err = client.Do(req)
+	if err != nil {
+		return fmt.Errorf("SetMuteSoapCall Do POST error: %w", err)
+	}
+
+	return nil
+}
+
+// GetVolumeSoapCall - Return volume levels for target device
+func (p *TVPayload) GetVolumeSoapCall() (int, error) {
+	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
+	if err != nil {
+		return 0, fmt.Errorf("GetVolumeSoapCall parse error: %w", err)
+	}
+
+	var xmlbuilder []byte
+
+	xmlbuilder, err = getVolumeSoapBuild()
+	if err != nil {
+		return 0, fmt.Errorf("GetVolumeSoapCall build error: %w", err)
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
+	if err != nil {
+		return 0, fmt.Errorf("GetVolumeSoapCall POST error: %w", err)
+	}
+
+	req.Header = http.Header{
+		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:RenderingControl:1#GetVolume"`},
+		"content-type": []string{"text/xml"},
+		"charset":      []string{"utf-8"},
+		"Connection":   []string{"close"},
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("GetVolumeSoapCall Do POST error: %w", err)
+	}
+
+	defer resp.Body.Close()
+
+	var respGetVolume GetVolumeRespBody
+	if err = xml.NewDecoder(resp.Body).Decode(&respGetVolume); err != nil {
+		return 0, fmt.Errorf("GetVolumeSoapCall XML Decode error: %w", err)
+	}
+
+	intVolume, err := strconv.Atoi(respGetVolume.Body.GetVolumeResponse.CurrentVolume)
+	if err != nil {
+		return 0, fmt.Errorf("GetVolumeSoapCall failed to parse volume value: %w", err)
+	}
+
+	if intVolume < 0 {
+		intVolume = 0
+	}
+
+	return intVolume, nil
+}
+
+// SetVolumeSoapCall - Set the desired volume levels
+func (p *TVPayload) SetVolumeSoapCall(v string) error {
+	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
+	if err != nil {
+		return fmt.Errorf("SetMuteSoapCall parse error: %w", err)
+	}
+
+	var xmlbuilder []byte
+
+	xmlbuilder, err = setVolumeSoapBuild(v)
+	if err != nil {
+		return fmt.Errorf("SetMuteSoapCall build error: %w", err)
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
+	if err != nil {
+		return fmt.Errorf("SetMuteSoapCall POST error: %w", err)
+	}
+
+	req.Header = http.Header{
+		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:RenderingControl:1#SetVolume"`},
 		"content-type": []string{"text/xml"},
 		"charset":      []string{"utf-8"},
 		"Connection":   []string{"close"},

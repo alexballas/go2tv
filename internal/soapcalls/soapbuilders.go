@@ -195,6 +195,51 @@ type GetMuteAction struct {
 	Channel          string
 }
 
+// GetVolumeEnvelope .
+type GetVolumeEnvelope struct {
+	XMLName       xml.Name      `xml:"s:Envelope"`
+	Schema        string        `xml:"xmlns:s,attr"`
+	Encoding      string        `xml:"s:encodingStyle,attr"`
+	GetVolumeBody GetVolumeBody `xml:"s:Body"`
+}
+
+// GetVolumeBody .
+type GetVolumeBody struct {
+	XMLName         xml.Name        `xml:"s:Body"`
+	GetVolumeAction GetVolumeAction `xml:"u:GetVolume"`
+}
+
+// GetVolumeAction .
+type GetVolumeAction struct {
+	XMLName          xml.Name `xml:"u:GetVolume"`
+	RenderingControl string   `xml:"xmlns:u,attr"`
+	InstanceID       string
+	Channel          string
+}
+
+// SetVolumeEnvelope - As in Play Pause Stop.
+type SetVolumeEnvelope struct {
+	XMLName       xml.Name      `xml:"s:Envelope"`
+	Schema        string        `xml:"xmlns:s,attr"`
+	Encoding      string        `xml:"s:encodingStyle,attr"`
+	SetVolumeBody SetVolumeBody `xml:"s:Body"`
+}
+
+// SetVolumeBody .
+type SetVolumeBody struct {
+	XMLName         xml.Name        `xml:"s:Body"`
+	SetVolumeAction SetVolumeAction `xml:"u:SetVolume"`
+}
+
+// SetVolumeAction .
+type SetVolumeAction struct {
+	XMLName          xml.Name `xml:"u:SetVolume"`
+	RenderingControl string   `xml:"xmlns:u,attr"`
+	InstanceID       string
+	Channel          string
+	DesiredVolume    string
+}
+
 func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string) ([]byte, error) {
 	mediaTypeSlice := strings.Split(mediaType, "/")
 
@@ -411,6 +456,55 @@ func getMuteSoapBuild() ([]byte, error) {
 	b, err := xml.Marshal(d)
 	if err != nil {
 		return nil, fmt.Errorf("getMuteSoapBuild Marshal error: %w", err)
+	}
+
+	return append(xmlStart, b...), nil
+}
+
+func getVolumeSoapBuild() ([]byte, error) {
+	d := GetVolumeEnvelope{
+		XMLName:  xml.Name{},
+		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
+		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
+		GetVolumeBody: GetVolumeBody{
+			XMLName: xml.Name{},
+			GetVolumeAction: GetVolumeAction{
+				XMLName:          xml.Name{},
+				RenderingControl: "urn:schemas-upnp-org:service:RenderingControl:1",
+				InstanceID:       "0",
+				Channel:          "Master",
+			},
+		},
+	}
+	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
+	b, err := xml.Marshal(d)
+	if err != nil {
+		return nil, fmt.Errorf("getVolumeSoapBuild Marshal error: %w", err)
+	}
+
+	return append(xmlStart, b...), nil
+}
+
+func setVolumeSoapBuild(v string) ([]byte, error) {
+	d := SetVolumeEnvelope{
+		XMLName:  xml.Name{},
+		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
+		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
+		SetVolumeBody: SetVolumeBody{
+			XMLName: xml.Name{},
+			SetVolumeAction: SetVolumeAction{
+				XMLName:          xml.Name{},
+				RenderingControl: "urn:schemas-upnp-org:service:RenderingControl:1",
+				InstanceID:       "0",
+				Channel:          "Master",
+				DesiredVolume:    v,
+			},
+		},
+	}
+	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
+	b, err := xml.Marshal(d)
+	if err != nil {
+		return nil, fmt.Errorf("setVolumeSoapBuild Marshal error: %w", err)
 	}
 
 	return append(xmlStart, b...), nil

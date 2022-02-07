@@ -64,3 +64,27 @@ func TestSetMuteSoapBuild(t *testing.T) {
 		}
 	}
 }
+
+func TestGetVolumeSoapBuild(t *testing.T) {
+	tt := []struct {
+		name string
+		want string
+	}{
+		{
+			`getVolumeSoapBuild Test #1`,
+			`<?xml version='1.0' encoding='utf-8'?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:GetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1"><InstanceID>0</InstanceID><Channel>Master</Channel></u:GetVolume></s:Body></s:Envelope>`,
+		},
+	}
+
+	for _, tc := range tt {
+		out, err := getVolumeSoapBuild()
+		if err != nil {
+			t.Errorf("%s: Failed to call setMuteSoapBuild due to %s", tc.name, err.Error())
+			return
+		}
+		if string(out) != tc.want {
+			t.Errorf("%s: got: %s, want: %s.", tc.name, out, tc.want)
+			return
+		}
+	}
+}
