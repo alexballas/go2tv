@@ -145,7 +145,7 @@ func listFlagFunction() error {
 		return errors.New("cant combine -l with other flags")
 	}
 
-	devices, err := devices.LoadSSDPservices(1)
+	deviceList, err := devices.LoadSSDPservices(1)
 	if err != nil {
 		return errors.New("failed to list devices")
 	}
@@ -155,7 +155,7 @@ func listFlagFunction() error {
 	// We loop through this map twice as we need to maintain
 	// the correct order.
 	keys := make([]string, 0)
-	for k := range devices {
+	for k := range deviceList {
 		keys = append(keys, k)
 	}
 
@@ -172,7 +172,7 @@ func listFlagFunction() error {
 		fmt.Printf("%sDevice %v%s\n", boldStart, q+1, boldEnd)
 		fmt.Printf("%s--------%s\n", boldStart, boldEnd)
 		fmt.Printf("%sModel:%s %s\n", boldStart, boldEnd, k)
-		fmt.Printf("%sURL:%s   %s\n", boldStart, boldEnd, devices[k])
+		fmt.Printf("%sURL:%s   %s\n", boldStart, boldEnd, deviceList[k])
 		fmt.Println()
 	}
 
