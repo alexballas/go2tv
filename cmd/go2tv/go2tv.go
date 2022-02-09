@@ -122,9 +122,6 @@ func main() {
 	// Wait for HTTP server to properly initialize
 	<-serverStarted
 
-	err = tvdata.SendtoTV("Play1")
-	check(err)
-
 	scr.InterInit(tvdata)
 }
 

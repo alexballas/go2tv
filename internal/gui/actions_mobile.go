@@ -330,11 +330,13 @@ func volumeAction(screen *NewScreen, up bool) {
 	currentVolume, err := screen.tvdata.GetVolumeSoapCall()
 	if err != nil {
 		check(w, errors.New("could not get the volume levels"))
+		return
 	}
 
 	setVolume := currentVolume - 1
+
 	if up {
-		setVolume = setVolume + 2
+		setVolume = currentVolume + 1
 	}
 
 	if setVolume < 0 {
@@ -345,7 +347,6 @@ func volumeAction(screen *NewScreen, up bool) {
 
 	if err := screen.tvdata.SetVolumeSoapCall(stringVolume); err != nil {
 		check(w, errors.New("could not send volume action"))
-		return
 	}
 
 }
