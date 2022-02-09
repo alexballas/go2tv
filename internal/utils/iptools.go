@@ -70,6 +70,6 @@ func HostPortIsAlive(h string) bool {
 	if err != nil {
 		return false
 	}
-	defer conn.Close()
+	conn.Close()
 	return true
 }
