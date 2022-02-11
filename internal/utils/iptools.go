@@ -9,7 +9,8 @@ import (
 	"time"
 )
 
-// URLtoListenIPandPort for a given internal URL, find the correct IP/Interface to listen to.
+// URLtoListenIPandPort for a given internal URL,
+// find the correct IP/Interface to listen to.
 func URLtoListenIPandPort(u string) (string, error) {
 	parsedURL, err := url.Parse(u)
 	if err != nil {

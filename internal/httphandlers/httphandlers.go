@@ -1,6 +1,7 @@
 package httphandlers
 
 import (
+	"bytes"
 	"fmt"
 	"html"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/alexballas/go2tv/internal/soapcalls"
 	"github.com/alexballas/go2tv/internal/utils"
@@ -190,6 +192,16 @@ func serveContent(w http.ResponseWriter, r *http.Request, s interface{}, isMedia
 
 		name := strings.TrimLeft(r.URL.Path, "/")
 		http.ServeContent(w, r, name, fileStat.ModTime(), filePath)
+
+	case []byte:
+		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
+			contentFeatures, _ := utils.BuildContentFeatures("", "00", false)
+			respHeader["contentFeatures.dlna.org"] = []string{contentFeatures}
+		}
+
+		bReader := bytes.NewReader(f)
+
+		http.ServeContent(w, r, "", time.Now(), bReader)
 
 	case io.ReadCloser:
 		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {

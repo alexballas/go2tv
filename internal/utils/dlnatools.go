@@ -37,7 +37,9 @@ var (
 		"video/x-m4v":             "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
 		"video/3gpp":              "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
 		"video/x-flv":             "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
-		"audio/mpeg":              "DLNA.ORG_PN=MP3"}
+		"audio/mpeg":              "DLNA.ORG_PN=MP3",
+		"image/jpeg":              "JPEG_LRG",
+		"image/png":               "PNG_LRG"}
 )
 
 func defaultStreamingFlags() string {
