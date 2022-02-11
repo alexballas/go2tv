@@ -6,7 +6,6 @@ package gui
 import (
 	"context"
 	"fmt"
-	"io"
 	"sort"
 	"strconv"
 	"time"
@@ -178,16 +177,12 @@ func playAction(screen *NewScreen) {
 		return
 	}
 
-	fileStream, err := storage.OpenFileFromURI(screen.mediafile)
+	mediaFile, err = storage.OpenFileFromURI(screen.mediafile)
 	check(screen.Current, err)
 	if err != nil {
 		screen.PlayPause.Enable()
 		return
 	}
-
-	fileBytes, _ := io.ReadAll(fileStream)
-
-	mediaFile = fileBytes
 
 	if screen.subsfile != nil {
 		subsFile, err = storage.OpenFileFromURI(screen.subsfile)
