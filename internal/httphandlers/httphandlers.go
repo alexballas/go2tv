@@ -1,6 +1,7 @@
 package httphandlers
 
 import (
+	"bytes"
 	"fmt"
 	"html"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/alexballas/go2tv/internal/soapcalls"
 	"github.com/alexballas/go2tv/internal/utils"
@@ -55,7 +57,7 @@ func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, media, subtitles 
 		return fmt.Errorf("failed to parse CallbackURL: %w", err)
 	}
 
-	s.mux.HandleFunc(mURL.Path, s.serveMediaHandler(media))
+	s.mux.HandleFunc(mURL.Path, s.serveMediaHandler(tvpayload, media))
 	s.mux.HandleFunc(sURL.Path, s.serveSubtitlesHandler(subtitles))
 	s.mux.HandleFunc(callbackURL.Path, s.callbackHandler(tvpayload, screen))
 
@@ -70,15 +72,15 @@ func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, media, subtitles 
 	return nil
 }
 
-func (s *HTTPserver) serveMediaHandler(media interface{}) http.HandlerFunc {
+func (s *HTTPserver) serveMediaHandler(tv *soapcalls.TVPayload, media interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		serveContent(w, req, media, true)
+		serveContent(w, req, tv, media, true)
 	}
 }
 
 func (s *HTTPserver) serveSubtitlesHandler(subs interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		serveContent(w, req, subs, false)
+		serveContent(w, req, nil, subs, false)
 	}
 }
 
@@ -155,7 +157,7 @@ func NewServer(a string) *HTTPserver {
 	return &srv
 }
 
-func serveContent(w http.ResponseWriter, r *http.Request, s interface{}, isMedia bool) {
+func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, s interface{}, isMedia bool) {
 	respHeader := w.Header()
 	if isMedia {
 		respHeader["transferMode.dlna.org"] = []string{"Streaming"}
@@ -164,10 +166,15 @@ func serveContent(w http.ResponseWriter, r *http.Request, s interface{}, isMedia
 		respHeader["transferMode.dlna.org"] = []string{"Interactive"}
 	}
 
+	var mediaType string
+	if tv != nil {
+		mediaType = tv.MediaType
+	}
+
 	switch f := s.(type) {
 	case string:
 		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-			contentFeatures, err := utils.BuildContentFeatures(f, "01", false)
+			contentFeatures, err := utils.BuildContentFeatures(mediaType, "01", false)
 			if err != nil {
 				http.NotFound(w, r)
 				return
@@ -191,9 +198,23 @@ func serveContent(w http.ResponseWriter, r *http.Request, s interface{}, isMedia
 		name := strings.TrimLeft(r.URL.Path, "/")
 		http.ServeContent(w, r, name, fileStat.ModTime(), filePath)
 
+	case []byte:
+		// The []byte case only occurs on image casting
+		respHeader["transferMode.dlna.org"] = []string{"Interactive"}
+
+		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
+			contentFeatures, _ := utils.BuildContentFeatures(mediaType, "01", false)
+			respHeader["contentFeatures.dlna.org"] = []string{contentFeatures}
+		}
+
+		bReader := bytes.NewReader(f)
+
+		name := strings.TrimLeft(r.URL.Path, "/")
+		http.ServeContent(w, r, name, time.Now(), bReader)
+
 	case io.ReadCloser:
 		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-			contentFeatures, _ := utils.BuildContentFeatures("", "00", false)
+			contentFeatures, _ := utils.BuildContentFeatures(mediaType, "00", false)
 			respHeader["contentFeatures.dlna.org"] = []string{contentFeatures}
 		}
 

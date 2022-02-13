@@ -6,8 +6,10 @@ package gui
 import (
 	"context"
 	"fmt"
+	"io"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -177,15 +179,8 @@ func playAction(screen *NewScreen) {
 		return
 	}
 
-	mediaFile, err = storage.OpenFileFromURI(screen.mediafile)
-	check(screen.Current, err)
-	if err != nil {
-		screen.PlayPause.Enable()
-		return
-	}
-
 	if screen.subsfile != nil {
-		subsFile, err = storage.OpenFileFromURI(screen.subsfile)
+		subsFile, err = storage.Reader(screen.subsfile)
 		check(screen.Current, err)
 		if err != nil {
 			screen.PlayPause.Enable()
@@ -199,11 +194,75 @@ func playAction(screen *NewScreen) {
 		// the io.Copy operation to fail with "broken pipe".
 		// That's good enough for us since right after that
 		// we close the io.ReadCloser.
-		mediaFile, err = urlstreamer.StreamURL(context.Background(), screen.MediaText.Text)
+		mediaURL, err := urlstreamer.StreamURL(context.Background(), screen.MediaText.Text)
 		check(screen.Current, err)
 		if err != nil {
 			screen.PlayPause.Enable()
 			return
+		}
+
+		// When dealing with URLs it's really hard to understand the MediaType
+		// without reading the data. io.ReaderCloser has no support for seek actions
+		// so we need to duplicate the stream
+		mediaURLinfo, err := urlstreamer.StreamURL(context.Background(), screen.MediaText.Text)
+		check(screen.Current, err)
+		if err != nil {
+			screen.PlayPause.Enable()
+			return
+		}
+
+		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
+		mediaURLinfo.Close()
+		check(w, err)
+		if err != nil {
+			screen.PlayPause.Enable()
+			return
+		}
+
+		mediaFile = mediaURL
+
+		if strings.Contains(mediaType, "image") {
+			bb, err := io.ReadAll(mediaURL)
+			if err != nil {
+				screen.PlayPause.Enable()
+				return
+			}
+			mediaURL.Close()
+			mediaFile = bb
+		}
+	} else {
+		mediaURL, err := storage.Reader(screen.mediafile)
+		check(screen.Current, err)
+		if err != nil {
+			screen.PlayPause.Enable()
+			return
+		}
+
+		mediaURLinfo, err := storage.Reader(screen.mediafile)
+		check(screen.Current, err)
+		if err != nil {
+			screen.PlayPause.Enable()
+			return
+		}
+
+		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
+		mediaURLinfo.Close()
+		check(w, err)
+		if err != nil {
+			screen.PlayPause.Enable()
+			return
+		}
+
+		mediaFile = mediaURL
+
+		if strings.Contains(mediaType, "image") {
+			bb, err := io.ReadAll(mediaURL)
+			if err != nil {
+				screen.PlayPause.Enable()
+				return
+			}
+			mediaURL.Close()
+			mediaFile = bb
 		}
 	}
 

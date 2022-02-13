@@ -6,6 +6,7 @@ package gui
 import (
 	"context"
 	"fmt"
+	"io"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -225,7 +226,7 @@ func playAction(screen *NewScreen) {
 	if screen.ExternalMediaURL.Checked {
 		// We need to define the screen.mediafile
 		// as this is the core item in our structure
-		// that define that something is being streammed.
+		// that defines that something is being streamed.
 		// We use its value for many checks in our code.
 		screen.mediafile = screen.MediaText.Text
 
@@ -234,11 +235,41 @@ func playAction(screen *NewScreen) {
 		// the io.Copy operation to fail with "broken pipe".
 		// That's good enough for us since right after that
 		// we close the io.ReadCloser.
-		mediaFile, err = urlstreamer.StreamURL(context.Background(), screen.MediaText.Text)
+		mediaURL, err := urlstreamer.StreamURL(context.Background(), screen.MediaText.Text)
 		check(screen.Current, err)
 		if err != nil {
 			screen.PlayPause.Enable()
 			return
+		}
+
+		// When dealing with URLs it's really hard to understand the MediaType
+		// without reading the data. io.ReaderCloser has no support for seek actions
+		// so we need to duplicate the stream
+		mediaURLinfo, err := urlstreamer.StreamURL(context.Background(), screen.MediaText.Text)
+		check(screen.Current, err)
+		if err != nil {
+			screen.PlayPause.Enable()
+			return
+		}
+
+		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
+		mediaURLinfo.Close()
+		check(w, err)
+		if err != nil {
+			screen.PlayPause.Enable()
+			return
+		}
+
+		mediaFile = mediaURL
+
+		if strings.Contains(mediaType, "image") {
+			bb, err := io.ReadAll(mediaURL)
+			if err != nil {
+				screen.PlayPause.Enable()
+				return
+			}
+			mediaURL.Close()
+			mediaFile = bb
 		}
 	}
 
