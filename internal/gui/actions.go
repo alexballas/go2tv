@@ -6,7 +6,6 @@ package gui
 import (
 	"context"
 	"fmt"
-	"io"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -242,9 +241,6 @@ func playAction(screen *NewScreen) {
 			return
 		}
 
-		// When dealing with URLs it's really hard to understand the MediaType
-		// without reading the data. io.ReaderCloser has no support for seek actions
-		// so we need to duplicate the stream
 		mediaURLinfo, err := urlstreamer.StreamURL(context.Background(), screen.MediaText.Text)
 		check(screen.Current, err)
 		if err != nil {
@@ -261,16 +257,6 @@ func playAction(screen *NewScreen) {
 		}
 
 		mediaFile = mediaURL
-
-		if strings.Contains(mediaType, "image") {
-			bb, err := io.ReadAll(mediaURL)
-			if err != nil {
-				screen.PlayPause.Enable()
-				return
-			}
-			mediaURL.Close()
-			mediaFile = bb
-		}
 	}
 
 	screen.tvdata = &soapcalls.TVPayload{
