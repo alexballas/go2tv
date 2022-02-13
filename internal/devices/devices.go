@@ -25,7 +25,7 @@ func LoadSSDPservices(delay int) (map[string]string, error) {
 		if srv.Type == "urn:schemas-upnp-org:service:AVTransport:1" {
 			friendlyName, err := soapcalls.GetFriendlyName(srv.Location)
 			if err != nil {
-				friendlyName = srv.Server
+				continue
 			}
 
 			deviceList[friendlyName] = srv.Location
