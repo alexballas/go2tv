@@ -179,6 +179,32 @@ func playAction(screen *NewScreen) {
 		return
 	}
 
+	mediaURL, err := storage.Reader(screen.mediafile)
+	check(screen.Current, err)
+	if err != nil {
+		screen.PlayPause.Enable()
+		return
+	}
+
+	mediaURLinfo, err := storage.Reader(screen.mediafile)
+	check(screen.Current, err)
+	if err != nil {
+		screen.PlayPause.Enable()
+		return
+	}
+	defer mediaURLinfo.Close()
+
+	if !screen.ExternalMediaURL.Checked {
+		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
+		check(w, err)
+		if err != nil {
+			screen.PlayPause.Enable()
+			return
+		}
+	}
+
+	mediaFile = mediaURL
+
 	if screen.subsfile != nil {
 		subsFile, err = storage.Reader(screen.subsfile)
 		check(screen.Current, err)
@@ -205,40 +231,6 @@ func playAction(screen *NewScreen) {
 		// without reading the data. io.ReaderCloser has no support for seek actions
 		// so we need to duplicate the stream
 		mediaURLinfo, err := urlstreamer.StreamURL(context.Background(), screen.MediaText.Text)
-		check(screen.Current, err)
-		if err != nil {
-			screen.PlayPause.Enable()
-			return
-		}
-
-		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
-		mediaURLinfo.Close()
-		check(w, err)
-		if err != nil {
-			screen.PlayPause.Enable()
-			return
-		}
-
-		mediaFile = mediaURL
-
-		if strings.Contains(mediaType, "image") {
-			bb, err := io.ReadAll(mediaURL)
-			if err != nil {
-				screen.PlayPause.Enable()
-				return
-			}
-			mediaURL.Close()
-			mediaFile = bb
-		}
-	} else {
-		mediaURL, err := storage.Reader(screen.mediafile)
-		check(screen.Current, err)
-		if err != nil {
-			screen.PlayPause.Enable()
-			return
-		}
-
-		mediaURLinfo, err := storage.Reader(screen.mediafile)
 		check(screen.Current, err)
 		if err != nil {
 			screen.PlayPause.Enable()
