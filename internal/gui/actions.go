@@ -6,6 +6,7 @@ package gui
 import (
 	"context"
 	"fmt"
+	"io"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -249,7 +250,6 @@ func playAction(screen *NewScreen) {
 		}
 
 		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
-		mediaURLinfo.Close()
 		check(w, err)
 		if err != nil {
 			screen.PlayPause.Enable()
@@ -257,6 +257,14 @@ func playAction(screen *NewScreen) {
 		}
 
 		mediaFile = mediaURL
+		if strings.Contains(mediaType, "image") {
+			readerToBytes, err := io.ReadAll(mediaURL)
+			if err != nil {
+				screen.PlayPause.Enable()
+				return
+			}
+			mediaFile = readerToBytes
+		}
 	}
 
 	screen.tvdata = &soapcalls.TVPayload{

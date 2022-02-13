@@ -6,8 +6,10 @@ package gui
 import (
 	"context"
 	"fmt"
+	"io"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -177,11 +179,37 @@ func playAction(screen *NewScreen) {
 		return
 	}
 
-	mediaFile, err = storage.OpenFileFromURI(screen.mediafile)
-	check(screen.Current, err)
-	if err != nil {
-		screen.PlayPause.Enable()
-		return
+	if screen.mediafile != nil {
+		mediaURL, err := storage.OpenFileFromURI(screen.mediafile)
+		check(screen.Current, err)
+		if err != nil {
+			screen.PlayPause.Enable()
+			return
+		}
+
+		mediaURLinfo, err := storage.OpenFileFromURI(screen.mediafile)
+		check(screen.Current, err)
+		if err != nil {
+			screen.PlayPause.Enable()
+			return
+		}
+
+		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
+		check(w, err)
+		if err != nil {
+			screen.PlayPause.Enable()
+			return
+		}
+
+		mediaFile = mediaURL
+		if strings.Contains(mediaType, "image") {
+			readerToBytes, err := io.ReadAll(mediaURL)
+			if err != nil {
+				screen.PlayPause.Enable()
+				return
+			}
+			mediaFile = readerToBytes
+		}
 	}
 
 	if screen.subsfile != nil {
@@ -214,7 +242,6 @@ func playAction(screen *NewScreen) {
 		}
 
 		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
-		mediaURLinfo.Close()
 		check(w, err)
 		if err != nil {
 			screen.PlayPause.Enable()
@@ -222,6 +249,14 @@ func playAction(screen *NewScreen) {
 		}
 
 		mediaFile = mediaURL
+		if strings.Contains(mediaType, "image") {
+			readerToBytes, err := io.ReadAll(mediaURL)
+			if err != nil {
+				screen.PlayPause.Enable()
+				return
+			}
+			mediaFile = readerToBytes
+		}
 	}
 
 	screen.tvdata = &soapcalls.TVPayload{

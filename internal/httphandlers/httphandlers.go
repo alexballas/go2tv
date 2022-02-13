@@ -179,6 +179,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 				http.NotFound(w, r)
 				return
 			}
+
 			respHeader["contentFeatures.dlna.org"] = []string{contentFeatures}
 		}
 
@@ -199,11 +200,13 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 		http.ServeContent(w, r, name, fileStat.ModTime(), filePath)
 
 	case []byte:
-		// The []byte case only occurs on image casting
-		respHeader["transferMode.dlna.org"] = []string{"Interactive"}
-
 		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-			contentFeatures, _ := utils.BuildContentFeatures(mediaType, "01", false)
+			contentFeatures, err := utils.BuildContentFeatures(mediaType, "01", false)
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+
 			respHeader["contentFeatures.dlna.org"] = []string{contentFeatures}
 		}
 
@@ -214,7 +217,12 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 
 	case io.ReadCloser:
 		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-			contentFeatures, _ := utils.BuildContentFeatures(mediaType, "00", false)
+			contentFeatures, err := utils.BuildContentFeatures(mediaType, "00", false)
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+
 			respHeader["contentFeatures.dlna.org"] = []string{contentFeatures}
 		}
 

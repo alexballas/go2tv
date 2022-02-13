@@ -57,11 +57,18 @@ func BuildContentFeatures(mediaType string, seek string, transcode bool) (string
 
 	if mediaType != "" {
 		dlnaProf, profExists := dlnaprofiles[mediaType]
-		if profExists {
+		switch profExists {
+		case true:
 			cf.WriteString(dlnaProf + ";")
+		default:
+			return "", errors.New("non supported mediaType")
 		}
 	}
 
+	// "00" neither time seek range nor range supported
+	// "01" range supported
+	// "10" time seek range supported
+	// "11" both time seek range and range supported
 	switch seek {
 	case "00":
 		cf.WriteString("DLNA.ORG_OP=00;")
