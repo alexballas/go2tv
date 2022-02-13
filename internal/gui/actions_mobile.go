@@ -204,6 +204,7 @@ func playAction(screen *NewScreen) {
 		mediaFile = mediaURL
 		if strings.Contains(mediaType, "image") {
 			readerToBytes, err := io.ReadAll(mediaURL)
+			mediaURL.Close()
 			if err != nil {
 				screen.PlayPause.Enable()
 				return
@@ -251,6 +252,7 @@ func playAction(screen *NewScreen) {
 		mediaFile = mediaURL
 		if strings.Contains(mediaType, "image") {
 			readerToBytes, err := io.ReadAll(mediaURL)
+			mediaURL.Close()
 			if err != nil {
 				screen.PlayPause.Enable()
 				return
