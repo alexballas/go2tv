@@ -84,6 +84,8 @@ func DMRextractor(dmrurl string) (*DMRextracted, error) {
 		return nil, fmt.Errorf("DMRextractor GET error: %w", err)
 	}
 
+	req.Header.Set("Connection", "close")
+
 	xmlresp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("DMRextractor Do GET error: %w", err)

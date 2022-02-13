@@ -29,7 +29,7 @@ func TestServeContent(t *testing.T) {
 
 		r.Header.Add("getcontentFeatures.dlna.org", "1")
 
-		serveContent(w, r, tc.input, false)
+		serveContent(w, r, nil, tc.input, false)
 
 		if w.Result().StatusCode != http.StatusOK {
 			t.Errorf("%s: got: %s.", tc.name, w.Result().Status)

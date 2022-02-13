@@ -6,11 +6,15 @@ package gui
 import (
 	"context"
 	"fmt"
+	"io"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
@@ -20,6 +24,7 @@ import (
 	"github.com/alexballas/go2tv/internal/urlstreamer"
 	"github.com/alexballas/go2tv/internal/utils"
 	"github.com/pkg/errors"
+	"github.com/skratchdot/open-golang/open"
 )
 
 func muteAction(screen *NewScreen) {
@@ -153,6 +158,8 @@ func subsAction(screen *NewScreen) {
 func playAction(screen *NewScreen) {
 	var mediaFile interface{}
 
+	screen.PlayPause.Disable()
+
 	w := screen.Current
 
 	currentState := screen.getScreenState()
@@ -190,10 +197,6 @@ func playAction(screen *NewScreen) {
 		return
 	}
 
-	if screen.tvdata == nil {
-		stopAction(screen)
-	}
-
 	whereToListen, err := utils.URLtoListenIPandPort(screen.controlURL)
 	check(w, err)
 	if err != nil {
@@ -223,7 +226,7 @@ func playAction(screen *NewScreen) {
 	if screen.ExternalMediaURL.Checked {
 		// We need to define the screen.mediafile
 		// as this is the core item in our structure
-		// that define that something is being streammed.
+		// that defines that something is being streamed.
 		// We use its value for many checks in our code.
 		screen.mediafile = screen.MediaText.Text
 
@@ -232,11 +235,36 @@ func playAction(screen *NewScreen) {
 		// the io.Copy operation to fail with "broken pipe".
 		// That's good enough for us since right after that
 		// we close the io.ReadCloser.
-		mediaFile, err = urlstreamer.StreamURL(context.Background(), screen.MediaText.Text)
+		mediaURL, err := urlstreamer.StreamURL(context.Background(), screen.MediaText.Text)
 		check(screen.Current, err)
 		if err != nil {
 			screen.PlayPause.Enable()
 			return
+		}
+
+		mediaURLinfo, err := urlstreamer.StreamURL(context.Background(), screen.MediaText.Text)
+		check(screen.Current, err)
+		if err != nil {
+			screen.PlayPause.Enable()
+			return
+		}
+
+		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
+		check(w, err)
+		if err != nil {
+			screen.PlayPause.Enable()
+			return
+		}
+
+		mediaFile = mediaURL
+		if strings.Contains(mediaType, "image") {
+			readerToBytes, err := io.ReadAll(mediaURL)
+			mediaURL.Close()
+			if err != nil {
+				screen.PlayPause.Enable()
+				return
+			}
+			mediaFile = readerToBytes
 		}
 	}
 
@@ -298,6 +326,33 @@ func clearsubsAction(screen *NewScreen) {
 	screen.SubsText.Refresh()
 }
 
+func previewmedia(screen *NewScreen) {
+	w := screen.Current
+
+	if screen.mediafile == "" {
+		check(w, errors.New("please select a media file"))
+		return
+	}
+
+	mediaType, err := utils.GetMimeDetailsFromFile(screen.mediafile)
+	check(w, err)
+
+	mediaTypeSlice := strings.Split(mediaType, "/")
+	switch mediaTypeSlice[0] {
+	case "image":
+		img := canvas.NewImageFromFile(screen.mediafile)
+		img.FillMode = 1
+		imgw := fyne.CurrentApp().NewWindow(filepath.Base(screen.mediafile))
+		imgw.SetContent(img)
+		imgw.Resize(fyne.NewSize(800, 600))
+		imgw.CenterOnScreen()
+		imgw.Show()
+	default:
+		err := open.Run(screen.mediafile)
+		check(w, err)
+	}
+}
+
 func stopAction(screen *NewScreen) {
 	w := screen.Current
 
@@ -325,13 +380,14 @@ func stopAction(screen *NewScreen) {
 }
 
 func getDevices(delay int) ([]devType, error) {
-	if err := devices.LoadSSDPservices(delay); err != nil {
+	deviceList, err := devices.LoadSSDPservices(delay)
+	if err != nil {
 		return nil, fmt.Errorf("getDevices error: %w", err)
 	}
 	// We loop through this map twice as we need to maintain
 	// the correct order.
 	keys := make([]string, 0)
-	for k := range devices.Devices {
+	for k := range deviceList {
 		keys = append(keys, k)
 	}
 
@@ -339,8 +395,46 @@ func getDevices(delay int) ([]devType, error) {
 
 	guiDeviceList := make([]devType, 0)
 	for _, k := range keys {
-		guiDeviceList = append(guiDeviceList, devType{k, devices.Devices[k]})
+		guiDeviceList = append(guiDeviceList, devType{k, deviceList[k]})
 	}
 
 	return guiDeviceList, nil
+}
+
+func volumeAction(screen *NewScreen, up bool) {
+	w := screen.Current
+	if screen.renderingControlURL == "" {
+		check(w, errors.New("please select a device"))
+		return
+	}
+
+	if screen.tvdata == nil {
+		// If tvdata is nil, we just need to set RenderingControlURL if we want
+		// to control the sound. We should still rely on the play action to properly
+		// populate our tvdata type.
+		screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
+	}
+
+	currentVolume, err := screen.tvdata.GetVolumeSoapCall()
+	if err != nil {
+		check(w, errors.New("could not get the volume levels"))
+		return
+	}
+
+	setVolume := currentVolume - 1
+
+	if up {
+		setVolume = currentVolume + 1
+	}
+
+	if setVolume < 0 {
+		setVolume = 0
+	}
+
+	stringVolume := strconv.Itoa(setVolume)
+
+	if err := screen.tvdata.SetVolumeSoapCall(stringVolume); err != nil {
+		check(w, errors.New("could not send volume action"))
+	}
+
 }

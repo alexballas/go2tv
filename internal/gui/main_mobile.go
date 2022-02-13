@@ -14,7 +14,6 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/alexballas/go2tv/internal/devices"
 	"github.com/alexballas/go2tv/internal/soapcalls"
 	"github.com/alexballas/go2tv/internal/utils"
 )
@@ -68,9 +67,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 	sfiletext.Disable()
 
-	var playpause *widget.Button
-	playpause = widget.NewButtonWithIcon("Play", theme.MediaPlayIcon(), func() {
-		playpause.Disable()
+	playpause := widget.NewButtonWithIcon("Play", theme.MediaPlayIcon(), func() {
 		go playAction(s)
 	})
 
@@ -78,18 +75,22 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		go stopAction(s)
 	})
 
+	volumeup := widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
+		go volumeAction(s, true)
+	})
+
 	muteunmute := widget.NewButtonWithIcon("", theme.VolumeMuteIcon(), func() {
 		go muteAction(s)
 	})
 
-	unmute := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() {
-		go unmuteAction(s)
+	volumedown := widget.NewButtonWithIcon("", theme.ContentRemoveIcon(), func() {
+		go volumeAction(s, false)
 	})
 
 	clearmedia := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		go clearmediaAction(s)
 	})
-	
+
 	clearsubs := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		go clearsubsAction(s)
 	})
@@ -100,8 +101,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	mediafilelabel := canvas.NewText("File:", nil)
 	subsfilelabel := canvas.NewText("Subtitles:", nil)
 	devicelabel := canvas.NewText("Select Device:", nil)
-
-	unmute.Hide()
 
 	list = widget.NewList(
 		func() int {
@@ -122,14 +121,14 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	s.SubsText = sfiletext
 	s.DeviceList = list
 
-	playpausemutestop := container.New(&mainButtonsLayout{}, playpause, muteunmute, stop)
+	actionbuttons := container.New(&mainButtonsLayout{}, playpause, volumedown, muteunmute, volumeup, stop)
 
 	checklists := container.NewHBox(externalmedia, medialoop)
 	mediasubsbuttons := container.New(layout.NewGridLayout(2), mfile, sfile)
 	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
 	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearmedia), clearmedia, mfiletext)
 	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
-	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, playpausemutestop, container.NewPadded(devicelabel))
+	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, actionbuttons, container.NewPadded(devicelabel))
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
 
 	// Widgets actions
@@ -187,10 +186,10 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 func refreshDevList(s *NewScreen, data *[]devType) {
 	refreshDevices := time.NewTicker(5 * time.Second)
-	for range refreshDevices.C {
-		oldListSize := len(devices.Devices)
 
+	for range refreshDevices.C {
 		datanew, _ := getDevices(2)
+		oldListSize := len(*data)
 
 		// check to see if the new refresh includes
 		// one of the already selected devices

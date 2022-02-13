@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -82,8 +83,9 @@ func (p *NewScreen) EmitMsg(inputtext string) {
 	} else {
 		p.emitStr(w/2-len("MUTED")/2, h/2+2, blinkStyle, "MUTED")
 	}
-	p.emitStr(w/2-len(`Press "p" to Pause/Play, "m" to Mute/Unmute`)/2, h/2+4, tcell.StyleDefault, `Press "p" to Pause/Play, "m" to Mute/Unmute`)
-
+	p.emitStr(w/2-len(`"p" (Play/Pause)`)/2, h/2+4, tcell.StyleDefault, `"p" (Play/Pause)`)
+	p.emitStr(w/2-len(`"m" (Mute/Unmute)`)/2, h/2+6, tcell.StyleDefault, `"m" (Mute/Unmute)`)
+	p.emitStr(w/2-len(`"Page Up" "Page Down" (Volume Up/Down)`)/2, h/2+8, tcell.StyleDefault, `"Page Up" "Page Down" (Volume Up/Down)`)
 	s.Show()
 }
 
@@ -109,8 +111,8 @@ func (p *NewScreen) InterInit(tv *soapcalls.TVPayload) {
 
 	encoding.Register()
 	s := p.Current
-	if e := s.Init(); e != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "%v\n", e)
+	if err := s.Init(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 
@@ -121,6 +123,14 @@ func (p *NewScreen) InterInit(tv *soapcalls.TVPayload) {
 
 	p.updateLastAction("Waiting for status...")
 	p.EmitMsg(p.getLastAction())
+
+	// Sending the Play1 action sooner may result
+	// in a panic error since we need to properly
+	// initialize the tcell window.
+	if err := tv.SendtoTV("Play1"); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
 
 	for {
 		switch ev := s.PollEvent().(type) {
@@ -140,6 +150,24 @@ func (p *NewScreen) HandleKeyEvent(ev *tcell.EventKey) {
 	if ev.Key() == tcell.KeyEscape {
 		tv.SendtoTV("Stop")
 		p.Fini()
+	}
+
+	if ev.Key() == tcell.KeyPgUp || ev.Key() == tcell.KeyPgDn {
+		currentVolume, err := tv.GetVolumeSoapCall()
+		if err != nil {
+			return
+		}
+
+		setVolume := currentVolume - 1
+		if ev.Key() == tcell.KeyPgUp {
+			setVolume = currentVolume + 1
+		}
+
+		stringVolume := strconv.Itoa(setVolume)
+
+		if err := tv.SetVolumeSoapCall(stringVolume); err != nil {
+			return
+		}
 	}
 
 	switch ev.Rune() {

@@ -26,7 +26,6 @@ import (
 var (
 	//go:embed version.txt
 	version    string
-	dmrURL     string
 	mediaArg   = flag.String("v", "", "Local path to the video/audio file. (Triggers the CLI mode)")
 	urlArg     = flag.String("u", "", "HTTP URL to the media file. URL streaming does not support seek operations. (Triggers the CLI mode)")
 	subsArg    = flag.String("s", "", "Local path to the subtitles file.")
@@ -35,17 +34,24 @@ var (
 	versionPtr = flag.Bool("version", false, "Print version.")
 )
 
+type flagResults struct {
+	dmrURL string
+	exit   bool
+}
+
 func main() {
 	guiEnabled := true
 	var mediaFile interface{}
 	flag.Parse()
 
-	exit, err := checkflags()
+	flagRes, err := processflags()
 	check(err)
-	if exit {
+
+	if flagRes.exit {
 		os.Exit(0)
 	}
-	if *mediaArg != "" || *urlArg != "" {
+
+	if len(os.Args) > 1 {
 		guiEnabled = false
 	}
 
@@ -74,7 +80,6 @@ func main() {
 
 		mediaType, err = utils.GetMimeDetailsFromFile(absMediaFile)
 		check(err)
-
 	case io.ReadCloser:
 		absMediaFile = *urlArg
 	}
@@ -82,10 +87,10 @@ func main() {
 	absSubtitlesFile, err := filepath.Abs(*subsArg)
 	check(err)
 
-	upnpServicesURLs, err := soapcalls.DMRextractor(dmrURL)
+	upnpServicesURLs, err := soapcalls.DMRextractor(flagRes.dmrURL)
 	check(err)
 
-	whereToListen, err := utils.URLtoListenIPandPort(dmrURL)
+	whereToListen, err := utils.URLtoListenIPandPort(flagRes.dmrURL)
 	check(err)
 
 	scr, err := interactive.InitTcellNewScreen()
@@ -117,9 +122,6 @@ func main() {
 	// Wait for HTTP server to properly initialize
 	<-serverStarted
 
-	err = tvdata.SendtoTV("Play1")
-	check(err)
-
 	scr.InterInit(tvdata)
 }
 
@@ -131,15 +133,26 @@ func check(err error) {
 }
 
 func listFlagFunction() error {
-	if len(devices.Devices) == 0 {
-		return errors.New("-l and -t can't be used together")
+	flagsEnabled := 0
+	flag.Visit(func(f *flag.Flag) {
+		flagsEnabled++
+	})
+
+	if flagsEnabled > 1 {
+		return errors.New("cant combine -l with other flags")
 	}
+
+	deviceList, err := devices.LoadSSDPservices(1)
+	if err != nil {
+		return errors.New("failed to list devices")
+	}
+
 	fmt.Println()
 
 	// We loop through this map twice as we need to maintain
 	// the correct order.
 	keys := make([]string, 0)
-	for k := range devices.Devices {
+	for k := range deviceList {
 		keys = append(keys, k)
 	}
 
@@ -156,42 +169,48 @@ func listFlagFunction() error {
 		fmt.Printf("%sDevice %v%s\n", boldStart, q+1, boldEnd)
 		fmt.Printf("%s--------%s\n", boldStart, boldEnd)
 		fmt.Printf("%sModel:%s %s\n", boldStart, boldEnd, k)
-		fmt.Printf("%sURL:%s   %s\n", boldStart, boldEnd, devices.Devices[k])
+		fmt.Printf("%sURL:%s   %s\n", boldStart, boldEnd, deviceList[k])
 		fmt.Println()
 	}
 
 	return nil
 }
 
-func checkflags() (bool, error) {
+func processflags() (*flagResults, error) {
 	checkVerflag()
 
-	if checkGUI() {
-		return false, nil
+	res := &flagResults{
+		exit:   false,
+		dmrURL: "",
 	}
 
-	if err := checkTflag(); err != nil {
-		return false, fmt.Errorf("checkflags error: %w", err)
+	if checkGUI() {
+		return res, nil
+	}
+
+	if err := checkTflag(res); err != nil {
+		return nil, fmt.Errorf("checkflags error: %w", err)
 	}
 
 	list, err := checkLflag()
 	if err != nil {
-		return false, fmt.Errorf("checkflags error: %w", err)
-	}
-
-	if err := checkVflag(); err != nil {
-		return false, fmt.Errorf("checkflags error: %w", err)
+		return nil, fmt.Errorf("checkflags error: %w", err)
 	}
 
 	if list {
-		return true, nil
+		res.exit = true
+		return res, nil
+	}
+
+	if err := checkVflag(); err != nil {
+		return nil, fmt.Errorf("checkflags error: %w", err)
 	}
 
 	if err := checkSflag(); err != nil {
-		return false, fmt.Errorf("checkflags error: %w", err)
+		return nil, fmt.Errorf("checkflags error: %w", err)
 	}
 
-	return false, nil
+	return res, nil
 }
 
 func checkVflag() error {
@@ -222,24 +241,25 @@ func checkSflag() error {
 	return nil
 }
 
-func checkTflag() error {
-	if *targetPtr == "" {
-		err := devices.LoadSSDPservices(1)
-		if err != nil {
-			return fmt.Errorf("checkTflag service loading error: %w", err)
-		}
-
-		dmrURL, err = devices.DevicePicker(1)
-		if err != nil {
-			return fmt.Errorf("checkTflag device picker error: %w", err)
-		}
-	} else {
+func checkTflag(res *flagResults) error {
+	if *targetPtr != "" {
 		// Validate URL before proceeding.
 		_, err := url.ParseRequestURI(*targetPtr)
 		if err != nil {
 			return fmt.Errorf("checkTflag parse error: %w", err)
 		}
-		dmrURL = *targetPtr
+
+		res.dmrURL = *targetPtr
+	} else {
+		deviceList, err := devices.LoadSSDPservices(1)
+		if err != nil {
+			return fmt.Errorf("checkTflag service loading error: %w", err)
+		}
+
+		res.dmrURL, err = devices.DevicePicker(deviceList, 1)
+		if err != nil {
+			return fmt.Errorf("checkTflag device picker error: %w", err)
+		}
 	}
 
 	return nil
@@ -257,7 +277,7 @@ func checkLflag() (bool, error) {
 }
 
 func checkVerflag() {
-	if *versionPtr {
+	if *versionPtr && os.Args[1] == "-version" {
 		fmt.Printf("Go2TV Version: %s\n", version)
 		os.Exit(0)
 	}

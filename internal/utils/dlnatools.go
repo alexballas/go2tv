@@ -3,6 +3,7 @@ package utils
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -37,7 +38,9 @@ var (
 		"video/x-m4v":             "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
 		"video/3gpp":              "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
 		"video/x-flv":             "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
-		"audio/mpeg":              "DLNA.ORG_PN=MP3"}
+		"audio/mpeg":              "DLNA.ORG_PN=MP3",
+		"image/jpeg":              "JPEG_LRG",
+		"image/png":               "PNG_LRG"}
 )
 
 func defaultStreamingFlags() string {
@@ -49,21 +52,23 @@ func defaultStreamingFlags() string {
 
 // BuildContentFeatures - Build the content features string
 // for the "contentFeatures.dlna.org" header.
-func BuildContentFeatures(file string, seek string, transcode bool) (string, error) {
+func BuildContentFeatures(mediaType string, seek string, transcode bool) (string, error) {
 	var cf strings.Builder
 
-	if file != "" {
-		ctype, err := GetMimeDetailsFromFile(file)
-		if err != nil {
-			return "", fmt.Errorf("BuildContentFeatures error: %w", err)
-		}
-
-		dlnaProf, profExists := dlnaprofiles[ctype]
-		if profExists {
+	if mediaType != "" {
+		dlnaProf, profExists := dlnaprofiles[mediaType]
+		switch profExists {
+		case true:
 			cf.WriteString(dlnaProf + ";")
+		default:
+			return "", errors.New("non supported mediaType")
 		}
 	}
 
+	// "00" neither time seek range nor range supported
+	// "01" range supported
+	// "10" time seek range supported
+	// "11" both time seek range and range supported
 	switch seek {
 	case "00":
 		cf.WriteString("DLNA.ORG_OP=00;")
@@ -104,6 +109,20 @@ func GetMimeDetailsFromFile(f string) (string, error) {
 	kind, err := filetype.Match(head)
 	if err != nil {
 		return "", fmt.Errorf("getMimeDetailsFromFile error #2: %w", err)
+	}
+
+	return fmt.Sprintf("%s/%s", kind.MIME.Type, kind.MIME.Subtype), nil
+}
+
+// GetMimeDetailsFromStream - Get media URL mime details.
+func GetMimeDetailsFromStream(s io.ReadCloser) (string, error) {
+	defer s.Close()
+	head := make([]byte, 261)
+	s.Read(head)
+
+	kind, err := filetype.Match(head)
+	if err != nil {
+		return "", fmt.Errorf("getMimeDetailsFromStream error: %w", err)
 	}
 
 	return fmt.Sprintf("%s/%s", kind.MIME.Type, kind.MIME.Subtype), nil

@@ -21,6 +21,8 @@ func GetFriendlyName(dmr string) (string, error) {
 		return "", fmt.Errorf("failed to create NewRequest for GetFriendlyName: %w", err)
 	}
 
+	req.Header.Set("Connection", "close")
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to send HTTP request for GetFriendlyName: %w", err)
