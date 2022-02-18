@@ -228,15 +228,16 @@ func checkSflag() error {
 		if _, err := os.Stat(*subsArg); os.IsNotExist(err) {
 			return fmt.Errorf("checkSflags error: %w", err)
 		}
-	} else {
-		// The checkVflag should happen before
-		// checkSflag so we're safe to call *mediaArg
-		// here. If *subsArg is empty, try to
-		// automatically find the srt from the
-		// media file filename.
-		*subsArg = (*mediaArg)[0:len(*mediaArg)-
-			len(filepath.Ext(*mediaArg))] + ".srt"
+		return nil
 	}
+
+	// The checkVflag should happen before
+	// checkSflag so we're safe to call *mediaArg
+	// here. If *subsArg is empty, try to
+	// automatically find the srt from the
+	// media file filename.
+	*subsArg = (*mediaArg)[0:len(*mediaArg)-
+		len(filepath.Ext(*mediaArg))] + ".srt"
 
 	return nil
 }
@@ -250,16 +251,17 @@ func checkTflag(res *flagResults) error {
 		}
 
 		res.dmrURL = *targetPtr
-	} else {
-		deviceList, err := devices.LoadSSDPservices(1)
-		if err != nil {
-			return fmt.Errorf("checkTflag service loading error: %w", err)
-		}
+		return nil
+	}
 
-		res.dmrURL, err = devices.DevicePicker(deviceList, 1)
-		if err != nil {
-			return fmt.Errorf("checkTflag device picker error: %w", err)
-		}
+	deviceList, err := devices.LoadSSDPservices(1)
+	if err != nil {
+		return fmt.Errorf("checkTflag service loading error: %w", err)
+	}
+
+	res.dmrURL, err = devices.DevicePicker(deviceList, 1)
+	if err != nil {
+		return fmt.Errorf("checkTflag device picker error: %w", err)
 	}
 
 	return nil

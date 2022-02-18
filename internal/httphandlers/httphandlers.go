@@ -159,11 +159,12 @@ func NewServer(a string) *HTTPserver {
 
 func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, s interface{}, isMedia bool) {
 	respHeader := w.Header()
+
+	respHeader["transferMode.dlna.org"] = []string{"Interactive"}
+
 	if isMedia {
 		respHeader["transferMode.dlna.org"] = []string{"Streaming"}
 		respHeader["realTimeInfo.dlna.org"] = []string{"DLNA.ORG_TLAG=*"}
-	} else {
-		respHeader["transferMode.dlna.org"] = []string{"Interactive"}
 	}
 
 	var mediaType string
@@ -230,10 +231,9 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 		if r.Method == http.MethodGet {
 			io.Copy(w, f)
 			f.Close()
-		} else {
-			w.WriteHeader(http.StatusOK)
 		}
 
+		w.WriteHeader(http.StatusOK)
 	default:
 		http.NotFound(w, r)
 		return

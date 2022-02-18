@@ -226,15 +226,15 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 		return nil
 	}
 
-	if len(resp.Header["Sid"]) > 0 {
-		uuid = resp.Header["Sid"][0]
-		uuid = strings.TrimLeft(uuid, "[")
-		uuid = strings.TrimLeft(uuid, "]")
-		uuid = strings.TrimPrefix(uuid, "uuid:")
-	} else {
+	if len(resp.Header["Sid"]) == 0 {
 		// This should be an impossible case
 		return nil
 	}
+
+	uuid = resp.Header["Sid"][0]
+	uuid = strings.TrimLeft(uuid, "[")
+	uuid = strings.TrimLeft(uuid, "]")
+	uuid = strings.TrimPrefix(uuid, "uuid:")
 
 	// We don't really need to initialize or set
 	// the State if we're just refreshing the uuid.
