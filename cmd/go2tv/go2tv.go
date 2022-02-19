@@ -13,13 +13,13 @@ import (
 	"sort"
 	"time"
 
-	"github.com/alexballas/go2tv/internal/devices"
-	"github.com/alexballas/go2tv/internal/gui"
-	"github.com/alexballas/go2tv/internal/httphandlers"
-	"github.com/alexballas/go2tv/internal/interactive"
-	"github.com/alexballas/go2tv/internal/soapcalls"
-	"github.com/alexballas/go2tv/internal/urlstreamer"
-	"github.com/alexballas/go2tv/internal/utils"
+	"github.com/alexballas/go2tv/devices"
+	"github.com/alexballas/go2tv/gui"
+	"github.com/alexballas/go2tv/httphandlers"
+	"github.com/alexballas/go2tv/interactive"
+	soapcalls2 "github.com/alexballas/go2tv/soapcalls"
+	"github.com/alexballas/go2tv/urlstreamer"
+	utils2 "github.com/alexballas/go2tv/utils"
 	"github.com/pkg/errors"
 )
 
@@ -78,7 +78,7 @@ func main() {
 		check(err)
 		mediaFile = absMediaFile
 
-		mediaType, err = utils.GetMimeDetailsFromFile(absMediaFile)
+		mediaType, err = utils2.GetMimeDetailsFromFile(absMediaFile)
 		check(err)
 	case io.ReadCloser:
 		absMediaFile = *urlArg
@@ -87,25 +87,25 @@ func main() {
 	absSubtitlesFile, err := filepath.Abs(*subsArg)
 	check(err)
 
-	upnpServicesURLs, err := soapcalls.DMRextractor(flagRes.dmrURL)
+	upnpServicesURLs, err := soapcalls2.DMRextractor(flagRes.dmrURL)
 	check(err)
 
-	whereToListen, err := utils.URLtoListenIPandPort(flagRes.dmrURL)
+	whereToListen, err := utils2.URLtoListenIPandPort(flagRes.dmrURL)
 	check(err)
 
 	scr, err := interactive.InitTcellNewScreen()
 	check(err)
 
-	callbackPath, err := utils.RandomString()
+	callbackPath, err := utils2.RandomString()
 	check(err)
 
-	tvdata := &soapcalls.TVPayload{
+	tvdata := &soapcalls2.TVPayload{
 		ControlURL:          upnpServicesURLs.AvtransportControlURL,
 		EventURL:            upnpServicesURLs.AvtransportEventSubURL,
 		RenderingControlURL: upnpServicesURLs.RenderingControlURL,
 		CallbackURL:         "http://" + whereToListen + "/" + callbackPath,
-		MediaURL:            "http://" + whereToListen + "/" + utils.ConvertFilename(absMediaFile),
-		SubtitlesURL:        "http://" + whereToListen + "/" + utils.ConvertFilename(absSubtitlesFile),
+		MediaURL:            "http://" + whereToListen + "/" + utils2.ConvertFilename(absMediaFile),
+		SubtitlesURL:        "http://" + whereToListen + "/" + utils2.ConvertFilename(absSubtitlesFile),
 		MediaType:           mediaType,
 		CurrentTimers:       make(map[string]*time.Timer),
 	}

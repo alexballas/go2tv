@@ -14,8 +14,8 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/alexballas/go2tv/internal/soapcalls"
-	"github.com/alexballas/go2tv/internal/utils"
+	soapcalls2 "github.com/alexballas/go2tv/soapcalls"
+	"github.com/alexballas/go2tv/utils"
 	"golang.org/x/time/rate"
 )
 
@@ -154,7 +154,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
 		playpause.Enable()
-		t, err := soapcalls.DMRextractor(data[id].addr)
+		t, err := soapcalls2.DMRextractor(data[id].addr)
 		check(w, err)
 		if err == nil {
 			s.selectedDevice = data[id]
@@ -288,7 +288,7 @@ func checkMutefunc(s *NewScreen) {
 		}
 
 		if s.tvdata == nil {
-			s.tvdata = &soapcalls.TVPayload{RenderingControlURL: s.renderingControlURL}
+			s.tvdata = &soapcalls2.TVPayload{RenderingControlURL: s.renderingControlURL}
 		}
 
 		isMuted, err := s.tvdata.GetMuteSoapCall()

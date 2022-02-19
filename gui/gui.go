@@ -15,30 +15,30 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/alexballas/go2tv/internal/httphandlers"
-	"github.com/alexballas/go2tv/internal/soapcalls"
+	"github.com/alexballas/go2tv/httphandlers"
+	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/pkg/errors"
 )
 
 // NewScreen .
 type NewScreen struct {
 	mu                  sync.RWMutex
-	Current             fyne.Window
-	tvdata              *soapcalls.TVPayload
-	Stop                *widget.Button
+	Current        fyne.Window
+	tvdata         *soapcalls.TVPayload
+	Stop           *widget.Button
 	MuteUnmute          *widget.Button
 	CheckVersion        *widget.Button
 	CustomSubsCheck     *widget.Check
 	ExternalMediaURL    *widget.Check
 	MediaText           *widget.Entry
 	SubsText            *widget.Entry
-	DeviceList          *widget.List
-	httpserver          *httphandlers.HTTPserver
-	PlayPause           *widget.Button
+	DeviceList     *widget.List
+	httpserver     *httphandlers.HTTPserver
+	PlayPause      *widget.Button
 	mediafile           string
-	subsfile            string
-	selectedDevice      devType
-	State               string
+	subsfile       string
+	selectedDevice devType
+	State          string
 	controlURL          string
 	eventlURL           string
 	renderingControlURL string

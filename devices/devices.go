@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/alexballas/go2tv/internal/soapcalls"
+	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/koron/go-ssdp"
 	"github.com/pkg/errors"
 )

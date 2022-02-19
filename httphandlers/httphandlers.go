@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexballas/go2tv/internal/soapcalls"
-	"github.com/alexballas/go2tv/internal/utils"
+	soapcalls2 "github.com/alexballas/go2tv/soapcalls"
+	"github.com/alexballas/go2tv/utils"
 )
 
 // HTTPserver - new http.Server instance.
@@ -40,7 +40,7 @@ func Close(scr Screen) {
 
 // ServeFiles - Start HTTP server and serve the files.
 func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, media, subtitles interface{},
-	tvpayload *soapcalls.TVPayload, screen Screen) error {
+	tvpayload *soapcalls2.TVPayload, screen Screen) error {
 
 	mURL, err := url.Parse(tvpayload.MediaURL)
 	if err != nil {
@@ -72,7 +72,7 @@ func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, media, subtitles 
 	return nil
 }
 
-func (s *HTTPserver) serveMediaHandler(tv *soapcalls.TVPayload, media interface{}) http.HandlerFunc {
+func (s *HTTPserver) serveMediaHandler(tv *soapcalls2.TVPayload, media interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		serveContent(w, req, tv, media, true)
 	}
@@ -84,7 +84,7 @@ func (s *HTTPserver) serveSubtitlesHandler(subs interface{}) http.HandlerFunc {
 	}
 }
 
-func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) http.HandlerFunc {
+func (s *HTTPserver) callbackHandler(tv *soapcalls2.TVPayload, screen Screen) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		reqParsed, _ := io.ReadAll(req.Body)
 		sidVal, sidExists := req.Header["Sid"]
@@ -104,26 +104,26 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 		// Apparently we should ignore the first message
 		// On some media renderers we receive a STOPPED message
 		// even before we start streaming.
-		seq, err := soapcalls.GetSequence(uuid)
+		seq, err := soapcalls2.GetSequence(uuid)
 		if err != nil {
 			http.NotFound(w, req)
 			return
 		}
 
 		if seq == 0 {
-			soapcalls.IncreaseSequence(uuid)
+			soapcalls2.IncreaseSequence(uuid)
 			fmt.Fprintf(w, "OK\n")
 			return
 		}
 
 		reqParsedUnescape := html.UnescapeString(string(reqParsed))
-		previousstate, newstate, err := soapcalls.EventNotifyParser(reqParsedUnescape)
+		previousstate, newstate, err := soapcalls2.EventNotifyParser(reqParsedUnescape)
 		if err != nil {
 			http.NotFound(w, req)
 			return
 		}
 
-		if !soapcalls.UpdateMRstate(previousstate, newstate, uuid) {
+		if !soapcalls2.UpdateMRstate(previousstate, newstate, uuid) {
 			http.NotFound(w, req)
 			return
 		}
@@ -157,7 +157,7 @@ func NewServer(a string) *HTTPserver {
 	return &srv
 }
 
-func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, s interface{}, isMedia bool) {
+func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls2.TVPayload, s interface{}, isMedia bool) {
 	respHeader := w.Header()
 
 	respHeader["transferMode.dlna.org"] = []string{"Interactive"}

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alexballas/go2tv/internal/soapcalls"
+	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/gdamore/tcell/v2"
 	"github.com/gdamore/tcell/v2/encoding"
 	"github.com/mattn/go-runewidth"

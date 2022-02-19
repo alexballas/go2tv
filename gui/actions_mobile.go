@@ -16,11 +16,11 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
-	"github.com/alexballas/go2tv/internal/devices"
-	"github.com/alexballas/go2tv/internal/httphandlers"
-	"github.com/alexballas/go2tv/internal/soapcalls"
-	"github.com/alexballas/go2tv/internal/urlstreamer"
-	"github.com/alexballas/go2tv/internal/utils"
+	"github.com/alexballas/go2tv/devices"
+	"github.com/alexballas/go2tv/httphandlers"
+	"github.com/alexballas/go2tv/soapcalls"
+	"github.com/alexballas/go2tv/urlstreamer"
+	utils2 "github.com/alexballas/go2tv/utils"
 	"github.com/pkg/errors"
 )
 
@@ -164,7 +164,7 @@ func playAction(screen *NewScreen) {
 		return
 	}
 
-	whereToListen, err := utils.URLtoListenIPandPort(screen.controlURL)
+	whereToListen, err := utils2.URLtoListenIPandPort(screen.controlURL)
 	check(w, err)
 	if err != nil {
 		screen.PlayPause.Enable()
@@ -173,7 +173,7 @@ func playAction(screen *NewScreen) {
 
 	var mediaType string
 
-	callbackPath, err := utils.RandomString()
+	callbackPath, err := utils2.RandomString()
 	if err != nil {
 		screen.PlayPause.Enable()
 		return
@@ -194,7 +194,7 @@ func playAction(screen *NewScreen) {
 			return
 		}
 
-		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
+		mediaType, err = utils2.GetMimeDetailsFromStream(mediaURLinfo)
 		check(w, err)
 		if err != nil {
 			screen.PlayPause.Enable()
@@ -242,7 +242,7 @@ func playAction(screen *NewScreen) {
 			return
 		}
 
-		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
+		mediaType, err = utils2.GetMimeDetailsFromStream(mediaURLinfo)
 		check(w, err)
 		if err != nil {
 			screen.PlayPause.Enable()
@@ -265,8 +265,8 @@ func playAction(screen *NewScreen) {
 		ControlURL:          screen.controlURL,
 		EventURL:            screen.eventlURL,
 		RenderingControlURL: screen.renderingControlURL,
-		MediaURL:            "http://" + whereToListen + "/" + utils.ConvertFilename(screen.MediaText.Text),
-		SubtitlesURL:        "http://" + whereToListen + "/" + utils.ConvertFilename(screen.SubsText.Text),
+		MediaURL:            "http://" + whereToListen + "/" + utils2.ConvertFilename(screen.MediaText.Text),
+		SubtitlesURL:        "http://" + whereToListen + "/" + utils2.ConvertFilename(screen.SubsText.Text),
 		CallbackURL:         "http://" + whereToListen + "/" + callbackPath,
 		MediaType:           mediaType,
 		CurrentTimers:       make(map[string]*time.Timer),
