@@ -22,22 +22,22 @@ import (
 // NewScreen .
 type NewScreen struct {
 	mu                  sync.RWMutex
-	Current        fyne.Window
-	tvdata         *soapcalls.TVPayload
-	Stop           *widget.Button
+	Current             fyne.Window
+	tvdata              *soapcalls.TVPayload
+	Stop                *widget.Button
 	MuteUnmute          *widget.Button
 	CheckVersion        *widget.Button
 	CustomSubsCheck     *widget.Check
 	ExternalMediaURL    *widget.Check
 	MediaText           *widget.Entry
 	SubsText            *widget.Entry
-	DeviceList     *widget.List
-	httpserver     *httphandlers.HTTPserver
-	PlayPause      *widget.Button
+	DeviceList          *widget.List
+	httpserver          *httphandlers.HTTPserver
+	PlayPause           *widget.Button
 	mediafile           fyne.URI
-	subsfile       fyne.URI
-	selectedDevice devType
-	State          string
+	subsfile            fyne.URI
+	selectedDevice      devType
+	State               string
 	controlURL          string
 	eventlURL           string
 	renderingControlURL string
@@ -95,7 +95,7 @@ func (p *NewScreen) Fini() {
 	}
 }
 
-//InitFyneNewScreen .
+// InitFyneNewScreen .
 func InitFyneNewScreen(v string) *NewScreen {
 	go2tv := app.New()
 	go2tv.Settings().SetTheme(theme.DarkTheme())

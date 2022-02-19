@@ -22,7 +22,7 @@ import (
 	"github.com/alexballas/go2tv/httphandlers"
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/alexballas/go2tv/urlstreamer"
-	utils2 "github.com/alexballas/go2tv/utils"
+	"github.com/alexballas/go2tv/utils"
 	"github.com/pkg/errors"
 	"github.com/skratchdot/open-golang/open"
 )
@@ -69,7 +69,7 @@ func unmuteAction(screen *NewScreen) {
 		screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
 	}
 
-	//isMuted, _ := screen.tvdata.GetMuteSoapCall()
+	// isMuted, _ := screen.tvdata.GetMuteSoapCall()
 	if err := screen.tvdata.SetMuteSoapCall("0"); err != nil {
 		check(w, errors.New("could not send mute action"))
 		return
@@ -197,7 +197,7 @@ func playAction(screen *NewScreen) {
 		return
 	}
 
-	whereToListen, err := utils2.URLtoListenIPandPort(screen.controlURL)
+	whereToListen, err := utils.URLtoListenIPandPort(screen.controlURL)
 	check(w, err)
 	if err != nil {
 		screen.PlayPause.Enable()
@@ -207,7 +207,7 @@ func playAction(screen *NewScreen) {
 	var mediaType string
 
 	if !screen.ExternalMediaURL.Checked {
-		mediaType, err = utils2.GetMimeDetailsFromFile(screen.mediafile)
+		mediaType, err = utils.GetMimeDetailsFromFile(screen.mediafile)
 		check(w, err)
 		if err != nil {
 			screen.PlayPause.Enable()
@@ -215,7 +215,7 @@ func playAction(screen *NewScreen) {
 		}
 	}
 
-	callbackPath, err := utils2.RandomString()
+	callbackPath, err := utils.RandomString()
 	if err != nil {
 		screen.PlayPause.Enable()
 		return
@@ -249,7 +249,7 @@ func playAction(screen *NewScreen) {
 			return
 		}
 
-		mediaType, err = utils2.GetMimeDetailsFromStream(mediaURLinfo)
+		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
 		check(w, err)
 		if err != nil {
 			screen.PlayPause.Enable()
@@ -272,8 +272,8 @@ func playAction(screen *NewScreen) {
 		ControlURL:          screen.controlURL,
 		EventURL:            screen.eventlURL,
 		RenderingControlURL: screen.renderingControlURL,
-		MediaURL:            "http://" + whereToListen + "/" + utils2.ConvertFilename(screen.mediafile),
-		SubtitlesURL:        "http://" + whereToListen + "/" + utils2.ConvertFilename(screen.subsfile),
+		MediaURL:            "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile),
+		SubtitlesURL:        "http://" + whereToListen + "/" + utils.ConvertFilename(screen.subsfile),
 		CallbackURL:         "http://" + whereToListen + "/" + callbackPath,
 		MediaType:           mediaType,
 		CurrentTimers:       make(map[string]*time.Timer),
@@ -334,7 +334,7 @@ func previewmedia(screen *NewScreen) {
 		return
 	}
 
-	mediaType, err := utils2.GetMimeDetailsFromFile(screen.mediafile)
+	mediaType, err := utils.GetMimeDetailsFromFile(screen.mediafile)
 	check(w, err)
 
 	mediaTypeSlice := strings.Split(mediaType, "/")
