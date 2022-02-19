@@ -175,10 +175,12 @@ func (p *NewScreen) HandleKeyEvent(ev *tcell.EventKey) {
 		if flipflop {
 			flipflop = false
 			tv.SendtoTV("Pause")
-		} else {
-			flipflop = true
-			tv.SendtoTV("Play")
+			break
 		}
+
+		flipflop = true
+		tv.SendtoTV("Play")
+
 	case 'm':
 		currentMute, err := tv.GetMuteSoapCall()
 		if err != nil {

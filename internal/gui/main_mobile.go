@@ -160,15 +160,16 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			// to indicate that we're expecting a URL
 			mfiletext.SetPlaceHolder("Enter URL here")
 			mfiletext.Enable()
-		} else {
-			medialoop.Enable()
-			mfile.Enable()
-			mediafilelabel.Text = "File:"
-			mfiletext.SetPlaceHolder("")
-			mfiletext.Text = ""
-			mediafilelabel.Refresh()
-			mfiletext.Disable()
+			return
 		}
+
+		medialoop.Enable()
+		mfile.Enable()
+		mediafilelabel.Text = "File:"
+		mfiletext.SetPlaceHolder("")
+		mfiletext.Text = ""
+		mediafilelabel.Refresh()
+		mfiletext.Disable()
 	}
 
 	medialoop.OnChanged = func(b bool) {

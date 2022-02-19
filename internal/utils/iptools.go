@@ -55,9 +55,9 @@ CHECK:
 			}
 			port++
 			goto CHECK
-		} else {
-			return "", fmt.Errorf("port pick error: %w", err)
 		}
+
+		return "", fmt.Errorf("port pick error: %w", err)
 	}
 	conn.Close()
 	return strconv.Itoa(port), nil

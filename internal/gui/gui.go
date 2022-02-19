@@ -204,14 +204,14 @@ func selectSubs(v string, screen *NewScreen) {
 	possibleSub := v[0:len(v)-
 		len(filepath.Ext(v))] + ".srt"
 
+	screen.SubsText.Text = filepath.Base(possibleSub)
+	screen.subsfile = possibleSub
+
 	if _, err := os.Stat(possibleSub); os.IsNotExist(err) {
 		screen.SubsText.Text = ""
 		screen.subsfile = ""
-	} else {
-		screen.SubsText.Text = filepath.Base(possibleSub)
-
-		screen.subsfile = possibleSub
 	}
+
 	screen.SubsText.Refresh()
 }
 

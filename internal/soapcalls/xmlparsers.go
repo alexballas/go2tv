@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -98,13 +99,20 @@ func DMRextractor(dmrurl string) (*DMRextracted, error) {
 	}
 	xml.Unmarshal(xmlbody, &root)
 	for i := 0; i < len(root.Device.ServiceList.Services); i++ {
-		if root.Device.ServiceList.Services[i].ID == "urn:upnp-org:serviceId:AVTransport" {
-			ex.AvtransportControlURL = parsedURL.Scheme + "://" + parsedURL.Host + root.Device.ServiceList.Services[i].ControlURL
-			ex.AvtransportEventSubURL = parsedURL.Scheme + "://" + parsedURL.Host + root.Device.ServiceList.Services[i].EventSubURL
+		service := root.Device.ServiceList.Services[i]
+		if !strings.HasPrefix(service.EventSubURL, "/") {
+			service.EventSubURL = "/" + service.EventSubURL
+		}
+		if !strings.HasPrefix(service.ControlURL, "/") {
+			service.ControlURL = "/" + service.ControlURL
 		}
 
-		if root.Device.ServiceList.Services[i].ID == "urn:upnp-org:serviceId:RenderingControl" {
-			ex.RenderingControlURL = parsedURL.Scheme + "://" + parsedURL.Host + root.Device.ServiceList.Services[i].ControlURL
+		if service.ID == "urn:upnp-org:serviceId:AVTransport" {
+			ex.AvtransportControlURL = parsedURL.Scheme + "://" + parsedURL.Host + service.ControlURL
+			ex.AvtransportEventSubURL = parsedURL.Scheme + "://" + parsedURL.Host + service.EventSubURL
+		}
+		if service.ID == "urn:upnp-org:serviceId:RenderingControl" {
+			ex.RenderingControlURL = parsedURL.Scheme + "://" + parsedURL.Host + service.ControlURL
 		}
 	}
 
