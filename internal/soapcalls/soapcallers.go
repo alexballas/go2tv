@@ -22,23 +22,20 @@ type states struct {
 	sequence      int
 }
 
-var (
-	mediaRenderersStates        = make(map[string]*states)
-	initialMediaRenderersStates = make(map[string]bool)
-	mu                          sync.RWMutex
-)
-
 // TVPayload - this is the heart of Go2TV.
 type TVPayload struct {
-	MediaFile           interface{}
-	CurrentTimers       map[string]*time.Timer
-	ControlURL          string
-	SubtitlesURL        string
-	EventURL            string
-	CallbackURL         string
-	RenderingControlURL string
-	MediaURL            string
-	MediaType           string
+	MediaFile                   interface{}
+	CurrentTimers               map[string]*time.Timer
+	mediaRenderersStates        map[string]*states
+	initialMediaRenderersStates map[string]bool
+	mu                          *sync.RWMutex
+	ControlURL                  string
+	EventURL                    string
+	CallbackURL                 string
+	RenderingControlURL         string
+	MediaURL                    string
+	MediaType                   string
+	SubtitlesURL                string
 }
 
 // GetMuteRespBody - Build the GetMute response body
@@ -109,8 +106,8 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 	return nil
 }
 
-// PlayStopSoapCall - Build and call the play soap call.
-func (p *TVPayload) playStopPauseSoapCall(action string) error {
+// AVTransportActionSoapCall - Build and send the AVTransport actions
+func (p *TVPayload) AVTransportActionSoapCall(action string) error {
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
 		return fmt.Errorf("playStopPauseSoapCall parse error: %w", err)
@@ -239,7 +236,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 	// We don't really need to initialize or set
 	// the State if we're just refreshing the uuid.
 	if uuidInput == "" {
-		CreateMRstate(uuid)
+		p.CreateMRstate(uuid)
 	}
 
 	timeoutReply := "300"
@@ -255,7 +252,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 // UnsubscribeSoapCall - exported that as we use
 // it for the callback stuff in the httphandlers package.
 func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
-	DeleteMRstate(uuid)
+	p.DeleteMRstate(uuid)
 
 	parsedURLcontrol, err := url.Parse(p.EventURL)
 	if err != nil {
@@ -476,7 +473,8 @@ func (p *TVPayload) SetVolumeSoapCall(v string) error {
 	return nil
 }
 
-// SendtoTV - Send to TV.
+// SendtoTV - Higher level method to gracefully handle the various
+// states when communicating with DMR devices
 func (p *TVPayload) SendtoTV(action string) error {
 	if action == "Play1" {
 		if err := p.SubscribeSoapCall(""); err != nil {
@@ -489,13 +487,12 @@ func (p *TVPayload) SendtoTV(action string) error {
 	}
 
 	if action == "Stop" {
-
-		mu.RLock()
+		p.mu.RLock()
 		localStates := make(map[string]*states)
-		for key, value := range mediaRenderersStates {
+		for key, value := range p.mediaRenderersStates {
 			localStates[key] = value
 		}
-		mu.RUnlock()
+		p.mu.RUnlock()
 
 		// Cleaning up all uuids on force stop.
 		for uuids := range localStates {
@@ -512,7 +509,7 @@ func (p *TVPayload) SendtoTV(action string) error {
 			delete(p.CurrentTimers, uuid)
 		}
 	}
-	err := p.playStopPauseSoapCall(action)
+	err := p.AVTransportActionSoapCall(action)
 	if err != nil {
 		return fmt.Errorf("SendtoTV Play/Stop/Pause action error: %w", err)
 	}
@@ -523,9 +520,9 @@ func (p *TVPayload) SendtoTV(action string) error {
 // UpdateMRstate - Update the mediaRenderersStates map
 // with the state. Return true or false to verify that
 // the actual update took place.
-func UpdateMRstate(previous, new, uuid string) bool {
-	mu.Lock()
-	defer mu.Unlock()
+func (p *TVPayload) UpdateMRstate(previous, new, uuid string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	// If the uuid is not one of the UUIDs we stored in
 	// soapcalls.InitialMediaRenderersStates it means that
 	// probably it expired and there is not much we can do
@@ -533,10 +530,10 @@ func UpdateMRstate(previous, new, uuid string) bool {
 	// probably result in a 412 error as per the upnpn documentation
 	// http://upnp.org/specs/arch/UPnP-arch-DeviceArchitecture-v1.1.pdf
 	// (page 94).
-	if initialMediaRenderersStates[uuid] {
-		mediaRenderersStates[uuid].previousState = previous
-		mediaRenderersStates[uuid].newState = new
-		mediaRenderersStates[uuid].sequence++
+	if p.initialMediaRenderersStates[uuid] {
+		p.mediaRenderersStates[uuid].previousState = previous
+		p.mediaRenderersStates[uuid].newState = new
+		p.mediaRenderersStates[uuid].sequence++
 		return true
 	}
 
@@ -544,11 +541,11 @@ func UpdateMRstate(previous, new, uuid string) bool {
 }
 
 // CreateMRstate .
-func CreateMRstate(uuid string) {
-	mu.Lock()
-	defer mu.Unlock()
-	initialMediaRenderersStates[uuid] = true
-	mediaRenderersStates[uuid] = &states{
+func (p *TVPayload) CreateMRstate(uuid string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.initialMediaRenderersStates[uuid] = true
+	p.mediaRenderersStates[uuid] = &states{
 		previousState: "",
 		newState:      "",
 		sequence:      0,
@@ -556,26 +553,26 @@ func CreateMRstate(uuid string) {
 }
 
 // DeleteMRstate .
-func DeleteMRstate(uuid string) {
-	mu.Lock()
-	defer mu.Unlock()
-	delete(initialMediaRenderersStates, uuid)
-	delete(mediaRenderersStates, uuid)
+func (p *TVPayload) DeleteMRstate(uuid string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.initialMediaRenderersStates, uuid)
+	delete(p.mediaRenderersStates, uuid)
 }
 
 // IncreaseSequence .
-func IncreaseSequence(uuid string) {
-	mu.Lock()
-	defer mu.Unlock()
-	mediaRenderersStates[uuid].sequence++
+func (p *TVPayload) IncreaseSequence(uuid string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.mediaRenderersStates[uuid].sequence++
 }
 
 // GetSequence .
-func GetSequence(uuid string) (int, error) {
-	mu.RLock()
-	defer mu.RUnlock()
-	if initialMediaRenderersStates[uuid] {
-		return mediaRenderersStates[uuid].sequence, nil
+func (p *TVPayload) GetSequence(uuid string) (int, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if p.initialMediaRenderersStates[uuid] {
+		return p.mediaRenderersStates[uuid].sequence, nil
 	}
 
 	return -1, errors.New("zombie callbacks, we should ignore those")
