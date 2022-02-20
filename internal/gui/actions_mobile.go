@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -262,14 +263,17 @@ func playAction(screen *NewScreen) {
 	}
 
 	screen.tvdata = &soapcalls.TVPayload{
-		ControlURL:          screen.controlURL,
-		EventURL:            screen.eventlURL,
-		RenderingControlURL: screen.renderingControlURL,
-		MediaURL:            "http://" + whereToListen + "/" + utils.ConvertFilename(screen.MediaText.Text),
-		SubtitlesURL:        "http://" + whereToListen + "/" + utils.ConvertFilename(screen.SubsText.Text),
-		CallbackURL:         "http://" + whereToListen + "/" + callbackPath,
-		MediaType:           mediaType,
-		CurrentTimers:       make(map[string]*time.Timer),
+		ControlURL:                  screen.controlURL,
+		EventURL:                    screen.eventlURL,
+		RenderingControlURL:         screen.renderingControlURL,
+		MediaURL:                    "http://" + whereToListen + "/" + utils.ConvertFilename(screen.MediaText.Text),
+		SubtitlesURL:                "http://" + whereToListen + "/" + utils.ConvertFilename(screen.SubsText.Text),
+		CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
+		MediaType:                   mediaType,
+		CurrentTimers:               make(map[string]*time.Timer),
+		MediaRenderersStates:        make(map[string]*soapcalls.States),
+		InitialMediaRenderersStates: make(map[string]bool),
+		RWMutex:                     &sync.RWMutex{},
 	}
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)

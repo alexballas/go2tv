@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/alexballas/go2tv/internal/devices"
@@ -100,14 +101,17 @@ func main() {
 	check(err)
 
 	tvdata := &soapcalls.TVPayload{
-		ControlURL:          upnpServicesURLs.AvtransportControlURL,
-		EventURL:            upnpServicesURLs.AvtransportEventSubURL,
-		RenderingControlURL: upnpServicesURLs.RenderingControlURL,
-		CallbackURL:         "http://" + whereToListen + "/" + callbackPath,
-		MediaURL:            "http://" + whereToListen + "/" + utils.ConvertFilename(absMediaFile),
-		SubtitlesURL:        "http://" + whereToListen + "/" + utils.ConvertFilename(absSubtitlesFile),
-		MediaType:           mediaType,
-		CurrentTimers:       make(map[string]*time.Timer),
+		ControlURL:                  upnpServicesURLs.AvtransportControlURL,
+		EventURL:                    upnpServicesURLs.AvtransportEventSubURL,
+		RenderingControlURL:         upnpServicesURLs.RenderingControlURL,
+		CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
+		MediaURL:                    "http://" + whereToListen + "/" + utils.ConvertFilename(absMediaFile),
+		SubtitlesURL:                "http://" + whereToListen + "/" + utils.ConvertFilename(absSubtitlesFile),
+		MediaType:                   mediaType,
+		CurrentTimers:               make(map[string]*time.Timer),
+		MediaRenderersStates:        make(map[string]*soapcalls.States),
+		InitialMediaRenderersStates: make(map[string]bool),
+		RWMutex:                     &sync.RWMutex{},
 	}
 
 	s := httphandlers.NewServer(whereToListen)

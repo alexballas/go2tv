@@ -16,7 +16,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-type states struct {
+type States struct {
 	previousState string
 	newState      string
 	sequence      int
@@ -26,16 +26,16 @@ type states struct {
 type TVPayload struct {
 	MediaFile                   interface{}
 	CurrentTimers               map[string]*time.Timer
-	mediaRenderersStates        map[string]*states
-	initialMediaRenderersStates map[string]bool
-	mu                          *sync.RWMutex
-	ControlURL                  string
-	EventURL                    string
-	CallbackURL                 string
-	RenderingControlURL         string
-	MediaURL                    string
-	MediaType                   string
-	SubtitlesURL                string
+	MediaRenderersStates        map[string]*States
+	InitialMediaRenderersStates map[string]bool
+	*sync.RWMutex
+	ControlURL          string
+	EventURL            string
+	CallbackURL         string
+	RenderingControlURL string
+	MediaURL            string
+	MediaType           string
+	SubtitlesURL        string
 }
 
 // GetMuteRespBody - Build the GetMute response body
@@ -487,12 +487,12 @@ func (p *TVPayload) SendtoTV(action string) error {
 	}
 
 	if action == "Stop" {
-		p.mu.RLock()
-		localStates := make(map[string]*states)
-		for key, value := range p.mediaRenderersStates {
+		p.RLock()
+		localStates := make(map[string]*States)
+		for key, value := range p.MediaRenderersStates {
 			localStates[key] = value
 		}
-		p.mu.RUnlock()
+		p.RUnlock()
 
 		// Cleaning up all uuids on force stop.
 		for uuids := range localStates {
@@ -521,8 +521,8 @@ func (p *TVPayload) SendtoTV(action string) error {
 // with the state. Return true or false to verify that
 // the actual update took place.
 func (p *TVPayload) UpdateMRstate(previous, new, uuid string) bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.Lock()
+	defer p.Unlock()
 	// If the uuid is not one of the UUIDs we stored in
 	// soapcalls.InitialMediaRenderersStates it means that
 	// probably it expired and there is not much we can do
@@ -530,10 +530,10 @@ func (p *TVPayload) UpdateMRstate(previous, new, uuid string) bool {
 	// probably result in a 412 error as per the upnpn documentation
 	// http://upnp.org/specs/arch/UPnP-arch-DeviceArchitecture-v1.1.pdf
 	// (page 94).
-	if p.initialMediaRenderersStates[uuid] {
-		p.mediaRenderersStates[uuid].previousState = previous
-		p.mediaRenderersStates[uuid].newState = new
-		p.mediaRenderersStates[uuid].sequence++
+	if p.InitialMediaRenderersStates[uuid] {
+		p.MediaRenderersStates[uuid].previousState = previous
+		p.MediaRenderersStates[uuid].newState = new
+		p.MediaRenderersStates[uuid].sequence++
 		return true
 	}
 
@@ -542,10 +542,10 @@ func (p *TVPayload) UpdateMRstate(previous, new, uuid string) bool {
 
 // CreateMRstate .
 func (p *TVPayload) CreateMRstate(uuid string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.initialMediaRenderersStates[uuid] = true
-	p.mediaRenderersStates[uuid] = &states{
+	p.Lock()
+	defer p.Unlock()
+	p.InitialMediaRenderersStates[uuid] = true
+	p.MediaRenderersStates[uuid] = &States{
 		previousState: "",
 		newState:      "",
 		sequence:      0,
@@ -554,25 +554,25 @@ func (p *TVPayload) CreateMRstate(uuid string) {
 
 // DeleteMRstate .
 func (p *TVPayload) DeleteMRstate(uuid string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	delete(p.initialMediaRenderersStates, uuid)
-	delete(p.mediaRenderersStates, uuid)
+	p.Lock()
+	defer p.Unlock()
+	delete(p.InitialMediaRenderersStates, uuid)
+	delete(p.MediaRenderersStates, uuid)
 }
 
 // IncreaseSequence .
 func (p *TVPayload) IncreaseSequence(uuid string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.mediaRenderersStates[uuid].sequence++
+	p.Lock()
+	defer p.Unlock()
+	p.MediaRenderersStates[uuid].sequence++
 }
 
 // GetSequence .
 func (p *TVPayload) GetSequence(uuid string) (int, error) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	if p.initialMediaRenderersStates[uuid] {
-		return p.mediaRenderersStates[uuid].sequence, nil
+	p.RLock()
+	defer p.RUnlock()
+	if p.InitialMediaRenderersStates[uuid] {
+		return p.MediaRenderersStates[uuid].sequence, nil
 	}
 
 	return -1, errors.New("zombie callbacks, we should ignore those")
