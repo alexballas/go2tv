@@ -110,7 +110,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 func (p *TVPayload) AVTransportActionSoapCall(action string) error {
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
-		return fmt.Errorf("playStopPauseSoapCall parse error: %w", err)
+		return fmt.Errorf("AVTransportActionSoapCall parse error: %w", err)
 	}
 
 	var xml []byte
@@ -126,7 +126,7 @@ func (p *TVPayload) AVTransportActionSoapCall(action string) error {
 		xml, err = pauseSoapBuild()
 	}
 	if err != nil {
-		return fmt.Errorf("playStopPauseSoapCall action error: %w", err)
+		return fmt.Errorf("AVTransportActionSoapCall action error: %w", err)
 	}
 
 	client := &http.Client{}
@@ -140,7 +140,7 @@ func (p *TVPayload) AVTransportActionSoapCall(action string) error {
 
 	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xml))
 	if err != nil {
-		return fmt.Errorf("playStopPauseSoapCall POST error: %w", err)
+		return fmt.Errorf("AVTransportActionSoapCall POST error: %w", err)
 	}
 
 	req.Header = http.Header{
@@ -152,7 +152,7 @@ func (p *TVPayload) AVTransportActionSoapCall(action string) error {
 
 	_, err = client.Do(req)
 	if err != nil {
-		return fmt.Errorf("playStopPauseSoapCall Do POST error: %w", err)
+		return fmt.Errorf("AVTransportActionSoapCall Do POST error: %w", err)
 	}
 
 	return nil
