@@ -10,3 +10,6 @@ COPY . .
 
 ENV GODEBUG=asyncpreemptoff=1
 RUN make
+RUN make install
+
+ENTRYPOINT [ "go2tv" ]
