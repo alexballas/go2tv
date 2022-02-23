@@ -17,11 +17,11 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
-	"github.com/alexballas/go2tv/internal/devices"
-	"github.com/alexballas/go2tv/internal/httphandlers"
-	"github.com/alexballas/go2tv/internal/soapcalls"
-	"github.com/alexballas/go2tv/internal/urlstreamer"
-	"github.com/alexballas/go2tv/internal/utils"
+	"github.com/alexballas/go2tv/devices"
+	"github.com/alexballas/go2tv/httphandlers"
+	"github.com/alexballas/go2tv/soapcalls"
+	"github.com/alexballas/go2tv/urlstreamer"
+	"github.com/alexballas/go2tv/utils"
 	"github.com/pkg/errors"
 )
 
@@ -150,7 +150,7 @@ func playAction(screen *NewScreen) {
 	// Without this check we'd end up spinning more
 	// webservers while keeping the old ones open.
 	if screen.httpserver != nil {
-		screen.httpserver.StopServeFiles()
+		screen.httpserver.StopServer()
 	}
 
 	if screen.mediafile == nil && screen.MediaText.Text == "" {
@@ -282,7 +282,7 @@ func playAction(screen *NewScreen) {
 	// We pass the tvdata here as we need the callback handlers to be able to react
 	// to the different media renderer states.
 	go func() {
-		err := screen.httpserver.ServeFiles(serverStarted, mediaFile, subsFile, screen.tvdata, screen)
+		err := screen.httpserver.StartServer(serverStarted, mediaFile, subsFile, screen.tvdata, screen)
 		check(w, err)
 		if err != nil {
 			return
@@ -341,7 +341,7 @@ func stopAction(screen *NewScreen) {
 	}
 	check(w, err)
 
-	screen.httpserver.StopServeFiles()
+	screen.httpserver.StopServer()
 	screen.tvdata = nil
 	// In theory we should expect an emit message
 	// from the media renderer, but there seems

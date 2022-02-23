@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/alexballas/go2tv/internal/soapcalls"
+	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/koron/go-ssdp"
 	"github.com/pkg/errors"
 )
 
-// LoadSSDPservices .
+// LoadSSDPservices returns a map with all the devices that support the
+// AVTransport service.
 func LoadSSDPservices(delay int) (map[string]string, error) {
 	// Reset device list every time we call this.
 	deviceList := make(map[string]string)
@@ -39,9 +40,9 @@ func LoadSSDPservices(delay int) (map[string]string, error) {
 	return nil, errors.New("loadSSDPservices: No available Media Renderers")
 }
 
-// DevicePicker .
-func DevicePicker(devices map[string]string, i int) (string, error) {
-	if i > len(devices) || len(devices) == 0 || i <= 0 {
+// DevicePicker will pick the nth device from the devices input map.
+func DevicePicker(devices map[string]string, n int) (string, error) {
+	if n > len(devices) || len(devices) == 0 || n <= 0 {
 		return "", errors.New("devicePicker: Requested device not available")
 	}
 
@@ -53,7 +54,7 @@ func DevicePicker(devices map[string]string, i int) (string, error) {
 	sort.Strings(keys)
 
 	for q, k := range keys {
-		if i == q+1 {
+		if n == q+1 {
 			return devices[k], nil
 		}
 	}

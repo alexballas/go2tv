@@ -11,161 +11,140 @@ import (
 	"github.com/pkg/errors"
 )
 
-// PlayEnvelope - As in Play Pause Stop.
-type PlayEnvelope struct {
+type playEnvelope struct {
 	XMLName  xml.Name `xml:"s:Envelope"`
 	Schema   string   `xml:"xmlns:s,attr"`
 	Encoding string   `xml:"s:encodingStyle,attr"`
-	PlayBody PlayBody `xml:"s:Body"`
+	PlayBody playBody `xml:"s:Body"`
 }
 
-// PlayBody .
-type PlayBody struct {
+type playBody struct {
 	XMLName    xml.Name   `xml:"s:Body"`
-	PlayAction PlayAction `xml:"u:Play"`
+	PlayAction playAction `xml:"u:Play"`
 }
 
-// PlayAction .
-type PlayAction struct {
+type playAction struct {
 	XMLName     xml.Name `xml:"u:Play"`
 	AVTransport string   `xml:"xmlns:u,attr"`
 	InstanceID  string
 	Speed       string
 }
 
-// PauseEnvelope - As in Play Pause Stop.
-type PauseEnvelope struct {
+type pauseEnvelope struct {
 	XMLName   xml.Name  `xml:"s:Envelope"`
 	Schema    string    `xml:"xmlns:s,attr"`
 	Encoding  string    `xml:"s:encodingStyle,attr"`
-	PauseBody PauseBody `xml:"s:Body"`
+	PauseBody pauseBody `xml:"s:Body"`
 }
 
-// PauseBody .
-type PauseBody struct {
+type pauseBody struct {
 	XMLName     xml.Name    `xml:"s:Body"`
-	PauseAction PauseAction `xml:"u:Pause"`
+	PauseAction pauseAction `xml:"u:Pause"`
 }
 
-// PauseAction .
-type PauseAction struct {
+type pauseAction struct {
 	XMLName     xml.Name `xml:"u:Pause"`
 	AVTransport string   `xml:"xmlns:u,attr"`
 	InstanceID  string
 	Speed       string
 }
 
-// StopEnvelope - As in Play Pause Stop.
-type StopEnvelope struct {
+type stopEnvelope struct {
 	XMLName  xml.Name `xml:"s:Envelope"`
 	Schema   string   `xml:"xmlns:s,attr"`
 	Encoding string   `xml:"s:encodingStyle,attr"`
-	StopBody StopBody `xml:"s:Body"`
+	StopBody stopBody `xml:"s:Body"`
 }
 
-// StopBody .
-type StopBody struct {
+type stopBody struct {
 	XMLName    xml.Name   `xml:"s:Body"`
-	StopAction StopAction `xml:"u:Stop"`
+	StopAction stopAction `xml:"u:Stop"`
 }
 
-// StopAction .
-type StopAction struct {
+type stopAction struct {
 	XMLName     xml.Name `xml:"u:Stop"`
 	AVTransport string   `xml:"xmlns:u,attr"`
 	InstanceID  string
 	Speed       string
 }
 
-// SetAVTransportEnvelope .
-type SetAVTransportEnvelope struct {
+type setAVTransportEnvelope struct {
 	XMLName  xml.Name           `xml:"s:Envelope"`
 	Schema   string             `xml:"xmlns:s,attr"`
 	Encoding string             `xml:"s:encodingStyle,attr"`
-	Body     SetAVTransportBody `xml:"s:Body"`
+	Body     setAVTransportBody `xml:"s:Body"`
 }
 
-// SetAVTransportBody .
-type SetAVTransportBody struct {
+type setAVTransportBody struct {
 	XMLName           xml.Name          `xml:"s:Body"`
-	SetAVTransportURI SetAVTransportURI `xml:"u:SetAVTransportURI"`
+	SetAVTransportURI setAVTransportURI `xml:"u:SetAVTransportURI"`
 }
 
-// SetAVTransportURI .
-type SetAVTransportURI struct {
+type setAVTransportURI struct {
 	XMLName            xml.Name `xml:"u:SetAVTransportURI"`
 	AVTransport        string   `xml:"xmlns:u,attr"`
 	InstanceID         string
 	CurrentURI         string
-	CurrentURIMetaData CurrentURIMetaData `xml:"CurrentURIMetaData"`
+	CurrentURIMetaData currentURIMetaData `xml:"CurrentURIMetaData"`
 }
 
-// CurrentURIMetaData .
-type CurrentURIMetaData struct {
+type currentURIMetaData struct {
 	XMLName xml.Name `xml:"CurrentURIMetaData"`
 	Value   []byte   `xml:",chardata"`
 }
 
-// DIDLLite .
-type DIDLLite struct {
+type didLLite struct {
 	XMLName      xml.Name     `xml:"DIDL-Lite"`
 	SchemaDIDL   string       `xml:"xmlns,attr"`
 	DC           string       `xml:"xmlns:dc,attr"`
 	Sec          string       `xml:"xmlns:sec,attr"`
 	SchemaUPNP   string       `xml:"xmlns:upnp,attr"`
-	DIDLLiteItem DIDLLiteItem `xml:"item"`
+	DIDLLiteItem didLLiteItem `xml:"item"`
 }
 
-// DIDLLiteItem .
-type DIDLLiteItem struct {
-	SecCaptionInfo   SecCaptionInfo   `xml:"sec:CaptionInfo"`
-	SecCaptionInfoEx SecCaptionInfoEx `xml:"sec:CaptionInfoEx"`
+type didLLiteItem struct {
+	SecCaptionInfo   secCaptionInfo   `xml:"sec:CaptionInfo"`
+	SecCaptionInfoEx secCaptionInfoEx `xml:"sec:CaptionInfoEx"`
 	XMLName          xml.Name         `xml:"item"`
 	Restricted       string           `xml:"restricted,attr"`
 	UPNPClass        string           `xml:"upnp:class"`
 	DCtitle          string           `xml:"dc:title"`
 	ID               string           `xml:"id,attr"`
 	ParentID         string           `xml:"parentID,attr"`
-	ResNode          []ResNode        `xml:"res"`
+	ResNode          []resNode        `xml:"res"`
 }
 
-// ResNode .
-type ResNode struct {
+type resNode struct {
 	XMLName      xml.Name `xml:"res"`
 	ProtocolInfo string   `xml:"protocolInfo,attr"`
 	Value        string   `xml:",chardata"`
 }
 
-// SecCaptionInfo .
-type SecCaptionInfo struct {
+type secCaptionInfo struct {
 	XMLName xml.Name `xml:"sec:CaptionInfo"`
 	Type    string   `xml:"sec:type,attr"`
 	Value   string   `xml:",chardata"`
 }
 
-// SecCaptionInfoEx .
-type SecCaptionInfoEx struct {
+type secCaptionInfoEx struct {
 	XMLName xml.Name `xml:"sec:CaptionInfoEx"`
 	Type    string   `xml:"sec:type,attr"`
 	Value   string   `xml:",chardata"`
 }
 
-// SetMuteEnvelope - As in Play Pause Stop.
-type SetMuteEnvelope struct {
+type setMuteEnvelope struct {
 	XMLName     xml.Name    `xml:"s:Envelope"`
 	Schema      string      `xml:"xmlns:s,attr"`
 	Encoding    string      `xml:"s:encodingStyle,attr"`
-	SetMuteBody SetMuteBody `xml:"s:Body"`
+	SetMuteBody setMuteBody `xml:"s:Body"`
 }
 
-// SetMuteBody .
-type SetMuteBody struct {
+type setMuteBody struct {
 	XMLName       xml.Name      `xml:"s:Body"`
-	SetMuteAction SetMuteAction `xml:"u:SetMute"`
+	SetMuteAction setMuteAction `xml:"u:SetMute"`
 }
 
-// SetMuteAction .
-type SetMuteAction struct {
+type setMuteAction struct {
 	XMLName          xml.Name `xml:"u:SetMute"`
 	RenderingControl string   `xml:"xmlns:u,attr"`
 	InstanceID       string
@@ -173,66 +152,57 @@ type SetMuteAction struct {
 	DesiredMute      string
 }
 
-// GetMuteEnvelope - As in Play Pause Stop.
-type GetMuteEnvelope struct {
+type getMuteEnvelope struct {
 	XMLName     xml.Name    `xml:"s:Envelope"`
 	Schema      string      `xml:"xmlns:s,attr"`
 	Encoding    string      `xml:"s:encodingStyle,attr"`
-	GetMuteBody GetMuteBody `xml:"s:Body"`
+	GetMuteBody getMuteBody `xml:"s:Body"`
 }
 
-// GetMuteBody .
-type GetMuteBody struct {
+type getMuteBody struct {
 	XMLName       xml.Name      `xml:"s:Body"`
-	GetMuteAction GetMuteAction `xml:"u:GetMute"`
+	GetMuteAction getMuteAction `xml:"u:GetMute"`
 }
 
-// GetMuteAction .
-type GetMuteAction struct {
+type getMuteAction struct {
 	XMLName          xml.Name `xml:"u:GetMute"`
 	RenderingControl string   `xml:"xmlns:u,attr"`
 	InstanceID       string
 	Channel          string
 }
 
-// GetVolumeEnvelope .
-type GetVolumeEnvelope struct {
+type getVolumeEnvelope struct {
 	XMLName       xml.Name      `xml:"s:Envelope"`
 	Schema        string        `xml:"xmlns:s,attr"`
 	Encoding      string        `xml:"s:encodingStyle,attr"`
-	GetVolumeBody GetVolumeBody `xml:"s:Body"`
+	GetVolumeBody getVolumeBody `xml:"s:Body"`
 }
 
-// GetVolumeBody .
-type GetVolumeBody struct {
+type getVolumeBody struct {
 	XMLName         xml.Name        `xml:"s:Body"`
-	GetVolumeAction GetVolumeAction `xml:"u:GetVolume"`
+	GetVolumeAction getVolumeAction `xml:"u:GetVolume"`
 }
 
-// GetVolumeAction .
-type GetVolumeAction struct {
+type getVolumeAction struct {
 	XMLName          xml.Name `xml:"u:GetVolume"`
 	RenderingControl string   `xml:"xmlns:u,attr"`
 	InstanceID       string
 	Channel          string
 }
 
-// SetVolumeEnvelope - As in Play Pause Stop.
-type SetVolumeEnvelope struct {
+type setVolumeEnvelope struct {
 	XMLName       xml.Name      `xml:"s:Envelope"`
 	Schema        string        `xml:"xmlns:s,attr"`
 	Encoding      string        `xml:"s:encodingStyle,attr"`
-	SetVolumeBody SetVolumeBody `xml:"s:Body"`
+	SetVolumeBody setVolumeBody `xml:"s:Body"`
 }
 
-// SetVolumeBody .
-type SetVolumeBody struct {
+type setVolumeBody struct {
 	XMLName         xml.Name        `xml:"s:Body"`
-	SetVolumeAction SetVolumeAction `xml:"u:SetVolume"`
+	SetVolumeAction setVolumeAction `xml:"u:SetVolume"`
 }
 
-// SetVolumeAction .
-type SetVolumeAction struct {
+type setVolumeAction struct {
 	XMLName          xml.Name `xml:"u:SetVolume"`
 	RenderingControl string   `xml:"xmlns:u,attr"`
 	InstanceID       string
@@ -265,20 +235,20 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string) ([]byte, e
 	}
 	mediaTitle = re.ReplaceAllString(mediaTitle, "")
 
-	l := DIDLLite{
+	l := didLLite{
 		XMLName:    xml.Name{},
 		SchemaDIDL: "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
 		DC:         "http://purl.org/dc/elements/1.1/",
 		Sec:        "http://www.sec.co.kr/",
 		SchemaUPNP: "urn:schemas-upnp-org:metadata-1-0/upnp/",
-		DIDLLiteItem: DIDLLiteItem{
+		DIDLLiteItem: didLLiteItem{
 			XMLName:    xml.Name{},
 			ID:         "0",
 			ParentID:   "-1",
 			Restricted: "false",
 			UPNPClass:  class,
 			DCtitle:    mediaTitle,
-			ResNode: []ResNode{{
+			ResNode: []resNode{{
 				XMLName:      xml.Name{},
 				ProtocolInfo: fmt.Sprintf("http-get:*:%s:*", mediaType),
 				Value:        mediaURL,
@@ -288,12 +258,12 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string) ([]byte, e
 				Value:        subtitleURL,
 			},
 			},
-			SecCaptionInfo: SecCaptionInfo{
+			SecCaptionInfo: secCaptionInfo{
 				XMLName: xml.Name{},
 				Type:    "srt",
 				Value:   subtitleURL,
 			},
-			SecCaptionInfoEx: SecCaptionInfoEx{
+			SecCaptionInfoEx: secCaptionInfoEx{
 				XMLName: xml.Name{},
 				Type:    "srt",
 				Value:   subtitleURL,
@@ -305,18 +275,18 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string) ([]byte, e
 		return nil, fmt.Errorf("setAVTransportSoapBuild #1 Marshal error: %w", err)
 	}
 
-	d := SetAVTransportEnvelope{
+	d := setAVTransportEnvelope{
 		XMLName:  xml.Name{},
 		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
 		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
-		Body: SetAVTransportBody{
+		Body: setAVTransportBody{
 			XMLName: xml.Name{},
-			SetAVTransportURI: SetAVTransportURI{
+			SetAVTransportURI: setAVTransportURI{
 				XMLName:     xml.Name{},
 				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
 				InstanceID:  "0",
 				CurrentURI:  mediaURL,
-				CurrentURIMetaData: CurrentURIMetaData{
+				CurrentURIMetaData: currentURIMetaData{
 					XMLName: xml.Name{},
 					Value:   a,
 				},
@@ -337,13 +307,13 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string) ([]byte, e
 }
 
 func playSoapBuild() ([]byte, error) {
-	d := PlayEnvelope{
+	d := playEnvelope{
 		XMLName:  xml.Name{},
 		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
 		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
-		PlayBody: PlayBody{
+		PlayBody: playBody{
 			XMLName: xml.Name{},
-			PlayAction: PlayAction{
+			PlayAction: playAction{
 				XMLName:     xml.Name{},
 				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
 				InstanceID:  "0",
@@ -361,13 +331,13 @@ func playSoapBuild() ([]byte, error) {
 }
 
 func stopSoapBuild() ([]byte, error) {
-	d := StopEnvelope{
+	d := stopEnvelope{
 		XMLName:  xml.Name{},
 		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
 		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
-		StopBody: StopBody{
+		StopBody: stopBody{
 			XMLName: xml.Name{},
-			StopAction: StopAction{
+			StopAction: stopAction{
 				XMLName:     xml.Name{},
 				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
 				InstanceID:  "0",
@@ -385,13 +355,13 @@ func stopSoapBuild() ([]byte, error) {
 }
 
 func pauseSoapBuild() ([]byte, error) {
-	d := PauseEnvelope{
+	d := pauseEnvelope{
 		XMLName:  xml.Name{},
 		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
 		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
-		PauseBody: PauseBody{
+		PauseBody: pauseBody{
 			XMLName: xml.Name{},
-			PauseAction: PauseAction{
+			PauseAction: pauseAction{
 				XMLName:     xml.Name{},
 				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
 				InstanceID:  "0",
@@ -413,13 +383,13 @@ func setMuteSoapBuild(m string) ([]byte, error) {
 		return nil, errors.New("setMuteSoapBuild input error. Was expecting 0 or 1.")
 	}
 
-	d := SetMuteEnvelope{
+	d := setMuteEnvelope{
 		XMLName:  xml.Name{},
 		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
 		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
-		SetMuteBody: SetMuteBody{
+		SetMuteBody: setMuteBody{
 			XMLName: xml.Name{},
-			SetMuteAction: SetMuteAction{
+			SetMuteAction: setMuteAction{
 				XMLName:          xml.Name{},
 				RenderingControl: "urn:schemas-upnp-org:service:RenderingControl:1",
 				InstanceID:       "0",
@@ -438,13 +408,13 @@ func setMuteSoapBuild(m string) ([]byte, error) {
 }
 
 func getMuteSoapBuild() ([]byte, error) {
-	d := GetMuteEnvelope{
+	d := getMuteEnvelope{
 		XMLName:  xml.Name{},
 		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
 		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
-		GetMuteBody: GetMuteBody{
+		GetMuteBody: getMuteBody{
 			XMLName: xml.Name{},
-			GetMuteAction: GetMuteAction{
+			GetMuteAction: getMuteAction{
 				XMLName:          xml.Name{},
 				RenderingControl: "urn:schemas-upnp-org:service:RenderingControl:1",
 				InstanceID:       "0",
@@ -462,13 +432,13 @@ func getMuteSoapBuild() ([]byte, error) {
 }
 
 func getVolumeSoapBuild() ([]byte, error) {
-	d := GetVolumeEnvelope{
+	d := getVolumeEnvelope{
 		XMLName:  xml.Name{},
 		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
 		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
-		GetVolumeBody: GetVolumeBody{
+		GetVolumeBody: getVolumeBody{
 			XMLName: xml.Name{},
-			GetVolumeAction: GetVolumeAction{
+			GetVolumeAction: getVolumeAction{
 				XMLName:          xml.Name{},
 				RenderingControl: "urn:schemas-upnp-org:service:RenderingControl:1",
 				InstanceID:       "0",
@@ -486,13 +456,13 @@ func getVolumeSoapBuild() ([]byte, error) {
 }
 
 func setVolumeSoapBuild(v string) ([]byte, error) {
-	d := SetVolumeEnvelope{
+	d := setVolumeEnvelope{
 		XMLName:  xml.Name{},
 		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
 		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
-		SetVolumeBody: SetVolumeBody{
+		SetVolumeBody: setVolumeBody{
 			XMLName: xml.Name{},
-			SetVolumeAction: SetVolumeAction{
+			SetVolumeAction: setVolumeAction{
 				XMLName:          xml.Name{},
 				RenderingControl: "urn:schemas-upnp-org:service:RenderingControl:1",
 				InstanceID:       "0",

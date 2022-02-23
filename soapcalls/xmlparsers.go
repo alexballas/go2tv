@@ -11,67 +11,47 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Root - root node.
-type Root struct {
+type rootNode struct {
 	XMLName xml.Name `xml:"root"`
-	Device  Device   `xml:"device"`
+	Device  struct {
+		XMLName     xml.Name `xml:"device"`
+		ServiceList struct {
+			XMLName  xml.Name `xml:"serviceList"`
+			Services []struct {
+				XMLName     xml.Name `xml:"service"`
+				Type        string   `xml:"serviceType"`
+				ID          string   `xml:"serviceId"`
+				ControlURL  string   `xml:"controlURL"`
+				EventSubURL string   `xml:"eventSubURL"`
+			} `xml:"service"`
+		} `xml:"serviceList"`
+	} `xml:"device"`
 }
 
-// Device - device node (we should only expect one?).
-type Device struct {
-	XMLName     xml.Name    `xml:"device"`
-	ServiceList ServiceList `xml:"serviceList"`
+type eventPropertySet struct {
+	XMLName       xml.Name `xml:"propertyset"`
+	EventInstance struct {
+		XMLName                      xml.Name `xml:"InstanceID"`
+		Value                        string   `xml:"val,attr"`
+		EventCurrentTransportActions struct {
+			Value string `xml:"val,attr"`
+		} `xml:"CurrentTransportActions"`
+		EventTransportState struct {
+			Value string `xml:"val,attr"`
+		} `xml:"TransportState"`
+	} `xml:"property>LastChange>Event>InstanceID"`
 }
 
-// ServiceList - serviceList node
-type ServiceList struct {
-	XMLName  xml.Name  `xml:"serviceList"`
-	Services []Service `xml:"service"`
-}
-
-// Service - service node.
-type Service struct {
-	XMLName     xml.Name `xml:"service"`
-	Type        string   `xml:"serviceType"`
-	ID          string   `xml:"serviceId"`
-	ControlURL  string   `xml:"controlURL"`
-	EventSubURL string   `xml:"eventSubURL"`
-}
-
-// EventPropertySet .
-type EventPropertySet struct {
-	XMLName       xml.Name      `xml:"propertyset"`
-	EventInstance EventInstance `xml:"property>LastChange>Event>InstanceID"`
-}
-
-// EventInstance .
-type EventInstance struct {
-	XMLName                      xml.Name                     `xml:"InstanceID"`
-	Value                        string                       `xml:"val,attr"`
-	EventCurrentTransportActions EventCurrentTransportActions `xml:"CurrentTransportActions"`
-	EventTransportState          EventTransportState          `xml:"TransportState"`
-}
-
-// EventCurrentTransportActions .
-type EventCurrentTransportActions struct {
-	Value string `xml:"val,attr"`
-}
-
-// EventTransportState .
-type EventTransportState struct {
-	Value string `xml:"val,attr"`
-}
-
-// DMRextracted .
+// DMRextracted stored the services urls
 type DMRextracted struct {
 	AvtransportControlURL  string
 	AvtransportEventSubURL string
 	RenderingControlURL    string
 }
 
-// DMRextractor - Get the AVTransport URL from the main DMR xml.
+// DMRextractor extracts the services URLs from the main DMR xml.
 func DMRextractor(dmrurl string) (*DMRextracted, error) {
-	var root Root
+	var root rootNode
 	ex := &DMRextracted{}
 
 	parsedURL, err := url.Parse(dmrurl)
@@ -123,9 +103,9 @@ func DMRextractor(dmrurl string) (*DMRextracted, error) {
 	return nil, errors.New("something broke somewhere - wrong DMR URL?")
 }
 
-// EventNotifyParser - Parse the Notify messages from the media renderer.
+// EventNotifyParser parses the Notify messages from the DMR device.
 func EventNotifyParser(xmlbody string) (string, string, error) {
-	var root EventPropertySet
+	var root eventPropertySet
 	err := xml.Unmarshal([]byte(xmlbody), &root)
 	if err != nil {
 		return "", "", fmt.Errorf("EventNotifyParser unmarshal error: %w", err)

@@ -17,12 +17,13 @@ import (
 )
 
 type States struct {
-	previousState string
-	newState      string
-	sequence      int
+	PreviousState string
+	NewState      string
+	Sequence      int
 }
 
-// TVPayload - this is the heart of Go2TV.
+// TVPayload this is the heart of Go2TV. We pass that type to the
+// webserver. We need to explicitely initialize it.
 type TVPayload struct {
 	MediaFile                   interface{}
 	CurrentTimers               map[string]*time.Timer
@@ -38,8 +39,7 @@ type TVPayload struct {
 	SubtitlesURL        string
 }
 
-// GetMuteRespBody - Build the GetMute response body
-type GetMuteRespBody struct {
+type getMuteRespBody struct {
 	XMLName       xml.Name `xml:"Envelope"`
 	Text          string   `xml:",chardata"`
 	EncodingStyle string   `xml:"encodingStyle,attr"`
@@ -54,8 +54,8 @@ type GetMuteRespBody struct {
 	} `xml:"Body"`
 }
 
-// GetVolumeRespBody - Build the GetVolume response body
-type GetVolumeRespBody struct {
+// GetVolumeRespBody builds the GetVolume response body
+type getVolumeRespBody struct {
 	XMLName       xml.Name `xml:"Envelope"`
 	Text          string   `xml:",chardata"`
 	EncodingStyle string   `xml:"encodingStyle,attr"`
@@ -106,7 +106,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 	return nil
 }
 
-// AVTransportActionSoapCall - Build and send the AVTransport actions
+// AVTransportActionSoapCall builds and sends the AVTransport actions
 func (p *TVPayload) AVTransportActionSoapCall(action string) error {
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
@@ -158,8 +158,8 @@ func (p *TVPayload) AVTransportActionSoapCall(action string) error {
 	return nil
 }
 
-// SubscribeSoapCall - Subscribe to a media renderer
-// If we explicitly pass the uuid, then we refresh it instead.
+// SubscribeSoapCall send a SUBSCRIBE request to the DMR device.
+// If we explicitly pass the UUID, then we refresh it instead.
 func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 	delete(p.CurrentTimers, uuidInput)
 
@@ -249,8 +249,8 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 	return nil
 }
 
-// UnsubscribeSoapCall - exported that as we use
-// it for the callback stuff in the httphandlers package.
+// UnsubscribeSoapCall sends an UNSUBSCRIBE request to the DMR device
+// and cleans up any stored states for the provided UUID.
 func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 	p.DeleteMRstate(uuid)
 
@@ -281,7 +281,7 @@ func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 	return nil
 }
 
-// RefreshLoopUUIDSoapCall - Refresh the UUID.
+// RefreshLoopUUIDSoapCall refreshes the UUID.
 func (p *TVPayload) RefreshLoopUUIDSoapCall(uuid, timeout string) error {
 	triggerTime := 5
 	timeoutInt, err := strconv.Atoi(timeout)
@@ -310,7 +310,7 @@ func (p *TVPayload) refreshLoopUUIDAsyncSoapCall(uuid string) func() {
 	}
 }
 
-// GetMuteSoapCall - Return mute status for target device
+// GetMuteSoapCall returns the mute status for our device
 func (p *TVPayload) GetMuteSoapCall() (string, error) {
 	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
 	if err != nil {
@@ -344,7 +344,7 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 
 	defer resp.Body.Close()
 
-	var respGetMute GetMuteRespBody
+	var respGetMute getMuteRespBody
 	if err = xml.NewDecoder(resp.Body).Decode(&respGetMute); err != nil {
 		return "", fmt.Errorf("GetMuteSoapCall XML Decode error: %w", err)
 	}
@@ -352,7 +352,7 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 	return respGetMute.Body.GetMuteResponse.CurrentMute, nil
 }
 
-// SetMuteSoapCall - Return true if muted and false if not muted/
+// SetMuteSoapCall returns true if muted and false if not muted.
 func (p *TVPayload) SetMuteSoapCall(number string) error {
 	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
 	if err != nil {
@@ -387,7 +387,7 @@ func (p *TVPayload) SetMuteSoapCall(number string) error {
 	return nil
 }
 
-// GetVolumeSoapCall - Return volume levels for target device
+// GetVolumeSoapCall returns tue volume level for our device.
 func (p *TVPayload) GetVolumeSoapCall() (int, error) {
 	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
 	if err != nil {
@@ -421,7 +421,7 @@ func (p *TVPayload) GetVolumeSoapCall() (int, error) {
 
 	defer resp.Body.Close()
 
-	var respGetVolume GetVolumeRespBody
+	var respGetVolume getVolumeRespBody
 	if err = xml.NewDecoder(resp.Body).Decode(&respGetVolume); err != nil {
 		return 0, fmt.Errorf("GetVolumeSoapCall XML Decode error: %w", err)
 	}
@@ -438,7 +438,7 @@ func (p *TVPayload) GetVolumeSoapCall() (int, error) {
 	return intVolume, nil
 }
 
-// SetVolumeSoapCall - Set the desired volume levels
+// SetVolumeSoapCall sets the desired volume level.
 func (p *TVPayload) SetVolumeSoapCall(v string) error {
 	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
 	if err != nil {
@@ -473,8 +473,8 @@ func (p *TVPayload) SetVolumeSoapCall(v string) error {
 	return nil
 }
 
-// SendtoTV - Higher level method to gracefully handle the various
-// states when communicating with DMR devices
+// SendtoTV is a higher level method that gracefully handles the various
+// states when communicating with the DMR devices.
 func (p *TVPayload) SendtoTV(action string) error {
 	if action == "Play1" {
 		if err := p.SubscribeSoapCall(""); err != nil {
@@ -517,23 +517,21 @@ func (p *TVPayload) SendtoTV(action string) error {
 	return nil
 }
 
-// UpdateMRstate - Update the mediaRenderersStates map
-// with the state. Return true or false to verify that
-// the actual update took place.
+// UpdateMRstate updates the mediaRenderersStates map with the state.
+// Returns true or false to verify that the actual update took place.
 func (p *TVPayload) UpdateMRstate(previous, new, uuid string) bool {
 	p.Lock()
 	defer p.Unlock()
-	// If the uuid is not one of the UUIDs we stored in
-	// soapcalls.InitialMediaRenderersStates it means that
-	// probably it expired and there is not much we can do
-	// with it. Trying to send an unsubscribe for those will
-	// probably result in a 412 error as per the upnpn documentation
-	// http://upnp.org/specs/arch/UPnP-arch-DeviceArchitecture-v1.1.pdf
+	// If the UUID is not available in p.InitialMediaRenderersStates,
+	// it probably expired and there is not much we can do with it.
+	// Trying to send an UNSUBSCRIBE call for that UUID will result
+	// in a 412 error as per the UPNP documentation
+	// https://openconnectivity.org/upnp-specs/UPnP-arch-DeviceArchitecture-v1.1.pdf
 	// (page 94).
 	if p.InitialMediaRenderersStates[uuid] {
-		p.MediaRenderersStates[uuid].previousState = previous
-		p.MediaRenderersStates[uuid].newState = new
-		p.MediaRenderersStates[uuid].sequence++
+		p.MediaRenderersStates[uuid].PreviousState = previous
+		p.MediaRenderersStates[uuid].NewState = new
+		p.MediaRenderersStates[uuid].Sequence++
 		return true
 	}
 
@@ -546,13 +544,13 @@ func (p *TVPayload) CreateMRstate(uuid string) {
 	defer p.Unlock()
 	p.InitialMediaRenderersStates[uuid] = true
 	p.MediaRenderersStates[uuid] = &States{
-		previousState: "",
-		newState:      "",
-		sequence:      0,
+		PreviousState: "",
+		NewState:      "",
+		Sequence:      0,
 	}
 }
 
-// DeleteMRstate .
+// DeleteMRstate deletes the state entries for the specific UUID.
 func (p *TVPayload) DeleteMRstate(uuid string) {
 	p.Lock()
 	defer p.Unlock()
@@ -560,19 +558,19 @@ func (p *TVPayload) DeleteMRstate(uuid string) {
 	delete(p.MediaRenderersStates, uuid)
 }
 
-// IncreaseSequence .
+// IncreaseSequence increases the sequence value of the specific UUID by 1.
 func (p *TVPayload) IncreaseSequence(uuid string) {
 	p.Lock()
 	defer p.Unlock()
-	p.MediaRenderersStates[uuid].sequence++
+	p.MediaRenderersStates[uuid].Sequence++
 }
 
-// GetSequence .
+// GetSequence returns the sequence value of the specific UUID.
 func (p *TVPayload) GetSequence(uuid string) (int, error) {
 	p.RLock()
 	defer p.RUnlock()
 	if p.InitialMediaRenderersStates[uuid] {
-		return p.MediaRenderersStates[uuid].sequence, nil
+		return p.MediaRenderersStates[uuid].Sequence, nil
 	}
 
 	return -1, errors.New("zombie callbacks, we should ignore those")

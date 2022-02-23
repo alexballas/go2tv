@@ -50,7 +50,7 @@ func defaultStreamingFlags() string {
 		dlnaOrgFlagDlnaV15, 0)
 }
 
-// BuildContentFeatures - Build the content features string
+// BuildContentFeatures builds the content features string
 // for the "contentFeatures.dlna.org" header.
 func BuildContentFeatures(mediaType string, seek string, transcode bool) (string, error) {
 	var cf strings.Builder
@@ -95,7 +95,7 @@ func BuildContentFeatures(mediaType string, seek string, transcode bool) (string
 	return cf.String(), nil
 }
 
-// GetMimeDetailsFromFile - Get media file mime details.
+// GetMimeDetailsFromFile returns the media file mime details.
 func GetMimeDetailsFromFile(f string) (string, error) {
 	file, err := os.Open(f)
 	if err != nil {
@@ -114,7 +114,7 @@ func GetMimeDetailsFromFile(f string) (string, error) {
 	return fmt.Sprintf("%s/%s", kind.MIME.Type, kind.MIME.Subtype), nil
 }
 
-// GetMimeDetailsFromStream - Get media URL mime details.
+// GetMimeDetailsFromStream returns the media URL mime details.
 func GetMimeDetailsFromStream(s io.ReadCloser) (string, error) {
 	defer s.Close()
 	head := make([]byte, 261)

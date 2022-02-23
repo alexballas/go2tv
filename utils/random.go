@@ -5,8 +5,8 @@ import (
 	"fmt"
 )
 
-// RandomString - A random string generator
-// to generate the callback paths for our webservers.
+// RandomString - A random string generator to generate
+// the callback paths for our webservers.
 func RandomString() (string, error) {
 	b := make([]byte, 16)
 	_, err := rand.Read(b)
