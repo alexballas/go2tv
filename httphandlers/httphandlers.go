@@ -23,7 +23,7 @@ type HTTPserver struct {
 }
 
 // Screen interface is used to push message back to the user
-// as these are returned by the callback requests.
+// as these are returned by the subscriptions.
 type Screen interface {
 	EmitMsg(string)
 	Fini()
@@ -32,8 +32,8 @@ type Screen interface {
 // StartServer will start a HTTP server to serve the selected media files and
 // also handle the subscriptions requests from the DMR devices.
 func (s *HTTPserver) StartServer(serverStarted chan<- struct{}, media, subtitles interface{},
-	tvpayload *soapcalls.TVPayload, screen Screen) error {
-
+	tvpayload *soapcalls.TVPayload, screen Screen,
+) error {
 	mURL, err := url.Parse(tvpayload.MediaURL)
 	if err != nil {
 		return fmt.Errorf("failed to parse MediaURL: %w", err)

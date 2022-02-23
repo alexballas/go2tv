@@ -95,7 +95,7 @@ func (p *NewScreen) Fini() {
 	}
 }
 
-//InitFyneNewScreen .
+// InitFyneNewScreen .
 func InitFyneNewScreen(v string) *NewScreen {
 	go2tv := app.New()
 	go2tv.Settings().SetTheme(theme.DarkTheme())

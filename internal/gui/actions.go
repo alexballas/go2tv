@@ -70,7 +70,7 @@ func unmuteAction(screen *NewScreen) {
 		screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
 	}
 
-	//isMuted, _ := screen.tvdata.GetMuteSoapCall()
+	// isMuted, _ := screen.tvdata.GetMuteSoapCall()
 	if err := screen.tvdata.SetMuteSoapCall("0"); err != nil {
 		check(w, errors.New("could not send mute action"))
 		return
@@ -440,5 +440,4 @@ func volumeAction(screen *NewScreen, up bool) {
 	if err := screen.tvdata.SetVolumeSoapCall(stringVolume); err != nil {
 		check(w, errors.New("could not send volume action"))
 	}
-
 }

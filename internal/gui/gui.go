@@ -104,7 +104,7 @@ func (p *NewScreen) Fini() {
 	}
 }
 
-//InitFyneNewScreen .
+// InitFyneNewScreen .
 func InitFyneNewScreen(v string) *NewScreen {
 	go2tv := app.New()
 	w := go2tv.NewWindow("Go2TV")

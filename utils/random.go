@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// RandomString - A random string generator to generate
+// RandomString generates a random string which we
 // the callback paths for our webservers.
 func RandomString() (string, error) {
 	b := make([]byte, 16)

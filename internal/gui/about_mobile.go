@@ -59,7 +59,6 @@ MIT
 	s.CheckVersion = checkversion
 
 	return container.NewVBox(richhead, container.NewCenter(container.NewHBox(githubbutton, checkversion)))
-
 }
 
 func checkVersion(s *NewScreen) {

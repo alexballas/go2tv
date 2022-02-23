@@ -248,15 +248,16 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string) ([]byte, e
 			Restricted: "false",
 			UPNPClass:  class,
 			DCtitle:    mediaTitle,
-			ResNode: []resNode{{
-				XMLName:      xml.Name{},
-				ProtocolInfo: fmt.Sprintf("http-get:*:%s:*", mediaType),
-				Value:        mediaURL,
-			}, {
-				XMLName:      xml.Name{},
-				ProtocolInfo: "http-get:*:text/srt:*",
-				Value:        subtitleURL,
-			},
+			ResNode: []resNode{
+				{
+					XMLName:      xml.Name{},
+					ProtocolInfo: fmt.Sprintf("http-get:*:%s:*", mediaType),
+					Value:        mediaURL,
+				}, {
+					XMLName:      xml.Name{},
+					ProtocolInfo: "http-get:*:text/srt:*",
+					Value:        subtitleURL,
+				},
 			},
 			SecCaptionInfo: secCaptionInfo{
 				XMLName: xml.Name{},
