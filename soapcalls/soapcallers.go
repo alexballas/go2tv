@@ -16,33 +16,30 @@ import (
 	"github.com/pkg/errors"
 )
 
-type states struct {
-	previousState string
-	newState      string
-	sequence      int
+type States struct {
+	PreviousState string
+	NewState      string
+	Sequence      int
 }
 
-var (
-	mediaRenderersStates        = make(map[string]*states)
-	initialMediaRenderersStates = make(map[string]bool)
-	mu                          sync.RWMutex
-)
-
-// TVPayload - this is the heart of Go2TV.
+// TVPayload this is the heart of Go2TV. We pass that type to the
+// webserver. We need to explicitely initialize it.
 type TVPayload struct {
-	MediaFile           interface{}
-	CurrentTimers       map[string]*time.Timer
+	MediaFile                   interface{}
+	CurrentTimers               map[string]*time.Timer
+	MediaRenderersStates        map[string]*States
+	InitialMediaRenderersStates map[string]bool
+	*sync.RWMutex
 	ControlURL          string
-	SubtitlesURL        string
 	EventURL            string
 	CallbackURL         string
 	RenderingControlURL string
 	MediaURL            string
 	MediaType           string
+	SubtitlesURL        string
 }
 
-// GetMuteRespBody - Build the GetMute response body
-type GetMuteRespBody struct {
+type getMuteRespBody struct {
 	XMLName       xml.Name `xml:"Envelope"`
 	Text          string   `xml:",chardata"`
 	EncodingStyle string   `xml:"encodingStyle,attr"`
@@ -57,8 +54,8 @@ type GetMuteRespBody struct {
 	} `xml:"Body"`
 }
 
-// GetVolumeRespBody - Build the GetVolume response body
-type GetVolumeRespBody struct {
+// GetVolumeRespBody builds the GetVolume response body
+type getVolumeRespBody struct {
 	XMLName       xml.Name `xml:"Envelope"`
 	Text          string   `xml:",chardata"`
 	EncodingStyle string   `xml:"encodingStyle,attr"`
@@ -109,11 +106,11 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 	return nil
 }
 
-// PlayStopSoapCall - Build and call the play soap call.
-func (p *TVPayload) playStopPauseSoapCall(action string) error {
+// AVTransportActionSoapCall builds and sends the AVTransport actions
+func (p *TVPayload) AVTransportActionSoapCall(action string) error {
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
-		return fmt.Errorf("playStopPauseSoapCall parse error: %w", err)
+		return fmt.Errorf("AVTransportActionSoapCall parse error: %w", err)
 	}
 
 	var xml []byte
@@ -129,7 +126,7 @@ func (p *TVPayload) playStopPauseSoapCall(action string) error {
 		xml, err = pauseSoapBuild()
 	}
 	if err != nil {
-		return fmt.Errorf("playStopPauseSoapCall action error: %w", err)
+		return fmt.Errorf("AVTransportActionSoapCall action error: %w", err)
 	}
 
 	client := &http.Client{}
@@ -143,7 +140,7 @@ func (p *TVPayload) playStopPauseSoapCall(action string) error {
 
 	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xml))
 	if err != nil {
-		return fmt.Errorf("playStopPauseSoapCall POST error: %w", err)
+		return fmt.Errorf("AVTransportActionSoapCall POST error: %w", err)
 	}
 
 	req.Header = http.Header{
@@ -155,14 +152,14 @@ func (p *TVPayload) playStopPauseSoapCall(action string) error {
 
 	_, err = client.Do(req)
 	if err != nil {
-		return fmt.Errorf("playStopPauseSoapCall Do POST error: %w", err)
+		return fmt.Errorf("AVTransportActionSoapCall Do POST error: %w", err)
 	}
 
 	return nil
 }
 
-// SubscribeSoapCall - Subscribe to a media renderer
-// If we explicitly pass the uuid, then we refresh it instead.
+// SubscribeSoapCall send a SUBSCRIBE request to the DMR device.
+// If we explicitly pass the UUID, then we refresh it instead.
 func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 	delete(p.CurrentTimers, uuidInput)
 
@@ -239,7 +236,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 	// We don't really need to initialize or set
 	// the State if we're just refreshing the uuid.
 	if uuidInput == "" {
-		CreateMRstate(uuid)
+		p.CreateMRstate(uuid)
 	}
 
 	timeoutReply := "300"
@@ -252,10 +249,10 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 	return nil
 }
 
-// UnsubscribeSoapCall - exported that as we use
-// it for the callback stuff in the httphandlers package.
+// UnsubscribeSoapCall sends an UNSUBSCRIBE request to the DMR device
+// and cleans up any stored states for the provided UUID.
 func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
-	DeleteMRstate(uuid)
+	p.DeleteMRstate(uuid)
 
 	parsedURLcontrol, err := url.Parse(p.EventURL)
 	if err != nil {
@@ -284,7 +281,7 @@ func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 	return nil
 }
 
-// RefreshLoopUUIDSoapCall - Refresh the UUID.
+// RefreshLoopUUIDSoapCall refreshes the UUID.
 func (p *TVPayload) RefreshLoopUUIDSoapCall(uuid, timeout string) error {
 	triggerTime := 5
 	timeoutInt, err := strconv.Atoi(timeout)
@@ -313,7 +310,7 @@ func (p *TVPayload) refreshLoopUUIDAsyncSoapCall(uuid string) func() {
 	}
 }
 
-// GetMuteSoapCall - Return mute status for target device
+// GetMuteSoapCall returns the mute status for our device
 func (p *TVPayload) GetMuteSoapCall() (string, error) {
 	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
 	if err != nil {
@@ -347,7 +344,7 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 
 	defer resp.Body.Close()
 
-	var respGetMute GetMuteRespBody
+	var respGetMute getMuteRespBody
 	if err = xml.NewDecoder(resp.Body).Decode(&respGetMute); err != nil {
 		return "", fmt.Errorf("GetMuteSoapCall XML Decode error: %w", err)
 	}
@@ -355,7 +352,7 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 	return respGetMute.Body.GetMuteResponse.CurrentMute, nil
 }
 
-// SetMuteSoapCall - Return true if muted and false if not muted/
+// SetMuteSoapCall returns true if muted and false if not muted.
 func (p *TVPayload) SetMuteSoapCall(number string) error {
 	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
 	if err != nil {
@@ -390,7 +387,7 @@ func (p *TVPayload) SetMuteSoapCall(number string) error {
 	return nil
 }
 
-// GetVolumeSoapCall - Return volume levels for target device
+// GetVolumeSoapCall returns tue volume level for our device.
 func (p *TVPayload) GetVolumeSoapCall() (int, error) {
 	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
 	if err != nil {
@@ -424,7 +421,7 @@ func (p *TVPayload) GetVolumeSoapCall() (int, error) {
 
 	defer resp.Body.Close()
 
-	var respGetVolume GetVolumeRespBody
+	var respGetVolume getVolumeRespBody
 	if err = xml.NewDecoder(resp.Body).Decode(&respGetVolume); err != nil {
 		return 0, fmt.Errorf("GetVolumeSoapCall XML Decode error: %w", err)
 	}
@@ -441,7 +438,7 @@ func (p *TVPayload) GetVolumeSoapCall() (int, error) {
 	return intVolume, nil
 }
 
-// SetVolumeSoapCall - Set the desired volume levels
+// SetVolumeSoapCall sets the desired volume level.
 func (p *TVPayload) SetVolumeSoapCall(v string) error {
 	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
 	if err != nil {
@@ -476,7 +473,8 @@ func (p *TVPayload) SetVolumeSoapCall(v string) error {
 	return nil
 }
 
-// SendtoTV - Send to TV.
+// SendtoTV is a higher level method that gracefully handles the various
+// states when communicating with the DMR devices.
 func (p *TVPayload) SendtoTV(action string) error {
 	if action == "Play1" {
 		if err := p.SubscribeSoapCall(""); err != nil {
@@ -489,13 +487,12 @@ func (p *TVPayload) SendtoTV(action string) error {
 	}
 
 	if action == "Stop" {
-
-		mu.RLock()
-		localStates := make(map[string]*states)
-		for key, value := range mediaRenderersStates {
+		p.RLock()
+		localStates := make(map[string]*States)
+		for key, value := range p.MediaRenderersStates {
 			localStates[key] = value
 		}
-		mu.RUnlock()
+		p.RUnlock()
 
 		// Cleaning up all uuids on force stop.
 		for uuids := range localStates {
@@ -512,7 +509,7 @@ func (p *TVPayload) SendtoTV(action string) error {
 			delete(p.CurrentTimers, uuid)
 		}
 	}
-	err := p.playStopPauseSoapCall(action)
+	err := p.AVTransportActionSoapCall(action)
 	if err != nil {
 		return fmt.Errorf("SendtoTV Play/Stop/Pause action error: %w", err)
 	}
@@ -520,23 +517,21 @@ func (p *TVPayload) SendtoTV(action string) error {
 	return nil
 }
 
-// UpdateMRstate - Update the mediaRenderersStates map
-// with the state. Return true or false to verify that
-// the actual update took place.
-func UpdateMRstate(previous, new, uuid string) bool {
-	mu.Lock()
-	defer mu.Unlock()
-	// If the uuid is not one of the UUIDs we stored in
-	// soapcalls.InitialMediaRenderersStates it means that
-	// probably it expired and there is not much we can do
-	// with it. Trying to send an unsubscribe for those will
-	// probably result in a 412 error as per the upnpn documentation
-	// http://upnp.org/specs/arch/UPnP-arch-DeviceArchitecture-v1.1.pdf
+// UpdateMRstate updates the mediaRenderersStates map with the state.
+// Returns true or false to verify that the actual update took place.
+func (p *TVPayload) UpdateMRstate(previous, new, uuid string) bool {
+	p.Lock()
+	defer p.Unlock()
+	// If the UUID is not available in p.InitialMediaRenderersStates,
+	// it probably expired and there is not much we can do with it.
+	// Trying to send an UNSUBSCRIBE call for that UUID will result
+	// in a 412 error as per the UPNP documentation
+	// https://openconnectivity.org/upnp-specs/UPnP-arch-DeviceArchitecture-v1.1.pdf
 	// (page 94).
-	if initialMediaRenderersStates[uuid] {
-		mediaRenderersStates[uuid].previousState = previous
-		mediaRenderersStates[uuid].newState = new
-		mediaRenderersStates[uuid].sequence++
+	if p.InitialMediaRenderersStates[uuid] {
+		p.MediaRenderersStates[uuid].PreviousState = previous
+		p.MediaRenderersStates[uuid].NewState = new
+		p.MediaRenderersStates[uuid].Sequence++
 		return true
 	}
 
@@ -544,38 +539,38 @@ func UpdateMRstate(previous, new, uuid string) bool {
 }
 
 // CreateMRstate .
-func CreateMRstate(uuid string) {
-	mu.Lock()
-	defer mu.Unlock()
-	initialMediaRenderersStates[uuid] = true
-	mediaRenderersStates[uuid] = &states{
-		previousState: "",
-		newState:      "",
-		sequence:      0,
+func (p *TVPayload) CreateMRstate(uuid string) {
+	p.Lock()
+	defer p.Unlock()
+	p.InitialMediaRenderersStates[uuid] = true
+	p.MediaRenderersStates[uuid] = &States{
+		PreviousState: "",
+		NewState:      "",
+		Sequence:      0,
 	}
 }
 
-// DeleteMRstate .
-func DeleteMRstate(uuid string) {
-	mu.Lock()
-	defer mu.Unlock()
-	delete(initialMediaRenderersStates, uuid)
-	delete(mediaRenderersStates, uuid)
+// DeleteMRstate deletes the state entries for the specific UUID.
+func (p *TVPayload) DeleteMRstate(uuid string) {
+	p.Lock()
+	defer p.Unlock()
+	delete(p.InitialMediaRenderersStates, uuid)
+	delete(p.MediaRenderersStates, uuid)
 }
 
-// IncreaseSequence .
-func IncreaseSequence(uuid string) {
-	mu.Lock()
-	defer mu.Unlock()
-	mediaRenderersStates[uuid].sequence++
+// IncreaseSequence increases the sequence value of the specific UUID by 1.
+func (p *TVPayload) IncreaseSequence(uuid string) {
+	p.Lock()
+	defer p.Unlock()
+	p.MediaRenderersStates[uuid].Sequence++
 }
 
-// GetSequence .
-func GetSequence(uuid string) (int, error) {
-	mu.RLock()
-	defer mu.RUnlock()
-	if initialMediaRenderersStates[uuid] {
-		return mediaRenderersStates[uuid].sequence, nil
+// GetSequence returns the sequence value of the specific UUID.
+func (p *TVPayload) GetSequence(uuid string) (int, error) {
+	p.RLock()
+	defer p.RUnlock()
+	if p.InitialMediaRenderersStates[uuid] {
+		return p.MediaRenderersStates[uuid].Sequence, nil
 	}
 
 	return -1, errors.New("zombie callbacks, we should ignore those")

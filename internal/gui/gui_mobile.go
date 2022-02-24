@@ -14,8 +14,8 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/alexballas/go2tv/internal/httphandlers"
-	"github.com/alexballas/go2tv/internal/soapcalls"
+	"github.com/alexballas/go2tv/httphandlers"
+	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/pkg/errors"
 )
 
@@ -95,7 +95,7 @@ func (p *NewScreen) Fini() {
 	}
 }
 
-//InitFyneNewScreen .
+// InitFyneNewScreen .
 func InitFyneNewScreen(v string) *NewScreen {
 	go2tv := app.New()
 	go2tv.Settings().SetTheme(theme.DarkTheme())

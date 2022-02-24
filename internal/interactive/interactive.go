@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alexballas/go2tv/internal/soapcalls"
+	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/gdamore/tcell/v2"
 	"github.com/gdamore/tcell/v2/encoding"
 	"github.com/mattn/go-runewidth"
@@ -42,7 +42,7 @@ func (p *NewScreen) emitStr(x, y int, style tcell.Style, str string) {
 	}
 }
 
-// EmitMsg - Display the actions to the interactive terminal.
+// EmitMsg displays the actions to the interactive terminal.
 // Method to implement the screen interface
 func (p *NewScreen) EmitMsg(inputtext string) {
 	p.updateLastAction(inputtext)
@@ -89,7 +89,7 @@ func (p *NewScreen) EmitMsg(inputtext string) {
 	s.Show()
 }
 
-// InterInit - Start the interactive terminal
+// InterInit starts the interactive terminal
 func (p *NewScreen) InterInit(tv *soapcalls.TVPayload) {
 	p.TV = tv
 

@@ -9,7 +9,7 @@ import (
 	"net/url"
 )
 
-// StreamURL - Start the URL media streaming
+// StreamURL returns the response body for the input media URL.
 func StreamURL(ctx context.Context, s string) (io.ReadCloser, error) {
 	_, err := url.ParseRequestURI(s)
 	if err != nil {

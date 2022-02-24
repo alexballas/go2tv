@@ -12,8 +12,7 @@ type friendlyName struct {
 	} `xml:"device"`
 }
 
-// GetFriendlyName - Get the friendly name value
-// for a the specific DMR url.
+// GetFriendlyName returns the friendly name value for a the specific DMR url.
 func GetFriendlyName(dmr string) (string, error) {
 	client := &http.Client{}
 	req, err := http.NewRequest(http.MethodGet, dmr, nil)

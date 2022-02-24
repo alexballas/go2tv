@@ -11,15 +11,16 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"sync"
 	"time"
 
-	"github.com/alexballas/go2tv/internal/devices"
+	"github.com/alexballas/go2tv/devices"
+	"github.com/alexballas/go2tv/httphandlers"
 	"github.com/alexballas/go2tv/internal/gui"
-	"github.com/alexballas/go2tv/internal/httphandlers"
 	"github.com/alexballas/go2tv/internal/interactive"
-	"github.com/alexballas/go2tv/internal/soapcalls"
-	"github.com/alexballas/go2tv/internal/urlstreamer"
-	"github.com/alexballas/go2tv/internal/utils"
+	"github.com/alexballas/go2tv/soapcalls"
+	"github.com/alexballas/go2tv/urlstreamer"
+	"github.com/alexballas/go2tv/utils"
 	"github.com/pkg/errors"
 )
 
@@ -100,14 +101,17 @@ func main() {
 	check(err)
 
 	tvdata := &soapcalls.TVPayload{
-		ControlURL:          upnpServicesURLs.AvtransportControlURL,
-		EventURL:            upnpServicesURLs.AvtransportEventSubURL,
-		RenderingControlURL: upnpServicesURLs.RenderingControlURL,
-		CallbackURL:         "http://" + whereToListen + "/" + callbackPath,
-		MediaURL:            "http://" + whereToListen + "/" + utils.ConvertFilename(absMediaFile),
-		SubtitlesURL:        "http://" + whereToListen + "/" + utils.ConvertFilename(absSubtitlesFile),
-		MediaType:           mediaType,
-		CurrentTimers:       make(map[string]*time.Timer),
+		ControlURL:                  upnpServicesURLs.AvtransportControlURL,
+		EventURL:                    upnpServicesURLs.AvtransportEventSubURL,
+		RenderingControlURL:         upnpServicesURLs.RenderingControlURL,
+		CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
+		MediaURL:                    "http://" + whereToListen + "/" + utils.ConvertFilename(absMediaFile),
+		SubtitlesURL:                "http://" + whereToListen + "/" + utils.ConvertFilename(absSubtitlesFile),
+		MediaType:                   mediaType,
+		CurrentTimers:               make(map[string]*time.Timer),
+		MediaRenderersStates:        make(map[string]*soapcalls.States),
+		InitialMediaRenderersStates: make(map[string]bool),
+		RWMutex:                     &sync.RWMutex{},
 	}
 
 	s := httphandlers.NewServer(whereToListen)
@@ -116,7 +120,7 @@ func main() {
 	// We pass the tvdata here as we need the callback handlers to be able to react
 	// to the different media renderer states.
 	go func() {
-		err := s.ServeFiles(serverStarted, mediaFile, absSubtitlesFile, tvdata, scr)
+		err := s.StartServer(serverStarted, mediaFile, absSubtitlesFile, tvdata, scr)
 		check(err)
 	}()
 	// Wait for HTTP server to properly initialize

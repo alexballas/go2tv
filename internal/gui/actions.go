@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -18,11 +19,11 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
-	"github.com/alexballas/go2tv/internal/devices"
-	"github.com/alexballas/go2tv/internal/httphandlers"
-	"github.com/alexballas/go2tv/internal/soapcalls"
-	"github.com/alexballas/go2tv/internal/urlstreamer"
-	"github.com/alexballas/go2tv/internal/utils"
+	"github.com/alexballas/go2tv/devices"
+	"github.com/alexballas/go2tv/httphandlers"
+	"github.com/alexballas/go2tv/soapcalls"
+	"github.com/alexballas/go2tv/urlstreamer"
+	"github.com/alexballas/go2tv/utils"
 	"github.com/pkg/errors"
 	"github.com/skratchdot/open-golang/open"
 )
@@ -69,7 +70,7 @@ func unmuteAction(screen *NewScreen) {
 		screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
 	}
 
-	//isMuted, _ := screen.tvdata.GetMuteSoapCall()
+	// isMuted, _ := screen.tvdata.GetMuteSoapCall()
 	if err := screen.tvdata.SetMuteSoapCall("0"); err != nil {
 		check(w, errors.New("could not send mute action"))
 		return
@@ -182,7 +183,7 @@ func playAction(screen *NewScreen) {
 	// Without this check we'd end up spinning more
 	// webservers while keeping the old ones open.
 	if screen.httpserver != nil {
-		screen.httpserver.StopServeFiles()
+		screen.httpserver.StopServer()
 	}
 
 	if screen.mediafile == "" && screen.MediaText.Text == "" {
@@ -269,14 +270,17 @@ func playAction(screen *NewScreen) {
 	}
 
 	screen.tvdata = &soapcalls.TVPayload{
-		ControlURL:          screen.controlURL,
-		EventURL:            screen.eventlURL,
-		RenderingControlURL: screen.renderingControlURL,
-		MediaURL:            "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile),
-		SubtitlesURL:        "http://" + whereToListen + "/" + utils.ConvertFilename(screen.subsfile),
-		CallbackURL:         "http://" + whereToListen + "/" + callbackPath,
-		MediaType:           mediaType,
-		CurrentTimers:       make(map[string]*time.Timer),
+		ControlURL:                  screen.controlURL,
+		EventURL:                    screen.eventlURL,
+		RenderingControlURL:         screen.renderingControlURL,
+		MediaURL:                    "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile),
+		SubtitlesURL:                "http://" + whereToListen + "/" + utils.ConvertFilename(screen.subsfile),
+		CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
+		MediaType:                   mediaType,
+		CurrentTimers:               make(map[string]*time.Timer),
+		MediaRenderersStates:        make(map[string]*soapcalls.States),
+		InitialMediaRenderersStates: make(map[string]bool),
+		RWMutex:                     &sync.RWMutex{},
 	}
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)
@@ -285,7 +289,7 @@ func playAction(screen *NewScreen) {
 	// We pass the tvdata here as we need the callback handlers to be able to react
 	// to the different media renderer states.
 	go func() {
-		err := screen.httpserver.ServeFiles(serverStarted, mediaFile, screen.subsfile, screen.tvdata, screen)
+		err := screen.httpserver.StartServer(serverStarted, mediaFile, screen.subsfile, screen.tvdata, screen)
 		check(w, err)
 		if err != nil {
 			return
@@ -371,7 +375,7 @@ func stopAction(screen *NewScreen) {
 	}
 	check(w, err)
 
-	screen.httpserver.StopServeFiles()
+	screen.httpserver.StopServer()
 	screen.tvdata = nil
 	// In theory we should expect an emit message
 	// from the media renderer, but there seems
@@ -436,5 +440,4 @@ func volumeAction(screen *NewScreen, up bool) {
 	if err := screen.tvdata.SetVolumeSoapCall(stringVolume); err != nil {
 		check(w, errors.New("could not send volume action"))
 	}
-
 }

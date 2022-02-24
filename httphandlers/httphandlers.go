@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexballas/go2tv/internal/soapcalls"
-	"github.com/alexballas/go2tv/internal/utils"
+	"github.com/alexballas/go2tv/soapcalls"
+	"github.com/alexballas/go2tv/utils"
 )
 
 // HTTPserver - new http.Server instance.
@@ -22,26 +22,18 @@ type HTTPserver struct {
 	mux  *http.ServeMux
 }
 
-// Screen interface.
+// Screen interface is used to push message back to the user
+// as these are returned by the subscriptions.
 type Screen interface {
 	EmitMsg(string)
 	Fini()
 }
 
-// Emit .
-func Emit(scr Screen, s string) {
-	scr.EmitMsg(s)
-}
-
-// Close .
-func Close(scr Screen) {
-	scr.Fini()
-}
-
-// ServeFiles - Start HTTP server and serve the files.
-func (s *HTTPserver) ServeFiles(serverStarted chan<- struct{}, media, subtitles interface{},
-	tvpayload *soapcalls.TVPayload, screen Screen) error {
-
+// StartServer will start a HTTP server to serve the selected media files and
+// also handle the subscriptions requests from the DMR devices.
+func (s *HTTPserver) StartServer(serverStarted chan<- struct{}, media, subtitles interface{},
+	tvpayload *soapcalls.TVPayload, screen Screen,
+) error {
 	mURL, err := url.Parse(tvpayload.MediaURL)
 	if err != nil {
 		return fmt.Errorf("failed to parse MediaURL: %w", err)
@@ -104,14 +96,14 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 		// Apparently we should ignore the first message
 		// On some media renderers we receive a STOPPED message
 		// even before we start streaming.
-		seq, err := soapcalls.GetSequence(uuid)
+		seq, err := tv.GetSequence(uuid)
 		if err != nil {
 			http.NotFound(w, req)
 			return
 		}
 
 		if seq == 0 {
-			soapcalls.IncreaseSequence(uuid)
+			tv.IncreaseSequence(uuid)
 			fmt.Fprintf(w, "OK\n")
 			return
 		}
@@ -123,30 +115,30 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 			return
 		}
 
-		if !soapcalls.UpdateMRstate(previousstate, newstate, uuid) {
+		if !tv.UpdateMRstate(previousstate, newstate, uuid) {
 			http.NotFound(w, req)
 			return
 		}
 
 		switch newstate {
 		case "PLAYING":
-			Emit(screen, "Playing")
+			screen.EmitMsg("Playing")
 		case "PAUSED_PLAYBACK":
-			Emit(screen, "Paused")
+			screen.EmitMsg("Paused")
 		case "STOPPED":
-			Emit(screen, "Stopped")
+			screen.EmitMsg("Stopped")
 			tv.UnsubscribeSoapCall(uuid)
-			Close(screen)
+			screen.Fini()
 		}
 	}
 }
 
-// StopServeFiles .
-func (s *HTTPserver) StopServeFiles() {
+// StopServer forcefully closes the HTTP server.
+func (s *HTTPserver) StopServer() {
 	s.http.Close()
 }
 
-// NewServer - create a new HTTP server.
+// NewServer constractor generates a new HTTPserver type.
 func NewServer(a string) *HTTPserver {
 	mux := http.NewServeMux()
 	srv := HTTPserver{
