@@ -13,10 +13,10 @@ func TestServeContent(t *testing.T) {
 		input interface{}
 		name  string
 	}{
-		/* 		{
+		{
 			[]byte(""),
 			`Check []byte input`,
-		}, */
+		},
 		{
 			io.NopCloser(bytes.NewReader([]byte(""))),
 			`Check io.Reader input #2`,

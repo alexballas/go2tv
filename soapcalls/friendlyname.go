@@ -6,12 +6,6 @@ import (
 	"net/http"
 )
 
-type friendlyName struct {
-	Device struct {
-		FriendlyName string `xml:"friendlyName"`
-	} `xml:"device"`
-}
-
 // GetFriendlyName returns the friendly name value for a the specific DMR url.
 func GetFriendlyName(dmr string) (string, error) {
 	client := &http.Client{}
@@ -28,10 +22,13 @@ func GetFriendlyName(dmr string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	var fn friendlyName
+	var fn struct {
+		FriendlyName string `xml:"device>friendlyName"`
+	}
+
 	if err = xml.NewDecoder(resp.Body).Decode(&fn); err != nil {
 		return "", fmt.Errorf("failed to read response body for GetFriendlyName: %w", err)
 	}
 
-	return fn.Device.FriendlyName, nil
+	return fn.FriendlyName, nil
 }
