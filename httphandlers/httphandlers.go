@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -50,7 +51,7 @@ func (s *HTTPserver) StartServer(serverStarted chan<- struct{}, media, subtitles
 	}
 
 	s.mux.HandleFunc(mURL.Path, s.serveMediaHandler(tvpayload, media))
-	s.mux.HandleFunc(sURL.Path, s.serveSubtitlesHandler(subtitles))
+	s.mux.HandleFunc(sURL.Path, s.serveMediaHandler(nil, subtitles))
 	s.mux.HandleFunc(callbackURL.Path, s.callbackHandler(tvpayload, screen))
 
 	ln, err := net.Listen("tcp", s.http.Addr)
@@ -59,20 +60,19 @@ func (s *HTTPserver) StartServer(serverStarted chan<- struct{}, media, subtitles
 	}
 
 	serverStarted <- struct{}{}
-	s.http.Serve(ln)
+	_ = s.http.Serve(ln)
 
 	return nil
 }
 
 func (s *HTTPserver) serveMediaHandler(tv *soapcalls.TVPayload, media interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		serveContent(w, req, tv, media, true)
-	}
-}
+		var isMedia bool
+		if tv != nil {
+			isMedia = true
+		}
 
-func (s *HTTPserver) serveSubtitlesHandler(subs interface{}) http.HandlerFunc {
-	return func(w http.ResponseWriter, req *http.Request) {
-		serveContent(w, req, nil, subs, false)
+		serveContent(w, req, tv, media, isMedia)
 	}
 }
 
@@ -167,13 +167,18 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 	switch f := s.(type) {
 	case string:
 		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-			contentFeatures, err := utils.BuildContentFeatures(mediaType, "01", false)
+			contentFeatures, err := utils.BuildContentFeatures(mediaType, "01", tv.Transcode)
 			if err != nil {
 				http.NotFound(w, r)
 				return
 			}
 
 			respHeader["contentFeatures.dlna.org"] = []string{contentFeatures}
+		}
+
+		if tv.Transcode && r.Method == http.MethodGet {
+			serveLiveStreaming(w, r, f)
+			return
 		}
 
 		filePath, err := os.Open(f)
@@ -190,11 +195,12 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 		}
 
 		name := strings.TrimLeft(r.URL.Path, "/")
+
 		http.ServeContent(w, r, name, fileStat.ModTime(), filePath)
 
 	case []byte:
 		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-			contentFeatures, err := utils.BuildContentFeatures(mediaType, "01", false)
+			contentFeatures, err := utils.BuildContentFeatures(mediaType, "01", tv.Transcode)
 			if err != nil {
 				http.NotFound(w, r)
 				return
@@ -210,7 +216,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 
 	case io.ReadCloser:
 		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-			contentFeatures, err := utils.BuildContentFeatures(mediaType, "00", false)
+			contentFeatures, err := utils.BuildContentFeatures(mediaType, "00", tv.Transcode)
 			if err != nil {
 				http.NotFound(w, r)
 				return
@@ -221,13 +227,33 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 
 		// No seek support
 		if r.Method == http.MethodGet {
-			io.Copy(w, f)
+			_, _ = io.Copy(w, f)
 			f.Close()
 		}
-
-		w.WriteHeader(http.StatusOK)
 	default:
 		http.NotFound(w, r)
 		return
 	}
+}
+
+func serveLiveStreaming(w http.ResponseWriter, r *http.Request, f string) {
+	cmd := exec.Command(
+		"ffmpeg",
+		"-re",
+		"-i", f,
+		"-vcodec", "h264",
+		"-acodec", "aac",
+		"-preset", "ultrafast",
+		"-ac", "2",
+		"-f", "mp4",
+		"pipe:1",
+	)
+
+	cmd.Stdout = w
+	cmd.Stderr = os.Stdout
+
+	w.Header().Set("Transfer-Encoding", "chunked")
+
+	err := cmd.Run()
+	fmt.Println(err)
 }

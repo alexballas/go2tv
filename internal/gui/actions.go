@@ -281,6 +281,7 @@ func playAction(screen *NewScreen) {
 		MediaRenderersStates:        make(map[string]*soapcalls.States),
 		InitialMediaRenderersStates: make(map[string]bool),
 		RWMutex:                     &sync.RWMutex{},
+		Transcode:                   true,
 	}
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)
@@ -377,7 +378,7 @@ func stopAction(screen *NewScreen) {
 
 	screen.httpserver.StopServer()
 	screen.tvdata = nil
-	// In theory we should expect an emit message
+	// In theory, we should expect an emit message
 	// from the media renderer, but there seems
 	// to be a race condition that prevents this.
 	screen.EmitMsg("Stopped")

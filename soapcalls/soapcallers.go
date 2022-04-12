@@ -37,6 +37,7 @@ type TVPayload struct {
 	MediaURL            string
 	MediaType           string
 	SubtitlesURL        string
+	Transcode           bool
 }
 
 type getMuteRespBody struct {
@@ -282,11 +283,11 @@ func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 }
 
 // RefreshLoopUUIDSoapCall refreshes the UUID.
-func (p *TVPayload) RefreshLoopUUIDSoapCall(uuid, timeout string) error {
+func (p *TVPayload) RefreshLoopUUIDSoapCall(uuid, timeout string) {
 	triggerTime := 5
 	timeoutInt, err := strconv.Atoi(timeout)
 	if err != nil {
-		return fmt.Errorf("RefreshLoopUUIDSoapCall convert to int error: %w", err)
+		return
 	}
 
 	// Refresh token after after Timeout / 2 seconds.
@@ -300,8 +301,6 @@ func (p *TVPayload) RefreshLoopUUIDSoapCall(uuid, timeout string) error {
 	f := p.refreshLoopUUIDAsyncSoapCall(uuid)
 	timer := time.AfterFunc(triggerTimefunc, f)
 	p.CurrentTimers[uuid] = timer
-
-	return nil
 }
 
 func (p *TVPayload) refreshLoopUUIDAsyncSoapCall(uuid string) func() {
