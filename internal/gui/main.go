@@ -172,6 +172,15 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		}
 	}
 
+	transcode.OnChanged = func(b bool) {
+		if b {
+			s.Transcode = true
+			return
+		}
+
+		s.Transcode = false
+	}
+
 	sfilecheck.OnChanged = func(b bool) {
 		if b {
 			sfile.Enable()

@@ -30,6 +30,14 @@ type Screen interface {
 	Fini()
 }
 
+// We use this type to be able to test
+// the serveContent function without the
+// need of os.Open in the tests.
+type osFileType struct {
+	time time.Time
+	file io.ReadSeeker
+}
+
 // StartServer will start a HTTP server to serve the selected media files and
 // also handle the subscriptions requests from the DMR devices.
 func (s *HTTPserver) StartServer(serverStarted chan<- struct{}, media, subtitles interface{},
@@ -67,12 +75,30 @@ func (s *HTTPserver) StartServer(serverStarted chan<- struct{}, media, subtitles
 
 func (s *HTTPserver) serveMediaHandler(tv *soapcalls.TVPayload, media interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		var isMedia bool
-		if tv != nil {
-			isMedia = true
+		var media2 interface{}
+
+		switch f := media.(type) {
+		case string:
+			m, err := os.Open(f)
+			if err != nil {
+				http.NotFound(w, req)
+				return
+			}
+			defer m.Close()
+
+			info, err := m.Stat()
+			if err != nil {
+				http.NotFound(w, req)
+				return
+			}
+
+			media2 = osFileType{
+				time: info.ModTime(),
+				file: m,
+			}
 		}
 
-		serveContent(w, req, tv, media, isMedia)
+		serveContent(w, req, tv, media2)
 	}
 }
 
@@ -127,7 +153,7 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 			screen.EmitMsg("Paused")
 		case "STOPPED":
 			screen.EmitMsg("Stopped")
-			tv.UnsubscribeSoapCall(uuid)
+			_ = tv.UnsubscribeSoapCall(uuid)
 			screen.Fini()
 		}
 	}
@@ -149,7 +175,17 @@ func NewServer(a string) *HTTPserver {
 	return &srv
 }
 
-func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, s interface{}, isMedia bool) {
+func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, s interface{}) {
+	var isMedia bool
+	var transcode bool
+	var mediaType string
+
+	if tv != nil {
+		isMedia = true
+		transcode = tv.Transcode
+		mediaType = tv.MediaType
+	}
+
 	respHeader := w.Header()
 
 	respHeader["transferMode.dlna.org"] = []string{"Interactive"}
@@ -159,15 +195,17 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 		respHeader["realTimeInfo.dlna.org"] = []string{"DLNA.ORG_TLAG=*"}
 	}
 
-	var mediaType string
-	if tv != nil {
-		mediaType = tv.MediaType
-	}
-
 	switch f := s.(type) {
-	case string:
+	case osFileType:
 		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-			contentFeatures, err := utils.BuildContentFeatures(mediaType, "01", tv.Transcode)
+
+			// comments
+			seek := "01"
+			if strings.Contains(mediaType, "video") && transcode {
+				seek = "00"
+			}
+
+			contentFeatures, err := utils.BuildContentFeatures(mediaType, seek, transcode)
 			if err != nil {
 				http.NotFound(w, r)
 				return
@@ -176,31 +214,25 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 			respHeader["contentFeatures.dlna.org"] = []string{contentFeatures}
 		}
 
-		if tv.Transcode && r.Method == http.MethodGet {
-			serveLiveStreaming(w, r, f)
-			return
-		}
-
-		filePath, err := os.Open(f)
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-		defer filePath.Close()
-
-		fileStat, err := filePath.Stat()
-		if err != nil {
-			http.NotFound(w, r)
+		// Since we're dealing with an io.Reader we can't
+		// allow any HEAD requests that some DMRs trigger.
+		if transcode && r.Method == http.MethodGet {
+			err := serveTranscodedStream(w, r, f.file)
+			if err != nil {
+				http.NotFound(w, r)
+			}
 			return
 		}
 
 		name := strings.TrimLeft(r.URL.Path, "/")
 
-		http.ServeContent(w, r, name, fileStat.ModTime(), filePath)
+		if r.Method == http.MethodGet {
+			http.ServeContent(w, r, name, f.time, f.file)
+		}
 
 	case []byte:
 		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-			contentFeatures, err := utils.BuildContentFeatures(mediaType, "01", tv.Transcode)
+			contentFeatures, err := utils.BuildContentFeatures(mediaType, "01", false)
 			if err != nil {
 				http.NotFound(w, r)
 				return
@@ -216,7 +248,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 
 	case io.ReadCloser:
 		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-			contentFeatures, err := utils.BuildContentFeatures(mediaType, "00", tv.Transcode)
+			contentFeatures, err := utils.BuildContentFeatures(mediaType, "00", transcode)
 			if err != nil {
 				http.NotFound(w, r)
 				return
@@ -236,24 +268,24 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 	}
 }
 
-func serveLiveStreaming(w http.ResponseWriter, r *http.Request, f string) {
+func serveTranscodedStream(w http.ResponseWriter, r *http.Request, f io.Reader) error {
 	cmd := exec.Command(
 		"ffmpeg",
 		"-re",
-		"-i", f,
+		"-i", "pipe:0",
 		"-vcodec", "h264",
 		"-acodec", "aac",
-		"-preset", "ultrafast",
 		"-ac", "2",
-		"-f", "mp4",
+		"-vf", "format=yuv420p",
+		"-preset", "ultrafast",
+		"-f", "flv",
 		"pipe:1",
 	)
 
+	cmd.Stdin = f
 	cmd.Stdout = w
-	cmd.Stderr = os.Stdout
 
 	w.Header().Set("Transfer-Encoding", "chunked")
 
-	err := cmd.Run()
-	fmt.Println(err)
+	return cmd.Run()
 }

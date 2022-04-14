@@ -281,7 +281,7 @@ func playAction(screen *NewScreen) {
 		MediaRenderersStates:        make(map[string]*soapcalls.States),
 		InitialMediaRenderersStates: make(map[string]bool),
 		RWMutex:                     &sync.RWMutex{},
-		Transcode:                   true,
+		Transcode:                   screen.Transcode,
 	}
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)
