@@ -3,7 +3,7 @@ module github.com/alexballas/go2tv
 go 1.16
 
 require (
-	fyne.io/fyne/v2 v2.1.3
+	fyne.io/fyne/v2 v2.1.4
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/gdamore/tcell/v2 v2.4.0
 	github.com/go-gl/gl v0.0.0-20211210172815-726fda9656d6 // indirect
