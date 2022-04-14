@@ -10,7 +10,7 @@ jobs:
     - name: Set env
       run: if grep -Fxq "devel" cmd/go2tv/version.txt;then echo "GO2TV_VERSION=$(cat cmd/go2tv/version.txt)";else echo "GO2TV_VERSION=v$(cat cmd/go2tv/version.txt)";fi  >> $GITHUB_ENV
 
-    - uses: alexballas/arm-runner-action@v1.0.7
+    - uses: pguyot/arm-runner-action@v2.3.0
       id: main_image
       with:
         copy_repository_path: /go2tv_dir

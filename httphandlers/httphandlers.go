@@ -21,6 +21,9 @@ import (
 type HTTPserver struct {
 	http *http.Server
 	mux  *http.ServeMux
+	// We only need to run one ffmpeg
+	// command at a time, per server instance
+	ffmpeg *exec.Cmd
 }
 
 // Screen interface is used to push message back to the user
@@ -98,7 +101,7 @@ func (s *HTTPserver) serveMediaHandler(tv *soapcalls.TVPayload, media interface{
 			}
 		}
 
-		serveContent(w, req, tv, media2)
+		serveContent(w, req, tv, media2, s.ffmpeg)
 	}
 }
 
@@ -168,14 +171,15 @@ func (s *HTTPserver) StopServer() {
 func NewServer(a string) *HTTPserver {
 	mux := http.NewServeMux()
 	srv := HTTPserver{
-		http: &http.Server{Addr: a, Handler: mux},
-		mux:  mux,
+		http:   &http.Server{Addr: a, Handler: mux},
+		mux:    mux,
+		ffmpeg: new(exec.Cmd),
 	}
 
 	return &srv
 }
 
-func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, s interface{}) {
+func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, mf interface{}, ff *exec.Cmd) {
 	var isMedia bool
 	var transcode bool
 	var mediaType string
@@ -195,7 +199,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 		respHeader["realTimeInfo.dlna.org"] = []string{"DLNA.ORG_TLAG=*"}
 	}
 
-	switch f := s.(type) {
+	switch f := mf.(type) {
 	case osFileType:
 		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
 
@@ -217,10 +221,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 		// Since we're dealing with an io.Reader we can't
 		// allow any HEAD requests that some DMRs trigger.
 		if transcode && r.Method == http.MethodGet {
-			err := serveTranscodedStream(w, r, f.file)
-			if err != nil {
-				http.NotFound(w, r)
-			}
+			_ = serveTranscodedStream(w, r, f.file, ff)
 			return
 		}
 
@@ -268,7 +269,11 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 	}
 }
 
-func serveTranscodedStream(w http.ResponseWriter, r *http.Request, f io.Reader) error {
+func serveTranscodedStream(w http.ResponseWriter, r *http.Request, f io.Reader, ff *exec.Cmd) error {
+	if ff.Process != nil {
+		_ = ff.Process.Kill()
+	}
+
 	cmd := exec.Command(
 		"ffmpeg",
 		"-re",
@@ -282,10 +287,11 @@ func serveTranscodedStream(w http.ResponseWriter, r *http.Request, f io.Reader) 
 		"pipe:1",
 	)
 
-	cmd.Stdin = f
-	cmd.Stdout = w
+	ff = cmd
+	ff.Stdin = f
+	ff.Stdout = w
 
 	w.Header().Set("Transfer-Encoding", "chunked")
 
-	return cmd.Run()
+	return ff.Run()
 }
