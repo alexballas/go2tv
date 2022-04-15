@@ -21,9 +21,9 @@ jobs:
             sudo apt update
             sudo apt install -y xorg-dev
             sudo apt clean
-            wget -nv https://go.dev/dl/go1.17.5.linux-armv6l.tar.gz
-            tar -xzf go1.17.5.linux-armv6l.tar.gz
-            rm go1.17.5.linux-armv6l.tar.gz
+            wget -nv https://go.dev/dl/go1.17.9.linux-armv6l.tar.gz
+            tar -xzf go1.17.9.linux-armv6l.tar.gz
+            rm go1.17.9.linux-armv6l.tar.gz
             export GOROOT=/go
             cd /go2tv_dir
             /go/bin/go build -ldflags "-s -w" -o go2tv cmd/go2tv/go2tv.go
