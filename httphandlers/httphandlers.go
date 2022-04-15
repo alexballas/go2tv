@@ -221,7 +221,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 		// Since we're dealing with an io.Reader we can't
 		// allow any HEAD requests that some DMRs trigger.
 		if transcode && r.Method == http.MethodGet {
-			_ = serveTranscodedStream(w, r, f.file, ff)
+			_ = utils.ServeTranscodedStream(w, r, f.file, ff)
 			return
 		}
 
@@ -267,31 +267,4 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 		http.NotFound(w, r)
 		return
 	}
-}
-
-func serveTranscodedStream(w http.ResponseWriter, r *http.Request, f io.Reader, ff *exec.Cmd) error {
-	if ff.Process != nil {
-		_ = ff.Process.Kill()
-	}
-
-	cmd := exec.Command(
-		"ffmpeg",
-		"-re",
-		"-i", "pipe:0",
-		"-vcodec", "h264",
-		"-acodec", "aac",
-		"-ac", "2",
-		"-vf", "format=yuv420p",
-		"-preset", "ultrafast",
-		"-f", "flv",
-		"pipe:1",
-	)
-
-	ff = cmd
-	ff.Stdin = f
-	ff.Stdout = w
-
-	w.Header().Set("Transfer-Encoding", "chunked")
-
-	return ff.Run()
 }

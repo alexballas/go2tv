@@ -219,7 +219,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 			// we clean up any remaining states for the specific
 			// uuid. The actual UNSUBSCRIBE request to the media
 			// renderer may still fail with error 412, but it's fine.
-			p.UnsubscribeSoapCall(uuid)
+			_ = p.UnsubscribeSoapCall(uuid)
 		}
 		return nil
 	}
@@ -305,7 +305,7 @@ func (p *TVPayload) RefreshLoopUUIDSoapCall(uuid, timeout string) {
 
 func (p *TVPayload) refreshLoopUUIDAsyncSoapCall(uuid string) func() {
 	return func() {
-		p.SubscribeSoapCall(uuid)
+		_ = p.SubscribeSoapCall(uuid)
 	}
 }
 

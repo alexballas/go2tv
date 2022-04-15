@@ -19,7 +19,6 @@ import (
 	"github.com/alexballas/go2tv/internal/gui"
 	"github.com/alexballas/go2tv/internal/interactive"
 	"github.com/alexballas/go2tv/soapcalls"
-	"github.com/alexballas/go2tv/urlstreamer"
 	"github.com/alexballas/go2tv/utils"
 	"github.com/pkg/errors"
 )
@@ -61,7 +60,7 @@ func main() {
 	}
 
 	if *mediaArg == "" && *urlArg != "" {
-		mediaFile, err = urlstreamer.StreamURL(context.Background(), *urlArg)
+		mediaFile, err = utils.StreamURL(context.Background(), *urlArg)
 		check(err)
 	}
 

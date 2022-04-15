@@ -20,7 +20,6 @@ import (
 	"github.com/alexballas/go2tv/devices"
 	"github.com/alexballas/go2tv/httphandlers"
 	"github.com/alexballas/go2tv/soapcalls"
-	"github.com/alexballas/go2tv/urlstreamer"
 	"github.com/alexballas/go2tv/utils"
 	"github.com/pkg/errors"
 )
@@ -229,14 +228,14 @@ func playAction(screen *NewScreen) {
 		// the io.Copy operation to fail with "broken pipe".
 		// That's good enough for us since right after that
 		// we close the io.ReadCloser.
-		mediaURL, err := urlstreamer.StreamURL(context.Background(), screen.MediaText.Text)
+		mediaURL, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
 		check(screen.Current, err)
 		if err != nil {
 			screen.PlayPause.Enable()
 			return
 		}
 
-		mediaURLinfo, err := urlstreamer.StreamURL(context.Background(), screen.MediaText.Text)
+		mediaURLinfo, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
 		check(screen.Current, err)
 		if err != nil {
 			screen.PlayPause.Enable()
