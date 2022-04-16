@@ -38,6 +38,7 @@ var (
 		"video/x-m4v":             "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
 		"video/3gpp":              "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
 		"video/x-flv":             "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
+		"video/x-ms-wmv":          "DLNA.ORG_PN=WMVHIGH_FULL",
 		"audio/mpeg":              "DLNA.ORG_PN=MP3",
 		"image/jpeg":              "JPEG_LRG",
 		"image/png":               "PNG_LRG",
@@ -58,11 +59,8 @@ func BuildContentFeatures(mediaType string, seek string, transcode bool) (string
 
 	if mediaType != "" {
 		dlnaProf, profExists := dlnaprofiles[mediaType]
-		switch profExists {
-		case true:
+		if profExists {
 			cf.WriteString(dlnaProf + ";")
-		default:
-			return "", errors.New("non supported mediaType")
 		}
 	}
 

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,13 +26,14 @@ import (
 
 var (
 	//go:embed version.txt
-	version    string
-	mediaArg   = flag.String("v", "", "Local path to the video/audio file. (Triggers the CLI mode)")
-	urlArg     = flag.String("u", "", "HTTP URL to the media file. URL streaming does not support seek operations. (Triggers the CLI mode)")
-	subsArg    = flag.String("s", "", "Local path to the subtitles file.")
-	listPtr    = flag.Bool("l", false, "List all available UPnP/DLNA Media Renderer models and URLs.")
-	targetPtr  = flag.String("t", "", "Cast to a specific UPnP/DLNA Media Renderer URL.")
-	versionPtr = flag.Bool("version", false, "Print version.")
+	version      string
+	mediaArg     = flag.String("v", "", "Local path to the video/audio file. (Triggers the CLI mode)")
+	urlArg       = flag.String("u", "", "HTTP URL to the media file. URL streaming does not support seek operations. (Triggers the CLI mode)")
+	subsArg      = flag.String("s", "", "Local path to the subtitles file.")
+	listPtr      = flag.Bool("l", false, "List all available UPnP/DLNA Media Renderer models and URLs.")
+	targetPtr    = flag.String("t", "", "Cast to a specific UPnP/DLNA Media Renderer URL.")
+	transcodePtr = flag.Bool("tc", false, "Use ffmpeg to transcode video the files. Does nothing for other media types.")
+	versionPtr   = flag.Bool("version", false, "Print version.")
 )
 
 type flagResults struct {
@@ -40,8 +42,11 @@ type flagResults struct {
 }
 
 func main() {
-	guiEnabled := true
+	var absMediaFile string
+	var mediaType string
 	var mediaFile interface{}
+	guiEnabled := true
+
 	flag.Parse()
 
 	flagRes, err := processflags()
@@ -60,17 +65,29 @@ func main() {
 	}
 
 	if *mediaArg == "" && *urlArg != "" {
-		mediaFile, err = utils.StreamURL(context.Background(), *urlArg)
+		mediaURL, err := utils.StreamURL(context.Background(), *urlArg)
 		check(err)
+
+		mediaURLinfo, err := utils.StreamURL(context.Background(), *urlArg)
+		check(err)
+
+		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
+		check(err)
+
+		mediaFile = mediaURL
+
+		if strings.Contains(mediaType, "image") {
+			readerToBytes, err := io.ReadAll(mediaURL)
+			mediaURL.Close()
+			check(err)
+			mediaFile = readerToBytes
+		}
 	}
 
 	if guiEnabled {
 		scr := gui.InitFyneNewScreen(version)
 		gui.Start(scr)
 	}
-
-	var absMediaFile string
-	var mediaType string
 
 	switch t := mediaFile.(type) {
 	case string:
@@ -80,7 +97,7 @@ func main() {
 
 		mediaType, err = utils.GetMimeDetailsFromFile(absMediaFile)
 		check(err)
-	case io.ReadCloser:
+	case io.ReadCloser, []byte:
 		absMediaFile = *urlArg
 	}
 

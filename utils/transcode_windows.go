@@ -26,9 +26,8 @@ func ServeTranscodedStream(w http.ResponseWriter, r *http.Request, f io.Reader, 
 		"pipe:1",
 	)
 
-	if runtime.GOOS == "windows" {
-		cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000}
-	}
+	// Hide the command windows when running ffmpeg.
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000}
 
 	ff = cmd
 	ff.Stdin = f

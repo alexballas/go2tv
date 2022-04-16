@@ -79,6 +79,7 @@ func (s *HTTPserver) StartServer(serverStarted chan<- struct{}, media, subtitles
 func (s *HTTPserver) serveMediaHandler(tv *soapcalls.TVPayload, media interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		var media2 interface{}
+		media2 = media
 
 		switch f := media.(type) {
 		case string:
@@ -251,6 +252,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
 			contentFeatures, err := utils.BuildContentFeatures(mediaType, "00", transcode)
 			if err != nil {
+				fmt.Println(err)
 				http.NotFound(w, r)
 				return
 			}
@@ -258,11 +260,20 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 			respHeader["contentFeatures.dlna.org"] = []string{contentFeatures}
 		}
 
+		// Since we're dealing with an io.Reader we can't
+		// allow any HEAD requests that some DMRs trigger.
+		if transcode && r.Method == http.MethodGet {
+			_ = utils.ServeTranscodedStream(w, r, f, ff)
+			return
+		}
+
 		// No seek support
 		if r.Method == http.MethodGet {
 			_, _ = io.Copy(w, f)
 			f.Close()
+			return
 		}
+
 	default:
 		http.NotFound(w, r)
 		return
