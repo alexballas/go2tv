@@ -4,7 +4,6 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
-	"runtime"
 	"syscall"
 )
 
