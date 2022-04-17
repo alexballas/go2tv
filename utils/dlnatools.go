@@ -10,10 +10,7 @@ import (
 	"github.com/h2non/filetype"
 )
 
-var (
-	// If we're looking to use the dlnaOrgFlagSenderPaced
-	// flag for a 32bit build, we need to make sure that we
-	// first convert all the flag types to int64
+const (
 	// dlnaOrgFlagSenderPaced = 1 << 31
 	// dlnaOrgFlagTimeBasedSeek = 1 << 30
 	// dlnaOrgFlagByteBasedSeek = 1 << 29
@@ -26,7 +23,9 @@ var (
 	dlnaOrgFlagBackgroundTransfertMode = 1 << 22
 	dlnaOrgFlagConnectionStall         = 1 << 21
 	dlnaOrgFlagDlnaV15                 = 1 << 20
+)
 
+var (
 	dlnaprofiles = map[string]string{
 		"video/x-mkv":             "DLNA.ORG_PN=MATROSKA",
 		"video/x-matroska":        "DLNA.ORG_PN=MATROSKA",
