@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -30,22 +31,22 @@ var (
 	mediaArg     = flag.String("v", "", "Local path to the video/audio file. (Triggers the CLI mode)")
 	urlArg       = flag.String("u", "", "HTTP URL to the media file. URL streaming does not support seek operations. (Triggers the CLI mode)")
 	subsArg      = flag.String("s", "", "Local path to the subtitles file.")
-	listPtr      = flag.Bool("l", false, "List all available UPnP/DLNA Media Renderer models and URLs.")
 	targetPtr    = flag.String("t", "", "Cast to a specific UPnP/DLNA Media Renderer URL.")
-	transcodePtr = flag.Bool("tc", false, "Use ffmpeg to transcode video the files. Does nothing for other media types.")
+	transcodePtr = flag.Bool("tc", false, "Use ffmpeg to transcode input video files.")
+	listPtr      = flag.Bool("l", false, "List all available UPnP/DLNA Media Renderer models and URLs.")
 	versionPtr   = flag.Bool("version", false, "Print version.")
 )
 
 type flagResults struct {
 	dmrURL string
 	exit   bool
+	gui    bool
 }
 
 func main() {
 	var absMediaFile string
 	var mediaType string
 	var mediaFile interface{}
-	guiEnabled := true
 
 	flag.Parse()
 
@@ -54,10 +55,6 @@ func main() {
 
 	if flagRes.exit {
 		os.Exit(0)
-	}
-
-	if len(os.Args) > 1 {
-		guiEnabled = false
 	}
 
 	if *mediaArg != "" {
@@ -84,7 +81,7 @@ func main() {
 		}
 	}
 
-	if guiEnabled {
+	if flagRes.gui {
 		scr := gui.InitFyneNewScreen(version)
 		gui.Start(scr)
 	}
@@ -94,7 +91,6 @@ func main() {
 		absMediaFile, err = filepath.Abs(t)
 		check(err)
 		mediaFile = absMediaFile
-
 		mediaType, err = utils.GetMimeDetailsFromFile(absMediaFile)
 		check(err)
 	case io.ReadCloser, []byte:
@@ -128,6 +124,7 @@ func main() {
 		MediaRenderersStates:        make(map[string]*soapcalls.States),
 		InitialMediaRenderersStates: make(map[string]bool),
 		RWMutex:                     &sync.RWMutex{},
+		Transcode:                   *transcodePtr,
 	}
 
 	s := httphandlers.NewServer(whereToListen)
@@ -199,13 +196,15 @@ func listFlagFunction() error {
 func processflags() (*flagResults, error) {
 	checkVerflag()
 
-	res := &flagResults{
-		exit:   false,
-		dmrURL: "",
-	}
+	res := &flagResults{}
 
 	if checkGUI() {
+		res.gui = true
 		return res, nil
+	}
+
+	if err := checkTCflag(res); err != nil {
+		return nil, fmt.Errorf("checkflags error: %w", err)
 	}
 
 	if err := checkTflag(res); err != nil {
@@ -258,6 +257,17 @@ func checkSflag() error {
 	// media file filename.
 	*subsArg = (*mediaArg)[0:len(*mediaArg)-
 		len(filepath.Ext(*mediaArg))] + ".srt"
+
+	return nil
+}
+
+func checkTCflag(res *flagResults) error {
+	if *transcodePtr {
+		_, err := exec.LookPath("ffmpeg")
+		if err != nil {
+			return fmt.Errorf("checkTCflag parse error: %w", err)
+		}
+	}
 
 	return nil
 }

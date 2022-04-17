@@ -103,11 +103,14 @@ func GetMimeDetailsFromFile(f string) (string, error) {
 	defer file.Close()
 
 	head := make([]byte, 261)
-	file.Read(head)
+	_, err = file.Read(head)
+	if err != nil {
+		return "", fmt.Errorf("getMimeDetailsFromFile error #2: %w", err)
+	}
 
 	kind, err := filetype.Match(head)
 	if err != nil {
-		return "", fmt.Errorf("getMimeDetailsFromFile error #2: %w", err)
+		return "", fmt.Errorf("getMimeDetailsFromFile error #3: %w", err)
 	}
 
 	return fmt.Sprintf("%s/%s", kind.MIME.Type, kind.MIME.Subtype), nil
@@ -117,11 +120,14 @@ func GetMimeDetailsFromFile(f string) (string, error) {
 func GetMimeDetailsFromStream(s io.ReadCloser) (string, error) {
 	defer s.Close()
 	head := make([]byte, 261)
-	s.Read(head)
+	_, err := s.Read(head)
+	if err != nil {
+		return "", fmt.Errorf("getMimeDetailsFromStream error: %w", err)
+	}
 
 	kind, err := filetype.Match(head)
 	if err != nil {
-		return "", fmt.Errorf("getMimeDetailsFromStream error: %w", err)
+		return "", fmt.Errorf("getMimeDetailsFromStream error  #2: %w", err)
 	}
 
 	return fmt.Sprintf("%s/%s", kind.MIME.Type, kind.MIME.Subtype), nil

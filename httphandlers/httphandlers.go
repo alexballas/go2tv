@@ -39,6 +39,7 @@ type Screen interface {
 type osFileType struct {
 	time time.Time
 	file io.ReadSeeker
+	path string
 }
 
 // StartServer will start a HTTP server to serve the selected media files and
@@ -99,6 +100,7 @@ func (s *HTTPserver) serveMediaHandler(tv *soapcalls.TVPayload, media interface{
 			media2 = osFileType{
 				time: info.ModTime(),
 				file: m,
+				path: f,
 			}
 		}
 
@@ -221,8 +223,14 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 
 		// Since we're dealing with an io.Reader we can't
 		// allow any HEAD requests that some DMRs trigger.
-		if transcode && r.Method == http.MethodGet {
-			_ = utils.ServeTranscodedStream(w, r, f.file, ff)
+		if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "video") {
+			var input interface{} = f.file
+			// The only case where we should expect f.path to be ""
+			// is only during our unit tests where we emulate the files.
+			if f.path != "" {
+				input = f.path
+			}
+			_ = utils.ServeTranscodedStream(w, r, input, ff)
 			return
 		}
 
@@ -262,7 +270,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 
 		// Since we're dealing with an io.Reader we can't
 		// allow any HEAD requests that some DMRs trigger.
-		if transcode && r.Method == http.MethodGet {
+		if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "video") {
 			_ = utils.ServeTranscodedStream(w, r, f, ff)
 			return
 		}
