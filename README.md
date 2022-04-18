@@ -42,7 +42,7 @@ Usage of go2tv:
   -t string
         Cast to a specific UPnP/DLNA Media Renderer URL.
   -tc
-        Use ffmpeg to transcode input video files.
+        Use ffmpeg to transcode input video file.
   -u string
         HTTP URL to the media file. URL streaming does not support seek operations. (Triggers the CLI mode)
   -v string
@@ -67,7 +67,8 @@ Quick Start
 Download the app here https://github.com/alexballas/Go2TV/releases/latest. A single executable. No installation or external dependencies.
 
 **Trasncoding**
-Go2TV supports live video transcoding if ffmpeg is installed. During transcoding, seek operations are not available. Transcoding offers the maximum compatibility with the various file formats and devices. Transcoding is not available for non video files.
+
+Go2TV supports live video transcoding, if ffmpeg is installed. When transcoding, SEEK operations are not available. Transcoding offers the maximum compatibility with the various file formats and devices. Only works with video files.
 
 Tested on
 -----

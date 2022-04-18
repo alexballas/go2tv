@@ -27,7 +27,7 @@ func ServeTranscodedStream(w http.ResponseWriter, r *http.Request, input interfa
 		return errors.New("invalid ffmpeg input")
 	}
 
-	if ff.Process != nil {
+	if ff != nil && ff.Process != nil {
 		_ = ff.Process.Kill()
 	}
 

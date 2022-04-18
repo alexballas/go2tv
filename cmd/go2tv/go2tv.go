@@ -32,7 +32,7 @@ var (
 	urlArg       = flag.String("u", "", "HTTP URL to the media file. URL streaming does not support seek operations. (Triggers the CLI mode)")
 	subsArg      = flag.String("s", "", "Local path to the subtitles file.")
 	targetPtr    = flag.String("t", "", "Cast to a specific UPnP/DLNA Media Renderer URL.")
-	transcodePtr = flag.Bool("tc", false, "Use ffmpeg to transcode input video files.")
+	transcodePtr = flag.Bool("tc", false, "Use ffmpeg to transcode input video file.")
 	listPtr      = flag.Bool("l", false, "List all available UPnP/DLNA Media Renderer models and URLs.")
 	versionPtr   = flag.Bool("version", false, "Print version.")
 )
