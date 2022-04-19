@@ -195,6 +195,9 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 
 	respHeader := w.Header()
 
+	// No need to set "Transfer-Encoding: chunked" as
+	// the std library seems to explicitely add it.
+
 	respHeader["transferMode.dlna.org"] = []string{"Interactive"}
 
 	if isMedia {
@@ -230,7 +233,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 			if f.path != "" {
 				input = f.path
 			}
-			_ = utils.ServeTranscodedStream(w, r, input, ff)
+			_ = utils.ServeTranscodedStream(w, input, ff)
 			return
 		}
 
@@ -271,7 +274,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 		// Since we're dealing with an io.Reader we can't
 		// allow any HEAD requests that some DMRs trigger.
 		if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "video") {
-			_ = utils.ServeTranscodedStream(w, r, f, ff)
+			_ = utils.ServeTranscodedStream(w, f, ff)
 			return
 		}
 

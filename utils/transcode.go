@@ -6,13 +6,12 @@ package utils
 import (
 	"errors"
 	"io"
-	"net/http"
 	"os/exec"
 )
 
 // ServeTranscodedStream passes an input file or io.Reader to ffmpeg and writes the output directly
 // to the http.ResponseWriter.
-func ServeTranscodedStream(w http.ResponseWriter, r *http.Request, input interface{}, ff *exec.Cmd) error {
+func ServeTranscodedStream(w io.Writer, input interface{}, ff *exec.Cmd) error {
 	// Pipe streaming is not great as explained here
 	// https://video.stackexchange.com/questions/34087/ffmpeg-fails-on-pipe-to-pipe-video-decoding.
 	// That's why if we have the option to pass the file directly to ffmpeg, then we should go with
@@ -51,8 +50,6 @@ func ServeTranscodedStream(w http.ResponseWriter, r *http.Request, input interfa
 	}
 
 	ff.Stdout = w
-
-	w.Header().Set("Transfer-Encoding", "chunked")
 
 	return ff.Run()
 }

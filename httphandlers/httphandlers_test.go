@@ -45,7 +45,7 @@ func TestServeContent(t *testing.T) {
 			`File without transcoding`,
 		},
 		// This test will fail if we dont have ffmpeg installed
-		/* 	{
+		/* 		{
 			osFileType{
 				time: time.Now(),
 				file: bytes.NewReader(videoBytes),
