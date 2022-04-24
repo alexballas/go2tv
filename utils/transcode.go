@@ -10,7 +10,7 @@ import (
 )
 
 // ServeTranscodedStream passes an input file or io.Reader to ffmpeg and writes the output directly
-// to the http.ResponseWriter.
+// to our io.Writer.
 func ServeTranscodedStream(w io.Writer, input interface{}, ff *exec.Cmd) error {
 	// Pipe streaming is not great as explained here
 	// https://video.stackexchange.com/questions/34087/ffmpeg-fails-on-pipe-to-pipe-video-decoding.
