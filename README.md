@@ -70,6 +70,12 @@ Download the app here https://github.com/alexballas/Go2TV/releases/latest. A sin
 
 Go2TV supports live video transcoding, if ffmpeg is installed. When transcoding, SEEK operations are not available. Transcoding offers the maximum compatibility with the various file formats and devices. Only works with video files.
 
+**MacOS potential issue**
+
+If you get the "cannot be opened because the developer cannot be verified" error, you can apply the following workaround.
+- Control-click the app icon, then choose Open from the shortcut menu.
+- Click Open.
+
 Tested on
 -----
 - Samsung UE50JU6400
