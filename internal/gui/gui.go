@@ -56,7 +56,7 @@ type devType struct {
 }
 
 type mainButtonsLayout struct {
-	scale float32
+	buttonHeight float32
 }
 
 // Start .

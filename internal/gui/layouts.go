@@ -9,7 +9,7 @@ func (d *mainButtonsLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
 	for _, o := range objects {
 		childSize := o.MinSize()
 		w += childSize.Width
-		h = childSize.Height * d.scale
+		h = childSize.Height * d.buttonHeight
 	}
 	return fyne.NewSize(w, h)
 }
@@ -29,9 +29,9 @@ func (d *mainButtonsLayout) Layout(objects []fyne.CanvasObject, containerSize fy
 		var size fyne.Size
 		switch q {
 		case 0, len(objects) - 1:
-			size = fyne.NewSize(bigButtonSize, o.MinSize().Height*d.scale)
+			size = fyne.NewSize(bigButtonSize, o.MinSize().Height*d.buttonHeight)
 		default:
-			size = fyne.NewSize(o.MinSize().Width, o.MinSize().Height*d.scale)
+			size = fyne.NewSize(o.MinSize().Width, o.MinSize().Height*d.buttonHeight)
 		}
 		o.Resize(size)
 		o.Move(pos)
