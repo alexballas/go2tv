@@ -23,7 +23,7 @@ type States struct {
 }
 
 // TVPayload this is the heart of Go2TV. We pass that type to the
-// webserver. We need to explicitely initialize it.
+// webserver. We need to explicitly initialize it.
 type TVPayload struct {
 	MediaFile                   interface{}
 	CurrentTimers               map[string]*time.Timer
