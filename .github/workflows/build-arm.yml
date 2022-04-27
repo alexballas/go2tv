@@ -10,7 +10,7 @@ jobs:
     - name: Set env
       run: if grep -Fxq "devel" cmd/go2tv/version.txt;then echo "GO2TV_VERSION=$(cat cmd/go2tv/version.txt)";else echo "GO2TV_VERSION=v$(cat cmd/go2tv/version.txt)";fi  >> $GITHUB_ENV
 
-    - uses: alexballas/arm-runner-action@v1.0.7
+    - uses: pguyot/arm-runner-action@v2.3.1
       id: main_image
       with:
         copy_repository_path: /go2tv_dir
@@ -21,9 +21,9 @@ jobs:
             sudo apt update
             sudo apt install -y xorg-dev
             sudo apt clean
-            wget -nv https://go.dev/dl/go1.17.5.linux-armv6l.tar.gz
-            tar -xzf go1.17.5.linux-armv6l.tar.gz
-            rm go1.17.5.linux-armv6l.tar.gz
+            wget -nv https://go.dev/dl/go1.17.9.linux-armv6l.tar.gz
+            tar -xzf go1.17.9.linux-armv6l.tar.gz
+            rm go1.17.9.linux-armv6l.tar.gz
             export GOROOT=/go
             cd /go2tv_dir
             /go/bin/go build -ldflags "-s -w" -o go2tv cmd/go2tv/go2tv.go

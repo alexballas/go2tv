@@ -37,6 +37,7 @@ type TVPayload struct {
 	MediaURL            string
 	MediaType           string
 	SubtitlesURL        string
+	Transcode           bool
 }
 
 type getMuteRespBody struct {
@@ -218,7 +219,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 			// we clean up any remaining states for the specific
 			// uuid. The actual UNSUBSCRIBE request to the media
 			// renderer may still fail with error 412, but it's fine.
-			p.UnsubscribeSoapCall(uuid)
+			_ = p.UnsubscribeSoapCall(uuid)
 		}
 		return nil
 	}
@@ -282,11 +283,11 @@ func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 }
 
 // RefreshLoopUUIDSoapCall refreshes the UUID.
-func (p *TVPayload) RefreshLoopUUIDSoapCall(uuid, timeout string) error {
+func (p *TVPayload) RefreshLoopUUIDSoapCall(uuid, timeout string) {
 	triggerTime := 5
 	timeoutInt, err := strconv.Atoi(timeout)
 	if err != nil {
-		return fmt.Errorf("RefreshLoopUUIDSoapCall convert to int error: %w", err)
+		return
 	}
 
 	// Refresh token after after Timeout / 2 seconds.
@@ -300,13 +301,11 @@ func (p *TVPayload) RefreshLoopUUIDSoapCall(uuid, timeout string) error {
 	f := p.refreshLoopUUIDAsyncSoapCall(uuid)
 	timer := time.AfterFunc(triggerTimefunc, f)
 	p.CurrentTimers[uuid] = timer
-
-	return nil
 }
 
 func (p *TVPayload) refreshLoopUUIDAsyncSoapCall(uuid string) func() {
 	return func() {
-		p.SubscribeSoapCall(uuid)
+		_ = p.SubscribeSoapCall(uuid)
 	}
 }
 

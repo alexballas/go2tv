@@ -47,6 +47,7 @@ type NewScreen struct {
 	mediaFormats        []string
 	NextMedia           bool
 	Medialoop           bool
+	Transcode           bool
 }
 
 type devType struct {
@@ -54,7 +55,9 @@ type devType struct {
 	addr string
 }
 
-type mainButtonsLayout struct{}
+type mainButtonsLayout struct {
+	buttonHeight float32
+}
 
 // Start .
 func Start(s *NewScreen) {
@@ -66,7 +69,7 @@ func Start(s *NewScreen) {
 	)
 
 	w.SetContent(tabs)
-	w.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
+	w.Resize(fyne.NewSize(w.Canvas().Size().Width, w.Canvas().Size().Height*1.3))
 	w.CenterOnScreen()
 	w.SetMaster()
 	w.ShowAndRun()

@@ -16,7 +16,7 @@ jobs:
     - uses: WillAbides/setup-go-faster@v1.7.0
       id: setup-go-faster
       with:
-        go-version: "*"
+        go-version: "1.17.9"
 
     - name: Get dependencies
       run: sudo apt update && sudo apt install xorg-dev

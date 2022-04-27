@@ -5,6 +5,7 @@ package gui
 
 import (
 	"net/url"
+	"os/exec"
 	"sort"
 	"time"
 
@@ -114,6 +115,12 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	externalmedia := widget.NewCheck("Media from URL", func(b bool) {})
 	medialoop := widget.NewCheck("Loop Selected", func(b bool) {})
 	nextmedia := widget.NewCheck("Auto-Select Next File", func(b bool) {})
+	transcode := widget.NewCheck("Transcode", func(b bool) {})
+
+	_, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		transcode.Disable()
+	}
 
 	mediafilelabel := canvas.NewText("File:", nil)
 	subsfilelabel := canvas.NewText("Subtitles:", nil)
@@ -139,11 +146,11 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	s.SubsText = sfiletext
 	s.DeviceList = list
 
-	actionbuttons := container.New(&mainButtonsLayout{}, playpause, volumedown, muteunmute, volumeup, stop)
+	actionbuttons := container.New(&mainButtonsLayout{buttonHeight: 1.0}, playpause, volumedown, muteunmute, volumeup, stop)
 
 	mrightbuttons := container.NewHBox(previewmedia, clearmedia)
 
-	checklists := container.NewHBox(externalmedia, sfilecheck, medialoop, nextmedia)
+	checklists := container.NewHBox(externalmedia, sfilecheck, medialoop, nextmedia, transcode)
 	mediasubsbuttons := container.New(layout.NewGridLayout(2), mfile, sfile)
 	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, mrightbuttons), mrightbuttons, mfiletext)
 	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
@@ -163,6 +170,15 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 				s.tvdata.RenderingControlURL = s.renderingControlURL
 			}
 		}
+	}
+
+	transcode.OnChanged = func(b bool) {
+		if b {
+			s.Transcode = true
+			return
+		}
+
+		s.Transcode = false
 	}
 
 	sfilecheck.OnChanged = func(b bool) {

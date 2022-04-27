@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -20,6 +21,9 @@ import (
 type HTTPserver struct {
 	http *http.Server
 	mux  *http.ServeMux
+	// We only need to run one ffmpeg
+	// command at a time, per server instance
+	ffmpeg *exec.Cmd
 }
 
 // Screen interface is used to push message back to the user
@@ -27,6 +31,15 @@ type HTTPserver struct {
 type Screen interface {
 	EmitMsg(string)
 	Fini()
+}
+
+// We use this type to be able to test
+// the serveContent function without the
+// need of os.Open in the tests.
+type osFileType struct {
+	time time.Time
+	file io.ReadSeeker
+	path string
 }
 
 // StartServer will start a HTTP server to serve the selected media files and
@@ -50,7 +63,7 @@ func (s *HTTPserver) StartServer(serverStarted chan<- struct{}, media, subtitles
 	}
 
 	s.mux.HandleFunc(mURL.Path, s.serveMediaHandler(tvpayload, media))
-	s.mux.HandleFunc(sURL.Path, s.serveSubtitlesHandler(subtitles))
+	s.mux.HandleFunc(sURL.Path, s.serveMediaHandler(nil, subtitles))
 	s.mux.HandleFunc(callbackURL.Path, s.callbackHandler(tvpayload, screen))
 
 	ln, err := net.Listen("tcp", s.http.Addr)
@@ -59,20 +72,39 @@ func (s *HTTPserver) StartServer(serverStarted chan<- struct{}, media, subtitles
 	}
 
 	serverStarted <- struct{}{}
-	s.http.Serve(ln)
+	_ = s.http.Serve(ln)
 
 	return nil
 }
 
 func (s *HTTPserver) serveMediaHandler(tv *soapcalls.TVPayload, media interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		serveContent(w, req, tv, media, true)
-	}
-}
+		var media2 interface{}
+		media2 = media
 
-func (s *HTTPserver) serveSubtitlesHandler(subs interface{}) http.HandlerFunc {
-	return func(w http.ResponseWriter, req *http.Request) {
-		serveContent(w, req, nil, subs, false)
+		switch f := media.(type) {
+		case string:
+			m, err := os.Open(f)
+			if err != nil {
+				http.NotFound(w, req)
+				return
+			}
+			defer m.Close()
+
+			info, err := m.Stat()
+			if err != nil {
+				http.NotFound(w, req)
+				return
+			}
+
+			media2 = osFileType{
+				time: info.ModTime(),
+				file: m,
+				path: f,
+			}
+		}
+
+		serveContent(w, req, tv, media2, s.ffmpeg)
 	}
 }
 
@@ -127,7 +159,7 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 			screen.EmitMsg("Paused")
 		case "STOPPED":
 			screen.EmitMsg("Stopped")
-			tv.UnsubscribeSoapCall(uuid)
+			_ = tv.UnsubscribeSoapCall(uuid)
 			screen.Fini()
 		}
 	}
@@ -142,92 +174,121 @@ func (s *HTTPserver) StopServer() {
 func NewServer(a string) *HTTPserver {
 	mux := http.NewServeMux()
 	srv := HTTPserver{
-		http: &http.Server{Addr: a, Handler: mux},
-		mux:  mux,
+		http:   &http.Server{Addr: a, Handler: mux},
+		mux:    mux,
+		ffmpeg: new(exec.Cmd),
 	}
 
 	return &srv
 }
 
-func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, s interface{}, isMedia bool) {
-	respHeader := w.Header()
-
-	respHeader["transferMode.dlna.org"] = []string{"Interactive"}
-
-	if isMedia {
-		respHeader["transferMode.dlna.org"] = []string{"Streaming"}
-		respHeader["realTimeInfo.dlna.org"] = []string{"DLNA.ORG_TLAG=*"}
-	}
-
+func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, mf interface{}, ff *exec.Cmd) {
+	var isMedia bool
+	var transcode bool
 	var mediaType string
+
 	if tv != nil {
+		isMedia = true
+		transcode = tv.Transcode
 		mediaType = tv.MediaType
 	}
 
-	switch f := s.(type) {
-	case string:
-		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-			contentFeatures, err := utils.BuildContentFeatures(mediaType, "01", false)
-			if err != nil {
-				http.NotFound(w, r)
-				return
-			}
+	w.Header()["transferMode.dlna.org"] = []string{"Interactive"}
 
-			respHeader["contentFeatures.dlna.org"] = []string{contentFeatures}
-		}
+	if isMedia {
+		w.Header()["transferMode.dlna.org"] = []string{"Streaming"}
+		w.Header()["realTimeInfo.dlna.org"] = []string{"DLNA.ORG_TLAG=*"}
+	}
 
-		filePath, err := os.Open(f)
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-		defer filePath.Close()
-
-		fileStat, err := filePath.Stat()
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-
-		name := strings.TrimLeft(r.URL.Path, "/")
-		http.ServeContent(w, r, name, fileStat.ModTime(), filePath)
-
+	switch f := mf.(type) {
+	case osFileType:
+		serveContentCustomType(r, mediaType, transcode, w, f, ff)
 	case []byte:
-		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-			contentFeatures, err := utils.BuildContentFeatures(mediaType, "01", false)
-			if err != nil {
-				http.NotFound(w, r)
-				return
-			}
-
-			respHeader["contentFeatures.dlna.org"] = []string{contentFeatures}
-		}
-
-		bReader := bytes.NewReader(f)
-
-		name := strings.TrimLeft(r.URL.Path, "/")
-		http.ServeContent(w, r, name, time.Now(), bReader)
-
+		serveContentBytes(r, mediaType, w, f)
 	case io.ReadCloser:
-		if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-			contentFeatures, err := utils.BuildContentFeatures(mediaType, "00", false)
-			if err != nil {
-				http.NotFound(w, r)
-				return
-			}
-
-			respHeader["contentFeatures.dlna.org"] = []string{contentFeatures}
-		}
-
-		// No seek support
-		if r.Method == http.MethodGet {
-			io.Copy(w, f)
-			f.Close()
-		}
-
-		w.WriteHeader(http.StatusOK)
+		serveContentReadClose(r, mediaType, transcode, w, f, ff)
 	default:
 		http.NotFound(w, r)
 		return
+	}
+}
+
+func serveContentBytes(r *http.Request, mediaType string, w http.ResponseWriter, f []byte) {
+	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
+		contentFeatures, err := utils.BuildContentFeatures(mediaType, "01", false)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+
+		w.Header()["contentFeatures.dlna.org"] = []string{contentFeatures}
+	}
+
+	bReader := bytes.NewReader(f)
+	name := strings.TrimLeft(r.URL.Path, "/")
+	http.ServeContent(w, r, name, time.Now(), bReader)
+}
+
+func serveContentReadClose(r *http.Request, mediaType string, transcode bool, w http.ResponseWriter, f io.ReadCloser, ff *exec.Cmd) {
+	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
+		contentFeatures, err := utils.BuildContentFeatures(mediaType, "00", transcode)
+		if err != nil {
+			fmt.Println(err)
+			http.NotFound(w, r)
+			return
+		}
+
+		w.Header()["contentFeatures.dlna.org"] = []string{contentFeatures}
+	}
+
+	// Since we're dealing with an io.Reader we can't
+	// allow any HEAD requests that some DMRs trigger.
+	if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "video") {
+		_ = utils.ServeTranscodedStream(w, f, ff)
+		return
+	}
+
+	// No seek support
+	if r.Method == http.MethodGet {
+		_, _ = io.Copy(w, f)
+		f.Close()
+		return
+	}
+}
+
+func serveContentCustomType(r *http.Request, mediaType string, transcode bool, w http.ResponseWriter, f osFileType, ff *exec.Cmd) {
+	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
+
+		seek := "01"
+		if strings.Contains(mediaType, "video") && transcode {
+			seek = "00"
+		}
+
+		contentFeatures, err := utils.BuildContentFeatures(mediaType, seek, transcode)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+
+		w.Header()["contentFeatures.dlna.org"] = []string{contentFeatures}
+	}
+
+	if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "video") {
+		// Since we're dealing with an io.Reader we can't
+		// allow any HEAD requests that some DMRs trigger.
+		var input interface{} = f.file
+		// The only case where we should expect f.path to be ""
+		// is only during our unit tests where we emulate the files.
+		if f.path != "" {
+			input = f.path
+		}
+		_ = utils.ServeTranscodedStream(w, input, ff)
+		return
+	}
+
+	name := strings.TrimLeft(r.URL.Path, "/")
+
+	if r.Method == http.MethodGet {
+		http.ServeContent(w, r, name, f.time, f.file)
 	}
 }

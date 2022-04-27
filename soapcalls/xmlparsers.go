@@ -77,7 +77,12 @@ func DMRextractor(dmrurl string) (*DMRextracted, error) {
 	if err != nil {
 		return nil, fmt.Errorf("DMRextractor read error: %w", err)
 	}
-	xml.Unmarshal(xmlbody, &root)
+
+	err = xml.Unmarshal(xmlbody, &root)
+	if err != nil {
+		return nil, fmt.Errorf("DMRextractor unmarshal error: %w", err)
+	}
+
 	for i := 0; i < len(root.Device.ServiceList.Services); i++ {
 		service := root.Device.ServiceList.Services[i]
 		if !strings.HasPrefix(service.EventSubURL, "/") {

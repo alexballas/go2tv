@@ -10,10 +10,7 @@ import (
 	"github.com/h2non/filetype"
 )
 
-var (
-	// If we're looking to use the dlnaOrgFlagSenderPaced
-	// flag for a 32bit build, we need to make sure that we
-	// first convert all the flag types to int64
+const (
 	// dlnaOrgFlagSenderPaced = 1 << 31
 	// dlnaOrgFlagTimeBasedSeek = 1 << 30
 	// dlnaOrgFlagByteBasedSeek = 1 << 29
@@ -26,7 +23,9 @@ var (
 	dlnaOrgFlagBackgroundTransfertMode = 1 << 22
 	dlnaOrgFlagConnectionStall         = 1 << 21
 	dlnaOrgFlagDlnaV15                 = 1 << 20
+)
 
+var (
 	dlnaprofiles = map[string]string{
 		"video/x-mkv":             "DLNA.ORG_PN=MATROSKA",
 		"video/x-matroska":        "DLNA.ORG_PN=MATROSKA",
@@ -38,6 +37,7 @@ var (
 		"video/x-m4v":             "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
 		"video/3gpp":              "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
 		"video/x-flv":             "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
+		"video/x-ms-wmv":          "DLNA.ORG_PN=WMVHIGH_FULL",
 		"audio/mpeg":              "DLNA.ORG_PN=MP3",
 		"image/jpeg":              "JPEG_LRG",
 		"image/png":               "PNG_LRG",
@@ -58,11 +58,8 @@ func BuildContentFeatures(mediaType string, seek string, transcode bool) (string
 
 	if mediaType != "" {
 		dlnaProf, profExists := dlnaprofiles[mediaType]
-		switch profExists {
-		case true:
+		if profExists {
 			cf.WriteString(dlnaProf + ";")
-		default:
-			return "", errors.New("non supported mediaType")
 		}
 	}
 
@@ -105,11 +102,14 @@ func GetMimeDetailsFromFile(f string) (string, error) {
 	defer file.Close()
 
 	head := make([]byte, 261)
-	file.Read(head)
+	_, err = file.Read(head)
+	if err != nil {
+		return "", fmt.Errorf("getMimeDetailsFromFile error #2: %w", err)
+	}
 
 	kind, err := filetype.Match(head)
 	if err != nil {
-		return "", fmt.Errorf("getMimeDetailsFromFile error #2: %w", err)
+		return "", fmt.Errorf("getMimeDetailsFromFile error #3: %w", err)
 	}
 
 	return fmt.Sprintf("%s/%s", kind.MIME.Type, kind.MIME.Subtype), nil
@@ -119,11 +119,14 @@ func GetMimeDetailsFromFile(f string) (string, error) {
 func GetMimeDetailsFromStream(s io.ReadCloser) (string, error) {
 	defer s.Close()
 	head := make([]byte, 261)
-	s.Read(head)
+	_, err := s.Read(head)
+	if err != nil {
+		return "", fmt.Errorf("getMimeDetailsFromStream error: %w", err)
+	}
 
 	kind, err := filetype.Match(head)
 	if err != nil {
-		return "", fmt.Errorf("getMimeDetailsFromStream error: %w", err)
+		return "", fmt.Errorf("getMimeDetailsFromStream error  #2: %w", err)
 	}
 
 	return fmt.Sprintf("%s/%s", kind.MIME.Type, kind.MIME.Subtype), nil

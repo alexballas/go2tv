@@ -8,9 +8,11 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,30 +21,33 @@ import (
 	"github.com/alexballas/go2tv/internal/gui"
 	"github.com/alexballas/go2tv/internal/interactive"
 	"github.com/alexballas/go2tv/soapcalls"
-	"github.com/alexballas/go2tv/urlstreamer"
 	"github.com/alexballas/go2tv/utils"
 	"github.com/pkg/errors"
 )
 
 var (
 	//go:embed version.txt
-	version    string
-	mediaArg   = flag.String("v", "", "Local path to the video/audio file. (Triggers the CLI mode)")
-	urlArg     = flag.String("u", "", "HTTP URL to the media file. URL streaming does not support seek operations. (Triggers the CLI mode)")
-	subsArg    = flag.String("s", "", "Local path to the subtitles file.")
-	listPtr    = flag.Bool("l", false, "List all available UPnP/DLNA Media Renderer models and URLs.")
-	targetPtr  = flag.String("t", "", "Cast to a specific UPnP/DLNA Media Renderer URL.")
-	versionPtr = flag.Bool("version", false, "Print version.")
+	version      string
+	mediaArg     = flag.String("v", "", "Local path to the video/audio file. (Triggers the CLI mode)")
+	urlArg       = flag.String("u", "", "HTTP URL to the media file. URL streaming does not support seek operations. (Triggers the CLI mode)")
+	subsArg      = flag.String("s", "", "Local path to the subtitles file.")
+	targetPtr    = flag.String("t", "", "Cast to a specific UPnP/DLNA Media Renderer URL.")
+	transcodePtr = flag.Bool("tc", false, "Use ffmpeg to transcode input video file.")
+	listPtr      = flag.Bool("l", false, "List all available UPnP/DLNA Media Renderer models and URLs.")
+	versionPtr   = flag.Bool("version", false, "Print version.")
 )
 
 type flagResults struct {
 	dmrURL string
 	exit   bool
+	gui    bool
 }
 
 func main() {
-	guiEnabled := true
+	var absMediaFile string
+	var mediaType string
 	var mediaFile interface{}
+
 	flag.Parse()
 
 	flagRes, err := processflags()
@@ -52,36 +57,43 @@ func main() {
 		os.Exit(0)
 	}
 
-	if len(os.Args) > 1 {
-		guiEnabled = false
-	}
-
 	if *mediaArg != "" {
 		mediaFile = *mediaArg
 	}
 
 	if *mediaArg == "" && *urlArg != "" {
-		mediaFile, err = urlstreamer.StreamURL(context.Background(), *urlArg)
+		mediaURL, err := utils.StreamURL(context.Background(), *urlArg)
 		check(err)
+
+		mediaURLinfo, err := utils.StreamURL(context.Background(), *urlArg)
+		check(err)
+
+		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
+		check(err)
+
+		mediaFile = mediaURL
+
+		if strings.Contains(mediaType, "image") {
+			readerToBytes, err := io.ReadAll(mediaURL)
+			mediaURL.Close()
+			check(err)
+			mediaFile = readerToBytes
+		}
 	}
 
-	if guiEnabled {
+	if flagRes.gui {
 		scr := gui.InitFyneNewScreen(version)
 		gui.Start(scr)
 	}
-
-	var absMediaFile string
-	var mediaType string
 
 	switch t := mediaFile.(type) {
 	case string:
 		absMediaFile, err = filepath.Abs(t)
 		check(err)
 		mediaFile = absMediaFile
-
 		mediaType, err = utils.GetMimeDetailsFromFile(absMediaFile)
 		check(err)
-	case io.ReadCloser:
+	case io.ReadCloser, []byte:
 		absMediaFile = *urlArg
 	}
 
@@ -112,6 +124,7 @@ func main() {
 		MediaRenderersStates:        make(map[string]*soapcalls.States),
 		InitialMediaRenderersStates: make(map[string]bool),
 		RWMutex:                     &sync.RWMutex{},
+		Transcode:                   *transcodePtr,
 	}
 
 	s := httphandlers.NewServer(whereToListen)
@@ -183,13 +196,15 @@ func listFlagFunction() error {
 func processflags() (*flagResults, error) {
 	checkVerflag()
 
-	res := &flagResults{
-		exit:   false,
-		dmrURL: "",
-	}
+	res := &flagResults{}
 
 	if checkGUI() {
+		res.gui = true
 		return res, nil
+	}
+
+	if err := checkTCflag(res); err != nil {
+		return nil, fmt.Errorf("checkflags error: %w", err)
 	}
 
 	if err := checkTflag(res); err != nil {
@@ -242,6 +257,17 @@ func checkSflag() error {
 	// media file filename.
 	*subsArg = (*mediaArg)[0:len(*mediaArg)-
 		len(filepath.Ext(*mediaArg))] + ".srt"
+
+	return nil
+}
+
+func checkTCflag(res *flagResults) error {
+	if *transcodePtr {
+		_, err := exec.LookPath("ffmpeg")
+		if err != nil {
+			return fmt.Errorf("checkTCflag parse error: %w", err)
+		}
+	}
 
 	return nil
 }

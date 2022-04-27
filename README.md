@@ -24,8 +24,8 @@ Cast your media files to UPnP/DLNA Media Renderers and Smart TVs.
 ---
 GUI mode
 -----
-![](https://i.imgur.com/Eq3UkuD.png)
-![](https://i.imgur.com/B7wF14V.png)
+![](https://i.imgur.com/0zcre1d.png)
+![](https://i.imgur.com/WLcqEKt.png)
 
 CLI mode
 -----
@@ -41,6 +41,8 @@ Usage of go2tv:
         Local path to the subtitles file.
   -t string
         Cast to a specific UPnP/DLNA Media Renderer URL.
+  -tc
+        Use ffmpeg to transcode input video file.
   -u string
         HTTP URL to the media file. URL streaming does not support seek operations. (Triggers the CLI mode)
   -v string
@@ -55,13 +57,24 @@ Allowed media files in the GUI
 
 This is a GUI only limitation.
 
-Build requirements
+Build requirements and dependencies
 -----
 - Go v1.16+
+- ffmpeg (optional)
 
 Quick Start
 -----
 Download the app here https://github.com/alexballas/Go2TV/releases/latest. A single executable. No installation or external dependencies.
+
+**Trasncoding**
+
+Go2TV supports live video transcoding, if ffmpeg is installed. When transcoding, SEEK operations are not available. Transcoding offers the maximum compatibility with the various file formats and devices. Only works with video files.
+
+**MacOS potential issue**
+
+If you get the "cannot be opened because the developer cannot be verified" error, you can apply the following workaround.
+- Control-click the app icon, then choose Open from the shortcut menu.
+- Click Open.
 
 Tested on
 -----

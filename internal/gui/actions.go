@@ -22,7 +22,6 @@ import (
 	"github.com/alexballas/go2tv/devices"
 	"github.com/alexballas/go2tv/httphandlers"
 	"github.com/alexballas/go2tv/soapcalls"
-	"github.com/alexballas/go2tv/urlstreamer"
 	"github.com/alexballas/go2tv/utils"
 	"github.com/pkg/errors"
 	"github.com/skratchdot/open-golang/open"
@@ -236,14 +235,14 @@ func playAction(screen *NewScreen) {
 		// the io.Copy operation to fail with "broken pipe".
 		// That's good enough for us since right after that
 		// we close the io.ReadCloser.
-		mediaURL, err := urlstreamer.StreamURL(context.Background(), screen.MediaText.Text)
+		mediaURL, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
 		check(screen.Current, err)
 		if err != nil {
 			screen.PlayPause.Enable()
 			return
 		}
 
-		mediaURLinfo, err := urlstreamer.StreamURL(context.Background(), screen.MediaText.Text)
+		mediaURLinfo, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
 		check(screen.Current, err)
 		if err != nil {
 			screen.PlayPause.Enable()
@@ -281,6 +280,7 @@ func playAction(screen *NewScreen) {
 		MediaRenderersStates:        make(map[string]*soapcalls.States),
 		InitialMediaRenderersStates: make(map[string]bool),
 		RWMutex:                     &sync.RWMutex{},
+		Transcode:                   screen.Transcode,
 	}
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)
@@ -377,7 +377,7 @@ func stopAction(screen *NewScreen) {
 
 	screen.httpserver.StopServer()
 	screen.tvdata = nil
-	// In theory we should expect an emit message
+	// In theory, we should expect an emit message
 	// from the media renderer, but there seems
 	// to be a race condition that prevents this.
 	screen.EmitMsg("Stopped")

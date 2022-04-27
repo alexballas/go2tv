@@ -121,7 +121,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	s.SubsText = sfiletext
 	s.DeviceList = list
 
-	actionbuttons := container.New(&mainButtonsLayout{}, playpause, volumedown, muteunmute, volumeup, stop)
+	actionbuttons := container.New(&mainButtonsLayout{buttonHeight: 1.5}, playpause, volumedown, muteunmute, volumeup, stop)
 
 	checklists := container.NewHBox(externalmedia, medialoop)
 	mediasubsbuttons := container.New(layout.NewGridLayout(2), mfile, sfile)

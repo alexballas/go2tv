@@ -51,7 +51,9 @@ type devType struct {
 	addr string
 }
 
-type mainButtonsLayout struct{}
+type mainButtonsLayout struct {
+	buttonHeight float32
+}
 
 // Start .
 func Start(s *NewScreen) {
