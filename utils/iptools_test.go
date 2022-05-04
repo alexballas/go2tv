@@ -34,23 +34,25 @@ func TestURLtoListenIPandPort(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		out, err := URLtoListenIPandPort(tc.input)
-		if err != nil {
-			t.Errorf("%s: Failed to call URLtoListenIPandPort due to %s", tc.name, err.Error())
-			return
-		}
-		outSplit := strings.Split(out, ":")
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := URLtoListenIPandPort(tc.input)
+			if err != nil {
+				t.Errorf("%s: Failed to call URLtoListenIPandPort due to %s", tc.name, err.Error())
+				return
+			}
+			outSplit := strings.Split(out, ":")
 
-		if len(outSplit) < 2 {
-			t.Errorf("%s: Not in ip:port format: %s", tc.name, err.Error())
-			return
-		}
+			if len(outSplit) < 2 {
+				t.Errorf("%s: Not in ip:port format: %s", tc.name, err.Error())
+				return
+			}
 
-		outInt, _ := strconv.Atoi(outSplit[1])
+			outInt, _ := strconv.Atoi(outSplit[1])
 
-		if outInt < tc.wantFromPort || outInt > tc.wantToPort {
-			t.Errorf("%s: got: %s, wanted port between: %d - %d.", tc.name, out, tc.wantFromPort, tc.wantToPort)
-			return
-		}
+			if outInt < tc.wantFromPort || outInt > tc.wantToPort {
+				t.Errorf("%s: got: %s, wanted port between: %d - %d.", tc.name, out, tc.wantFromPort, tc.wantToPort)
+				return
+			}
+		})
 	}
 }

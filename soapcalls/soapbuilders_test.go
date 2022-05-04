@@ -22,15 +22,17 @@ func TestSetAVTransportSoapBuild(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		out, err := setAVTransportSoapBuild(tc.mediaURL, tc.mediaType, tc.subtitleURL)
-		if err != nil {
-			t.Errorf("%s: Failed to call setAVTransportSoapBuild due to %s", tc.name, err.Error())
-			return
-		}
-		if string(out) != tc.want {
-			t.Errorf("%s: got: %s, want: %s.", tc.name, out, tc.want)
-			return
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := setAVTransportSoapBuild(tc.mediaURL, tc.mediaType, tc.subtitleURL)
+			if err != nil {
+				t.Errorf("%s: Failed to call setAVTransportSoapBuild due to %s", tc.name, err.Error())
+				return
+			}
+			if string(out) != tc.want {
+				t.Errorf("%s: got: %s, want: %s.", tc.name, out, tc.want)
+				return
+			}
+		})
 	}
 }
 
@@ -53,15 +55,17 @@ func TestSetMuteSoapBuild(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		out, err := setMuteSoapBuild(tc.input)
-		if err != nil {
-			t.Errorf("%s: Failed to call setMuteSoapBuild due to %s", tc.name, err.Error())
-			return
-		}
-		if string(out) != tc.want {
-			t.Errorf("%s: got: %s, want: %s.", tc.name, out, tc.want)
-			return
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := setMuteSoapBuild(tc.input)
+			if err != nil {
+				t.Errorf("%s: Failed to call setMuteSoapBuild due to %s", tc.name, err.Error())
+				return
+			}
+			if string(out) != tc.want {
+				t.Errorf("%s: got: %s, want: %s.", tc.name, out, tc.want)
+				return
+			}
+		})
 	}
 }
 
@@ -77,14 +81,16 @@ func TestGetVolumeSoapBuild(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		out, err := getVolumeSoapBuild()
-		if err != nil {
-			t.Errorf("%s: Failed to call setMuteSoapBuild due to %s", tc.name, err.Error())
-			return
-		}
-		if string(out) != tc.want {
-			t.Errorf("%s: got: %s, want: %s.", tc.name, out, tc.want)
-			return
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := getVolumeSoapBuild()
+			if err != nil {
+				t.Errorf("%s: Failed to call setMuteSoapBuild due to %s", tc.name, err.Error())
+				return
+			}
+			if string(out) != tc.want {
+				t.Errorf("%s: got: %s, want: %s.", tc.name, out, tc.want)
+				return
+			}
+		})
 	}
 }
