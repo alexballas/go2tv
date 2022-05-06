@@ -2,7 +2,6 @@ package httphandlers
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -68,25 +67,24 @@ func TestServeContent(t *testing.T) {
 			serveContent(w, r, tc.tvdata, tc.input, new(exec.Cmd))
 
 			if w.Result().StatusCode != http.StatusOK {
-				t.Errorf("%s: got: %s.", tc.name, w.Result().Status)
+				t.Fatalf("%s: got: %s.", tc.name, w.Result().Status)
 			}
 
 			_, exists := w.Result().Header["transferMode.dlna.org"]
 			if !exists {
-				t.Errorf("%s: transferMode.dlna.org header does not exist", tc.name)
+				t.Fatalf("%s: transferMode.dlna.org header does not exist", tc.name)
 			}
 
 			cf, exists := w.Result().Header["contentFeatures.dlna.org"]
 			if !exists {
-				t.Errorf("%s: contentFeatures.dlna.org header does not exist", tc.name)
+				t.Fatalf("%s: contentFeatures.dlna.org header does not exist", tc.name)
 			}
 
 			cfElements := strings.Split(cf[0], ";")
 			for _, c := range cfElements {
 				if strings.Contains(c, "DLNA.ORG_OP") {
 					if tc.tvdata != nil && tc.tvdata.Transcode && c != "DLNA.ORG_OP=00" {
-						fmt.Println("yoooo", c)
-						t.Errorf("%s: no proper DLNA.ORG_OP header for transcoded video", tc.name)
+						t.Fatalf("%s: no proper DLNA.ORG_OP header for transcoded video", tc.name)
 					}
 				}
 			}

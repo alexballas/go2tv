@@ -26,8 +26,7 @@ func TestCovertFilename(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			out := ConvertFilename(tc.input)
 			if out != tc.want {
-				t.Errorf("%s: got: %s, want: %s.", tc.name, out, tc.want)
-				return
+				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, tc.want)
 			}
 		})
 	}
