@@ -90,8 +90,13 @@ func main() {
 	case string:
 		absMediaFile, err = filepath.Abs(t)
 		check(err)
+
+		mfile, err := os.Open(absMediaFile)
+		check(err)
+
 		mediaFile = absMediaFile
-		mediaType, err = utils.GetMimeDetailsFromFile(absMediaFile)
+
+		mediaType, err = utils.GetMimeDetailsFromFile(mfile)
 		check(err)
 	case io.ReadCloser, []byte:
 		absMediaFile = *urlArg
