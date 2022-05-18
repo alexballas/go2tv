@@ -55,7 +55,7 @@ func DMRextractor(dmrurl string) (*DMRextracted, error) {
 	ex := &DMRextracted{}
 
 	parsedURL, err := url.Parse(dmrurl)
-	if err != nil {
+	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
 		return nil, fmt.Errorf("DMRextractor parse error: %w", err)
 	}
 
@@ -95,9 +95,24 @@ func DMRextractor(dmrurl string) (*DMRextracted, error) {
 		if service.ID == "urn:upnp-org:serviceId:AVTransport" {
 			ex.AvtransportControlURL = parsedURL.Scheme + "://" + parsedURL.Host + service.ControlURL
 			ex.AvtransportEventSubURL = parsedURL.Scheme + "://" + parsedURL.Host + service.EventSubURL
+
+			_, err := url.ParseRequestURI(ex.AvtransportControlURL)
+			if err != nil {
+				return nil, fmt.Errorf("DMRextractor invalid AvtransportControlURL: %w", err)
+			}
+
+			_, err = url.ParseRequestURI(ex.AvtransportEventSubURL)
+			if err != nil {
+				return nil, fmt.Errorf("DMRextractor invalid AvtransportEventSubURL: %w", err)
+			}
 		}
 		if service.ID == "urn:upnp-org:serviceId:RenderingControl" {
 			ex.RenderingControlURL = parsedURL.Scheme + "://" + parsedURL.Host + service.ControlURL
+
+			_, err = url.ParseRequestURI(ex.RenderingControlURL)
+			if err != nil {
+				return nil, fmt.Errorf("DMRextractor invalid RenderingControlURL: %w", err)
+			}
 		}
 	}
 

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/h2non/filetype"
@@ -94,15 +93,10 @@ func BuildContentFeatures(mediaType string, seek string, transcode bool) (string
 }
 
 // GetMimeDetailsFromFile returns the media file mime details.
-func GetMimeDetailsFromFile(f string) (string, error) {
-	file, err := os.Open(f)
-	if err != nil {
-		return "", fmt.Errorf("getMimeDetailsFromFile error: %w", err)
-	}
-	defer file.Close()
-
+func GetMimeDetailsFromFile(f io.ReadCloser) (string, error) {
+	defer f.Close()
 	head := make([]byte, 261)
-	_, err = file.Read(head)
+	_, err := f.Read(head)
 	if err != nil {
 		return "", fmt.Errorf("getMimeDetailsFromFile error #2: %w", err)
 	}

@@ -23,10 +23,11 @@ func TestCovertFilename(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		out := ConvertFilename(tc.input)
-		if out != tc.want {
-			t.Errorf("%s: got: %s, want: %s.", tc.name, out, tc.want)
-			return
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			out := ConvertFilename(tc.input)
+			if out != tc.want {
+				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, tc.want)
+			}
+		})
 	}
 }

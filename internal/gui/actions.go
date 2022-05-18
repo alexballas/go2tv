@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -207,7 +208,10 @@ func playAction(screen *NewScreen) {
 	var mediaType string
 
 	if !screen.ExternalMediaURL.Checked {
-		mediaType, err = utils.GetMimeDetailsFromFile(screen.mediafile)
+		mfile, err := os.Open(screen.mediafile)
+		check(w, err)
+
+		mediaType, err = utils.GetMimeDetailsFromFile(mfile)
 		check(w, err)
 		if err != nil {
 			screen.PlayPause.Enable()
@@ -338,7 +342,10 @@ func previewmedia(screen *NewScreen) {
 		return
 	}
 
-	mediaType, err := utils.GetMimeDetailsFromFile(screen.mediafile)
+	mfile, err := os.Open(screen.mediafile)
+	check(w, err)
+
+	mediaType, err := utils.GetMimeDetailsFromFile(mfile)
 	check(w, err)
 
 	mediaTypeSlice := strings.Split(mediaType, "/")

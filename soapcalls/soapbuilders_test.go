@@ -22,15 +22,15 @@ func TestSetAVTransportSoapBuild(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		out, err := setAVTransportSoapBuild(tc.mediaURL, tc.mediaType, tc.subtitleURL)
-		if err != nil {
-			t.Errorf("%s: Failed to call setAVTransportSoapBuild due to %s", tc.name, err.Error())
-			return
-		}
-		if string(out) != tc.want {
-			t.Errorf("%s: got: %s, want: %s.", tc.name, out, tc.want)
-			return
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := setAVTransportSoapBuild(tc.mediaURL, tc.mediaType, tc.subtitleURL)
+			if err != nil {
+				t.Fatalf("%s: Failed to call setAVTransportSoapBuild due to %s", tc.name, err.Error())
+			}
+			if string(out) != tc.want {
+				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, tc.want)
+			}
+		})
 	}
 }
 
@@ -53,15 +53,15 @@ func TestSetMuteSoapBuild(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		out, err := setMuteSoapBuild(tc.input)
-		if err != nil {
-			t.Errorf("%s: Failed to call setMuteSoapBuild due to %s", tc.name, err.Error())
-			return
-		}
-		if string(out) != tc.want {
-			t.Errorf("%s: got: %s, want: %s.", tc.name, out, tc.want)
-			return
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := setMuteSoapBuild(tc.input)
+			if err != nil {
+				t.Fatalf("%s: Failed to call setMuteSoapBuild due to %s", tc.name, err.Error())
+			}
+			if string(out) != tc.want {
+				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, tc.want)
+			}
+		})
 	}
 }
 
@@ -77,14 +77,136 @@ func TestGetVolumeSoapBuild(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		out, err := getVolumeSoapBuild()
-		if err != nil {
-			t.Errorf("%s: Failed to call setMuteSoapBuild due to %s", tc.name, err.Error())
-			return
-		}
-		if string(out) != tc.want {
-			t.Errorf("%s: got: %s, want: %s.", tc.name, out, tc.want)
-			return
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := getVolumeSoapBuild()
+			if err != nil {
+				t.Fatalf("%s: Failed to call setMuteSoapBuild due to %s", tc.name, err.Error())
+			}
+			if string(out) != tc.want {
+				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, tc.want)
+			}
+		})
+	}
+}
+
+func TestPlaySoapBuild(t *testing.T) {
+	tt := []struct {
+		name string
+		want string
+	}{
+		{
+			`playSoapBuild Test #1`,
+			`<?xml version='1.0' encoding='utf-8'?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:Play xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><Speed>1</Speed></u:Play></s:Body></s:Envelope>`,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := playSoapBuild()
+			if err != nil {
+				t.Fatalf("%s: Failed to call playSoapBuild due to %s", tc.name, err.Error())
+			}
+			if string(out) != tc.want {
+				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, tc.want)
+			}
+		})
+	}
+}
+
+func TestStopSoapBuild(t *testing.T) {
+	tt := []struct {
+		name string
+		want string
+	}{
+		{
+			`stopSoapBuild Test #1`,
+			`<?xml version='1.0' encoding='utf-8'?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:Stop xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><Speed>1</Speed></u:Stop></s:Body></s:Envelope>`,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := stopSoapBuild()
+			if err != nil {
+				t.Fatalf("%s: Failed to call stopSoapBuild due to %s", tc.name, err.Error())
+			}
+			if string(out) != tc.want {
+				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, tc.want)
+			}
+		})
+	}
+}
+
+func TestPauseSoapBuild(t *testing.T) {
+	tt := []struct {
+		name string
+		want string
+	}{
+		{
+			`pauseSoapBuild Test #1`,
+			`<?xml version='1.0' encoding='utf-8'?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:Pause xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><Speed>1</Speed></u:Pause></s:Body></s:Envelope>`,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := pauseSoapBuild()
+			if err != nil {
+				t.Fatalf("%s: Failed to call pauseSoapBuild due to %s", tc.name, err.Error())
+			}
+			if string(out) != tc.want {
+				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, tc.want)
+			}
+		})
+	}
+}
+
+func TestGetMuteSoapBuild(t *testing.T) {
+	tt := []struct {
+		name string
+		want string
+	}{
+		{
+			`getMuteSoapBuild Test #1`,
+			`<?xml version='1.0' encoding='utf-8'?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:GetMute xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1"><InstanceID>0</InstanceID><Channel>Master</Channel></u:GetMute></s:Body></s:Envelope>`,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := getMuteSoapBuild()
+			if err != nil {
+				t.Fatalf("%s: Failed to call getMuteSoapBuild due to %s", tc.name, err.Error())
+			}
+			if string(out) != tc.want {
+				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, tc.want)
+			}
+		})
+	}
+}
+
+func TestSetVolumeSoapBuild(t *testing.T) {
+	tt := []struct {
+		name   string
+		intput string
+		want   string
+	}{
+		{
+			`setVolumeSoapBuild Test #1`,
+			`100`,
+			`<?xml version='1.0' encoding='utf-8'?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:SetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1"><InstanceID>0</InstanceID><Channel>Master</Channel><DesiredVolume>100</DesiredVolume></u:SetVolume></s:Body></s:Envelope>`,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := setVolumeSoapBuild(tc.intput)
+			if err != nil {
+				t.Fatalf("%s: Failed to call setVolumeSoapBuild due to %s", tc.name, err.Error())
+			}
+			if string(out) != tc.want {
+				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, tc.want)
+			}
+		})
 	}
 }
