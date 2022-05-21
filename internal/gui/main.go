@@ -4,6 +4,7 @@
 package gui
 
 import (
+	"errors"
 	"net/url"
 	"os/exec"
 	"sort"
@@ -15,6 +16,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/alexballas/go2tv/devices"
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/alexballas/go2tv/utils"
 	"golang.org/x/time/rate"
@@ -241,6 +243,12 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 func refreshDevList(s *NewScreen, data *[]devType) {
 	refreshDevices := time.NewTicker(5 * time.Second)
+	w := s.Current
+
+	_, err := getDevices(2)
+	if err != nil && !errors.Is(err, devices.ErrNoDeviceAvailable) {
+		check(w, err)
+	}
 
 	for range refreshDevices.C {
 		datanew, _ := getDevices(2)

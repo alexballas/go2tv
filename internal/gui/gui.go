@@ -16,6 +16,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/alexballas/go2tv/httphandlers"
+	"github.com/alexballas/go2tv/internal/config"
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/pkg/errors"
 )
@@ -24,26 +25,27 @@ import (
 type NewScreen struct {
 	mu                  sync.RWMutex
 	Current             fyne.Window
-	tvdata              *soapcalls.TVPayload
+	CustomSubsCheck     *widget.Check
 	Stop                *widget.Button
 	MuteUnmute          *widget.Button
 	CheckVersion        *widget.Button
-	CustomSubsCheck     *widget.Check
+	tvdata              *soapcalls.TVPayload
 	ExternalMediaURL    *widget.Check
 	MediaText           *widget.Entry
 	SubsText            *widget.Entry
 	DeviceList          *widget.List
 	httpserver          *httphandlers.HTTPserver
 	PlayPause           *widget.Button
-	mediafile           string
-	subsfile            string
+	config              *config.Config
 	selectedDevice      devType
+	version             string
 	State               string
 	controlURL          string
 	eventlURL           string
 	renderingControlURL string
 	currentmfolder      string
-	version             string
+	subsfile            string
+	mediafile           string
 	mediaFormats        []string
 	NextMedia           bool
 	Medialoop           bool
@@ -65,6 +67,7 @@ func Start(s *NewScreen) {
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Go2TV", container.NewPadded(mainWindow(s))),
+		container.NewTabItem("Settings", container.NewPadded(settingsWindow(s))),
 		container.NewTabItem("About", aboutWindow(s)),
 	)
 
@@ -116,11 +119,15 @@ func InitFyneNewScreen(v string) *NewScreen {
 		currentdir = ""
 	}
 
+	cfg, _ := config.GetAppConfig()
+	cfg.ApplyAppConfig()
+
 	return &NewScreen{
 		Current:        w,
 		currentmfolder: currentdir,
 		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".mp3", ".flac", ".wav", ".jpg", ".jpeg", ".png"},
 		version:        v,
+		config:         cfg,
 	}
 }
 
