@@ -16,7 +16,6 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/alexballas/go2tv/httphandlers"
-	"github.com/alexballas/go2tv/internal/config"
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/pkg/errors"
 )
@@ -36,7 +35,6 @@ type NewScreen struct {
 	DeviceList          *widget.List
 	httpserver          *httphandlers.HTTPserver
 	PlayPause           *widget.Button
-	config              *config.Config
 	tabs                *container.AppTabs
 	selectedDevice      devType
 	State               string
@@ -114,22 +112,21 @@ func (p *NewScreen) Fini() {
 
 // InitFyneNewScreen .
 func InitFyneNewScreen(v string) *NewScreen {
-	go2tv := app.New()
+	go2tv := app.NewWithID("com.alexballas.go2tv")
 	w := go2tv.NewWindow("Go2TV")
 	currentdir, err := os.Getwd()
 	if err != nil {
 		currentdir = ""
 	}
 
-	cfg, _ := config.GetAppConfig()
-	cfg.ApplyAppConfig()
+	theme := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "Default")
+	fyne.CurrentApp().Settings().SetTheme(go2tvTheme{theme})
 
 	return &NewScreen{
 		Current:        w,
 		currentmfolder: currentdir,
 		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".mp3", ".flac", ".wav", ".jpg", ".jpeg", ".png"},
 		version:        v,
-		config:         cfg,
 	}
 }
 
