@@ -45,7 +45,7 @@ func (m go2tvTheme) Size(name fyne.ThemeSizeName) float32 {
 func GetAppConfig() (*Config, error) {
 	path, err := appPath()
 	if err != nil {
-		return nil, fmt.Errorf("failed to access config path due to error %w:", err)
+		return nil, fmt.Errorf("GetAppConfig: failed to access config path due to error %w:", err)
 	}
 
 	cfgfile, err := os.Open(path)
@@ -53,7 +53,7 @@ func GetAppConfig() (*Config, error) {
 		if os.IsNotExist(err) {
 			err := os.MkdirAll(filepath.Dir(path), 0700)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create default path due to error %w:", err)
+				return nil, fmt.Errorf("GetAppConfig: failed to create default path due to error %w:", err)
 			}
 
 			// Set default config here
@@ -63,23 +63,23 @@ func GetAppConfig() (*Config, error) {
 
 			b, err := json.Marshal(conf)
 			if err != nil {
-				return nil, fmt.Errorf("failed to convert and store default config %w:", err)
+				return nil, fmt.Errorf("GetAppConfig: failed to convert and store default config %w:", err)
 			}
 
 			if err := os.WriteFile(path, b, 0644); err != nil {
-				return nil, fmt.Errorf("failed to create default config due to error %w:", err)
+				return nil, fmt.Errorf("GetAppConfig: failed to create default config due to error %w:", err)
 			}
 
 			return conf, nil
 		}
 
-		return nil, fmt.Errorf("failed to open config due to error %w:", err)
+		return nil, fmt.Errorf("GetAppConfig: failed to open config due to error %w:", err)
 	}
 	defer cfgfile.Close()
 
 	conf := &Config{}
 	if err := json.NewDecoder(cfgfile).Decode(conf); err != nil {
-		return nil, fmt.Errorf("failed to decode config due to error %w:", err)
+		return nil, fmt.Errorf("GetAppConfig: failed to decode config due to error %w:", err)
 	}
 
 	return conf, nil
@@ -88,7 +88,7 @@ func GetAppConfig() (*Config, error) {
 func appPath() (string, error) {
 	oscfg, err := os.UserConfigDir()
 	if err != nil {
-		return "", fmt.Errorf("failed to get config file due to error %w:", err)
+		return "", fmt.Errorf("appPath: failed to get config file due to error %w:", err)
 	}
 
 	return fmt.Sprint(filepath.Join(oscfg, "go2tv", "settings.json")), nil
@@ -103,4 +103,22 @@ func (s *Config) ApplyAppConfig() {
 	case "Default":
 		fyne.CurrentApp().Settings().SetTheme(theme.DefaultTheme())
 	}
+}
+
+func (s *Config) SaveAppConfig() error {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return fmt.Errorf("SaveAppConfig: failed to marshal json due to error %w:", err)
+	}
+
+	path, err := appPath()
+	if err != nil {
+		return fmt.Errorf("SaveAppConfig: failed to access config path due to error %w:", err)
+	}
+
+	if err := os.WriteFile(path, b, 0655); err != nil {
+		return fmt.Errorf("SaveAppConfig: failed save config due to error %w:", err)
+	}
+
+	return nil
 }

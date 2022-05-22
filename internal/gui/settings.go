@@ -10,7 +10,17 @@ import (
 func settingsWindow(s *NewScreen) fyne.CanvasObject {
 	themeText := canvas.NewText("Theme", nil)
 	dropdown := widget.NewSelect([]string{"Light", "Dark", "Default"}, parseTheme(s))
-	dropdown.PlaceHolder = "yo"
+	switch s.config.Theme {
+	case "Light":
+		dropdown.PlaceHolder = "Light"
+	case "Dark":
+		dropdown.PlaceHolder = "Dark"
+	case "Default":
+		dropdown.PlaceHolder = "Default"
+	}
+
+	dropdown.Refresh()
+
 	settings := container.NewVBox(themeText, dropdown)
 	return settings
 }
@@ -26,5 +36,14 @@ func parseTheme(s *NewScreen) func(string) {
 			s.config.Theme = "Default"
 		}
 		s.config.ApplyAppConfig()
+
+		if err := s.config.SaveAppConfig(); err != nil {
+			check(s.Current, err)
+		}
+
+		for _, tab := range s.tabs.Items {
+			tab.Content.Refresh()
+		}
+
 	}
 }

@@ -25,27 +25,28 @@ import (
 type NewScreen struct {
 	mu                  sync.RWMutex
 	Current             fyne.Window
-	CustomSubsCheck     *widget.Check
+	ExternalMediaURL    *widget.Check
 	Stop                *widget.Button
 	MuteUnmute          *widget.Button
 	CheckVersion        *widget.Button
 	tvdata              *soapcalls.TVPayload
-	ExternalMediaURL    *widget.Check
+	CustomSubsCheck     *widget.Check
 	MediaText           *widget.Entry
 	SubsText            *widget.Entry
 	DeviceList          *widget.List
 	httpserver          *httphandlers.HTTPserver
 	PlayPause           *widget.Button
 	config              *config.Config
+	tabs                *container.AppTabs
 	selectedDevice      devType
-	version             string
 	State               string
 	controlURL          string
 	eventlURL           string
 	renderingControlURL string
 	currentmfolder      string
-	subsfile            string
 	mediafile           string
+	subsfile            string
+	version             string
 	mediaFormats        []string
 	NextMedia           bool
 	Medialoop           bool
@@ -70,6 +71,7 @@ func Start(s *NewScreen) {
 		container.NewTabItem("Settings", container.NewPadded(settingsWindow(s))),
 		container.NewTabItem("About", aboutWindow(s)),
 	)
+	s.tabs = tabs
 
 	w.SetContent(tabs)
 	w.Resize(fyne.NewSize(w.Canvas().Size().Width, w.Canvas().Size().Height*1.3))

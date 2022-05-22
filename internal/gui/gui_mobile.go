@@ -15,6 +15,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/alexballas/go2tv/httphandlers"
+	"github.com/alexballas/go2tv/internal/config"
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/pkg/errors"
 )
@@ -34,6 +35,8 @@ type NewScreen struct {
 	DeviceList          *widget.List
 	httpserver          *httphandlers.HTTPserver
 	PlayPause           *widget.Button
+	config              *config.Config
+	tabs                *container.AppTabs
 	mediafile           fyne.URI
 	subsfile            fyne.URI
 	selectedDevice      devType
@@ -61,8 +64,11 @@ func Start(s *NewScreen) {
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Go2TV", container.NewVScroll(container.NewPadded(mainWindow(s)))),
+		container.NewTabItem("Settings", container.NewPadded(settingsWindow(s))),
 		container.NewTabItem("About", container.NewVScroll(aboutWindow(s))),
 	)
+	s.tabs = tabs
+
 	w.SetContent(tabs)
 	w.CenterOnScreen()
 	w.ShowAndRun()
@@ -104,10 +110,14 @@ func InitFyneNewScreen(v string) *NewScreen {
 
 	w := go2tv.NewWindow("Go2TV")
 
+	cfg, _ := config.GetAppConfig()
+	cfg.ApplyAppConfig()
+
 	return &NewScreen{
 		Current:      w,
 		mediaFormats: []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".mp3", ".flac", ".wav"},
 		version:      v,
+		config:       cfg,
 	}
 }
 
