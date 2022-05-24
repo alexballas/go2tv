@@ -72,9 +72,5 @@ func parseTheme(s *NewScreen) func(string) {
 			fyne.CurrentApp().Preferences().SetString("Theme", "Default")
 			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Default"})
 		}
-
-		for _, tab := range s.tabs.Items {
-			tab.Content.Refresh()
-		}
 	}
 }

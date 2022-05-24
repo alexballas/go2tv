@@ -34,7 +34,6 @@ type NewScreen struct {
 	DeviceList          *widget.List
 	httpserver          *httphandlers.HTTPserver
 	PlayPause           *widget.Button
-	tabs                *container.AppTabs
 	mediafile           fyne.URI
 	subsfile            fyne.URI
 	selectedDevice      devType
@@ -62,10 +61,8 @@ func Start(s *NewScreen) {
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Go2TV", container.NewVScroll(container.NewPadded(mainWindow(s)))),
-		container.NewTabItem("Settings", container.NewPadded(settingsWindow(s))),
 		container.NewTabItem("About", container.NewVScroll(aboutWindow(s))),
 	)
-	s.tabs = tabs
 
 	w.SetContent(tabs)
 	w.CenterOnScreen()
@@ -107,9 +104,6 @@ func InitFyneNewScreen(v string) *NewScreen {
 	go2tv.Settings().SetTheme(theme.DarkTheme())
 
 	w := go2tv.NewWindow("Go2TV")
-
-	theme := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "Default")
-	fyne.CurrentApp().Settings().SetTheme(go2tvTheme{theme})
 
 	return &NewScreen{
 		Current:      w,

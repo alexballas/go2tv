@@ -35,7 +35,6 @@ type NewScreen struct {
 	DeviceList          *widget.List
 	httpserver          *httphandlers.HTTPserver
 	PlayPause           *widget.Button
-	tabs                *container.AppTabs
 	selectedDevice      devType
 	State               string
 	controlURL          string
@@ -69,7 +68,10 @@ func Start(s *NewScreen) {
 		container.NewTabItem("Settings", container.NewPadded(settingsWindow(s))),
 		container.NewTabItem("About", aboutWindow(s)),
 	)
-	s.tabs = tabs
+
+	tabs.OnSelected = func(t *container.TabItem) {
+		t.Content.Refresh()
+	}
 
 	w.SetContent(tabs)
 	w.Resize(fyne.NewSize(w.Canvas().Size().Width, w.Canvas().Size().Height*1.3))
