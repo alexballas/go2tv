@@ -2,7 +2,6 @@ package gui
 
 import (
 	"image/color"
-	"sync"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -14,8 +13,6 @@ import (
 type go2tvTheme struct {
 	Theme string
 }
-
-var mu sync.Mutex
 
 func (m go2tvTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
 	switch m.Theme {
