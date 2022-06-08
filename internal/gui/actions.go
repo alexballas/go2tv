@@ -206,6 +206,7 @@ func playAction(screen *NewScreen) {
 	}
 
 	var mediaType string
+	var isSeek bool
 
 	if !screen.ExternalMediaURL.Checked {
 		mfile, err := os.Open(screen.mediafile)
@@ -216,6 +217,10 @@ func playAction(screen *NewScreen) {
 		if err != nil {
 			screen.PlayPause.Enable()
 			return
+		}
+
+		if !screen.Transcode {
+			isSeek = true
 		}
 	}
 
@@ -285,6 +290,7 @@ func playAction(screen *NewScreen) {
 		InitialMediaRenderersStates: make(map[string]bool),
 		RWMutex:                     &sync.RWMutex{},
 		Transcode:                   screen.Transcode,
+		Seekable:                    isSeek,
 	}
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)

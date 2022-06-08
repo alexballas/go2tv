@@ -38,6 +38,7 @@ type TVPayload struct {
 	MediaType           string
 	SubtitlesURL        string
 	Transcode           bool
+	Seekable            bool
 }
 
 type getMuteRespBody struct {
@@ -77,7 +78,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 		return fmt.Errorf("setAVTransportSoapCall parse error: %w", err)
 	}
 
-	xml, err := setAVTransportSoapBuild(p.MediaURL, p.MediaType, p.SubtitlesURL)
+	xml, err := setAVTransportSoapBuild(p.MediaURL, p.MediaType, p.SubtitlesURL, p.Transcode,p.Seekable)
 	if err != nil {
 		return fmt.Errorf("setAVTransportSoapCall soap build error: %w", err)
 	}

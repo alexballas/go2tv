@@ -185,12 +185,14 @@ func NewServer(a string) *HTTPserver {
 func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, mf interface{}, ff *exec.Cmd) {
 	var isMedia bool
 	var transcode bool
+	var seek bool
 	var mediaType string
 
 	if tv != nil {
 		isMedia = true
 		transcode = tv.Transcode
 		mediaType = tv.MediaType
+		seek = tv.Seekable
 	}
 
 	w.Header()["transferMode.dlna.org"] = []string{"Interactive"}
@@ -202,11 +204,11 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 
 	switch f := mf.(type) {
 	case osFileType:
-		serveContentCustomType(r, mediaType, transcode, w, f, ff)
+		serveContentCustomType(r, mediaType, transcode, seek, w, f, ff)
 	case []byte:
 		serveContentBytes(r, mediaType, w, f)
 	case io.ReadCloser:
-		serveContentReadClose(r, mediaType, transcode, w, f, ff)
+		serveContentReadClose(r, mediaType, transcode, false, w, f, ff)
 	default:
 		http.NotFound(w, r)
 		return
@@ -229,7 +231,7 @@ func serveContentBytes(r *http.Request, mediaType string, w http.ResponseWriter,
 	http.ServeContent(w, r, name, time.Now(), bReader)
 }
 
-func serveContentReadClose(r *http.Request, mediaType string, transcode bool, w http.ResponseWriter, f io.ReadCloser, ff *exec.Cmd) {
+func serveContentReadClose(r *http.Request, mediaType string, transcode, seek bool, w http.ResponseWriter, f io.ReadCloser, ff *exec.Cmd) {
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
 		contentFeatures, err := utils.BuildContentFeatures(mediaType, "00", transcode)
 		if err != nil {
@@ -256,15 +258,14 @@ func serveContentReadClose(r *http.Request, mediaType string, transcode bool, w 
 	}
 }
 
-func serveContentCustomType(r *http.Request, mediaType string, transcode bool, w http.ResponseWriter, f osFileType, ff *exec.Cmd) {
+func serveContentCustomType(r *http.Request, mediaType string, transcode, seek bool, w http.ResponseWriter, f osFileType, ff *exec.Cmd) {
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-
-		seek := "01"
-		if strings.Contains(mediaType, "video") && transcode {
-			seek = "00"
+		seekflag := "00"
+		if seek {
+			seekflag = "01"
 		}
 
-		contentFeatures, err := utils.BuildContentFeatures(mediaType, seek, transcode)
+		contentFeatures, err := utils.BuildContentFeatures(mediaType, seekflag, transcode)
 		if err != nil {
 			http.NotFound(w, r)
 			return

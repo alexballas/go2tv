@@ -47,6 +47,7 @@ func main() {
 	var absMediaFile string
 	var mediaType string
 	var mediaFile interface{}
+	var isSeek bool
 
 	flag.Parse()
 
@@ -95,8 +96,12 @@ func main() {
 		check(err)
 
 		mediaFile = absMediaFile
-
 		mediaType, err = utils.GetMimeDetailsFromFile(mfile)
+
+		if !*transcodePtr {
+			isSeek = true
+		}
+
 		check(err)
 	case io.ReadCloser, []byte:
 		absMediaFile = *urlArg
@@ -130,6 +135,7 @@ func main() {
 		InitialMediaRenderersStates: make(map[string]bool),
 		RWMutex:                     &sync.RWMutex{},
 		Transcode:                   *transcodePtr,
+		Seekable:                    isSeek,
 	}
 
 	s := httphandlers.NewServer(whereToListen)
