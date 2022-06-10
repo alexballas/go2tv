@@ -519,6 +519,10 @@ func (p *TVPayload) SendtoTV(action string) error {
 // UpdateMRstate updates the mediaRenderersStates map with the state.
 // Returns true or false to verify that the actual update took place.
 func (p *TVPayload) UpdateMRstate(previous, new, uuid string) bool {
+	if previous == "" || new == "" {
+		return false
+	}
+
 	p.Lock()
 	defer p.Unlock()
 	// If the UUID is not available in p.InitialMediaRenderersStates,
