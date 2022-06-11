@@ -293,6 +293,19 @@ func serveContentCustomType(r *http.Request, mediaType string, transcode, seek b
 		return
 	}
 
+	if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "audio") {
+		// Since we're dealing with an io.Reader we can't
+		// allow any HEAD requests that some DMRs trigger.
+		var input interface{} = f.file
+		// The only case where we should expect f.path to be ""
+		// is only during our unit tests where we emulate the files.
+		if f.path != "" {
+			input = f.path
+		}
+		_ = utils.ServeTranscodedAudioStream(w, input, ff)
+		return
+	}
+
 	name := strings.TrimLeft(r.URL.Path, "/")
 
 	if r.Method == http.MethodGet {
