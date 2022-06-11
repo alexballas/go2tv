@@ -135,14 +135,13 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 		// Apparently we should ignore the first message
 		// On some media renderers we receive a STOPPED message
 		// even before we start streaming.
-		seq, err := tv.GetSequence(uuid)
+		processStop, err := tv.GetProcessStop(uuid)
 		if err != nil {
 			http.NotFound(w, req)
 			return
 		}
 
-		if seq == 0 && newstate == "STOPPED" {
-			tv.IncreaseSequence(uuid)
+		if processStop && newstate == "STOPPED" {
 			fmt.Fprintf(w, "OK\n")
 			return
 		}
@@ -154,10 +153,12 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 
 		switch newstate {
 		case "PLAYING":
+			tv.SetProcessStopFalse(uuid)
 			screen.EmitMsg("Playing")
 		case "PAUSED_PLAYBACK":
 			screen.EmitMsg("Paused")
 		case "STOPPED":
+			tv.SetProcessStopTrue(uuid)
 			screen.EmitMsg("Stopped")
 			_ = tv.UnsubscribeSoapCall(uuid)
 			screen.Fini()
