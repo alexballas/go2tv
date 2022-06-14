@@ -125,25 +125,24 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 
 		uuid := strings.TrimPrefix(sidVal[0], "uuid:")
 
-		// Apparently we should ignore the first message
-		// On some media renderers we receive a STOPPED message
-		// even before we start streaming.
-		seq, err := tv.GetSequence(uuid)
-		if err != nil {
-			http.NotFound(w, req)
-			return
-		}
-
-		if seq == 0 {
-			tv.IncreaseSequence(uuid)
-			fmt.Fprintf(w, "OK\n")
-			return
-		}
-
 		reqParsedUnescape := html.UnescapeString(string(reqParsed))
 		previousstate, newstate, err := soapcalls.EventNotifyParser(reqParsedUnescape)
 		if err != nil {
 			http.NotFound(w, req)
+			return
+		}
+
+		// Apparently we should ignore the first message
+		// On some media renderers we receive a STOPPED message
+		// even before we start streaming.
+		processStop, err := tv.GetProcessStop(uuid)
+		if err != nil {
+			http.NotFound(w, req)
+			return
+		}
+
+		if processStop && newstate == "STOPPED" {
+			fmt.Fprintf(w, "OK\n")
 			return
 		}
 
@@ -154,10 +153,12 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 
 		switch newstate {
 		case "PLAYING":
+			tv.SetProcessStopFalse(uuid)
 			screen.EmitMsg("Playing")
 		case "PAUSED_PLAYBACK":
 			screen.EmitMsg("Paused")
 		case "STOPPED":
+			tv.SetProcessStopTrue(uuid)
 			screen.EmitMsg("Stopped")
 			_ = tv.UnsubscribeSoapCall(uuid)
 			screen.Fini()
