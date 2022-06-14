@@ -78,7 +78,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 		return fmt.Errorf("setAVTransportSoapCall parse error: %w", err)
 	}
 
-	xml, err := setAVTransportSoapBuild(p.MediaURL, p.MediaType, p.SubtitlesURL, p.Transcode,p.Seekable)
+	xml, err := setAVTransportSoapBuild(p.MediaURL, p.MediaType, p.SubtitlesURL, p.Transcode, p.Seekable)
 	if err != nil {
 		return fmt.Errorf("setAVTransportSoapCall soap build error: %w", err)
 	}
@@ -546,11 +546,7 @@ func (p *TVPayload) CreateMRstate(uuid string) {
 	p.Lock()
 	defer p.Unlock()
 	p.InitialMediaRenderersStates[uuid] = true
-	p.MediaRenderersStates[uuid] = &States{
-		PreviousState: "",
-		NewState:      "",
-		ProcessStop:   true,
-	}
+	p.MediaRenderersStates[uuid] = &States{}
 }
 
 // DeleteMRstate deletes the state entries for the specific UUID.
