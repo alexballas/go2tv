@@ -564,13 +564,6 @@ func (p *TVPayload) SetProcessStopTrue(uuid string) {
 	p.MediaRenderersStates[uuid].ProcessStop = true
 }
 
-// SetProcessStopFalse set the stop process to false
-func (p *TVPayload) SetProcessStopFalse(uuid string) {
-	p.Lock()
-	defer p.Unlock()
-	p.MediaRenderersStates[uuid].ProcessStop = false
-}
-
 // GetProcessStop returns the processStop value of the specific UUID.
 func (p *TVPayload) GetProcessStop(uuid string) (bool, error) {
 	p.RLock()

@@ -141,7 +141,8 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 			return
 		}
 
-		if processStop && newstate == "STOPPED" {
+		if !processStop && newstate == "STOPPED" {
+			tv.SetProcessStopTrue(uuid)
 			fmt.Fprintf(w, "OK\n")
 			return
 		}
@@ -153,12 +154,11 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 
 		switch newstate {
 		case "PLAYING":
-			tv.SetProcessStopFalse(uuid)
 			screen.EmitMsg("Playing")
+			tv.SetProcessStopTrue(uuid)
 		case "PAUSED_PLAYBACK":
 			screen.EmitMsg("Paused")
 		case "STOPPED":
-			tv.SetProcessStopTrue(uuid)
 			screen.EmitMsg("Stopped")
 			_ = tv.UnsubscribeSoapCall(uuid)
 			screen.Fini()
