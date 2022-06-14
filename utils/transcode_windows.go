@@ -40,7 +40,7 @@ func ServeTranscodedStream(w io.Writer, input interface{}, ff *exec.Cmd) error {
 		"pipe:1",
 	)
 
-	ff = cmd
+	*ff = *cmd
 
 	// Hide the command window when running ffmpeg. (Windows specific)
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000}

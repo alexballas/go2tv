@@ -168,6 +168,10 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 
 // StopServer forcefully closes the HTTP server.
 func (s *HTTPserver) StopServer() {
+	if s.ffmpeg != nil && s.ffmpeg.Process != nil {
+		_ = s.ffmpeg.Process.Kill()
+	}
+
 	s.http.Close()
 }
 
