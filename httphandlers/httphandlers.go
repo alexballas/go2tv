@@ -200,6 +200,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 	if isMedia {
 		w.Header()["transferMode.dlna.org"] = []string{"Streaming"}
 		w.Header()["realTimeInfo.dlna.org"] = []string{"DLNA.ORG_TLAG=*"}
+		w.Header()["content-type"] = []string{mediaType}
 	}
 
 	switch f := mf.(type) {
