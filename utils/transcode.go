@@ -54,9 +54,6 @@ func ServeTranscodedStream(w io.Writer, input interface{}, ff *exec.Cmd) error {
 }
 
 func ServeTranscodedAudioStream(w io.Writer, input interface{}, ff *exec.Cmd) error {
-	// Pipe streaming is not great as explained here
-	// https://video.stackexchange.com/questions/34087/ffmpeg-fails-on-pipe-to-pipe-video-decoding.
-	// That's why if we have the option to pass the file directly to ffmpeg, we should.
 	var in string
 	switch f := input.(type) {
 	case string:
@@ -82,7 +79,7 @@ func ServeTranscodedAudioStream(w io.Writer, input interface{}, ff *exec.Cmd) er
 		"pipe:1",
 	)
 
-	ff = cmd
+	*ff = *cmd
 
 	if in == "pipe:0" {
 		ff.Stdin = input.(io.Reader)
