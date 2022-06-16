@@ -210,18 +210,18 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 
 	switch f := mf.(type) {
 	case osFileType:
-		serveContentCustomType(r, mediaType, transcode, seek, w, f, ff)
+		serveContentCustomType(w, r, mediaType, transcode, seek, f, ff)
 	case []byte:
-		serveContentBytes(r, mediaType, w, f)
+		serveContentBytes(w, r, mediaType, f)
 	case io.ReadCloser:
-		serveContentReadClose(r, mediaType, transcode, false, w, f, ff)
+		serveContentReadClose(w, r, mediaType, transcode, false, f, ff)
 	default:
 		http.NotFound(w, r)
 		return
 	}
 }
 
-func serveContentBytes(r *http.Request, mediaType string, w http.ResponseWriter, f []byte) {
+func serveContentBytes(w http.ResponseWriter, r *http.Request, mediaType string, f []byte) {
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
 		contentFeatures, err := utils.BuildContentFeatures(mediaType, "01", false)
 		if err != nil {
@@ -237,7 +237,7 @@ func serveContentBytes(r *http.Request, mediaType string, w http.ResponseWriter,
 	http.ServeContent(w, r, name, time.Now(), bReader)
 }
 
-func serveContentReadClose(r *http.Request, mediaType string, transcode, seek bool, w http.ResponseWriter, f io.ReadCloser, ff *exec.Cmd) {
+func serveContentReadClose(w http.ResponseWriter, r *http.Request, mediaType string, transcode, seek bool, f io.ReadCloser, ff *exec.Cmd) {
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
 		contentFeatures, err := utils.BuildContentFeatures(mediaType, "00", transcode)
 		if err != nil {
@@ -264,7 +264,7 @@ func serveContentReadClose(r *http.Request, mediaType string, transcode, seek bo
 	}
 }
 
-func serveContentCustomType(r *http.Request, mediaType string, transcode, seek bool, w http.ResponseWriter, f osFileType, ff *exec.Cmd) {
+func serveContentCustomType(w http.ResponseWriter, r *http.Request, mediaType string, transcode, seek bool, f osFileType, ff *exec.Cmd) {
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
 		seekflag := "00"
 		if seek {
