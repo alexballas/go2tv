@@ -311,5 +311,9 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, mediaType st
 		}
 
 		w.Header()["Content-Length"] = []string{strconv.FormatInt(size, 10)}
+
+		if !f.time.IsZero() && !f.time.Equal(time.Unix(0, 0)) {
+			w.Header().Set("Last-Modified", f.time.UTC().Format(http.TimeFormat))
+		}
 	}
 }
