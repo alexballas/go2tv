@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -297,5 +298,18 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, mediaType st
 
 	if r.Method == http.MethodGet {
 		http.ServeContent(w, r, name, f.time, f.file)
+	}
+
+	if r.Method == http.MethodHead {
+		size, err := f.file.Seek(0, io.SeekEnd)
+		if err != nil {
+			http.Error(w, "cant get file size", 500)
+		}
+		_, err = f.file.Seek(0, io.SeekStart)
+		if err != nil {
+			http.Error(w, "cant get file size", 500)
+		}
+
+		w.Header()["Content-Length"] = []string{strconv.FormatInt(size, 10)}
 	}
 }
