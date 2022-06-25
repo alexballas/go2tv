@@ -53,7 +53,7 @@ Usage of go2tv:
 
 Allowed media files in the GUI
 -----
-- mp4, avi, mkv, mpeg, mov, webm, m4v, mpv, mp3, flac, wav
+- mp4, avi, mkv, mpeg, mov, webm, m4v, mpv, mp3, flac, wav, jpg, jpeg, png
 
 This is a GUI only limitation.
 
