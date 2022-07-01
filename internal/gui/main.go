@@ -243,6 +243,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 func refreshDevList(s *NewScreen, data *[]devType) {
 	refreshDevices := time.NewTicker(5 * time.Second)
+
 	w := s.Current
 
 	_, err := getDevices(2)
