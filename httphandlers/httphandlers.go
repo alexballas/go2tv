@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -125,25 +126,25 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 
 		uuid := strings.TrimPrefix(sidVal[0], "uuid:")
 
-		// Apparently we should ignore the first message
-		// On some media renderers we receive a STOPPED message
-		// even before we start streaming.
-		seq, err := tv.GetSequence(uuid)
-		if err != nil {
-			http.NotFound(w, req)
-			return
-		}
-
-		if seq == 0 {
-			tv.IncreaseSequence(uuid)
-			fmt.Fprintf(w, "OK\n")
-			return
-		}
-
 		reqParsedUnescape := html.UnescapeString(string(reqParsed))
 		previousstate, newstate, err := soapcalls.EventNotifyParser(reqParsedUnescape)
 		if err != nil {
 			http.NotFound(w, req)
+			return
+		}
+
+		// Apparently we should ignore the first message
+		// On some media renderers we receive a STOPPED message
+		// even before we start streaming.
+		processStop, err := tv.GetProcessStop(uuid)
+		if err != nil {
+			http.NotFound(w, req)
+			return
+		}
+
+		if !processStop && newstate == "STOPPED" {
+			tv.SetProcessStopTrue(uuid)
+			fmt.Fprintf(w, "OK\n")
 			return
 		}
 
@@ -155,6 +156,7 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 		switch newstate {
 		case "PLAYING":
 			screen.EmitMsg("Playing")
+			tv.SetProcessStopTrue(uuid)
 		case "PAUSED_PLAYBACK":
 			screen.EmitMsg("Paused")
 		case "STOPPED":
@@ -167,6 +169,10 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 
 // StopServer forcefully closes the HTTP server.
 func (s *HTTPserver) StopServer() {
+	if s.ffmpeg != nil && s.ffmpeg.Process != nil {
+		_ = s.ffmpeg.Process.Kill()
+	}
+
 	s.http.Close()
 }
 
@@ -185,12 +191,14 @@ func NewServer(a string) *HTTPserver {
 func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, mf interface{}, ff *exec.Cmd) {
 	var isMedia bool
 	var transcode bool
+	var seek bool
 	var mediaType string
 
 	if tv != nil {
 		isMedia = true
 		transcode = tv.Transcode
 		mediaType = tv.MediaType
+		seek = tv.Seekable
 	}
 
 	w.Header()["transferMode.dlna.org"] = []string{"Interactive"}
@@ -198,22 +206,23 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 	if isMedia {
 		w.Header()["transferMode.dlna.org"] = []string{"Streaming"}
 		w.Header()["realTimeInfo.dlna.org"] = []string{"DLNA.ORG_TLAG=*"}
+		w.Header()["Content-Type"] = []string{mediaType}
 	}
 
 	switch f := mf.(type) {
 	case osFileType:
-		serveContentCustomType(r, mediaType, transcode, w, f, ff)
+		serveContentCustomType(w, r, mediaType, transcode, seek, f, ff)
 	case []byte:
-		serveContentBytes(r, mediaType, w, f)
+		serveContentBytes(w, r, mediaType, f)
 	case io.ReadCloser:
-		serveContentReadClose(r, mediaType, transcode, w, f, ff)
+		serveContentReadClose(w, r, mediaType, transcode, false, f, ff)
 	default:
 		http.NotFound(w, r)
 		return
 	}
 }
 
-func serveContentBytes(r *http.Request, mediaType string, w http.ResponseWriter, f []byte) {
+func serveContentBytes(w http.ResponseWriter, r *http.Request, mediaType string, f []byte) {
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
 		contentFeatures, err := utils.BuildContentFeatures(mediaType, "01", false)
 		if err != nil {
@@ -229,7 +238,7 @@ func serveContentBytes(r *http.Request, mediaType string, w http.ResponseWriter,
 	http.ServeContent(w, r, name, time.Now(), bReader)
 }
 
-func serveContentReadClose(r *http.Request, mediaType string, transcode bool, w http.ResponseWriter, f io.ReadCloser, ff *exec.Cmd) {
+func serveContentReadClose(w http.ResponseWriter, r *http.Request, mediaType string, transcode, seek bool, f io.ReadCloser, ff *exec.Cmd) {
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
 		contentFeatures, err := utils.BuildContentFeatures(mediaType, "00", transcode)
 		if err != nil {
@@ -256,15 +265,14 @@ func serveContentReadClose(r *http.Request, mediaType string, transcode bool, w 
 	}
 }
 
-func serveContentCustomType(r *http.Request, mediaType string, transcode bool, w http.ResponseWriter, f osFileType, ff *exec.Cmd) {
+func serveContentCustomType(w http.ResponseWriter, r *http.Request, mediaType string, transcode, seek bool, f osFileType, ff *exec.Cmd) {
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-
-		seek := "01"
-		if strings.Contains(mediaType, "video") && transcode {
-			seek = "00"
+		seekflag := "00"
+		if seek {
+			seekflag = "01"
 		}
 
-		contentFeatures, err := utils.BuildContentFeatures(mediaType, seek, transcode)
+		contentFeatures, err := utils.BuildContentFeatures(mediaType, seekflag, transcode)
 		if err != nil {
 			http.NotFound(w, r)
 			return
@@ -290,5 +298,22 @@ func serveContentCustomType(r *http.Request, mediaType string, transcode bool, w
 
 	if r.Method == http.MethodGet {
 		http.ServeContent(w, r, name, f.time, f.file)
+	}
+
+	if r.Method == http.MethodHead {
+		size, err := f.file.Seek(0, io.SeekEnd)
+		if err != nil {
+			http.Error(w, "cant get file size", 500)
+		}
+		_, err = f.file.Seek(0, io.SeekStart)
+		if err != nil {
+			http.Error(w, "cant get file size", 500)
+		}
+
+		w.Header()["Content-Length"] = []string{strconv.FormatInt(size, 10)}
+
+		if !f.time.IsZero() && !f.time.Equal(time.Unix(0, 0)) {
+			w.Header().Set("Last-Modified", f.time.UTC().Format(http.TimeFormat))
+		}
 	}
 }

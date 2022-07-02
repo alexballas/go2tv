@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/alexballas/go2tv/utils"
 	"github.com/pkg/errors"
 )
 
@@ -103,15 +104,15 @@ type didLLite struct {
 }
 
 type didLLiteItem struct {
-	SecCaptionInfo   secCaptionInfo   `xml:"sec:CaptionInfo"`
-	SecCaptionInfoEx secCaptionInfoEx `xml:"sec:CaptionInfoEx"`
-	XMLName          xml.Name         `xml:"item"`
-	Restricted       string           `xml:"restricted,attr"`
-	UPNPClass        string           `xml:"upnp:class"`
-	DCtitle          string           `xml:"dc:title"`
-	ID               string           `xml:"id,attr"`
-	ParentID         string           `xml:"parentID,attr"`
-	ResNode          []resNode        `xml:"res"`
+	SecCaptionInfo   *secCaptionInfo   `xml:"sec:CaptionInfo,omitempty"`
+	SecCaptionInfoEx *secCaptionInfoEx `xml:"sec:CaptionInfoEx,omitempty"`
+	XMLName          xml.Name          `xml:"item"`
+	DCtitle          string            `xml:"dc:title"`
+	UPNPClass        string            `xml:"upnp:class"`
+	ID               string            `xml:"id,attr"`
+	ParentID         string            `xml:"parentID,attr"`
+	Restricted       string            `xml:"restricted,attr"`
+	ResNode          []resNode         `xml:"res"`
 }
 
 type resNode struct {
@@ -210,8 +211,17 @@ type setVolumeAction struct {
 	DesiredVolume    string
 }
 
-func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string) ([]byte, error) {
+func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string, transcode, seek bool) ([]byte, error) {
 	mediaTypeSlice := strings.Split(mediaType, "/")
+	seekflag := "00"
+	if seek {
+		seekflag = "01"
+	}
+
+	contentFeatures, err := utils.BuildContentFeatures(mediaType, seekflag, transcode)
+	if err != nil {
+		return nil, fmt.Errorf("setAVTransportSoapBuild failed to build contentFeatures: %w", err)
+	}
 
 	var class string
 	switch mediaTypeSlice[0] {
@@ -235,23 +245,36 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string) ([]byte, e
 	}
 	mediaTitle = re.ReplaceAllString(mediaTitle, "")
 
-	l := didLLite{
+	var didl didLLiteItem
+
+	didl = didLLiteItem{
 		XMLName:    xml.Name{},
-		SchemaDIDL: "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
-		DC:         "http://purl.org/dc/elements/1.1/",
-		Sec:        "http://www.sec.co.kr/",
-		SchemaUPNP: "urn:schemas-upnp-org:metadata-1-0/upnp/",
-		DIDLLiteItem: didLLiteItem{
+		ID:         "1",
+		ParentID:   "0",
+		Restricted: "1",
+		UPNPClass:  class,
+		DCtitle:    mediaTitle,
+		ResNode: []resNode{
+			{
+				XMLName:      xml.Name{},
+				ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", mediaType, contentFeatures),
+				Value:        mediaURL,
+			},
+		},
+	}
+
+	if strings.Contains(subtitleURL, "srt") {
+		didl = didLLiteItem{
 			XMLName:    xml.Name{},
-			ID:         "0",
-			ParentID:   "-1",
-			Restricted: "false",
-			UPNPClass:  class,
+			ID:         "1",
+			ParentID:   "0",
+			Restricted: "1",
 			DCtitle:    mediaTitle,
+			UPNPClass:  class,
 			ResNode: []resNode{
 				{
 					XMLName:      xml.Name{},
-					ProtocolInfo: fmt.Sprintf("http-get:*:%s:*", mediaType),
+					ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", mediaType, contentFeatures),
 					Value:        mediaURL,
 				}, {
 					XMLName:      xml.Name{},
@@ -259,18 +282,28 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string) ([]byte, e
 					Value:        subtitleURL,
 				},
 			},
-			SecCaptionInfo: secCaptionInfo{
+			SecCaptionInfo: &secCaptionInfo{
 				XMLName: xml.Name{},
 				Type:    "srt",
 				Value:   subtitleURL,
 			},
-			SecCaptionInfoEx: secCaptionInfoEx{
+			SecCaptionInfoEx: &secCaptionInfoEx{
 				XMLName: xml.Name{},
 				Type:    "srt",
 				Value:   subtitleURL,
 			},
-		},
+		}
 	}
+
+	l := didLLite{
+		XMLName:      xml.Name{},
+		SchemaDIDL:   "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
+		DC:           "http://purl.org/dc/elements/1.1/",
+		Sec:          "http://www.sec.co.kr/",
+		SchemaUPNP:   "urn:schemas-upnp-org:metadata-1-0/upnp/",
+		DIDLLiteItem: didl,
+	}
+
 	a, err := xml.Marshal(l)
 	if err != nil {
 		return nil, fmt.Errorf("setAVTransportSoapBuild #1 Marshal error: %w", err)
@@ -294,7 +327,7 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string) ([]byte, e
 			},
 		},
 	}
-	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
+	xmlStart := []byte(`<?xml version="1.0" encoding="utf-8"?>`)
 	b, err := xml.Marshal(d)
 	if err != nil {
 		return nil, fmt.Errorf("setAVTransportSoapBuild #2 Marshal error: %w", err)
@@ -322,7 +355,7 @@ func playSoapBuild() ([]byte, error) {
 			},
 		},
 	}
-	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
+	xmlStart := []byte(`<?xml version="1.0" encoding="utf-8"?>`)
 	b, err := xml.Marshal(d)
 	if err != nil {
 		return nil, fmt.Errorf("playSoapBuild Marshal error: %w", err)
@@ -346,7 +379,7 @@ func stopSoapBuild() ([]byte, error) {
 			},
 		},
 	}
-	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
+	xmlStart := []byte(`<?xml version="1.0" encoding="utf-8"?>`)
 	b, err := xml.Marshal(d)
 	if err != nil {
 		return nil, fmt.Errorf("stopSoapBuild Marshal error: %w", err)
@@ -370,7 +403,7 @@ func pauseSoapBuild() ([]byte, error) {
 			},
 		},
 	}
-	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
+	xmlStart := []byte(`<?xml version="1.0" encoding="utf-8"?>`)
 	b, err := xml.Marshal(d)
 	if err != nil {
 		return nil, fmt.Errorf("pauseSoapBuild Marshal error: %w", err)
@@ -399,7 +432,7 @@ func setMuteSoapBuild(m string) ([]byte, error) {
 			},
 		},
 	}
-	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
+	xmlStart := []byte(`<?xml version="1.0" encoding="utf-8"?>`)
 	b, err := xml.Marshal(d)
 	if err != nil {
 		return nil, fmt.Errorf("setMuteSoapBuild Marshal error: %w", err)
@@ -423,7 +456,7 @@ func getMuteSoapBuild() ([]byte, error) {
 			},
 		},
 	}
-	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
+	xmlStart := []byte(`<?xml version="1.0" encoding="utf-8"?>`)
 	b, err := xml.Marshal(d)
 	if err != nil {
 		return nil, fmt.Errorf("getMuteSoapBuild Marshal error: %w", err)
@@ -447,7 +480,7 @@ func getVolumeSoapBuild() ([]byte, error) {
 			},
 		},
 	}
-	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
+	xmlStart := []byte(`<?xml version="1.0" encoding="utf-8"?>`)
 	b, err := xml.Marshal(d)
 	if err != nil {
 		return nil, fmt.Errorf("getVolumeSoapBuild Marshal error: %w", err)
@@ -472,7 +505,7 @@ func setVolumeSoapBuild(v string) ([]byte, error) {
 			},
 		},
 	}
-	xmlStart := []byte("<?xml version='1.0' encoding='utf-8'?>")
+	xmlStart := []byte(`<?xml version="1.0" encoding="utf-8"?>`)
 	b, err := xml.Marshal(d)
 	if err != nil {
 		return nil, fmt.Errorf("setVolumeSoapBuild Marshal error: %w", err)

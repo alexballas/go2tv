@@ -24,25 +24,25 @@ import (
 type NewScreen struct {
 	mu                  sync.RWMutex
 	Current             fyne.Window
-	tvdata              *soapcalls.TVPayload
+	ExternalMediaURL    *widget.Check
 	Stop                *widget.Button
 	MuteUnmute          *widget.Button
 	CheckVersion        *widget.Button
+	tvdata              *soapcalls.TVPayload
 	CustomSubsCheck     *widget.Check
-	ExternalMediaURL    *widget.Check
 	MediaText           *widget.Entry
 	SubsText            *widget.Entry
 	DeviceList          *widget.List
 	httpserver          *httphandlers.HTTPserver
 	PlayPause           *widget.Button
-	mediafile           string
-	subsfile            string
 	selectedDevice      devType
 	State               string
 	controlURL          string
 	eventlURL           string
 	renderingControlURL string
 	currentmfolder      string
+	mediafile           string
+	subsfile            string
 	version             string
 	mediaFormats        []string
 	NextMedia           bool
@@ -65,8 +65,13 @@ func Start(s *NewScreen) {
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Go2TV", container.NewPadded(mainWindow(s))),
+		container.NewTabItem("Settings", container.NewPadded(settingsWindow(s))),
 		container.NewTabItem("About", aboutWindow(s)),
 	)
+
+	tabs.OnSelected = func(t *container.TabItem) {
+		t.Content.Refresh()
+	}
 
 	w.SetContent(tabs)
 	w.Resize(fyne.NewSize(w.Canvas().Size().Width, w.Canvas().Size().Height*1.3))
@@ -109,12 +114,15 @@ func (p *NewScreen) Fini() {
 
 // InitFyneNewScreen .
 func InitFyneNewScreen(v string) *NewScreen {
-	go2tv := app.New()
+	go2tv := app.NewWithID("com.alexballas.go2tv")
 	w := go2tv.NewWindow("Go2TV")
 	currentdir, err := os.Getwd()
 	if err != nil {
 		currentdir = ""
 	}
+
+	theme := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "Default")
+	fyne.CurrentApp().Settings().SetTheme(go2tvTheme{theme})
 
 	return &NewScreen{
 		Current:        w,

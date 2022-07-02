@@ -19,7 +19,7 @@ import (
 type States struct {
 	PreviousState string
 	NewState      string
-	Sequence      int
+	ProcessStop   bool
 }
 
 // TVPayload this is the heart of Go2TV. We pass that type to the
@@ -38,6 +38,7 @@ type TVPayload struct {
 	MediaType           string
 	SubtitlesURL        string
 	Transcode           bool
+	Seekable            bool
 }
 
 type getMuteRespBody struct {
@@ -77,7 +78,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 		return fmt.Errorf("setAVTransportSoapCall parse error: %w", err)
 	}
 
-	xml, err := setAVTransportSoapBuild(p.MediaURL, p.MediaType, p.SubtitlesURL)
+	xml, err := setAVTransportSoapBuild(p.MediaURL, p.MediaType, p.SubtitlesURL, p.Transcode, p.Seekable)
 	if err != nil {
 		return fmt.Errorf("setAVTransportSoapCall soap build error: %w", err)
 	}
@@ -519,6 +520,10 @@ func (p *TVPayload) SendtoTV(action string) error {
 // UpdateMRstate updates the mediaRenderersStates map with the state.
 // Returns true or false to verify that the actual update took place.
 func (p *TVPayload) UpdateMRstate(previous, new, uuid string) bool {
+	if previous == "" || new == "" {
+		return false
+	}
+
 	p.Lock()
 	defer p.Unlock()
 	// If the UUID is not available in p.InitialMediaRenderersStates,
@@ -530,7 +535,6 @@ func (p *TVPayload) UpdateMRstate(previous, new, uuid string) bool {
 	if p.InitialMediaRenderersStates[uuid] {
 		p.MediaRenderersStates[uuid].PreviousState = previous
 		p.MediaRenderersStates[uuid].NewState = new
-		p.MediaRenderersStates[uuid].Sequence++
 		return true
 	}
 
@@ -542,11 +546,7 @@ func (p *TVPayload) CreateMRstate(uuid string) {
 	p.Lock()
 	defer p.Unlock()
 	p.InitialMediaRenderersStates[uuid] = true
-	p.MediaRenderersStates[uuid] = &States{
-		PreviousState: "",
-		NewState:      "",
-		Sequence:      0,
-	}
+	p.MediaRenderersStates[uuid] = &States{}
 }
 
 // DeleteMRstate deletes the state entries for the specific UUID.
@@ -557,20 +557,20 @@ func (p *TVPayload) DeleteMRstate(uuid string) {
 	delete(p.MediaRenderersStates, uuid)
 }
 
-// IncreaseSequence increases the sequence value of the specific UUID by 1.
-func (p *TVPayload) IncreaseSequence(uuid string) {
+// SetProcessStopTrue set the stop process to true
+func (p *TVPayload) SetProcessStopTrue(uuid string) {
 	p.Lock()
 	defer p.Unlock()
-	p.MediaRenderersStates[uuid].Sequence++
+	p.MediaRenderersStates[uuid].ProcessStop = true
 }
 
-// GetSequence returns the sequence value of the specific UUID.
-func (p *TVPayload) GetSequence(uuid string) (int, error) {
+// GetProcessStop returns the processStop value of the specific UUID.
+func (p *TVPayload) GetProcessStop(uuid string) (bool, error) {
 	p.RLock()
 	defer p.RUnlock()
 	if p.InitialMediaRenderersStates[uuid] {
-		return p.MediaRenderersStates[uuid].Sequence, nil
+		return p.MediaRenderersStates[uuid].ProcessStop, nil
 	}
 
-	return -1, errors.New("zombie callbacks, we should ignore those")
+	return true, errors.New("zombie callbacks, we should ignore those")
 }

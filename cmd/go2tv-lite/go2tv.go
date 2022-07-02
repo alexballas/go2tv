@@ -18,7 +18,6 @@ import (
 
 	"github.com/alexballas/go2tv/devices"
 	"github.com/alexballas/go2tv/httphandlers"
-	"github.com/alexballas/go2tv/internal/gui"
 	"github.com/alexballas/go2tv/internal/interactive"
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/alexballas/go2tv/utils"
@@ -28,6 +27,7 @@ import (
 var (
 	//go:embed version.txt
 	version      string
+	errNoflag    = errors.New("no flag used")
 	mediaArg     = flag.String("v", "", "Local path to the video/audio file. (Triggers the CLI mode)")
 	urlArg       = flag.String("u", "", "HTTP URL to the media file. URL streaming does not support seek operations. (Triggers the CLI mode)")
 	subsArg      = flag.String("s", "", "Local path to the subtitles file.")
@@ -40,7 +40,6 @@ var (
 type flagResults struct {
 	dmrURL string
 	exit   bool
-	gui    bool
 }
 
 func main() {
@@ -80,11 +79,6 @@ func main() {
 			check(err)
 			mediaFile = readerToBytes
 		}
-	}
-
-	if flagRes.gui {
-		scr := gui.InitFyneNewScreen(version)
-		gui.Start(scr)
 	}
 
 	switch t := mediaFile.(type) {
@@ -154,6 +148,11 @@ func main() {
 }
 
 func check(err error) {
+	if errors.Is(err, errNoflag) {
+		flag.Usage()
+		os.Exit(0)
+	}
+
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 		os.Exit(1)
@@ -209,9 +208,8 @@ func processflags() (*flagResults, error) {
 
 	res := &flagResults{}
 
-	if checkGUI() {
-		res.gui = true
-		return res, nil
+	if *mediaArg == "" && !*listPtr && *urlArg == "" {
+		return nil, fmt.Errorf("checkflags error: %w", errNoflag)
 	}
 
 	if err := checkTCflag(res); err != nil {
@@ -322,8 +320,4 @@ func checkVerflag() {
 		fmt.Printf("Go2TV Version: %s\n", version)
 		os.Exit(0)
 	}
-}
-
-func checkGUI() bool {
-	return *mediaArg == "" && !*listPtr && *urlArg == ""
 }

@@ -63,6 +63,7 @@ func Start(s *NewScreen) {
 		container.NewTabItem("Go2TV", container.NewVScroll(container.NewPadded(mainWindow(s)))),
 		container.NewTabItem("About", container.NewVScroll(aboutWindow(s))),
 	)
+
 	w.SetContent(tabs)
 	w.CenterOnScreen()
 	w.ShowAndRun()
@@ -99,7 +100,7 @@ func (p *NewScreen) Fini() {
 
 // InitFyneNewScreen .
 func InitFyneNewScreen(v string) *NewScreen {
-	go2tv := app.New()
+	go2tv := app.NewWithID("com.alexballas.go2tv")
 	go2tv.Settings().SetTheme(theme.DarkTheme())
 
 	w := go2tv.NewWindow("Go2TV")

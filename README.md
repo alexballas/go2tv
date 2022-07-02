@@ -24,8 +24,8 @@ Cast your media files to UPnP/DLNA Media Renderers and Smart TVs.
 ---
 GUI mode
 -----
-![](https://i.imgur.com/0zcre1d.png)
-![](https://i.imgur.com/WLcqEKt.png)
+![](https://i.imgur.com/nrfIc81.png)
+![](https://i.imgur.com/ksCaCFl.png)
 
 CLI mode
 -----
@@ -53,7 +53,7 @@ Usage of go2tv:
 
 Allowed media files in the GUI
 -----
-- mp4, avi, mkv, mpeg, mov, webm, m4v, mpv, mp3, flac, wav
+- mp4, avi, mkv, mpeg, mov, webm, m4v, mpv, mp3, flac, wav, jpg, jpeg, png
 
 This is a GUI only limitation.
 

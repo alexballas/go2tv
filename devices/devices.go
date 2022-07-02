@@ -9,6 +9,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+var ErrNoDeviceAvailable = errors.New("loadSSDPservices: No available Media Renderers")
+
 // LoadSSDPservices returns a map with all the devices that support the
 // AVTransport service.
 func LoadSSDPservices(delay int) (map[string]string, error) {
@@ -37,7 +39,7 @@ func LoadSSDPservices(delay int) (map[string]string, error) {
 		return deviceList, nil
 	}
 
-	return nil, errors.New("loadSSDPservices: No available Media Renderers")
+	return nil, ErrNoDeviceAvailable
 }
 
 // DevicePicker will pick the nth device from the devices input map.

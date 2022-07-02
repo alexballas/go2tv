@@ -42,7 +42,7 @@ func ServeTranscodedStream(w io.Writer, input interface{}, ff *exec.Cmd) error {
 		"pipe:1",
 	)
 
-	ff = cmd
+	*ff = *cmd
 
 	if in == "pipe:0" {
 		ff.Stdin = input.(io.Reader)
