@@ -33,7 +33,7 @@ CLI mode
 
 Parameters
 -----
-```
+``` console
 $ go2tv -h
 Usage of go2tv:
   -l    List all available UPnP/DLNA Media Renderer models and URLs.
@@ -62,11 +62,19 @@ Build requirements and dependencies
 - Go v1.16+
 - ffmpeg (optional)
 
+**Build using Docker**
+
+Since the repo provides a [Dockerfile](./Dockerfile), you can build a Go2TV Docker image and run it with just Docker installed (no build requirements and deps above needed). Also, no Git repo cloning is needed (Docker will do it behind the scenes). Just issue:
+``` console
+$ docker build --force-rm [--pull] -t go2tv github.com/alexballas/go2tv#main
+```
+Notice the branch name after the `#`, as the above will build `main`. You can also build `devel` if you want to build the latest code. Usage under Docker is outside this document's scope, check Docker docs for more information, specially volume mounts and networking. [x11docker](https://github.com/mviereck/x11docker) might come handy to run GUI mode, although it's not tested, since main Docker usage is CLI.
+
 Quick Start
 -----
 Download the app here https://github.com/alexballas/Go2TV/releases/latest. A single executable. No installation or external dependencies.
 
-**Trasncoding**
+**Transcoding**
 
 Go2TV supports live video transcoding, if ffmpeg is installed. When transcoding, SEEK operations are not available. Transcoding offers the maximum compatibility with the various file formats and devices. Only works with video files.
 
