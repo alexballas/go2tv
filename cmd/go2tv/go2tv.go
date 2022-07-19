@@ -163,7 +163,7 @@ func check(err error) {
 
 func listFlagFunction() error {
 	flagsEnabled := 0
-	flag.Visit(func(f *flag.Flag) {
+	flag.Visit(func(*flag.Flag) {
 		flagsEnabled++
 	})
 
@@ -215,7 +215,7 @@ func processflags() (*flagResults, error) {
 		return res, nil
 	}
 
-	if err := checkTCflag(res); err != nil {
+	if err := checkTCflag(); err != nil {
 		return nil, fmt.Errorf("checkflags error: %w", err)
 	}
 
@@ -271,7 +271,7 @@ func checkSflag() error {
 	return nil
 }
 
-func checkTCflag(res *flagResults) error {
+func checkTCflag() error {
 	if *transcodePtr {
 		_, err := exec.LookPath("ffmpeg")
 		if err != nil {
