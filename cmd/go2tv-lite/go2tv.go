@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -18,10 +20,8 @@ import (
 
 	"github.com/alexballas/go2tv/devices"
 	"github.com/alexballas/go2tv/httphandlers"
-	"github.com/alexballas/go2tv/internal/interactive"
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/alexballas/go2tv/utils"
-	"github.com/pkg/errors"
 )
 
 var (
@@ -37,6 +37,8 @@ var (
 	versionPtr   = flag.Bool("version", false, "Print version.")
 )
 
+type dummyScreen struct{}
+
 type flagResults struct {
 	dmrURL string
 	exit   bool
@@ -47,6 +49,24 @@ func main() {
 	var mediaType string
 	var mediaFile interface{}
 	var isSeek bool
+	var tvdata *soapcalls.TVPayload
+	var s *httphandlers.HTTPserver
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+
+	go func() {
+		for range c {
+			if tvdata != nil {
+				_ = tvdata.SendtoTV("Stop")
+			}
+			if s != nil {
+				s.StopServer()
+			}
+			fmt.Println("force exiting..")
+			os.Exit(0)
+		}
+	}()
 
 	flag.Parse()
 
@@ -110,13 +130,12 @@ func main() {
 	whereToListen, err := utils.URLtoListenIPandPort(flagRes.dmrURL)
 	check(err)
 
-	scr, err := interactive.InitTcellNewScreen()
-	check(err)
+	scr := &dummyScreen{}
 
 	callbackPath, err := utils.RandomString()
 	check(err)
 
-	tvdata := &soapcalls.TVPayload{
+	tvdata = &soapcalls.TVPayload{
 		ControlURL:                  upnpServicesURLs.AvtransportControlURL,
 		EventURL:                    upnpServicesURLs.AvtransportEventSubURL,
 		RenderingControlURL:         upnpServicesURLs.RenderingControlURL,
@@ -132,7 +151,7 @@ func main() {
 		Seekable:                    isSeek,
 	}
 
-	s := httphandlers.NewServer(whereToListen)
+	s = httphandlers.NewServer(whereToListen)
 	serverStarted := make(chan struct{})
 
 	// We pass the tvdata here as we need the callback handlers to be able to react
@@ -144,7 +163,10 @@ func main() {
 	// Wait for HTTP server to properly initialize
 	<-serverStarted
 
-	scr.InterInit(tvdata)
+	err = tvdata.SendtoTV("Play1")
+	check(err)
+
+	select {}
 }
 
 func check(err error) {
@@ -320,4 +342,13 @@ func checkVerflag() {
 		fmt.Printf("Go2TV Version: %s\n", version)
 		os.Exit(0)
 	}
+}
+
+func (s *dummyScreen) EmitMsg(msg string) {
+	fmt.Println(msg)
+}
+
+func (s *dummyScreen) Fini() {
+	fmt.Println("exiting..")
+	os.Exit(0)
 }

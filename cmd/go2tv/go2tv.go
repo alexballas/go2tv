@@ -16,13 +16,14 @@ import (
 	"sync"
 	"time"
 
+	"errors"
+
 	"github.com/alexballas/go2tv/devices"
 	"github.com/alexballas/go2tv/httphandlers"
 	"github.com/alexballas/go2tv/internal/gui"
 	"github.com/alexballas/go2tv/internal/interactive"
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/alexballas/go2tv/utils"
-	"github.com/pkg/errors"
 )
 
 var (
