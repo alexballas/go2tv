@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"runtime"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
 )
 
 type States struct {
@@ -22,23 +24,27 @@ type States struct {
 	ProcessStop   bool
 }
 
+var log zerolog.Logger
+
 // TVPayload this is the heart of Go2TV. We pass that type to the
 // webserver. We need to explicitly initialize it.
 type TVPayload struct {
 	MediaFile                   interface{}
+	Logging                     io.Writer
 	CurrentTimers               map[string]*time.Timer
-	MediaRenderersStates        map[string]*States
 	InitialMediaRenderersStates map[string]bool
 	*sync.RWMutex
-	ControlURL          string
-	EventURL            string
-	CallbackURL         string
-	RenderingControlURL string
-	MediaURL            string
-	MediaType           string
-	SubtitlesURL        string
-	Transcode           bool
-	Seekable            bool
+	MediaRenderersStates map[string]*States
+	RenderingControlURL  string
+	EventURL             string
+	ControlURL           string
+	MediaURL             string
+	MediaType            string
+	SubtitlesURL         string
+	CallbackURL          string
+	Transcode            bool
+	Seekable             bool
+	InitLogOnce          sync.Once
 }
 
 type getMuteRespBody struct {
@@ -88,6 +94,10 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 	retryClient.Logger = nil
 	client := retryClient.StandardClient()
 
+	p.Log().Debug().
+		Strs("Method Info", []string{"setAVTransportSoapCall", "Request"}).
+		Msg(string(xml))
+
 	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xml))
 	if err != nil {
 		return fmt.Errorf("setAVTransportSoapCall POST error: %w", err)
@@ -100,10 +110,20 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 		"Connection":   []string{"close"},
 	}
 
-	_, err = client.Do(req)
+	res, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("setAVTransportSoapCall Do POST error: %w", err)
 	}
+	defer res.Body.Close()
+
+	resBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		return fmt.Errorf("setAVTransportSoapCall Failed to read response: %w", err)
+	}
+
+	p.Log().Debug().
+		Strs("Method Info", []string{"setAVTransportSoapCall", "Response"}).
+		Msg(string(resBytes))
 
 	return nil
 }
@@ -573,4 +593,13 @@ func (p *TVPayload) GetProcessStop(uuid string) (bool, error) {
 	}
 
 	return true, errors.New("zombie callbacks, we should ignore those")
+}
+
+func (p *TVPayload) Log() *zerolog.Logger {
+	if p.Logging != nil {
+		p.InitLogOnce.Do(func() {
+			log = zerolog.New(p.Logging)
+		})
+	}
+	return &log
 }

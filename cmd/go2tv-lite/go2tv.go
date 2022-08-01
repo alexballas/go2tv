@@ -149,6 +149,7 @@ func main() {
 		RWMutex:                     &sync.RWMutex{},
 		Transcode:                   *transcodePtr,
 		Seekable:                    isSeek,
+		Logging:                     os.Stdout,
 	}
 
 	s = httphandlers.NewServer(whereToListen)

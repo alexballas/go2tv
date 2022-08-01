@@ -15,6 +15,7 @@ require (
 	github.com/koron/go-ssdp v0.0.3
 	github.com/mattn/go-runewidth v0.0.13
 	github.com/pkg/errors v0.9.1
+	github.com/rs/zerolog v1.27.0
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	github.com/srwiley/oksvg v0.0.0-20220128195007-1f435e4c2b44 // indirect
 	github.com/srwiley/rasterx v0.0.0-20220615024203-67b7089efd25 // indirect
