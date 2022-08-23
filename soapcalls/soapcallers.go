@@ -820,6 +820,9 @@ func (p *TVPayload) Log() *zerolog.Logger {
 		p.InitLogOnce.Do(func() {
 			log = zerolog.New(p.Logging).With().Timestamp().Logger()
 		})
+	} else {
+		return &zerolog.Logger{}
 	}
+
 	return &log
 }

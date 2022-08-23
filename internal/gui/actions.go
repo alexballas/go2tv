@@ -291,7 +291,7 @@ func playAction(screen *NewScreen) {
 		RWMutex:                     &sync.RWMutex{},
 		Transcode:                   screen.Transcode,
 		Seekable:                    isSeek,
-		Logging:                     os.Stdout,
+		Logging:                     screen.Debug,
 	}
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)

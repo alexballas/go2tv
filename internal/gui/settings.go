@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -50,9 +51,29 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 		dropdown.PlaceHolder = "Default"
 	}
 
-	dropdown.Refresh()
+	debugText := canvas.NewText("Debug", nil)
+	debug := widget.NewButton("Open Debug Window", func() {
+		s.Debug.enabled = true
+		if s.Debug.bb.Len() > 0 {
+			s.Debug.entry.ParseMarkdown("")
+		}
 
-	settings := container.NewVBox(themeText, dropdown)
+		if s.Debug.window != nil {
+			s.Debug.window.Close()
+			s.Debug.window = fyne.CurrentApp().NewWindow("Debug Window")
+		}
+		s.Debug.entry.Wrapping = fyne.TextWrap(3)
+		s.Debug.window.SetContent(container.NewScroll((s.Debug.entry)))
+		s.Debug.window.Resize(fyne.NewSize(800, 600))
+		s.Debug.window.CenterOnScreen()
+		s.Debug.window.SetOnClosed(func() {
+			s.Debug.enabled = false
+		})
+		s.Debug.window.Show()
+	})
+
+	dropdown.Refresh()
+	settings := container.New(layout.NewFormLayout(), themeText, dropdown, debugText, debug)
 	return settings
 }
 

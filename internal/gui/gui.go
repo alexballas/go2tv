@@ -4,6 +4,7 @@
 package gui
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,31 +24,40 @@ import (
 // NewScreen .
 type NewScreen struct {
 	mu                  sync.RWMutex
+	Debug               *debugWriter
 	Current             fyne.Window
-	ExternalMediaURL    *widget.Check
-	Stop                *widget.Button
-	MuteUnmute          *widget.Button
-	CheckVersion        *widget.Button
+	PlayPause           *widget.Button
 	tvdata              *soapcalls.TVPayload
+	tabs                *container.AppTabs
+	CheckVersion        *widget.Button
+	SubsText            *widget.Entry
 	CustomSubsCheck     *widget.Check
 	MediaText           *widget.Entry
-	SubsText            *widget.Entry
+	Stop                *widget.Button
 	DeviceList          *widget.List
 	httpserver          *httphandlers.HTTPserver
-	PlayPause           *widget.Button
+	ExternalMediaURL    *widget.Check
+	MuteUnmute          *widget.Button
 	selectedDevice      devType
-	State               string
-	controlURL          string
 	eventlURL           string
+	controlURL          string
 	renderingControlURL string
 	currentmfolder      string
 	mediafile           string
 	subsfile            string
 	version             string
+	State               string
 	mediaFormats        []string
 	NextMedia           bool
 	Medialoop           bool
 	Transcode           bool
+}
+
+type debugWriter struct {
+	window  fyne.Window
+	bb      *bytes.Buffer
+	entry   *widget.RichText
+	enabled bool
 }
 
 type devType struct {
@@ -59,10 +69,23 @@ type mainButtonsLayout struct {
 	buttonHeight float32
 }
 
+func (f *debugWriter) Write(b []byte) (int, error) {
+	if f.enabled {
+		n, err := f.bb.Write(b)
+		if err != nil {
+			return 0, err
+		}
+
+		f.entry.ParseMarkdown(string([]byte{96, 96, 96}) + f.bb.String() + string([]byte{96, 96, 96}))
+		return n, err
+	}
+
+	return 0, nil
+}
+
 // Start .
 func Start(s *NewScreen) {
 	w := s.Current
-
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Go2TV", container.NewPadded(mainWindow(s))),
 		container.NewTabItem("Settings", container.NewPadded(settingsWindow(s))),
@@ -72,6 +95,8 @@ func Start(s *NewScreen) {
 	tabs.OnSelected = func(t *container.TabItem) {
 		t.Content.Refresh()
 	}
+
+	s.tabs = tabs
 
 	w.SetContent(tabs)
 	w.Resize(fyne.NewSize(w.Canvas().Size().Width, w.Canvas().Size().Height*1.3))
@@ -124,11 +149,19 @@ func InitFyneNewScreen(v string) *NewScreen {
 	theme := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "Default")
 	fyne.CurrentApp().Settings().SetTheme(go2tvTheme{theme})
 
+	dw := &debugWriter{
+		bb:      &bytes.Buffer{},
+		enabled: false,
+		entry:   widget.NewRichTextFromMarkdown(``),
+		window:  fyne.CurrentApp().NewWindow("Debug Window"),
+	}
+
 	return &NewScreen{
 		Current:        w,
 		currentmfolder: currentdir,
 		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".mp3", ".flac", ".wav", ".jpg", ".jpeg", ".png"},
 		version:        v,
+		Debug:          dw,
 	}
 }
 
