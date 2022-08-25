@@ -2,7 +2,6 @@ package gui
 
 import (
 	"image/color"
-	"log"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -41,6 +40,8 @@ func (m go2tvTheme) Size(name fyne.ThemeSizeName) float32 {
 }
 
 func settingsWindow(s *NewScreen) fyne.CanvasObject {
+	w := s.Current
+
 	themeText := canvas.NewText("Theme", nil)
 	dropdown := widget.NewSelect([]string{"Light", "Dark", "Default"}, parseTheme(s))
 	theme := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "Default")
@@ -55,13 +56,24 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 
 	debugText := canvas.NewText("Debug", nil)
 	debugExport := widget.NewButton("Export Debug Logs", func() {
+		var itemInRing bool
+		s.Debug.ring.Do(func(p interface{}) {
+			if p != nil {
+				itemInRing = true
+			}
+		})
+
+		if !itemInRing {
+			dialog.ShowInformation("Debug", "Debug logs are empty", w)
+			return
+		}
+
 		dialog.ShowFileSave(func(writer fyne.URIWriteCloser, err error) {
 			if err != nil {
 				dialog.ShowError(err, s.Current)
 				return
 			}
 			if writer == nil {
-				log.Println("Cancelled")
 				return
 			}
 
@@ -87,7 +99,7 @@ func saveDebugLogs(f fyne.URIWriteCloser, s *NewScreen) {
 			}
 		}
 	})
-	dialog.ShowInformation("Debug File", "Saved to... "+f.URI().String(), w)
+	dialog.ShowInformation("Debug", "Saved to... "+f.URI().String(), w)
 }
 
 func parseTheme(s *NewScreen) func(string) {
