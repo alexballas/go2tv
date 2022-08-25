@@ -2,10 +2,12 @@ package gui
 
 import (
 	"image/color"
+	"log"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -52,29 +54,40 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 	}
 
 	debugText := canvas.NewText("Debug", nil)
-	debug := widget.NewButton("Open Debug Window", func() {
-		s.Debug.enabled = true
-		if s.Debug.bb.Len() > 0 {
-			s.Debug.entry.ParseMarkdown("")
-		}
+	debugExport := widget.NewButton("Export Debug Logs", func() {
+		dialog.ShowFileSave(func(writer fyne.URIWriteCloser, err error) {
+			if err != nil {
+				dialog.ShowError(err, s.Current)
+				return
+			}
+			if writer == nil {
+				log.Println("Cancelled")
+				return
+			}
 
-		if s.Debug.window != nil {
-			s.Debug.window.Close()
-			s.Debug.window = fyne.CurrentApp().NewWindow("Debug Window")
-		}
-		s.Debug.entry.Wrapping = fyne.TextWrap(3)
-		s.Debug.window.SetContent(container.NewScroll((s.Debug.entry)))
-		s.Debug.window.Resize(fyne.NewSize(800, 600))
-		s.Debug.window.CenterOnScreen()
-		s.Debug.window.SetOnClosed(func() {
-			s.Debug.enabled = false
-		})
-		s.Debug.window.Show()
+			saveDebugLogs(writer, s)
+		}, s.Current)
+
 	})
 
 	dropdown.Refresh()
-	settings := container.New(layout.NewFormLayout(), themeText, dropdown, debugText, debug)
+	settings := container.New(layout.NewFormLayout(), themeText, dropdown, debugText, debugExport)
 	return settings
+}
+
+func saveDebugLogs(f fyne.URIWriteCloser, s *NewScreen) {
+	w := s.Current
+	defer f.Close()
+
+	s.Debug.ring.Do(func(p interface{}) {
+		if p != nil {
+			_, err := f.Write([]byte(p.(string)))
+			if err != nil {
+				dialog.ShowError(err, w)
+			}
+		}
+	})
+	dialog.ShowInformation("Debug File", "Saved to... "+f.URI().String(), w)
 }
 
 func parseTheme(s *NewScreen) func(string) {

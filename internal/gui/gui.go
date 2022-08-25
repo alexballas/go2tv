@@ -4,7 +4,7 @@
 package gui
 
 import (
-	"bytes"
+	"container/ring"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,10 +54,7 @@ type NewScreen struct {
 }
 
 type debugWriter struct {
-	window  fyne.Window
-	bb      *bytes.Buffer
-	entry   *widget.RichText
-	enabled bool
+	ring *ring.Ring
 }
 
 type devType struct {
@@ -70,17 +67,9 @@ type mainButtonsLayout struct {
 }
 
 func (f *debugWriter) Write(b []byte) (int, error) {
-	if f.enabled {
-		n, err := f.bb.Write(b)
-		if err != nil {
-			return 0, err
-		}
-
-		f.entry.ParseMarkdown(string([]byte{96, 96, 96}) + f.bb.String() + string([]byte{96, 96, 96}))
-		return n, err
-	}
-
-	return 0, nil
+	f.ring.Value = string(b)
+	f.ring = f.ring.Next()
+	return len(b), nil
 }
 
 // Start .
@@ -150,10 +139,7 @@ func InitFyneNewScreen(v string) *NewScreen {
 	fyne.CurrentApp().Settings().SetTheme(go2tvTheme{theme})
 
 	dw := &debugWriter{
-		bb:      &bytes.Buffer{},
-		enabled: false,
-		entry:   widget.NewRichTextFromMarkdown(``),
-		window:  fyne.CurrentApp().NewWindow("Debug Window"),
+		ring: ring.New(1000),
 	}
 
 	return &NewScreen{

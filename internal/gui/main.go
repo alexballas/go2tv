@@ -296,7 +296,7 @@ func refreshDevList(s *NewScreen, data *[]devType) {
 }
 
 func checkMutefunc(s *NewScreen) {
-	checkMute := time.NewTicker(1 * time.Second)
+	checkMute := time.NewTicker(2 * time.Second)
 
 	var checkMuteCounter int
 	for range checkMute.C {
