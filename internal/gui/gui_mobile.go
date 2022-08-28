@@ -4,6 +4,7 @@
 package gui
 
 import (
+	"container/ring"
 	"os"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ import (
 // NewScreen .
 type NewScreen struct {
 	mu                  sync.RWMutex
+	Debug               *debugWriter
 	Current             fyne.Window
 	tvdata              *soapcalls.TVPayload
 	Stop                *widget.Button
@@ -46,6 +48,10 @@ type NewScreen struct {
 	Medialoop           bool
 }
 
+type debugWriter struct {
+	ring *ring.Ring
+}
+
 type devType struct {
 	name string
 	addr string
@@ -53,6 +59,12 @@ type devType struct {
 
 type mainButtonsLayout struct {
 	buttonHeight float32
+}
+
+func (f *debugWriter) Write(b []byte) (int, error) {
+	f.ring.Value = string(b)
+	f.ring = f.ring.Next()
+	return len(b), nil
 }
 
 // Start .
