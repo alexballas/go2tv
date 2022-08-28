@@ -139,6 +139,7 @@ func main() {
 		ControlURL:                  upnpServicesURLs.AvtransportControlURL,
 		EventURL:                    upnpServicesURLs.AvtransportEventSubURL,
 		RenderingControlURL:         upnpServicesURLs.RenderingControlURL,
+		ConnectionManagerURL:        upnpServicesURLs.ConnectionManagerURL,
 		CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
 		MediaURL:                    "http://" + whereToListen + "/" + utils.ConvertFilename(absMediaFile),
 		SubtitlesURL:                "http://" + whereToListen + "/" + utils.ConvertFilename(absSubtitlesFile),
@@ -149,7 +150,7 @@ func main() {
 		RWMutex:                     &sync.RWMutex{},
 		Transcode:                   *transcodePtr,
 		Seekable:                    isSeek,
-		Logging:                     nil,
+		Logging:                     os.Stderr,
 	}
 
 	s = httphandlers.NewServer(whereToListen)

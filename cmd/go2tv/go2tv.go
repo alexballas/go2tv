@@ -127,6 +127,7 @@ func main() {
 		ControlURL:                  upnpServicesURLs.AvtransportControlURL,
 		EventURL:                    upnpServicesURLs.AvtransportEventSubURL,
 		RenderingControlURL:         upnpServicesURLs.RenderingControlURL,
+		ConnectionManagerURL:        upnpServicesURLs.ConnectionManagerURL,
 		CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
 		MediaURL:                    "http://" + whereToListen + "/" + utils.ConvertFilename(absMediaFile),
 		SubtitlesURL:                "http://" + whereToListen + "/" + utils.ConvertFilename(absSubtitlesFile),

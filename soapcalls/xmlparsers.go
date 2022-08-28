@@ -47,6 +47,7 @@ type DMRextracted struct {
 	AvtransportControlURL  string
 	AvtransportEventSubURL string
 	RenderingControlURL    string
+	ConnectionManagerURL   string
 }
 
 // DMRextractor extracts the services URLs from the main DMR xml.
@@ -106,12 +107,20 @@ func DMRextractor(dmrurl string) (*DMRextracted, error) {
 				return nil, fmt.Errorf("DMRextractor invalid AvtransportEventSubURL: %w", err)
 			}
 		}
+
 		if service.ID == "urn:upnp-org:serviceId:RenderingControl" {
 			ex.RenderingControlURL = parsedURL.Scheme + "://" + parsedURL.Host + service.ControlURL
 
 			_, err = url.ParseRequestURI(ex.RenderingControlURL)
 			if err != nil {
 				return nil, fmt.Errorf("DMRextractor invalid RenderingControlURL: %w", err)
+			}
+		}
+
+		if service.ID == "urn:upnp-org:serviceId:ConnectionManager" {
+			ex.ConnectionManagerURL = parsedURL.Scheme + "://" + parsedURL.Host + service.ControlURL
+			if err != nil {
+				return nil, fmt.Errorf("DMRextractor invalid ConnectionManagerURL: %w", err)
 			}
 		}
 	}

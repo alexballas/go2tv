@@ -167,7 +167,10 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		check(w, err)
 		if err == nil {
 			s.selectedDevice = data[id]
-			s.controlURL, s.eventlURL, s.renderingControlURL = t.AvtransportControlURL, t.AvtransportEventSubURL, t.RenderingControlURL
+			s.controlURL = t.AvtransportControlURL
+			s.eventlURL = t.AvtransportEventSubURL
+			s.renderingControlURL = t.RenderingControlURL
+			s.connectionManagerURL = t.ConnectionManagerURL
 			if s.tvdata != nil {
 				s.tvdata.RenderingControlURL = s.renderingControlURL
 			}

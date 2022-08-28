@@ -37,6 +37,7 @@ type TVPayload struct {
 	*sync.RWMutex
 	MediaRenderersStates map[string]*States
 	RenderingControlURL  string
+	ConnectionManagerURL string
 	EventURL             string
 	ControlURL           string
 	MediaURL             string
@@ -63,7 +64,6 @@ type getMuteRespBody struct {
 	} `xml:"Body"`
 }
 
-// GetVolumeRespBody builds the GetVolume response body
 type getVolumeRespBody struct {
 	XMLName       xml.Name `xml:"Envelope"`
 	Text          string   `xml:",chardata"`
@@ -76,6 +76,22 @@ type getVolumeRespBody struct {
 			U             string `xml:"u,attr"`
 			CurrentVolume string `xml:"CurrentVolume"`
 		} `xml:"GetVolumeResponse"`
+	} `xml:"Body"`
+}
+
+type protocolInfoResponse struct {
+	XMLName       xml.Name `xml:"Envelope"`
+	Text          string   `xml:",chardata"`
+	S             string   `xml:"s,attr"`
+	EncodingStyle string   `xml:"encodingStyle,attr"`
+	Body          struct {
+		Text                    string `xml:",chardata"`
+		GetProtocolInfoResponse struct {
+			Text   string `xml:",chardata"`
+			U      string `xml:"u,attr"`
+			Source string `xml:"Source"`
+			Sink   string `xml:"Sink"`
+		} `xml:"GetProtocolInfoResponse"`
 	} `xml:"Body"`
 }
 
@@ -713,10 +729,83 @@ func (p *TVPayload) SetVolumeSoapCall(v string) error {
 	return nil
 }
 
+// GetProtocolInfo requests our device's protocol info.
+func (p *TVPayload) GetProtocolInfo() error {
+	parsedConnectionManagerURL, err := url.Parse(p.ConnectionManagerURL)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "URL Parse").Err(err).Msg("")
+		return fmt.Errorf("GetProtocolInfo parse error: %w", err)
+	}
+
+	var xmlbuilder []byte
+
+	xmlbuilder, err = getProtocolInfoSoapBuild()
+	if err != nil {
+		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "Build").Err(err).Msg("")
+		return fmt.Errorf("GetProtocolInfo build error: %w", err)
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", parsedConnectionManagerURL.String(), bytes.NewReader(xmlbuilder))
+	if err != nil {
+		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "Prepare POST").Err(err).Msg("")
+		return fmt.Errorf("GetProtocolInfo POST error: %w", err)
+	}
+	req.Header = http.Header{
+		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:ConnectionManager:1#GetProtocolInfo"`},
+		"content-type": []string{"text/xml"},
+		"charset":      []string{"utf-8"},
+		"Connection":   []string{"close"},
+	}
+
+	headerBytesReq, err := json.Marshal(req.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "Header Marshaling").Err(err).Msg("")
+		return fmt.Errorf("GetProtocolInfo Request Marshaling error: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "GetProtocolInfo").Str("Action", "Request").
+		RawJSON("Headers", headerBytesReq).
+		Msg(string(xmlbuilder))
+
+	res, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("GetProtocolInfo Do POST error: %w", err)
+	}
+	defer res.Body.Close()
+
+	headerBytesRes, err := json.Marshal(res.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "Header Marshaling #2").Err(err).Msg("")
+		return fmt.Errorf("GetProtocolInfo Response Marshaling error: %w", err)
+	}
+
+	resBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "Readall").Err(err).Msg("")
+		return fmt.Errorf("GetProtocolInfo Failed to read response: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "GetProtocolInfo").Str("Action", "Response").Str("Status Code", strconv.Itoa(res.StatusCode)).
+		RawJSON("Headers", headerBytesRes).
+		Msg(string(resBytes))
+
+	if err := parseProtocolInfo(resBytes, p.MediaType); err != nil {
+		return fmt.Errorf("GetProtocolInfo Selected device does not support the media type: %w", err)
+	}
+
+	return nil
+}
+
 // SendtoTV is a higher level method that gracefully handles the various
 // states when communicating with the DMR devices.
 func (p *TVPayload) SendtoTV(action string) error {
 	if action == "Play1" {
+		if err := p.GetProtocolInfo(); err != nil {
+			return fmt.Errorf("SendtoTV getProtocolInfo call error: %w", err)
+		}
 		if err := p.SubscribeSoapCall(""); err != nil {
 			return fmt.Errorf("SendtoTV subscribe call error: %w", err)
 		}
@@ -825,4 +914,31 @@ func (p *TVPayload) Log() *zerolog.Logger {
 	}
 
 	return &log
+}
+
+func parseProtocolInfo(b []byte, mt string) error {
+	var respProtocolInfo protocolInfoResponse
+
+	if strings.Contains(mt, "/") {
+		mt = strings.Split(mt, "/")[0]
+	}
+
+	if err := xml.Unmarshal(b, &respProtocolInfo); err != nil {
+		return err
+	}
+
+	protocols := strings.Split(respProtocolInfo.Body.GetProtocolInfoResponse.Sink, ",")
+	for _, i := range protocols {
+		items := strings.Split(i, ":")
+		// Here we hardcode check the http-get protocol. We would need to change that
+		// if we were to support rtp/rtsp/udp.
+		if len(items) == 4 && items[0] == "http-get" && strings.Contains(items[2], "/") {
+			ftype := strings.Split(items[2], "/")[0]
+			if ftype == mt {
+				return nil
+			}
+		}
+	}
+
+	return errors.New("no matching file type")
 }

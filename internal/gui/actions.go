@@ -281,6 +281,7 @@ func playAction(screen *NewScreen) {
 		ControlURL:                  screen.controlURL,
 		EventURL:                    screen.eventlURL,
 		RenderingControlURL:         screen.renderingControlURL,
+		ConnectionManagerURL:        screen.connectionManagerURL,
 		MediaURL:                    "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile),
 		SubtitlesURL:                "http://" + whereToListen + "/" + utils.ConvertFilename(screen.subsfile),
 		CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,

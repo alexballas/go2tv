@@ -23,34 +23,35 @@ import (
 
 // NewScreen .
 type NewScreen struct {
-	mu                  sync.RWMutex
-	Debug               *debugWriter
-	Current             fyne.Window
-	PlayPause           *widget.Button
-	tvdata              *soapcalls.TVPayload
-	tabs                *container.AppTabs
-	CheckVersion        *widget.Button
-	SubsText            *widget.Entry
-	CustomSubsCheck     *widget.Check
-	MediaText           *widget.Entry
-	Stop                *widget.Button
-	DeviceList          *widget.List
-	httpserver          *httphandlers.HTTPserver
-	ExternalMediaURL    *widget.Check
-	MuteUnmute          *widget.Button
-	selectedDevice      devType
-	eventlURL           string
-	controlURL          string
-	renderingControlURL string
-	currentmfolder      string
-	mediafile           string
-	subsfile            string
-	version             string
-	State               string
-	mediaFormats        []string
-	NextMedia           bool
-	Medialoop           bool
-	Transcode           bool
+	mu                   sync.RWMutex
+	Debug                *debugWriter
+	Current              fyne.Window
+	PlayPause            *widget.Button
+	tvdata               *soapcalls.TVPayload
+	tabs                 *container.AppTabs
+	CheckVersion         *widget.Button
+	SubsText             *widget.Entry
+	CustomSubsCheck      *widget.Check
+	MediaText            *widget.Entry
+	Stop                 *widget.Button
+	DeviceList           *widget.List
+	httpserver           *httphandlers.HTTPserver
+	ExternalMediaURL     *widget.Check
+	MuteUnmute           *widget.Button
+	selectedDevice       devType
+	eventlURL            string
+	controlURL           string
+	renderingControlURL  string
+	connectionManagerURL string
+	currentmfolder       string
+	mediafile            string
+	subsfile             string
+	version              string
+	State                string
+	mediaFormats         []string
+	NextMedia            bool
+	Medialoop            bool
+	Transcode            bool
 }
 
 type debugWriter struct {
