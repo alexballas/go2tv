@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/alexballas/go2tv/devices"
@@ -37,7 +38,9 @@ var (
 	versionPtr   = flag.Bool("version", false, "Print version.")
 )
 
-type dummyScreen struct{}
+type dummyScreen struct {
+	ctxCancel context.CancelFunc
+}
 
 type flagResults struct {
 	dmrURL string
@@ -45,6 +48,20 @@ type flagResults struct {
 }
 
 func main() {
+	if err := run(); err != nil {
+		if errors.Is(err, errNoflag) {
+			flag.Usage()
+			os.Exit(0)
+		}
+
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+			os.Exit(1)
+		}
+	}
+}
+
+func run() error {
 	var absMediaFile string
 	var mediaType string
 	var mediaFile interface{}
@@ -52,29 +69,24 @@ func main() {
 	var tvdata *soapcalls.TVPayload
 	var s *httphandlers.HTTPserver
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
+	keyboardExitCTX, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
 
-	go func() {
-		for range c {
-			if tvdata != nil {
-				_ = tvdata.SendtoTV("Stop")
-			}
-			if s != nil {
-				s.StopServer()
-			}
-			fmt.Println("force exiting..")
-			os.Exit(0)
-		}
-	}()
-
+	exitCallbackCTX, cancel2 := context.WithCancel(keyboardExitCTX)
+	defer cancel2()
+	/*
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt)
+	*/
 	flag.Parse()
 
 	flagRes, err := processflags()
-	check(err)
+	if err != nil {
+		return err
+	}
 
 	if flagRes.exit {
-		os.Exit(0)
+		return nil
 	}
 
 	if *mediaArg != "" {
@@ -83,20 +95,28 @@ func main() {
 
 	if *mediaArg == "" && *urlArg != "" {
 		mediaURL, err := utils.StreamURL(context.Background(), *urlArg)
-		check(err)
+		if err != nil {
+			return err
+		}
 
 		mediaURLinfo, err := utils.StreamURL(context.Background(), *urlArg)
-		check(err)
+		if err != nil {
+			return err
+		}
 
 		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
-		check(err)
+		if err != nil {
+			return err
+		}
 
 		mediaFile = mediaURL
 
 		if strings.Contains(mediaType, "image") {
 			readerToBytes, err := io.ReadAll(mediaURL)
 			mediaURL.Close()
-			check(err)
+			if err != nil {
+				return err
+			}
 			mediaFile = readerToBytes
 		}
 	}
@@ -104,36 +124,49 @@ func main() {
 	switch t := mediaFile.(type) {
 	case string:
 		absMediaFile, err = filepath.Abs(t)
-		check(err)
+		if err != nil {
+			return err
+		}
 
 		mfile, err := os.Open(absMediaFile)
-		check(err)
+		if err != nil {
+			return err
+		}
 
 		mediaFile = absMediaFile
 		mediaType, err = utils.GetMimeDetailsFromFile(mfile)
+		if err != nil {
+			return err
+		}
 
 		if !*transcodePtr {
 			isSeek = true
 		}
-
-		check(err)
 	case io.ReadCloser, []byte:
 		absMediaFile = *urlArg
 	}
 
 	absSubtitlesFile, err := filepath.Abs(*subsArg)
-	check(err)
+	if err != nil {
+		return err
+	}
 
 	upnpServicesURLs, err := soapcalls.DMRextractor(flagRes.dmrURL)
-	check(err)
+	if err != nil {
+		return err
+	}
 
 	whereToListen, err := utils.URLtoListenIPandPort(flagRes.dmrURL)
-	check(err)
+	if err != nil {
+		return err
+	}
 
-	scr := &dummyScreen{}
+	scr := &dummyScreen{ctxCancel: cancel2}
 
 	callbackPath, err := utils.RandomString()
-	check(err)
+	if err != nil {
+		return err
+	}
 
 	tvdata = &soapcalls.TVPayload{
 		ControlURL:                  upnpServicesURLs.AvtransportControlURL,
@@ -154,33 +187,33 @@ func main() {
 	}
 
 	s = httphandlers.NewServer(whereToListen)
-	serverStarted := make(chan struct{})
+	serverStarted := make(chan error)
 
 	// We pass the tvdata here as we need the callback handlers to be able to react
 	// to the different media renderer states.
 	go func() {
-		err := s.StartServer(serverStarted, mediaFile, absSubtitlesFile, tvdata, scr)
-		check(err)
+		s.StartServer(serverStarted, mediaFile, absSubtitlesFile, tvdata, scr)
 	}()
 	// Wait for HTTP server to properly initialize
-	<-serverStarted
+	if err := <-serverStarted; err != nil {
+		return err
+	}
 
 	err = tvdata.SendtoTV("Play1")
-	check(err)
-
-	select {}
-}
-
-func check(err error) {
-	if errors.Is(err, errNoflag) {
-		flag.Usage()
-		os.Exit(0)
-	}
-
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-		os.Exit(1)
+		return err
 	}
+
+	<-exitCallbackCTX.Done()
+
+	if tvdata != nil {
+		_ = tvdata.SendtoTV("Stop")
+	}
+	if s != nil {
+		s.StopServer()
+	}
+
+	return nil
 }
 
 func listFlagFunction() error {
@@ -190,7 +223,7 @@ func listFlagFunction() error {
 	})
 
 	if flagsEnabled > 1 {
-		return errors.New("cant combine -l with other flags")
+		return errors.New("can't combine -l with other flags")
 	}
 
 	deviceList, err := devices.LoadSSDPservices(1)
@@ -228,9 +261,12 @@ func listFlagFunction() error {
 }
 
 func processflags() (*flagResults, error) {
-	checkVerflag()
-
 	res := &flagResults{}
+
+	if checkVerflag() {
+		res.exit = true
+		return res, nil
+	}
 
 	if *mediaArg == "" && !*listPtr && *urlArg == "" {
 		return nil, fmt.Errorf("checkflags error: %w", errNoflag)
@@ -339,11 +375,12 @@ func checkLflag() (bool, error) {
 	return false, nil
 }
 
-func checkVerflag() {
+func checkVerflag() bool {
 	if *versionPtr && os.Args[1] == "-version" {
 		fmt.Printf("Go2TV Version: %s\n", version)
-		os.Exit(0)
+		return true
 	}
+	return false
 }
 
 func (s *dummyScreen) EmitMsg(msg string) {
@@ -352,5 +389,5 @@ func (s *dummyScreen) EmitMsg(msg string) {
 
 func (s *dummyScreen) Fini() {
 	fmt.Println("exiting..")
-	os.Exit(0)
+	s.ctxCancel()
 }

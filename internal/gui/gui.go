@@ -93,7 +93,6 @@ func Start(s *NewScreen) {
 	w.CenterOnScreen()
 	w.SetMaster()
 	w.ShowAndRun()
-	os.Exit(0)
 }
 
 // EmitMsg Method to implement the screen interface

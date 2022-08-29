@@ -79,7 +79,6 @@ func Start(s *NewScreen) {
 	w.SetContent(tabs)
 	w.CenterOnScreen()
 	w.ShowAndRun()
-	os.Exit(0)
 }
 
 // EmitMsg Method to implement the screen interface

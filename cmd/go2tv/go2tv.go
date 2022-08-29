@@ -9,11 +9,13 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"errors"
@@ -45,18 +47,33 @@ type flagResults struct {
 }
 
 func main() {
+	if err := run(); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	var absMediaFile string
 	var mediaType string
 	var mediaFile interface{}
 	var isSeek bool
 
+	keyboardExitCTX, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	exitCallbackCTX, cancel2 := context.WithCancel(keyboardExitCTX)
+	defer cancel2()
+
 	flag.Parse()
 
 	flagRes, err := processflags()
-	check(err)
+	if err != nil {
+		return err
+	}
 
 	if flagRes.exit {
-		os.Exit(0)
+		return nil
 	}
 
 	if *mediaArg != "" {
@@ -65,20 +82,28 @@ func main() {
 
 	if *mediaArg == "" && *urlArg != "" {
 		mediaURL, err := utils.StreamURL(context.Background(), *urlArg)
-		check(err)
+		if err != nil {
+			return err
+		}
 
 		mediaURLinfo, err := utils.StreamURL(context.Background(), *urlArg)
-		check(err)
+		if err != nil {
+			return err
+		}
 
 		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
-		check(err)
+		if err != nil {
+			return err
+		}
 
 		mediaFile = mediaURL
 
 		if strings.Contains(mediaType, "image") {
 			readerToBytes, err := io.ReadAll(mediaURL)
 			mediaURL.Close()
-			check(err)
+			if err != nil {
+				return err
+			}
 			mediaFile = readerToBytes
 		}
 	}
@@ -86,42 +111,58 @@ func main() {
 	if flagRes.gui {
 		scr := gui.InitFyneNewScreen(version)
 		gui.Start(scr)
+		return nil
 	}
 
 	switch t := mediaFile.(type) {
 	case string:
 		absMediaFile, err = filepath.Abs(t)
-		check(err)
+		if err != nil {
+			return err
+		}
 
 		mfile, err := os.Open(absMediaFile)
-		check(err)
+		if err != nil {
+			return err
+		}
 
 		mediaFile = absMediaFile
 		mediaType, err = utils.GetMimeDetailsFromFile(mfile)
+		if err != nil {
+			return err
+		}
 
 		if !*transcodePtr {
 			isSeek = true
 		}
-
-		check(err)
 	case io.ReadCloser, []byte:
 		absMediaFile = *urlArg
 	}
 
 	absSubtitlesFile, err := filepath.Abs(*subsArg)
-	check(err)
+	if err != nil {
+		return err
+	}
 
 	upnpServicesURLs, err := soapcalls.DMRextractor(flagRes.dmrURL)
-	check(err)
+	if err != nil {
+		return err
+	}
 
 	whereToListen, err := utils.URLtoListenIPandPort(flagRes.dmrURL)
-	check(err)
+	if err != nil {
+		return err
+	}
 
-	scr, err := interactive.InitTcellNewScreen()
-	check(err)
+	scr, err := interactive.InitTcellNewScreen(cancel2)
+	if err != nil {
+		return err
+	}
 
 	callbackPath, err := utils.RandomString()
-	check(err)
+	if err != nil {
+		return err
+	}
 
 	tvdata := &soapcalls.TVPayload{
 		ControlURL:                  upnpServicesURLs.AvtransportControlURL,
@@ -141,25 +182,28 @@ func main() {
 	}
 
 	s := httphandlers.NewServer(whereToListen)
-	serverStarted := make(chan struct{})
+	serverStarted := make(chan error)
 
 	// We pass the tvdata here as we need the callback handlers to be able to react
 	// to the different media renderer states.
 	go func() {
-		err := s.StartServer(serverStarted, mediaFile, absSubtitlesFile, tvdata, scr)
-		check(err)
+		s.StartServer(serverStarted, mediaFile, absSubtitlesFile, tvdata, scr)
 	}()
 	// Wait for HTTP server to properly initialize
-	<-serverStarted
-
-	scr.InterInit(tvdata)
-}
-
-func check(err error) {
-	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-		os.Exit(1)
+	if err := <-serverStarted; err != nil {
+		return err
 	}
+
+	interExit := make(chan error)
+	go scr.InterInit(tvdata, interExit)
+
+	select {
+	case e := <-interExit:
+		return e
+	case <-exitCallbackCTX.Done():
+	}
+
+	return nil
 }
 
 func listFlagFunction() error {
@@ -169,7 +213,7 @@ func listFlagFunction() error {
 	})
 
 	if flagsEnabled > 1 {
-		return errors.New("cant combine -l with other flags")
+		return errors.New("can't combine -l with other flags")
 	}
 
 	deviceList, err := devices.LoadSSDPservices(1)
@@ -207,9 +251,12 @@ func listFlagFunction() error {
 }
 
 func processflags() (*flagResults, error) {
-	checkVerflag()
-
 	res := &flagResults{}
+
+	if checkVerflag() {
+		res.exit = true
+		return res, nil
+	}
 
 	if checkGUI() {
 		res.gui = true
@@ -319,11 +366,12 @@ func checkLflag() (bool, error) {
 	return false, nil
 }
 
-func checkVerflag() {
+func checkVerflag() bool {
 	if *versionPtr && os.Args[1] == "-version" {
 		fmt.Printf("Go2TV Version: %s\n", version)
-		os.Exit(0)
+		return true
 	}
+	return false
 }
 
 func checkGUI() bool {
