@@ -276,19 +276,17 @@ func playAction(screen *NewScreen) {
 	}
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)
-	serverStarted := make(chan struct{})
+	serverStarted := make(chan error)
 
 	// We pass the tvdata here as we need the callback handlers to be able to react
 	// to the different media renderer states.
 	go func() {
-		err := screen.httpserver.StartServer(serverStarted, mediaFile, subsFile, screen.tvdata, screen)
-		check(w, err)
-		if err != nil {
-			return
-		}
+		screen.httpserver.StartServer(serverStarted, mediaFile, subsFile, screen.tvdata, screen)
 	}()
 	// Wait for the HTTP server to properly initialize.
-	<-serverStarted
+	err = <-serverStarted
+	check(w, err)
+
 	err = screen.tvdata.SendtoTV("Play1")
 	check(w, err)
 	if err != nil {

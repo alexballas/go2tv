@@ -5,7 +5,6 @@ package gui
 
 import (
 	"container/ring"
-	"os"
 	"strings"
 	"sync"
 
