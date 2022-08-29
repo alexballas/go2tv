@@ -16,10 +16,10 @@ jobs:
     - uses: WillAbides/setup-go-faster@v1.7.0
       id: setup-go-faster
       with:
-        go-version: "1.17.9"
+        go-version: "*"
 
     - name: Install fyne
-      run: go get fyne.io/fyne/v2/cmd/fyne
+      run: go install fyne.io/fyne/v2/cmd/fyne@latest
       
     - name: Package (macOS)
       run:  cd cmd/go2tv && fyne package --release -os darwin -icon  ../../assets/go2tv-icon.png  && mv go2tv.app ../../
