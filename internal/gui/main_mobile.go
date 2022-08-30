@@ -147,6 +147,9 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		}
 	}
 
+	var mediafileOld fyne.URI
+	var mediafileOldText string
+
 	externalmedia.OnChanged = func(b bool) {
 		if b {
 			mfile.Disable()
@@ -154,6 +157,10 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			// rename the label
 			mediafilelabel.Text = "URL:"
 			mediafilelabel.Refresh()
+
+			// keep old values
+			mediafileOld = s.mediafile
+			mediafileOldText = s.MediaText.Text
 
 			// Clear the Media Text Area
 			clearmediaAction(s)
@@ -169,7 +176,8 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		mfile.Enable()
 		mediafilelabel.Text = "File:"
 		mfiletext.SetPlaceHolder("")
-		mfiletext.Text = ""
+		s.MediaText.Text = mediafileOldText
+		s.mediafile = mediafileOld
 		mediafilelabel.Refresh()
 		mfiletext.Disable()
 	}

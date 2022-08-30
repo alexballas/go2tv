@@ -195,12 +195,18 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		sfile.Disable()
 	}
 
+	var mediafileOld, mediafileOldText string
+
 	externalmedia.OnChanged = func(b bool) {
 		if b {
 			nextmedia.SetChecked(false)
 			nextmedia.Disable()
 			mfile.Disable()
 			previewmedia.Disable()
+
+			// keep old values
+			mediafileOld = s.mediafile
+			mediafileOldText = s.MediaText.Text
 
 			// rename the label
 			mediafilelabel.Text = "URL:"
@@ -211,8 +217,8 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 			// Set some Media text defaults
 			// to indicate that we're expecting a URL
-			mfiletext.SetPlaceHolder("Enter URL here")
-			mfiletext.Enable()
+			s.MediaText.SetPlaceHolder("Enter URL here")
+			s.MediaText.Enable()
 			return
 		}
 
@@ -221,10 +227,11 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		mfile.Enable()
 		previewmedia.Enable()
 		mediafilelabel.Text = "File:"
-		mfiletext.SetPlaceHolder("")
-		mfiletext.Text = ""
+		s.MediaText.SetPlaceHolder("")
+		s.MediaText.Text = mediafileOldText
+		s.mediafile = mediafileOld
 		mediafilelabel.Refresh()
-		mfiletext.Disable()
+		s.MediaText.Disable()
 	}
 
 	medialoop.OnChanged = func(b bool) {
