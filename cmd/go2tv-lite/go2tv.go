@@ -157,6 +157,7 @@ func run() error {
 		Mtype:     mediaType,
 		Transcode: *transcodePtr,
 		Seek:      isSeek,
+		Logging:   os.Stdout,
 	})
 	if err != nil {
 		return err

@@ -1,14 +1,22 @@
 package soapcalls
 
 import (
+	"io"
+	"net/url"
 	"time"
 
 	"github.com/alexballas/go2tv/utils"
 )
 
 type Options struct {
-	DMR, Media, Subs, Mtype, ListenAddr string
-	Transcode, Seek                     bool
+	Logging    io.Writer
+	DMR        string
+	Media      string
+	Subs       string
+	Mtype      string
+	ListenAddr string
+	Transcode  bool
+	Seek       bool
 }
 
 var listenAddress string
@@ -24,7 +32,7 @@ func NewTVPayload(o Options) (*TVPayload, error) {
 		return nil, err
 	}
 
-	ListenAddr, err := utils.URLtoListenIPandPort(o.DMR)
+	listenAddress, err = utils.URLtoListenIPandPort(o.DMR)
 	if err != nil {
 		return nil, err
 	}
@@ -34,18 +42,23 @@ func NewTVPayload(o Options) (*TVPayload, error) {
 		EventURL:                    upnpServicesURLs.AvtransportEventSubURL,
 		RenderingControlURL:         upnpServicesURLs.RenderingControlURL,
 		ConnectionManagerURL:        upnpServicesURLs.ConnectionManagerURL,
-		CallbackURL:                 "http://" + ListenAddr + "/" + callbackPath,
-		MediaURL:                    "http://" + ListenAddr + "/" + utils.ConvertFilename(o.Media),
-		SubtitlesURL:                "http://" + ListenAddr + "/" + utils.ConvertFilename(o.Subs),
+		CallbackURL:                 "http://" + listenAddress + "/" + callbackPath,
+		MediaURL:                    "http://" + listenAddress + "/" + utils.ConvertFilename(o.Media),
+		SubtitlesURL:                "http://" + listenAddress + "/" + utils.ConvertFilename(o.Subs),
 		MediaType:                   o.Mtype,
 		CurrentTimers:               make(map[string]*time.Timer),
 		MediaRenderersStates:        make(map[string]*States),
 		InitialMediaRenderersStates: make(map[string]bool),
 		Transcode:                   o.Transcode,
 		Seekable:                    o.Seek,
+		Logging:                     o.Logging,
 	}, nil
 }
 
 func (tv *TVPayload) ListenAddress() string {
+	if listenAddress == "" {
+		url, _ := url.Parse(tv.MediaURL)
+		return url.Host
+	}
 	return listenAddress
 }
