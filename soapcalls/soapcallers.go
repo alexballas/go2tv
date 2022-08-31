@@ -34,19 +34,19 @@ type TVPayload struct {
 	Logging                     io.Writer
 	CurrentTimers               map[string]*time.Timer
 	InitialMediaRenderersStates map[string]bool
-	*sync.RWMutex
-	MediaRenderersStates map[string]*States
-	RenderingControlURL  string
-	ConnectionManagerURL string
-	EventURL             string
-	ControlURL           string
-	MediaURL             string
-	MediaType            string
-	SubtitlesURL         string
-	CallbackURL          string
-	Transcode            bool
-	Seekable             bool
-	InitLogOnce          sync.Once
+	mu                          sync.RWMutex
+	MediaRenderersStates        map[string]*States
+	RenderingControlURL         string
+	ConnectionManagerURL        string
+	EventURL                    string
+	ControlURL                  string
+	MediaURL                    string
+	MediaType                   string
+	SubtitlesURL                string
+	CallbackURL                 string
+	Transcode                   bool
+	Seekable                    bool
+	initLogOnce                 sync.Once
 }
 
 type getMuteRespBody struct {
@@ -816,12 +816,12 @@ func (p *TVPayload) SendtoTV(action string) error {
 	}
 
 	if action == "Stop" {
-		p.RLock()
+		p.mu.RLock()
 		localStates := make(map[string]*States)
 		for key, value := range p.MediaRenderersStates {
 			localStates[key] = value
 		}
-		p.RUnlock()
+		p.mu.RUnlock()
 
 		// Cleaning up all uuids on force stop.
 		for uuids := range localStates {
@@ -853,8 +853,8 @@ func (p *TVPayload) UpdateMRstate(previous, new, uuid string) bool {
 		return false
 	}
 
-	p.Lock()
-	defer p.Unlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	// If the UUID is not available in p.InitialMediaRenderersStates,
 	// it probably expired and there is not much we can do with it.
 	// Trying to send an UNSUBSCRIBE call for that UUID will result
@@ -872,31 +872,31 @@ func (p *TVPayload) UpdateMRstate(previous, new, uuid string) bool {
 
 // CreateMRstate .
 func (p *TVPayload) CreateMRstate(uuid string) {
-	p.Lock()
-	defer p.Unlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.InitialMediaRenderersStates[uuid] = true
 	p.MediaRenderersStates[uuid] = &States{}
 }
 
 // DeleteMRstate deletes the state entries for the specific UUID.
 func (p *TVPayload) DeleteMRstate(uuid string) {
-	p.Lock()
-	defer p.Unlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	delete(p.InitialMediaRenderersStates, uuid)
 	delete(p.MediaRenderersStates, uuid)
 }
 
 // SetProcessStopTrue set the stop process to true
 func (p *TVPayload) SetProcessStopTrue(uuid string) {
-	p.Lock()
-	defer p.Unlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.MediaRenderersStates[uuid].ProcessStop = true
 }
 
 // GetProcessStop returns the processStop value of the specific UUID.
 func (p *TVPayload) GetProcessStop(uuid string) (bool, error) {
-	p.RLock()
-	defer p.RUnlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if p.InitialMediaRenderersStates[uuid] {
 		return p.MediaRenderersStates[uuid].ProcessStop, nil
 	}
@@ -906,7 +906,7 @@ func (p *TVPayload) GetProcessStop(uuid string) (bool, error) {
 
 func (p *TVPayload) Log() *zerolog.Logger {
 	if p.Logging != nil {
-		p.InitLogOnce.Do(func() {
+		p.initLogOnce.Do(func() {
 			log = zerolog.New(p.Logging).With().Timestamp().Logger()
 		})
 	} else {

@@ -15,9 +15,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"sync"
 	"syscall"
-	"time"
 
 	"github.com/alexballas/go2tv/devices"
 	"github.com/alexballas/go2tv/httphandlers"
@@ -66,7 +64,6 @@ func run() error {
 	var mediaType string
 	var mediaFile interface{}
 	var isSeek bool
-	var tvdata *soapcalls.TVPayload
 	var s *httphandlers.HTTPserver
 
 	keyboardExitCTX, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -151,42 +148,21 @@ func run() error {
 		return err
 	}
 
-	upnpServicesURLs, err := soapcalls.DMRextractor(flagRes.dmrURL)
-	if err != nil {
-		return err
-	}
-
-	whereToListen, err := utils.URLtoListenIPandPort(flagRes.dmrURL)
-	if err != nil {
-		return err
-	}
-
 	scr := &dummyScreen{ctxCancel: cancel2}
 
-	callbackPath, err := utils.RandomString()
+	tvdata, err := soapcalls.NewTVPayload(soapcalls.Options{
+		DMR:       flagRes.dmrURL,
+		Media:     absMediaFile,
+		Subs:      absSubtitlesFile,
+		Mtype:     mediaType,
+		Transcode: *transcodePtr,
+		Seek:      isSeek,
+	})
 	if err != nil {
 		return err
 	}
 
-	tvdata = &soapcalls.TVPayload{
-		ControlURL:                  upnpServicesURLs.AvtransportControlURL,
-		EventURL:                    upnpServicesURLs.AvtransportEventSubURL,
-		RenderingControlURL:         upnpServicesURLs.RenderingControlURL,
-		ConnectionManagerURL:        upnpServicesURLs.ConnectionManagerURL,
-		CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
-		MediaURL:                    "http://" + whereToListen + "/" + utils.ConvertFilename(absMediaFile),
-		SubtitlesURL:                "http://" + whereToListen + "/" + utils.ConvertFilename(absSubtitlesFile),
-		MediaType:                   mediaType,
-		CurrentTimers:               make(map[string]*time.Timer),
-		MediaRenderersStates:        make(map[string]*soapcalls.States),
-		InitialMediaRenderersStates: make(map[string]bool),
-		RWMutex:                     &sync.RWMutex{},
-		Transcode:                   *transcodePtr,
-		Seekable:                    isSeek,
-		Logging:                     os.Stderr,
-	}
-
-	s = httphandlers.NewServer(whereToListen)
+	s = httphandlers.NewServer(tvdata.ListenAddress())
 	serverStarted := make(chan error)
 
 	// We pass the tvdata here as we need the callback handlers to be able to react
