@@ -19,8 +19,6 @@ type Options struct {
 	Seek       bool
 }
 
-var listenAddress string
-
 func NewTVPayload(o Options) (*TVPayload, error) {
 	upnpServicesURLs, err := DMRextractor(o.DMR)
 	if err != nil {
@@ -32,7 +30,7 @@ func NewTVPayload(o Options) (*TVPayload, error) {
 		return nil, err
 	}
 
-	listenAddress, err = utils.URLtoListenIPandPort(o.DMR)
+	listenAddress, err := utils.URLtoListenIPandPort(o.DMR)
 	if err != nil {
 		return nil, err
 	}
@@ -56,9 +54,6 @@ func NewTVPayload(o Options) (*TVPayload, error) {
 }
 
 func (tv *TVPayload) ListenAddress() string {
-	if listenAddress == "" {
-		url, _ := url.Parse(tv.MediaURL)
-		return url.Host
-	}
-	return listenAddress
+	url, _ := url.Parse(tv.MediaURL)
+	return url.Host
 }
