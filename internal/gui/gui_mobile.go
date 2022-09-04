@@ -5,6 +5,8 @@ package gui
 
 import (
 	"container/ring"
+	"context"
+	"os"
 	"strings"
 	"sync"
 
@@ -68,7 +70,7 @@ func (f *debugWriter) Write(b []byte) (int, error) {
 }
 
 // Start .
-func Start(s *NewScreen) {
+func Start(ctx context.Context, s *NewScreen) {
 	w := s.Current
 
 	tabs := container.NewAppTabs(
@@ -78,6 +80,12 @@ func Start(s *NewScreen) {
 
 	w.SetContent(tabs)
 	w.CenterOnScreen()
+
+	go func() {
+		<-ctx.Done()
+		os.Exit(0)
+	}()
+
 	w.ShowAndRun()
 }
 

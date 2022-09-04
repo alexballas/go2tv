@@ -5,6 +5,7 @@ package gui
 
 import (
 	"container/ring"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,7 +75,7 @@ func (f *debugWriter) Write(b []byte) (int, error) {
 }
 
 // Start .
-func Start(s *NewScreen) {
+func Start(ctx context.Context, s *NewScreen) {
 	w := s.Current
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Go2TV", container.NewPadded(mainWindow(s))),
@@ -92,7 +93,14 @@ func Start(s *NewScreen) {
 	w.Resize(fyne.NewSize(w.Canvas().Size().Width, w.Canvas().Size().Height*1.3))
 	w.CenterOnScreen()
 	w.SetMaster()
+
+	go func() {
+		<-ctx.Done()
+		os.Exit(0)
+	}()
+
 	w.ShowAndRun()
+
 }
 
 // EmitMsg Method to implement the screen interface

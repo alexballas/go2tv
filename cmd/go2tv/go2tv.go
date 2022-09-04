@@ -108,7 +108,7 @@ func run() error {
 
 	if flagRes.gui {
 		scr := gui.InitFyneNewScreen(version)
-		gui.Start(scr)
+		gui.Start(keyboardExitCTX, scr)
 		return nil
 	}
 
