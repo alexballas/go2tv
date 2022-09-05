@@ -102,11 +102,14 @@ func (p *NewScreen) InterInit(tv *soapcalls.TVPayload, c chan error) {
 	}()
 
 	p.mu.Lock()
-	p.mediaTitle = tv.MediaURL
+
 	mediaTitlefromURL, err := url.Parse(tv.MediaURL)
-	if err == nil {
-		p.mediaTitle = strings.TrimLeft(mediaTitlefromURL.Path, "/")
+	if err != nil {
+		c <- fmt.Errorf("interactive screen error: %w", err)
+		return
 	}
+	p.mediaTitle = strings.TrimLeft(mediaTitlefromURL.Path, "/")
+
 	p.mu.Unlock()
 
 	encoding.Register()

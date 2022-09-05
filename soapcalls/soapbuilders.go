@@ -250,11 +250,12 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string, transcode,
 		class = "object.item.videoItem.movie"
 	}
 
-	mediaTitle := mediaURL
 	mediaTitlefromURL, err := url.Parse(mediaURL)
-	if err == nil {
-		mediaTitle = strings.TrimLeft(mediaTitlefromURL.Path, "/")
+	if err != nil {
+		return nil, fmt.Errorf("setAVTransportSoapBuild url parse error: %w", err)
 	}
+
+	mediaTitle := strings.TrimLeft(mediaTitlefromURL.Path, "/")
 
 	re, err := regexp.Compile(`[&<>\\]+`)
 	if err != nil {
