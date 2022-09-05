@@ -60,11 +60,8 @@ func run() error {
 	var mediaFile interface{}
 	var isSeek bool
 
-	keyboardExitCTX, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	exitCTX, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-
-	exitCallbackCTX, cancel2 := context.WithCancel(keyboardExitCTX)
-	defer cancel2()
 
 	flag.Parse()
 
@@ -111,7 +108,7 @@ func run() error {
 
 	if flagRes.gui {
 		scr := gui.InitFyneNewScreen(version)
-		gui.Start(keyboardExitCTX, scr)
+		gui.Start(exitCTX, scr)
 		return nil
 	}
 
@@ -145,7 +142,7 @@ func run() error {
 		return err
 	}
 
-	scr, err := interactive.InitTcellNewScreen(cancel2)
+	scr, err := interactive.InitTcellNewScreen(cancel)
 	if err != nil {
 		return err
 	}
@@ -181,7 +178,7 @@ func run() error {
 	select {
 	case e := <-interExit:
 		return e
-	case <-exitCallbackCTX.Done():
+	case <-exitCTX.Done():
 	}
 
 	return nil

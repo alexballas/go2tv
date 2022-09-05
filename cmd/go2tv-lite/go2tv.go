@@ -69,15 +69,9 @@ func run() error {
 	var isSeek bool
 	var s *httphandlers.HTTPserver
 
-	keyboardExitCTX, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	exitCTX, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	exitCallbackCTX, cancel2 := context.WithCancel(keyboardExitCTX)
-	defer cancel2()
-	/*
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, os.Interrupt)
-	*/
 	flag.Parse()
 
 	flagRes, err := processflags()
@@ -151,7 +145,7 @@ func run() error {
 		return err
 	}
 
-	scr := &dummyScreen{ctxCancel: cancel2}
+	scr := &dummyScreen{ctxCancel: cancel}
 
 	tvdata, err := soapcalls.NewTVPayload(soapcalls.Options{
 		DMR:       flagRes.dmrURL,
@@ -184,7 +178,7 @@ func run() error {
 		return err
 	}
 
-	<-exitCallbackCTX.Done()
+	<-exitCTX.Done()
 
 	if tvdata != nil {
 		_ = tvdata.SendtoTV("Stop")
