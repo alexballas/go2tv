@@ -919,6 +919,13 @@ func (p *TVPayload) Log() *zerolog.Logger {
 func parseProtocolInfo(b []byte, mt string) error {
 	var respProtocolInfo protocolInfoResponse
 
+	// We were unable to detect the media type, so we
+	// should allow this to go through by default and
+	// hope the DMR accepts it.
+	if mt == "/" {
+		return nil
+	}
+
 	if strings.Contains(mt, "/") {
 		mt = strings.Split(mt, "/")[0]
 	}
