@@ -85,7 +85,7 @@ If you get the "cannot be opened because the developer cannot be verified" error
 - Click Open.
 
 If you get the "go2tv is damaged and can't be opened. You should move it to the Bin." error you can apply the following workaround.
-- Launch Terminal and then issue the following command: `xattr -cr /path/to/go2tv.app`.W
+- Launch Terminal and then issue the following command: `xattr -cr /path/to/go2tv.app`.
 
 Tested on
 -----
