@@ -210,6 +210,10 @@ func playAction(screen *NewScreen) {
 	if !screen.ExternalMediaURL.Checked {
 		mfile, err := os.Open(screen.mediafile)
 		check(w, err)
+		if err != nil {
+			screen.PlayPause.Enable()
+			return
+		}
 
 		mediaType, err = utils.GetMimeDetailsFromFile(mfile)
 		check(w, err)
@@ -348,9 +352,15 @@ func previewmedia(screen *NewScreen) {
 
 	mfile, err := os.Open(screen.mediafile)
 	check(w, err)
+	if err != nil {
+		return
+	}
 
 	mediaType, err := utils.GetMimeDetailsFromFile(mfile)
 	check(w, err)
+	if err != nil {
+		return
+	}
 
 	mediaTypeSlice := strings.Split(mediaType, "/")
 	switch mediaTypeSlice[0] {
