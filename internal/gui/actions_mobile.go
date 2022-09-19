@@ -320,22 +320,13 @@ func clearsubsAction(screen *NewScreen) {
 }
 
 func stopAction(screen *NewScreen) {
-	w := screen.Current
-
 	screen.PlayPause.Enable()
 
 	if screen.tvdata == nil || screen.tvdata.ControlURL == "" {
 		return
 	}
 
-	err := screen.tvdata.SendtoTV("Stop")
-
-	// Hack to avoid potential http errors during media loop mode.
-	// Will keep the window clean during unattended usage.
-	if screen.Medialoop {
-		err = nil
-	}
-	check(w, err)
+	_ = screen.tvdata.SendtoTV("Stop")
 
 	screen.httpserver.StopServer()
 	screen.tvdata = nil
