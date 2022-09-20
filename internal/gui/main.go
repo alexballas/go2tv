@@ -30,20 +30,46 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	data := make([]devType, 0)
 
 	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
+		if !s.Hotkeys {
+			return
+		}
+
+		fynePE := &fyne.PointEvent{
+			AbsolutePosition: fyne.Position{
+				X: 10,
+				Y: 30,
+			},
+			Position: fyne.Position{
+				X: 10,
+				Y: 30,
+			},
+		}
+
 		if k.Name == "Space" || k.Name == "P" {
 
 			currentState := s.getScreenState()
-
 			switch currentState {
 			case "Playing":
-				go pauseAction(s)
-			case "Paused":
-				go playAction(s)
+				go s.PlayPause.Tapped(fynePE)
+			case "Paused", "Stopped", "":
+				go s.PlayPause.Tapped(fynePE)
 			}
 		}
 
 		if k.Name == "S" {
-			go stopAction(s)
+			go s.Stop.Tapped(fynePE)
+		}
+
+		if k.Name == "M" {
+			s.MuteUnmute.Tapped(fynePE)
+		}
+
+		if k.Name == "Prior" {
+			s.VolumeUp.Tapped(fynePE)
+		}
+
+		if k.Name == "Next" {
+			s.VolumeDown.Tapped(fynePE)
 		}
 	})
 
@@ -147,6 +173,8 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	s.MediaText = mfiletext
 	s.SubsText = sfiletext
 	s.DeviceList = list
+	s.VolumeUp = volumeup
+	s.VolumeDown = volumedown
 
 	actionbuttons := container.New(&mainButtonsLayout{buttonHeight: 1.0}, playpause, volumedown, muteunmute, volumeup, stop)
 
@@ -164,7 +192,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	list.OnSelected = func(id widget.ListItemID) {
 		playpause.Enable()
 		t, err := soapcalls.DMRextractor(data[id].addr)
-		check(w, err)
+		check(s, err)
 		if err == nil {
 			s.selectedDevice = data[id]
 			s.controlURL = t.AvtransportControlURL
@@ -254,11 +282,9 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 func refreshDevList(s *NewScreen, data *[]devType) {
 	refreshDevices := time.NewTicker(5 * time.Second)
 
-	w := s.Current
-
 	_, err := getDevices(2)
 	if err != nil && !errors.Is(err, devices.ErrNoDeviceAvailable) {
-		check(w, err)
+		check(s, err)
 	}
 
 	for range refreshDevices.C {
