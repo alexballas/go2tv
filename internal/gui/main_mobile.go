@@ -137,7 +137,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	list.OnSelected = func(id widget.ListItemID) {
 		playpause.Enable()
 		t, err := soapcalls.DMRextractor(data[id].addr)
-		check(screen, err)
+		check(w, err)
 		if err == nil {
 			s.selectedDevice = data[id]
 			s.controlURL = t.AvtransportControlURL
@@ -205,7 +205,7 @@ func refreshDevList(s *NewScreen, data *[]devType) {
 
 	_, err := getDevices(2)
 	if err != nil && !errors.Is(err, devices.ErrNoDeviceAvailable) {
-		check(screen, err)
+		check(w, err)
 	}
 
 	for range refreshDevices.C {

@@ -77,7 +77,7 @@ func unmuteAction(screen *NewScreen) {
 func mediaAction(screen *NewScreen) {
 	w := screen.Current
 	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-		check(screen, err)
+		check(w, err)
 
 		if reader == nil {
 			return
@@ -99,7 +99,7 @@ func mediaAction(screen *NewScreen) {
 func subsAction(screen *NewScreen) {
 	w := screen.Current
 	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-		check(screen, err)
+		check(w, err)
 
 		if reader == nil {
 			return
@@ -107,7 +107,7 @@ func subsAction(screen *NewScreen) {
 
 		defer reader.Close()
 
-		check(screen, err)
+		check(w, err)
 		if err != nil {
 			return
 		}
@@ -132,7 +132,7 @@ func playAction(screen *NewScreen) {
 
 	if currentState == "Paused" {
 		err := screen.tvdata.SendtoTV("Play")
-		check(screen, err)
+		check(w, err)
 		return
 	}
 
@@ -164,7 +164,7 @@ func playAction(screen *NewScreen) {
 	}
 
 	whereToListen, err := utils.URLtoListenIPandPort(screen.controlURL)
-	check(screen, err)
+	check(w, err)
 	if err != nil {
 		screen.PlayPause.Enable()
 		return
@@ -194,7 +194,7 @@ func playAction(screen *NewScreen) {
 		}
 
 		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
-		check(screen, err)
+		check(w, err)
 		if err != nil {
 			screen.PlayPause.Enable()
 			return
@@ -242,7 +242,7 @@ func playAction(screen *NewScreen) {
 		}
 
 		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
-		check(screen, err)
+		check(w, err)
 		if err != nil {
 			screen.PlayPause.Enable()
 			return
@@ -284,10 +284,10 @@ func playAction(screen *NewScreen) {
 	}()
 	// Wait for the HTTP server to properly initialize.
 	err = <-serverStarted
-	check(screen, err)
+	check(w, err)
 
 	err = screen.tvdata.SendtoTV("Play1")
-	check(screen, err)
+	check(w, err)
 	if err != nil {
 		// Something failed when sent Play1 to the TV.
 		// Just force the user to re-select a device.
@@ -304,7 +304,7 @@ func pauseAction(screen *NewScreen) {
 	w := screen.Current
 
 	err := screen.tvdata.SendtoTV("Pause")
-	check(screen, err)
+	check(w, err)
 }
 
 func clearmediaAction(screen *NewScreen) {
