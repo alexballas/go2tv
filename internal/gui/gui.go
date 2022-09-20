@@ -6,12 +6,13 @@ package gui
 import (
 	"container/ring"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
-	"fyne.io/fyne/v2"
+	fyne "fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
@@ -19,7 +20,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/alexballas/go2tv/httphandlers"
 	"github.com/alexballas/go2tv/soapcalls"
-	"github.com/pkg/errors"
 )
 
 // NewScreen .
@@ -39,6 +39,10 @@ type NewScreen struct {
 	httpserver           *httphandlers.HTTPserver
 	ExternalMediaURL     *widget.Check
 	MuteUnmute           *widget.Button
+	VolumeUp             *widget.Button
+	VolumeDown           *widget.Button
+	Hotkeys              bool
+	ErrorVisible         bool
 	selectedDevice       devType
 	eventlURL            string
 	controlURL           string
@@ -83,8 +87,15 @@ func Start(ctx context.Context, s *NewScreen) {
 		container.NewTabItem("About", aboutWindow(s)),
 	)
 
+	s.Hotkeys = true
 	tabs.OnSelected = func(t *container.TabItem) {
 		t.Content.Refresh()
+
+		if t.Text == "Go2TV" {
+			s.Hotkeys = true
+			return
+		}
+		s.Hotkeys = false
 	}
 
 	s.tabs = tabs
@@ -159,18 +170,22 @@ func InitFyneNewScreen(v string) *NewScreen {
 	}
 }
 
-func check(win fyne.Window, err error) {
-	if err != nil {
+func check(s *NewScreen, err error) {
+	if err != nil && !s.ErrorVisible {
+		s.ErrorVisible = true
 		cleanErr := strings.ReplaceAll(err.Error(), ": ", "\n")
-		dialog.ShowError(errors.New(cleanErr), win)
+		e := dialog.NewError(errors.New(cleanErr), s.Current)
+		e.Show()
+		e.SetOnClosed(func() {
+			s.ErrorVisible = false
+		})
 	}
 }
 
 func selectNextMedia(screen *NewScreen) {
-	w := screen.Current
 	filedir := filepath.Dir(screen.mediafile)
 	filelist, err := os.ReadDir(filedir)
-	check(w, err)
+	check(screen, err)
 
 	var breaknext bool
 	var n int

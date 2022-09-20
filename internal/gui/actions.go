@@ -28,9 +28,8 @@ import (
 )
 
 func muteAction(screen *NewScreen) {
-	w := screen.Current
 	if screen.renderingControlURL == "" {
-		check(w, errors.New("please select a device"))
+		check(screen, errors.New("please select a device"))
 		return
 	}
 
@@ -47,7 +46,7 @@ func muteAction(screen *NewScreen) {
 	}
 
 	if err := screen.tvdata.SetMuteSoapCall("1"); err != nil {
-		check(w, errors.New("could not send mute action"))
+		check(screen, errors.New("could not send mute action"))
 		return
 	}
 
@@ -55,10 +54,8 @@ func muteAction(screen *NewScreen) {
 }
 
 func unmuteAction(screen *NewScreen) {
-	w := screen.Current
-
 	if screen.renderingControlURL == "" {
-		check(w, errors.New("please select a device"))
+		check(screen, errors.New("please select a device"))
 		return
 	}
 
@@ -71,7 +68,7 @@ func unmuteAction(screen *NewScreen) {
 
 	// isMuted, _ := screen.tvdata.GetMuteSoapCall()
 	if err := screen.tvdata.SetMuteSoapCall("0"); err != nil {
-		check(w, errors.New("could not send mute action"))
+		check(screen, errors.New("could not send mute action"))
 		return
 	}
 
@@ -81,7 +78,7 @@ func unmuteAction(screen *NewScreen) {
 func mediaAction(screen *NewScreen) {
 	w := screen.Current
 	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-		check(w, err)
+		check(screen, err)
 
 		if reader == nil {
 			return
@@ -90,7 +87,7 @@ func mediaAction(screen *NewScreen) {
 
 		mfile := reader.URI().Path()
 		absMediaFile, err := filepath.Abs(mfile)
-		check(w, err)
+		check(screen, err)
 
 		screen.MediaText.Text = filepath.Base(mfile)
 		screen.mediafile = absMediaFile
@@ -110,7 +107,7 @@ func mediaAction(screen *NewScreen) {
 	if screen.currentmfolder != "" {
 		mfileURI := storage.NewFileURI(screen.currentmfolder)
 		mfileLister, err := storage.ListerForURI(mfileURI)
-		check(w, err)
+		check(screen, err)
 		fd.SetLocation(mfileLister)
 	}
 
@@ -121,7 +118,7 @@ func mediaAction(screen *NewScreen) {
 func subsAction(screen *NewScreen) {
 	w := screen.Current
 	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-		check(w, err)
+		check(screen, err)
 
 		if reader == nil {
 			return
@@ -130,7 +127,7 @@ func subsAction(screen *NewScreen) {
 
 		sfile := reader.URI().Path()
 		absSubtitlesFile, err := filepath.Abs(sfile)
-		check(w, err)
+		check(screen, err)
 		if err != nil {
 			return
 		}
@@ -144,7 +141,7 @@ func subsAction(screen *NewScreen) {
 	if screen.currentmfolder != "" {
 		mfileURI := storage.NewFileURI(screen.currentmfolder)
 		mfileLister, err := storage.ListerForURI(mfileURI)
-		check(w, err)
+		check(screen, err)
 		if err != nil {
 			return
 		}
@@ -160,13 +157,11 @@ func playAction(screen *NewScreen) {
 
 	screen.PlayPause.Disable()
 
-	w := screen.Current
-
 	currentState := screen.getScreenState()
 
 	if currentState == "Paused" {
 		err := screen.tvdata.SendtoTV("Play")
-		check(w, err)
+		check(screen, err)
 		return
 	}
 
@@ -186,19 +181,19 @@ func playAction(screen *NewScreen) {
 	}
 
 	if screen.mediafile == "" && screen.MediaText.Text == "" {
-		check(w, errors.New("please select a media file or enter a media URL"))
+		check(screen, errors.New("please select a media file or enter a media URL"))
 		screen.PlayPause.Enable()
 		return
 	}
 
 	if screen.controlURL == "" {
-		check(w, errors.New("please select a device"))
+		check(screen, errors.New("please select a device"))
 		screen.PlayPause.Enable()
 		return
 	}
 
 	whereToListen, err := utils.URLtoListenIPandPort(screen.controlURL)
-	check(w, err)
+	check(screen, err)
 	if err != nil {
 		screen.PlayPause.Enable()
 		return
@@ -209,14 +204,14 @@ func playAction(screen *NewScreen) {
 
 	if !screen.ExternalMediaURL.Checked {
 		mfile, err := os.Open(screen.mediafile)
-		check(w, err)
+		check(screen, err)
 		if err != nil {
 			screen.PlayPause.Enable()
 			return
 		}
 
 		mediaType, err = utils.GetMimeDetailsFromFile(mfile)
-		check(w, err)
+		check(screen, err)
 		if err != nil {
 			screen.PlayPause.Enable()
 			return
@@ -248,21 +243,21 @@ func playAction(screen *NewScreen) {
 		// That's good enough for us since right after that
 		// we close the io.ReadCloser.
 		mediaURL, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
-		check(screen.Current, err)
+		check(screen, err)
 		if err != nil {
 			screen.PlayPause.Enable()
 			return
 		}
 
 		mediaURLinfo, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
-		check(screen.Current, err)
+		check(screen, err)
 		if err != nil {
 			screen.PlayPause.Enable()
 			return
 		}
 
 		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
-		check(w, err)
+		check(screen, err)
 		if err != nil {
 			screen.PlayPause.Enable()
 			return
@@ -307,10 +302,10 @@ func playAction(screen *NewScreen) {
 	}()
 	// Wait for the HTTP server to properly initialize.
 	err = <-serverStarted
-	check(w, err)
+	check(screen, err)
 
 	err = screen.tvdata.SendtoTV("Play1")
-	check(w, err)
+	check(screen, err)
 	if err != nil {
 		// Something failed when sent Play1 to the TV.
 		// Just force the user to re-select a device.
@@ -324,10 +319,8 @@ func playAction(screen *NewScreen) {
 }
 
 func pauseAction(screen *NewScreen) {
-	w := screen.Current
-
 	err := screen.tvdata.SendtoTV("Pause")
-	check(w, err)
+	check(screen, err)
 }
 
 func clearmediaAction(screen *NewScreen) {
@@ -343,21 +336,19 @@ func clearsubsAction(screen *NewScreen) {
 }
 
 func previewmedia(screen *NewScreen) {
-	w := screen.Current
-
 	if screen.mediafile == "" {
-		check(w, errors.New("please select a media file"))
+		check(screen, errors.New("please select a media file"))
 		return
 	}
 
 	mfile, err := os.Open(screen.mediafile)
-	check(w, err)
+	check(screen, err)
 	if err != nil {
 		return
 	}
 
 	mediaType, err := utils.GetMimeDetailsFromFile(mfile)
-	check(w, err)
+	check(screen, err)
 	if err != nil {
 		return
 	}
@@ -374,7 +365,7 @@ func previewmedia(screen *NewScreen) {
 		imgw.Show()
 	default:
 		err := open.Run(screen.mediafile)
-		check(w, err)
+		check(screen, err)
 	}
 }
 
@@ -418,9 +409,8 @@ func getDevices(delay int) ([]devType, error) {
 }
 
 func volumeAction(screen *NewScreen, up bool) {
-	w := screen.Current
 	if screen.renderingControlURL == "" {
-		check(w, errors.New("please select a device"))
+		check(screen, errors.New("please select a device"))
 		return
 	}
 
@@ -433,7 +423,7 @@ func volumeAction(screen *NewScreen, up bool) {
 
 	currentVolume, err := screen.tvdata.GetVolumeSoapCall()
 	if err != nil {
-		check(w, errors.New("could not get the volume levels"))
+		check(screen, errors.New("could not get the volume levels"))
 		return
 	}
 
@@ -450,6 +440,6 @@ func volumeAction(screen *NewScreen, up bool) {
 	stringVolume := strconv.Itoa(setVolume)
 
 	if err := screen.tvdata.SetVolumeSoapCall(stringVolume); err != nil {
-		check(w, errors.New("could not send volume action"))
+		check(screen, errors.New("could not send volume action"))
 	}
 }
