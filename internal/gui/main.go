@@ -24,7 +24,6 @@ import (
 
 func mainWindow(s *NewScreen) fyne.CanvasObject {
 	w := s.Current
-
 	list := new(widget.List)
 
 	data := make([]devType, 0)

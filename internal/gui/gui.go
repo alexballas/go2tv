@@ -25,38 +25,38 @@ import (
 // NewScreen .
 type NewScreen struct {
 	mu                   sync.RWMutex
-	Debug                *debugWriter
 	Current              fyne.Window
-	PlayPause            *widget.Button
-	tvdata               *soapcalls.TVPayload
+	VolumeDown           *widget.Button
+	MediaText            *widget.Entry
+	Debug                *debugWriter
 	tabs                 *container.AppTabs
 	CheckVersion         *widget.Button
 	SubsText             *widget.Entry
 	CustomSubsCheck      *widget.Check
-	MediaText            *widget.Entry
+	PlayPause            *widget.Button
 	Stop                 *widget.Button
 	DeviceList           *widget.List
 	httpserver           *httphandlers.HTTPserver
 	ExternalMediaURL     *widget.Check
 	MuteUnmute           *widget.Button
 	VolumeUp             *widget.Button
-	VolumeDown           *widget.Button
-	Hotkeys              bool
-	ErrorVisible         bool
+	tvdata               *soapcalls.TVPayload
 	selectedDevice       devType
+	currentmfolder       string
+	mediafile            string
 	eventlURL            string
 	controlURL           string
 	renderingControlURL  string
 	connectionManagerURL string
-	currentmfolder       string
-	mediafile            string
-	subsfile             string
-	version              string
 	State                string
+	version              string
+	subsfile             string
 	mediaFormats         []string
+	Transcode            bool
+	ErrorVisible         bool
 	NextMedia            bool
 	Medialoop            bool
-	Transcode            bool
+	Hotkeys              bool
 }
 
 type debugWriter struct {

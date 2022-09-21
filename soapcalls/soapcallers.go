@@ -411,14 +411,12 @@ func (p *TVPayload) RefreshLoopUUIDSoapCall(uuid, timeout string) {
 		return
 	}
 
-	// Refresh token after after Timeout / 2 seconds.
+	// Refresh token after Timeout / 2 seconds.
 	if timeoutInt > 20 {
 		triggerTime = timeoutInt / 5
 	}
 	triggerTimefunc := time.Duration(triggerTime) * time.Second
 
-	// We're doing this as time.AfterFunc can't handle
-	// function arguments.
 	f := p.refreshLoopUUIDAsyncSoapCall(uuid)
 	timer := time.AfterFunc(triggerTimefunc, f)
 	p.CurrentTimers[uuid] = timer
