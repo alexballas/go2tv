@@ -11,6 +11,10 @@ import (
 	"github.com/pkg/errors"
 )
 
+var (
+	ErrWrongDMR = errors.New("something broke somewhere - wrong DMR URL?")
+)
+
 type rootNode struct {
 	XMLName xml.Name `xml:"root"`
 	Device  struct {
@@ -129,7 +133,7 @@ func DMRextractor(dmrurl string) (*DMRextracted, error) {
 		return ex, nil
 	}
 
-	return nil, errors.New("something broke somewhere - wrong DMR URL?")
+	return nil, ErrWrongDMR
 }
 
 // EventNotifyParser parses the Notify messages from the DMR device.

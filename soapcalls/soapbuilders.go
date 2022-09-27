@@ -12,6 +12,10 @@ import (
 	"github.com/pkg/errors"
 )
 
+var (
+	ErrSetMuteInput = errors.New("setMuteSoapBuild input error. Was expecting 0 or 1.")
+)
+
 type playEnvelope struct {
 	XMLName  xml.Name `xml:"s:Envelope"`
 	Schema   string   `xml:"xmlns:s,attr"`
@@ -432,7 +436,7 @@ func pauseSoapBuild() ([]byte, error) {
 
 func setMuteSoapBuild(m string) ([]byte, error) {
 	if m != "0" && m != "1" {
-		return nil, errors.New("setMuteSoapBuild input error. Was expecting 0 or 1.")
+		return nil, ErrSetMuteInput
 	}
 
 	d := setMuteEnvelope{

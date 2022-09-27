@@ -9,7 +9,11 @@ import (
 	"github.com/pkg/errors"
 )
 
-var ErrNoDeviceAvailable = errors.New("loadSSDPservices: No available Media Renderers")
+var (
+	ErrNoDeviceAvailable  = errors.New("loadSSDPservices: No available Media Renderers")
+	ErrDeviceNotAvailable = errors.New("devicePicker: Requested device not available")
+	ErrSomethingWentWrong = errors.New("devicePicker: Something went terribly wrong")
+)
 
 // LoadSSDPservices returns a map with all the devices that support the
 // AVTransport service.
@@ -45,7 +49,7 @@ func LoadSSDPservices(delay int) (map[string]string, error) {
 // DevicePicker will pick the nth device from the devices input map.
 func DevicePicker(devices map[string]string, n int) (string, error) {
 	if n > len(devices) || len(devices) == 0 || n <= 0 {
-		return "", errors.New("devicePicker: Requested device not available")
+		return "", ErrDeviceNotAvailable
 	}
 
 	keys := make([]string, 0)
@@ -60,5 +64,6 @@ func DevicePicker(devices map[string]string, n int) (string, error) {
 			return devices[k], nil
 		}
 	}
-	return "", errors.New("devicePicker: Something went terribly wrong")
+
+	return "", ErrSomethingWentWrong
 }

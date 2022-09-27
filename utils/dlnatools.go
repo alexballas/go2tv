@@ -41,6 +41,8 @@ var (
 		"image/jpeg":              "JPEG_LRG",
 		"image/png":               "PNG_LRG",
 	}
+
+	ErrInvalidSeekFlag = errors.New("invalid seek flag")
 )
 
 func defaultStreamingFlags() string {
@@ -76,7 +78,7 @@ func BuildContentFeatures(mediaType string, seek string, transcode bool) (string
 	case "11":
 		cf.WriteString("DLNA.ORG_OP=11;")
 	default:
-		return "", errors.New("invalid seek flag")
+		return "", ErrInvalidSeekFlag
 	}
 
 	switch transcode {
