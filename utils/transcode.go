@@ -9,6 +9,10 @@ import (
 	"os/exec"
 )
 
+var (
+	ErrInvalidInput = errors.New("invalid ffmpeg input")
+)
+
 // ServeTranscodedStream passes an input file or io.Reader to ffmpeg and writes the output directly
 // to our io.Writer.
 func ServeTranscodedStream(w io.Writer, input interface{}, ff *exec.Cmd) error {
@@ -22,7 +26,7 @@ func ServeTranscodedStream(w io.Writer, input interface{}, ff *exec.Cmd) error {
 	case io.Reader:
 		in = "pipe:0"
 	default:
-		return errors.New("invalid ffmpeg input")
+		return ErrInvalidInput
 	}
 
 	if ff != nil && ff.Process != nil {

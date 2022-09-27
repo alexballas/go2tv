@@ -34,6 +34,9 @@ var (
 	transcodePtr = flag.Bool("tc", false, "Use ffmpeg to transcode input video file.")
 	listPtr      = flag.Bool("l", false, "List all available UPnP/DLNA Media Renderer models and URLs.")
 	versionPtr   = flag.Bool("version", false, "Print version.")
+
+	ErrNoCombi    = errors.New("can't combine -l with other flags")
+	ErrFailtoList = errors.New("failed to list devices")
 )
 
 type dummyScreen struct {
@@ -200,12 +203,12 @@ func listFlagFunction() error {
 	})
 
 	if flagsEnabled > 1 {
-		return errors.New("can't combine -l with other flags")
+		return ErrNoCombi
 	}
 
 	deviceList, err := devices.LoadSSDPservices(1)
 	if err != nil {
-		return errors.New("failed to list devices")
+		return ErrFailtoList
 	}
 
 	fmt.Println()

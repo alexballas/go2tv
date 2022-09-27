@@ -25,7 +25,11 @@ type States struct {
 	ProcessStop   bool
 }
 
-var log zerolog.Logger
+var (
+	log                   zerolog.Logger
+	ErrNoMatchingFileType = errors.New("no matching file type")
+	ErrZombieCallbacks    = errors.New("zombie callbacks, we should ignore those")
+)
 
 // TVPayload this is the heart of Go2TV. We pass that type to the
 // webserver. We need to explicitly initialize it.
@@ -901,7 +905,7 @@ func (p *TVPayload) GetProcessStop(uuid string) (bool, error) {
 		return p.MediaRenderersStates[uuid].ProcessStop, nil
 	}
 
-	return true, errors.New("zombie callbacks, we should ignore those")
+	return true, ErrZombieCallbacks
 }
 
 func (p *TVPayload) Log() *zerolog.Logger {
@@ -947,5 +951,5 @@ func parseProtocolInfo(b []byte, mt string) error {
 		}
 	}
 
-	return errors.New("no matching file type")
+	return ErrNoMatchingFileType
 }
