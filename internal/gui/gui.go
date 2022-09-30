@@ -4,12 +4,15 @@
 package gui
 
 import (
+	"container/ring"
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
-	"fyne.io/fyne/v2"
+	fyne "fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
@@ -17,37 +20,47 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/alexballas/go2tv/httphandlers"
 	"github.com/alexballas/go2tv/soapcalls"
-	"github.com/pkg/errors"
 )
 
 // NewScreen .
 type NewScreen struct {
-	mu                  sync.RWMutex
-	Current             fyne.Window
-	ExternalMediaURL    *widget.Check
-	Stop                *widget.Button
-	MuteUnmute          *widget.Button
-	CheckVersion        *widget.Button
-	tvdata              *soapcalls.TVPayload
-	CustomSubsCheck     *widget.Check
-	MediaText           *widget.Entry
-	SubsText            *widget.Entry
-	DeviceList          *widget.List
-	httpserver          *httphandlers.HTTPserver
-	PlayPause           *widget.Button
-	selectedDevice      devType
-	State               string
-	controlURL          string
-	eventlURL           string
-	renderingControlURL string
-	currentmfolder      string
-	mediafile           string
-	subsfile            string
-	version             string
-	mediaFormats        []string
-	NextMedia           bool
-	Medialoop           bool
-	Transcode           bool
+	mu                   sync.RWMutex
+	Current              fyne.Window
+	VolumeDown           *widget.Button
+	MediaText            *widget.Entry
+	Debug                *debugWriter
+	tabs                 *container.AppTabs
+	CheckVersion         *widget.Button
+	SubsText             *widget.Entry
+	CustomSubsCheck      *widget.Check
+	PlayPause            *widget.Button
+	Stop                 *widget.Button
+	DeviceList           *widget.List
+	httpserver           *httphandlers.HTTPserver
+	ExternalMediaURL     *widget.Check
+	MuteUnmute           *widget.Button
+	VolumeUp             *widget.Button
+	tvdata               *soapcalls.TVPayload
+	selectedDevice       devType
+	currentmfolder       string
+	mediafile            string
+	eventlURL            string
+	controlURL           string
+	renderingControlURL  string
+	connectionManagerURL string
+	State                string
+	version              string
+	subsfile             string
+	mediaFormats         []string
+	Transcode            bool
+	ErrorVisible         bool
+	NextMedia            bool
+	Medialoop            bool
+	Hotkeys              bool
+}
+
+type debugWriter struct {
+	ring *ring.Ring
 }
 
 type devType struct {
@@ -59,26 +72,46 @@ type mainButtonsLayout struct {
 	buttonHeight float32
 }
 
-// Start .
-func Start(s *NewScreen) {
-	w := s.Current
+func (f *debugWriter) Write(b []byte) (int, error) {
+	f.ring.Value = string(b)
+	f.ring = f.ring.Next()
+	return len(b), nil
+}
 
+// Start .
+func Start(ctx context.Context, s *NewScreen) {
+	w := s.Current
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Go2TV", container.NewPadded(mainWindow(s))),
 		container.NewTabItem("Settings", container.NewPadded(settingsWindow(s))),
 		container.NewTabItem("About", aboutWindow(s)),
 	)
 
+	s.Hotkeys = true
 	tabs.OnSelected = func(t *container.TabItem) {
 		t.Content.Refresh()
+
+		if t.Text == "Go2TV" {
+			s.Hotkeys = true
+			return
+		}
+		s.Hotkeys = false
 	}
+
+	s.tabs = tabs
 
 	w.SetContent(tabs)
 	w.Resize(fyne.NewSize(w.Canvas().Size().Width, w.Canvas().Size().Height*1.3))
 	w.CenterOnScreen()
 	w.SetMaster()
+
+	go func() {
+		<-ctx.Done()
+		os.Exit(0)
+	}()
+
 	w.ShowAndRun()
-	os.Exit(0)
+
 }
 
 // EmitMsg Method to implement the screen interface
@@ -124,26 +157,35 @@ func InitFyneNewScreen(v string) *NewScreen {
 	theme := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "Default")
 	fyne.CurrentApp().Settings().SetTheme(go2tvTheme{theme})
 
+	dw := &debugWriter{
+		ring: ring.New(1000),
+	}
+
 	return &NewScreen{
 		Current:        w,
 		currentmfolder: currentdir,
-		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".mp3", ".flac", ".wav", ".jpg", ".jpeg", ".png"},
+		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".jpg", ".jpeg", ".png"},
 		version:        v,
+		Debug:          dw,
 	}
 }
 
-func check(win fyne.Window, err error) {
-	if err != nil {
+func check(s *NewScreen, err error) {
+	if err != nil && !s.ErrorVisible {
+		s.ErrorVisible = true
 		cleanErr := strings.ReplaceAll(err.Error(), ": ", "\n")
-		dialog.ShowError(errors.New(cleanErr), win)
+		e := dialog.NewError(errors.New(cleanErr), s.Current)
+		e.Show()
+		e.SetOnClosed(func() {
+			s.ErrorVisible = false
+		})
 	}
 }
 
 func selectNextMedia(screen *NewScreen) {
-	w := screen.Current
 	filedir := filepath.Dir(screen.mediafile)
 	filelist, err := os.ReadDir(filedir)
-	check(w, err)
+	check(screen, err)
 
 	var breaknext bool
 	var n int

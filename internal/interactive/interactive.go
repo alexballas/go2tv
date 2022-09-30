@@ -1,10 +1,9 @@
 package interactive
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,11 +17,12 @@ import (
 
 // NewScreen .
 type NewScreen struct {
-	mu         sync.RWMutex
-	Current    tcell.Screen
-	TV         *soapcalls.TVPayload
-	mediaTitle string
-	lastAction string
+	mu          sync.RWMutex
+	Current     tcell.Screen
+	TV          *soapcalls.TVPayload
+	exitCTXfunc context.CancelFunc
+	mediaTitle  string
+	lastAction  string
 }
 
 var flipflop bool = true
@@ -90,7 +90,7 @@ func (p *NewScreen) EmitMsg(inputtext string) {
 }
 
 // InterInit starts the interactive terminal
-func (p *NewScreen) InterInit(tv *soapcalls.TVPayload) {
+func (p *NewScreen) InterInit(tv *soapcalls.TVPayload, c chan error) {
 	p.TV = tv
 
 	muteChecker := time.NewTicker(1 * time.Second)
@@ -102,18 +102,21 @@ func (p *NewScreen) InterInit(tv *soapcalls.TVPayload) {
 	}()
 
 	p.mu.Lock()
-	p.mediaTitle = tv.MediaURL
+
 	mediaTitlefromURL, err := url.Parse(tv.MediaURL)
-	if err == nil {
-		p.mediaTitle = strings.TrimLeft(mediaTitlefromURL.Path, "/")
+	if err != nil {
+		c <- fmt.Errorf("interactive screen error: %w", err)
+		return
 	}
+	p.mediaTitle = strings.TrimLeft(mediaTitlefromURL.Path, "/")
+
 	p.mu.Unlock()
 
 	encoding.Register()
 	s := p.Current
 	if err := s.Init(); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
+		c <- fmt.Errorf("interactive screen error: %w", err)
+		return
 	}
 
 	defStyle := tcell.StyleDefault.
@@ -128,8 +131,8 @@ func (p *NewScreen) InterInit(tv *soapcalls.TVPayload) {
 	// in a panic error since we need to properly
 	// initialize the tcell window.
 	if err := tv.SendtoTV("Play1"); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
+		c <- fmt.Errorf("interactive screen error: %w", err)
+		return
 	}
 
 	for {
@@ -148,7 +151,7 @@ func (p *NewScreen) HandleKeyEvent(ev *tcell.EventKey) {
 	tv := p.TV
 
 	if ev.Key() == tcell.KeyEscape {
-		tv.SendtoTV("Stop")
+		_ = tv.SendtoTV("Stop")
 		p.Fini()
 	}
 
@@ -174,12 +177,12 @@ func (p *NewScreen) HandleKeyEvent(ev *tcell.EventKey) {
 	case 'p':
 		if flipflop {
 			flipflop = false
-			tv.SendtoTV("Pause")
+			_ = tv.SendtoTV("Pause")
 			break
 		}
 
 		flipflop = true
-		tv.SendtoTV("Play")
+		_ = tv.SendtoTV("Play")
 
 	case 'm':
 		currentMute, err := tv.GetMuteSoapCall()
@@ -202,18 +205,19 @@ func (p *NewScreen) HandleKeyEvent(ev *tcell.EventKey) {
 // Fini Method to implement the screen interface
 func (p *NewScreen) Fini() {
 	p.Current.Fini()
-	os.Exit(0)
+	p.exitCTXfunc()
 }
 
 // InitTcellNewScreen .
-func InitTcellNewScreen() (*NewScreen, error) {
-	s, e := tcell.NewScreen()
-	if e != nil {
-		return nil, errors.New("can't start new interactive screen")
+func InitTcellNewScreen(ctxCancel context.CancelFunc) (*NewScreen, error) {
+	s, err := tcell.NewScreen()
+	if err != nil {
+		return nil, fmt.Errorf("interactive screen error: %w", err)
 	}
 
 	return &NewScreen{
-		Current: s,
+		Current:     s,
+		exitCTXfunc: ctxCancel,
 	}, nil
 }
 

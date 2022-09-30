@@ -9,6 +9,10 @@ import (
 	"net/url"
 )
 
+var (
+	ErrBadStatus = errors.New("streamURL bad status code")
+)
+
 // StreamURL returns the response body for the input media URL.
 func StreamURL(ctx context.Context, s string) (io.ReadCloser, error) {
 	_, err := url.ParseRequestURI(s)
@@ -28,7 +32,7 @@ func StreamURL(ctx context.Context, s string) (io.ReadCloser, error) {
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, errors.New("streamURL bad status code: " + resp.Status)
+		return nil, ErrBadStatus
 	}
 
 	body := resp.Body

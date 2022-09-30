@@ -24,26 +24,51 @@ import (
 
 func mainWindow(s *NewScreen) fyne.CanvasObject {
 	w := s.Current
-
 	list := new(widget.List)
 
 	data := make([]devType, 0)
 
 	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
+		if !s.Hotkeys {
+			return
+		}
+
+		fynePE := &fyne.PointEvent{
+			AbsolutePosition: fyne.Position{
+				X: 10,
+				Y: 30,
+			},
+			Position: fyne.Position{
+				X: 10,
+				Y: 30,
+			},
+		}
+
 		if k.Name == "Space" || k.Name == "P" {
 
 			currentState := s.getScreenState()
-
 			switch currentState {
 			case "Playing":
-				go pauseAction(s)
-			case "Paused":
-				go playAction(s)
+				go s.PlayPause.Tapped(fynePE)
+			case "Paused", "Stopped", "":
+				go s.PlayPause.Tapped(fynePE)
 			}
 		}
 
 		if k.Name == "S" {
-			go stopAction(s)
+			go s.Stop.Tapped(fynePE)
+		}
+
+		if k.Name == "M" {
+			s.MuteUnmute.Tapped(fynePE)
+		}
+
+		if k.Name == "Prior" {
+			s.VolumeUp.Tapped(fynePE)
+		}
+
+		if k.Name == "Next" {
+			s.VolumeDown.Tapped(fynePE)
 		}
 	})
 
@@ -147,6 +172,8 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	s.MediaText = mfiletext
 	s.SubsText = sfiletext
 	s.DeviceList = list
+	s.VolumeUp = volumeup
+	s.VolumeDown = volumedown
 
 	actionbuttons := container.New(&mainButtonsLayout{buttonHeight: 1.0}, playpause, volumedown, muteunmute, volumeup, stop)
 
@@ -164,10 +191,13 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	list.OnSelected = func(id widget.ListItemID) {
 		playpause.Enable()
 		t, err := soapcalls.DMRextractor(data[id].addr)
-		check(w, err)
+		check(s, err)
 		if err == nil {
 			s.selectedDevice = data[id]
-			s.controlURL, s.eventlURL, s.renderingControlURL = t.AvtransportControlURL, t.AvtransportEventSubURL, t.RenderingControlURL
+			s.controlURL = t.AvtransportControlURL
+			s.eventlURL = t.AvtransportEventSubURL
+			s.renderingControlURL = t.RenderingControlURL
+			s.connectionManagerURL = t.ConnectionManagerURL
 			if s.tvdata != nil {
 				s.tvdata.RenderingControlURL = s.renderingControlURL
 			}
@@ -192,12 +222,18 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		sfile.Disable()
 	}
 
+	var mediafileOld, mediafileOldText string
+
 	externalmedia.OnChanged = func(b bool) {
 		if b {
 			nextmedia.SetChecked(false)
 			nextmedia.Disable()
 			mfile.Disable()
 			previewmedia.Disable()
+
+			// keep old values
+			mediafileOld = s.mediafile
+			mediafileOldText = s.MediaText.Text
 
 			// rename the label
 			mediafilelabel.Text = "URL:"
@@ -208,8 +244,8 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 			// Set some Media text defaults
 			// to indicate that we're expecting a URL
-			mfiletext.SetPlaceHolder("Enter URL here")
-			mfiletext.Enable()
+			s.MediaText.SetPlaceHolder("Enter URL here")
+			s.MediaText.Enable()
 			return
 		}
 
@@ -218,10 +254,11 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		mfile.Enable()
 		previewmedia.Enable()
 		mediafilelabel.Text = "File:"
-		mfiletext.SetPlaceHolder("")
-		mfiletext.Text = ""
+		s.MediaText.SetPlaceHolder("")
+		s.MediaText.Text = mediafileOldText
+		s.mediafile = mediafileOld
 		mediafilelabel.Refresh()
-		mfiletext.Disable()
+		s.MediaText.Disable()
 	}
 
 	medialoop.OnChanged = func(b bool) {
@@ -244,11 +281,9 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 func refreshDevList(s *NewScreen, data *[]devType) {
 	refreshDevices := time.NewTicker(5 * time.Second)
 
-	w := s.Current
-
 	_, err := getDevices(2)
 	if err != nil && !errors.Is(err, devices.ErrNoDeviceAvailable) {
-		check(w, err)
+		check(s, err)
 	}
 
 	for range refreshDevices.C {
@@ -296,7 +331,7 @@ func refreshDevList(s *NewScreen, data *[]devType) {
 }
 
 func checkMutefunc(s *NewScreen) {
-	checkMute := time.NewTicker(1 * time.Second)
+	checkMute := time.NewTicker(2 * time.Second)
 
 	var checkMuteCounter int
 	for range checkMute.C {

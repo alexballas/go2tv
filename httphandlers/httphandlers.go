@@ -45,22 +45,25 @@ type osFileType struct {
 
 // StartServer will start a HTTP server to serve the selected media files and
 // also handle the subscriptions requests from the DMR devices.
-func (s *HTTPserver) StartServer(serverStarted chan<- struct{}, media, subtitles interface{},
+func (s *HTTPserver) StartServer(serverStarted chan<- error, media, subtitles interface{},
 	tvpayload *soapcalls.TVPayload, screen Screen,
-) error {
+) {
 	mURL, err := url.Parse(tvpayload.MediaURL)
 	if err != nil {
-		return fmt.Errorf("failed to parse MediaURL: %w", err)
+		serverStarted <- fmt.Errorf("failed to parse MediaURL: %w", err)
+		return
 	}
 
 	sURL, err := url.Parse(tvpayload.SubtitlesURL)
 	if err != nil {
-		return fmt.Errorf("failed to parse SubtitlesURL: %w", err)
+		serverStarted <- fmt.Errorf("failed to parse SubtitlesURL: %w", err)
+		return
 	}
 
 	callbackURL, err := url.Parse(tvpayload.CallbackURL)
 	if err != nil {
-		return fmt.Errorf("failed to parse CallbackURL: %w", err)
+		serverStarted <- fmt.Errorf("failed to parse CallbackURL: %w", err)
+		return
 	}
 
 	s.mux.HandleFunc(mURL.Path, s.serveMediaHandler(tvpayload, media))
@@ -69,13 +72,12 @@ func (s *HTTPserver) StartServer(serverStarted chan<- struct{}, media, subtitles
 
 	ln, err := net.Listen("tcp", s.http.Addr)
 	if err != nil {
-		return fmt.Errorf("server listen error: %w", err)
+		serverStarted <- fmt.Errorf("server listen error: %w", err)
+		return
 	}
 
-	serverStarted <- struct{}{}
+	serverStarted <- nil
 	_ = s.http.Serve(ln)
-
-	return nil
 }
 
 func (s *HTTPserver) serveMediaHandler(tv *soapcalls.TVPayload, media interface{}) http.HandlerFunc {

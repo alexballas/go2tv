@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -265,6 +264,7 @@ func playAction(screen *NewScreen) {
 		ControlURL:                  screen.controlURL,
 		EventURL:                    screen.eventlURL,
 		RenderingControlURL:         screen.renderingControlURL,
+		ConnectionManagerURL:        screen.connectionManagerURL,
 		MediaURL:                    "http://" + whereToListen + "/" + utils.ConvertFilename(screen.MediaText.Text),
 		SubtitlesURL:                "http://" + whereToListen + "/" + utils.ConvertFilename(screen.SubsText.Text),
 		CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
@@ -272,23 +272,20 @@ func playAction(screen *NewScreen) {
 		CurrentTimers:               make(map[string]*time.Timer),
 		MediaRenderersStates:        make(map[string]*soapcalls.States),
 		InitialMediaRenderersStates: make(map[string]bool),
-		RWMutex:                     &sync.RWMutex{},
 	}
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)
-	serverStarted := make(chan struct{})
+	serverStarted := make(chan error)
 
 	// We pass the tvdata here as we need the callback handlers to be able to react
 	// to the different media renderer states.
 	go func() {
-		err := screen.httpserver.StartServer(serverStarted, mediaFile, subsFile, screen.tvdata, screen)
-		check(w, err)
-		if err != nil {
-			return
-		}
+		screen.httpserver.StartServer(serverStarted, mediaFile, subsFile, screen.tvdata, screen)
 	}()
 	// Wait for the HTTP server to properly initialize.
-	<-serverStarted
+	err = <-serverStarted
+	check(w, err)
+
 	err = screen.tvdata.SendtoTV("Play1")
 	check(w, err)
 	if err != nil {
@@ -323,22 +320,13 @@ func clearsubsAction(screen *NewScreen) {
 }
 
 func stopAction(screen *NewScreen) {
-	w := screen.Current
-
 	screen.PlayPause.Enable()
 
 	if screen.tvdata == nil || screen.tvdata.ControlURL == "" {
 		return
 	}
 
-	err := screen.tvdata.SendtoTV("Stop")
-
-	// Hack to avoid potential http errors during media loop mode.
-	// Will keep the window clean during unattended usage.
-	if screen.Medialoop {
-		err = nil
-	}
-	check(w, err)
+	_ = screen.tvdata.SendtoTV("Stop")
 
 	screen.httpserver.StopServer()
 	screen.tvdata = nil
