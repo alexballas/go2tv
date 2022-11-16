@@ -30,7 +30,6 @@ var log zerolog.Logger
 // TVPayload this is the heart of Go2TV. We pass that type to the
 // webserver. We need to explicitly initialize it.
 type TVPayload struct {
-	MediaFile                   interface{}
 	Logging                     io.Writer
 	CurrentTimers               map[string]*time.Timer
 	InitialMediaRenderersStates map[string]bool
@@ -42,6 +41,7 @@ type TVPayload struct {
 	ControlURL                  string
 	MediaURL                    string
 	MediaType                   string
+	MediaPath                   string
 	SubtitlesURL                string
 	CallbackURL                 string
 	Transcode                   bool
@@ -102,7 +102,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 		return fmt.Errorf("setAVTransportSoapCall parse error: %w", err)
 	}
 
-	xml, err := setAVTransportSoapBuild(p.MediaURL, p.MediaType, p.SubtitlesURL, p.Transcode, p.Seekable)
+	xml, err := setAVTransportSoapBuild(p)
 	if err != nil {
 		p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "setAVTransportSoapBuild").Err(err).Msg("")
 		return fmt.Errorf("setAVTransportSoapCall soap build error: %w", err)

@@ -117,6 +117,7 @@ type didLLiteItem struct {
 
 type resNode struct {
 	XMLName      xml.Name `xml:"res"`
+	Duration     string   `xml:"duration,attr,omitempty"`
 	ProtocolInfo string   `xml:"protocolInfo,attr"`
 	Value        string   `xml:",chardata"`
 }
@@ -228,14 +229,14 @@ type getProtocolInfoAction struct {
 	ConnectionManager string   `xml:"xmlns:u,attr"`
 }
 
-func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string, transcode, seek bool) ([]byte, error) {
-	mediaTypeSlice := strings.Split(mediaType, "/")
+func setAVTransportSoapBuild(tvdata *TVPayload) ([]byte, error) {
+	mediaTypeSlice := strings.Split(tvdata.MediaType, "/")
 	seekflag := "00"
-	if seek {
+	if tvdata.Seekable {
 		seekflag = "01"
 	}
 
-	contentFeatures, err := utils.BuildContentFeatures(mediaType, seekflag, transcode)
+	contentFeatures, err := utils.BuildContentFeatures(tvdata.MediaType, seekflag, tvdata.Transcode)
 	if err != nil {
 		return nil, fmt.Errorf("setAVTransportSoapBuild failed to build contentFeatures: %w", err)
 	}
@@ -250,8 +251,8 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string, transcode,
 		class = "object.item.videoItem.movie"
 	}
 
-	mediaTitle := mediaURL
-	mediaTitlefromURL, err := url.Parse(mediaURL)
+	mediaTitle := tvdata.MediaURL
+	mediaTitlefromURL, err := url.Parse(tvdata.MediaURL)
 	if err == nil {
 		mediaTitle = strings.TrimLeft(mediaTitlefromURL.Path, "/")
 	}
@@ -263,6 +264,24 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string, transcode,
 	mediaTitle = re.ReplaceAllString(mediaTitle, "")
 
 	var didl didLLiteItem
+	resNodeData := []resNode{}
+	duration, _ := utils.DurationForMedia(tvdata.MediaPath)
+
+	switch len(duration) {
+	case 0:
+		resNodeData = append(resNodeData, resNode{
+			XMLName:      xml.Name{},
+			ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", tvdata.MediaType, contentFeatures),
+			Value:        tvdata.MediaURL,
+		})
+	default:
+		resNodeData = append(resNodeData, resNode{
+			XMLName:      xml.Name{},
+			Duration:     duration,
+			ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", tvdata.MediaType, contentFeatures),
+			Value:        tvdata.MediaURL,
+		})
+	}
 
 	didl = didLLiteItem{
 		XMLName:    xml.Name{},
@@ -271,16 +290,16 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string, transcode,
 		Restricted: "1",
 		UPNPClass:  class,
 		DCtitle:    mediaTitle,
-		ResNode: []resNode{
-			{
-				XMLName:      xml.Name{},
-				ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", mediaType, contentFeatures),
-				Value:        mediaURL,
-			},
-		},
+		ResNode:    resNodeData,
 	}
 
-	if strings.Contains(subtitleURL, "srt") {
+	if strings.Contains(tvdata.SubtitlesURL, "srt") {
+		resNodeData = append(resNodeData, resNode{
+			XMLName:      xml.Name{},
+			ProtocolInfo: "http-get:*:text/srt:*",
+			Value:        tvdata.SubtitlesURL,
+		})
+
 		didl = didLLiteItem{
 			XMLName:    xml.Name{},
 			ID:         "1",
@@ -288,26 +307,16 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string, transcode,
 			Restricted: "1",
 			DCtitle:    mediaTitle,
 			UPNPClass:  class,
-			ResNode: []resNode{
-				{
-					XMLName:      xml.Name{},
-					ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", mediaType, contentFeatures),
-					Value:        mediaURL,
-				}, {
-					XMLName:      xml.Name{},
-					ProtocolInfo: "http-get:*:text/srt:*",
-					Value:        subtitleURL,
-				},
-			},
+			ResNode:    resNodeData,
 			SecCaptionInfo: &secCaptionInfo{
 				XMLName: xml.Name{},
 				Type:    "srt",
-				Value:   subtitleURL,
+				Value:   tvdata.SubtitlesURL,
 			},
 			SecCaptionInfoEx: &secCaptionInfoEx{
 				XMLName: xml.Name{},
 				Type:    "srt",
-				Value:   subtitleURL,
+				Value:   tvdata.SubtitlesURL,
 			},
 		}
 	}
@@ -336,7 +345,7 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string, transcode,
 				XMLName:     xml.Name{},
 				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
 				InstanceID:  "0",
-				CurrentURI:  mediaURL,
+				CurrentURI:  tvdata.MediaURL,
 				CurrentURIMetaData: currentURIMetaData{
 					XMLName: xml.Name{},
 					Value:   a,

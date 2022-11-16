@@ -285,6 +285,7 @@ func playAction(screen *NewScreen) {
 		SubtitlesURL:                "http://" + whereToListen + "/" + utils.ConvertFilename(screen.subsfile),
 		CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
 		MediaType:                   mediaType,
+		MediaPath:                   screen.mediafile,
 		CurrentTimers:               make(map[string]*time.Timer),
 		MediaRenderersStates:        make(map[string]*soapcalls.States),
 		InitialMediaRenderersStates: make(map[string]bool),
