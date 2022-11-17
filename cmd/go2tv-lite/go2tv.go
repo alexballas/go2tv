@@ -56,7 +56,7 @@ func main() {
 		}
 
 		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+			fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 			os.Exit(1)
 		}
 	}

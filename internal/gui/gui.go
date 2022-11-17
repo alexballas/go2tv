@@ -40,7 +40,9 @@ type NewScreen struct {
 	ExternalMediaURL     *widget.Check
 	MuteUnmute           *widget.Button
 	VolumeUp             *widget.Button
-	tvdata               *soapcalls.TVPayload
+	VolumeDown           *widget.Button
+	Hotkeys              bool
+	ErrorVisible         bool
 	selectedDevice       devType
 	currentmfolder       string
 	mediafile            string

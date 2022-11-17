@@ -49,7 +49,7 @@ type flagResults struct {
 
 func main() {
 	if err := run(); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 		os.Exit(1)
 	}
 }

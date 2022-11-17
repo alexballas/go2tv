@@ -44,6 +44,7 @@ func NewTVPayload(o Options) (*TVPayload, error) {
 		MediaURL:                    "http://" + listenAddress + "/" + utils.ConvertFilename(o.Media),
 		SubtitlesURL:                "http://" + listenAddress + "/" + utils.ConvertFilename(o.Subs),
 		MediaType:                   o.Mtype,
+		MediaPath:                   o.Media,
 		CurrentTimers:               make(map[string]*time.Timer),
 		MediaRenderersStates:        make(map[string]*States),
 		InitialMediaRenderersStates: make(map[string]bool),
