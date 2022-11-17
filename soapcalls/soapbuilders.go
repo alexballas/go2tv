@@ -272,8 +272,8 @@ func setAVTransportSoapBuild(tvdata *TVPayload) ([]byte, error) {
 	resNodeData := []resNode{}
 	duration, _ := utils.DurationForMedia(tvdata.MediaPath)
 
-	switch len(duration) {
-	case 0:
+	switch duration {
+	case "":
 		resNodeData = append(resNodeData, resNode{
 			XMLName:      xml.Name{},
 			ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", tvdata.MediaType, contentFeatures),
