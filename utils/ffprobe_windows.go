@@ -1,6 +1,3 @@
-//go:build !windows
-// +build !windows
-
 package utils
 
 import (
@@ -9,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"syscall"
 	"time"
 )
 
@@ -31,6 +29,9 @@ func DurationForMedia(f string) (string, error) {
 		"-of", "json",
 		f,
 	)
+
+	// Hide the command window when running ffprobe. (Windows specific)
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000}
 
 	output, err := cmd.Output()
 	if err != nil {
