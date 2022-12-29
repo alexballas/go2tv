@@ -2,6 +2,7 @@ package gui
 
 import (
 	"image/color"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -127,16 +128,19 @@ func saveDebugLogs(f fyne.URIWriteCloser, s *NewScreen) {
 
 func parseTheme(s *NewScreen) func(string) {
 	return func(t string) {
-		switch t {
-		case "Light":
-			fyne.CurrentApp().Preferences().SetString("Theme", "Light")
-			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Light"})
-		case "Dark":
-			fyne.CurrentApp().Preferences().SetString("Theme", "Dark")
-			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Dark"})
-		case "Default":
-			fyne.CurrentApp().Preferences().SetString("Theme", "Default")
-			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Default"})
-		}
+		go func() {
+			time.Sleep(10 * time.Millisecond)
+			switch t {
+			case "Light":
+				fyne.CurrentApp().Preferences().SetString("Theme", "Light")
+				fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Light"})
+			case "Dark":
+				fyne.CurrentApp().Preferences().SetString("Theme", "Dark")
+				fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Dark"})
+			case "Default":
+				fyne.CurrentApp().Preferences().SetString("Theme", "Default")
+				fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Default"})
+			}
+		}()
 	}
 }

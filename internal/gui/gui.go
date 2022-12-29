@@ -25,6 +25,7 @@ import (
 // NewScreen .
 type NewScreen struct {
 	mu                   sync.RWMutex
+	muError              sync.RWMutex
 	Current              fyne.Window
 	VolumeDown           *widget.Button
 	MediaText            *widget.Entry
@@ -171,6 +172,9 @@ func InitFyneNewScreen(v string) *NewScreen {
 }
 
 func check(s *NewScreen, err error) {
+	s.muError.Lock()
+	defer s.muError.Unlock()
+
 	if err != nil && !s.ErrorVisible {
 		s.ErrorVisible = true
 		cleanErr := strings.ReplaceAll(err.Error(), ": ", "\n")
