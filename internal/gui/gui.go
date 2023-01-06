@@ -70,7 +70,8 @@ type devType struct {
 }
 
 type mainButtonsLayout struct {
-	buttonHeight float32
+	buttonHeight  float32
+	buttonPadding float32
 }
 
 func (f *debugWriter) Write(b []byte) (int, error) {
@@ -90,7 +91,8 @@ func Start(ctx context.Context, s *NewScreen) {
 
 	s.Hotkeys = true
 	tabs.OnSelected = func(t *container.TabItem) {
-		t.Content.Refresh()
+		theme := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "Default")
+		fyne.CurrentApp().Settings().SetTheme(go2tvTheme{theme})
 
 		if t.Text == "Go2TV" {
 			s.Hotkeys = true

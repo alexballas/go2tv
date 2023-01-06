@@ -153,12 +153,14 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	subsfilelabel := canvas.NewText("Subtitles:", nil)
 	devicelabel := canvas.NewText("Select Device:", nil)
 
+	var intListCont fyne.CanvasObject
 	list = widget.NewList(
 		func() int {
 			return len(data)
 		},
 		func() fyne.CanvasObject {
-			return container.NewHBox(widget.NewIcon(theme.NavigateNextIcon()), widget.NewLabel("Template Object"))
+			intListCont = container.NewHBox(widget.NewIcon(theme.NavigateNextIcon()), widget.NewLabel(""))
+			return intListCont
 		},
 		func(i widget.ListItemID, o fyne.CanvasObject) {
 			o.(*fyne.Container).Objects[1].(*widget.Label).SetText(data[i].name)
@@ -175,7 +177,12 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	s.VolumeUp = volumeup
 	s.VolumeDown = volumedown
 
-	actionbuttons := container.New(&mainButtonsLayout{buttonHeight: 1.0}, playpause, volumedown, muteunmute, volumeup, stop)
+	actionbuttons := container.New(&mainButtonsLayout{buttonHeight: 1.0, buttonPadding: theme.Padding()},
+		playpause,
+		volumedown,
+		muteunmute,
+		volumeup,
+		stop)
 
 	mrightbuttons := container.NewHBox(previewmedia, clearmedia)
 

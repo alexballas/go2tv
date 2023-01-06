@@ -3,6 +3,7 @@ package devices
 import (
 	"fmt"
 	"sort"
+	"strconv"
 
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/koron/go-ssdp"
@@ -19,7 +20,7 @@ var (
 // AVTransport service.
 func LoadSSDPservices(delay int) (map[string]string, error) {
 	// Reset device list every time we call this.
-	deviceList := make(map[string]string)
+	urlList := make(map[string]string)
 	list, err := ssdp.Search(ssdp.All, delay, "")
 	if err != nil {
 		return nil, fmt.Errorf("LoadSSDPservices search error: %w", err)
@@ -35,8 +36,26 @@ func LoadSSDPservices(delay int) (map[string]string, error) {
 				continue
 			}
 
-			deviceList[friendlyName] = srv.Location
+			urlList[srv.Location] = friendlyName
 		}
+	}
+
+	deviceList := make(map[string]string)
+	dupNames := make(map[string]int)
+	for loc, fn := range urlList {
+		_, exists := dupNames[fn]
+		switch exists {
+		case true:
+			dupNames[fn]++
+		default:
+			dupNames[fn] = 0
+		}
+
+		if dupNames[fn] > 0 {
+			fn = fn + "-" + strconv.Itoa(dupNames[fn])
+		}
+
+		deviceList[fn] = loc
 	}
 
 	if len(deviceList) > 0 {

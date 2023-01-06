@@ -47,7 +47,7 @@ func (m go2tvTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) c
 			return color.NRGBA{R: 0xe5, G: 0xe5, B: 0xe5, A: 0xff}
 		}
 	}
-
+	theme.InnerPadding()
 	return theme.DefaultTheme().Color(name, variant)
 }
 
