@@ -3,7 +3,6 @@ package devices
 import (
 	"fmt"
 	"sort"
-	"strconv"
 
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/koron/go-ssdp"
@@ -44,18 +43,21 @@ func LoadSSDPservices(delay int) (map[string]string, error) {
 	dupNames := make(map[string]int)
 	for loc, fn := range urlList {
 		_, exists := dupNames[fn]
-		switch exists {
-		case true:
-			dupNames[fn]++
-		default:
-			dupNames[fn] = 0
-		}
-
-		if dupNames[fn] > 0 {
-			fn = fn + "-" + strconv.Itoa(dupNames[fn])
+		dupNames[fn]++
+		if exists {
+			fn = fn + " (" + loc + ")"
 		}
 
 		deviceList[fn] = loc
+	}
+
+	for fn, c := range dupNames {
+		if c > 1 {
+			loc := deviceList[fn]
+			delete(deviceList, fn)
+			fn = fn + " (" + loc + ")"
+			deviceList[fn] = loc
+		}
 	}
 
 	if len(deviceList) > 0 {
