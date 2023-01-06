@@ -60,7 +60,8 @@ type devType struct {
 }
 
 type mainButtonsLayout struct {
-	buttonHeight float32
+	buttonHeight  float32
+	buttonPadding float32
 }
 
 func (f *debugWriter) Write(b []byte) (int, error) {
