@@ -6,7 +6,7 @@ import (
 )
 
 // RandomString generates a random string which we
-// the callback paths for our webservers.
+// then use as callback path in our webserver.
 func RandomString() (string, error) {
 	b := make([]byte, 16)
 	n, err := rand.Read(b)

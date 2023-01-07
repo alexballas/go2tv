@@ -104,7 +104,7 @@ func Start(ctx context.Context, s *NewScreen) {
 	s.tabs = tabs
 
 	w.SetContent(tabs)
-	w.Resize(fyne.NewSize(w.Canvas().Size().Width, w.Canvas().Size().Height*1.3))
+	w.Resize(fyne.NewSize(w.Canvas().Size().Width, w.Canvas().Size().Height*1.2))
 	w.CenterOnScreen()
 	w.SetMaster()
 
