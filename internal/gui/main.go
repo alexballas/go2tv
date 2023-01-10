@@ -125,6 +125,10 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		go clearsubsAction(s)
 	})
 
+	skipNext := widget.NewButtonWithIcon("", theme.MediaSkipNextIcon(), func() {
+		go skipNextAction(s)
+	})
+
 	// previewmedia spawns external applications.
 	// Since there is no way to monitor the time it takes
 	// for the apps to load, we introduce a rate limit
@@ -184,7 +188,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		volumeup,
 		stop)
 
-	mrightbuttons := container.NewHBox(previewmedia, clearmedia)
+	mrightbuttons := container.NewHBox(skipNext, previewmedia, clearmedia)
 
 	checklists := container.NewHBox(externalmedia, sfilecheck, medialoop, nextmedia, transcode)
 	mediasubsbuttons := container.New(layout.NewGridLayout(2), mfile, sfile)

@@ -336,6 +336,12 @@ func clearsubsAction(screen *NewScreen) {
 	screen.SubsText.Refresh()
 }
 
+func skipNextAction(screen *NewScreen) {
+	selectNextMedia(screen)
+	stopAction(screen)
+	playAction(screen)
+}
+
 func previewmedia(screen *NewScreen) {
 	if screen.mediafile == "" {
 		check(screen, errors.New("please select a media file"))
