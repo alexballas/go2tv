@@ -31,26 +31,26 @@ var (
 	ErrZombieCallbacks    = errors.New("zombie callbacks, we should ignore those")
 )
 
-// TVPayload this is the heart of Go2TV. We pass that type to the
+// TVPayload is the heart of Go2TV. We pass that type to the
 // webserver. We need to explicitly initialize it.
 type TVPayload struct {
+	mu                          sync.RWMutex
+	initLogOnce                 sync.Once
 	Logging                     io.Writer
 	CurrentTimers               map[string]*time.Timer
 	InitialMediaRenderersStates map[string]bool
-	mu                          sync.RWMutex
 	MediaRenderersStates        map[string]*States
-	RenderingControlURL         string
-	ConnectionManagerURL        string
-	EventURL                    string
 	ControlURL                  string
+	EventURL                    string
 	MediaURL                    string
 	MediaType                   string
 	MediaPath                   string
 	SubtitlesURL                string
 	CallbackURL                 string
+	ConnectionManagerURL        string
+	RenderingControlURL         string
 	Transcode                   bool
 	Seekable                    bool
-	initLogOnce                 sync.Once
 }
 
 type getMuteRespBody struct {
@@ -96,6 +96,29 @@ type protocolInfoResponse struct {
 			Source string `xml:"Source"`
 			Sink   string `xml:"Sink"`
 		} `xml:"GetProtocolInfoResponse"`
+	} `xml:"Body"`
+}
+
+type getMediaInfoResponse struct {
+	XMLName       xml.Name `xml:"Envelope"`
+	Text          string   `xml:",chardata"`
+	EncodingStyle string   `xml:"encodingStyle,attr"`
+	S             string   `xml:"s,attr"`
+	Body          struct {
+		Text                 string `xml:",chardata"`
+		GetMediaInfoResponse struct {
+			Text               string `xml:",chardata"`
+			U                  string `xml:"u,attr"`
+			NrTracks           string `xml:"NrTracks"`
+			MediaDuration      string `xml:"MediaDuration"`
+			CurrentURI         string `xml:"CurrentURI"`
+			CurrentURIMetaData string `xml:"CurrentURIMetaData"`
+			NextURI            string `xml:"NextURI"`
+			NextURIMetaData    string `xml:"NextURIMetaData"`
+			PlayMedium         string `xml:"PlayMedium"`
+			RecordMedium       string `xml:"RecordMedium"`
+			WriteStatus        string `xml:"WriteStatus"`
+		} `xml:"GetMediaInfoResponse"`
 	} `xml:"Body"`
 }
 
@@ -162,6 +185,75 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 
 	p.Log().Debug().
 		Str("Method", "setAVTransportSoapCall").Str("Action", "Response").Str("Status Code", strconv.Itoa(res.StatusCode)).
+		RawJSON("Headers", headerBytesRes).
+		Msg(string(resBytes))
+
+	return nil
+}
+
+func (p *TVPayload) setNextAVTransportSoapCall() error {
+	parsedURLtransport, err := url.Parse(p.ControlURL)
+	if err != nil {
+		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
+		return fmt.Errorf("setNextAVTransportSoapCall parse error: %w", err)
+	}
+
+	xml, err := setNextAVTransportSoapBuild(p)
+	if err != nil {
+		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "setNextAVTransportSoapBuild").Err(err).Msg("")
+		return fmt.Errorf("setNextAVTransportSoapCall soap build error: %w", err)
+	}
+
+	retryClient := retryablehttp.NewClient()
+	retryClient.RetryMax = 3
+	retryClient.Logger = nil
+	client := retryClient.StandardClient()
+
+	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xml))
+	if err != nil {
+		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
+		return fmt.Errorf("setNextAVTransportSoapCall POST error: %w", err)
+	}
+
+	req.Header = http.Header{
+		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#SetNextAVTransportURI"`},
+		"content-type": []string{"text/xml"},
+		"charset":      []string{"utf-8"},
+		"Connection":   []string{"close"},
+	}
+
+	headerBytesReq, err := json.Marshal(req.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "Header Marshaling").Err(err).Msg("")
+		return fmt.Errorf("setNextAVTransportSoapCall Request Marshaling error: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "setNextAVTransportSoapCall").Str("Action", "Request").
+		RawJSON("Headers", headerBytesReq).
+		Msg(string(xml))
+
+	res, err := client.Do(req)
+	if err != nil {
+		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "Do POST").Err(err).Msg("")
+		return fmt.Errorf("setNextAVTransportSoapCall Do POST error: %w", err)
+	}
+	defer res.Body.Close()
+
+	resBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "Readall").Err(err).Msg("")
+		return fmt.Errorf("setNextAVTransportSoapCall Failed to read response: %w", err)
+	}
+
+	headerBytesRes, err := json.Marshal(res.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "Header Marshaling #2").Err(err).Msg("")
+		return fmt.Errorf("setNextAVTransportSoapCall Response Marshaling error: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "setNextAVTransportSoapCall").Str("Action", "Response").Str("Status Code", strconv.Itoa(res.StatusCode)).
 		RawJSON("Headers", headerBytesRes).
 		Msg(string(resBytes))
 
@@ -799,6 +891,84 @@ func (p *TVPayload) GetProtocolInfo() error {
 	}
 
 	return nil
+}
+
+// Gapless requests our device's media info and checks if Next URI exists.
+func (p *TVPayload) Gapless() (bool, error) {
+	parsedURLtransport, err := url.Parse(p.ControlURL)
+	if err != nil {
+		p.Log().Error().Str("Method", "Gapless").Str("Action", "URL Parse").Err(err).Msg("")
+		return false, fmt.Errorf("Gapless parse error: %w", err)
+	}
+
+	var xmlbuilder []byte
+
+	xmlbuilder, err = getMediaInfoSoapBuild()
+	if err != nil {
+		p.Log().Error().Str("Method", "Gapless").Str("Action", "Build").Err(err).Msg("")
+		return false, fmt.Errorf("Gapless build error: %w", err)
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
+	if err != nil {
+		p.Log().Error().Str("Method", "Gapless").Str("Action", "Prepare POST").Err(err).Msg("")
+		return false, fmt.Errorf("Gapless POST error: %w", err)
+	}
+	req.Header = http.Header{
+		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#GetMediaInfo"`},
+		"content-type": []string{"text/xml"},
+		"charset":      []string{"utf-8"},
+		"Connection":   []string{"close"},
+	}
+
+	headerBytesReq, err := json.Marshal(req.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "Gapless").Str("Action", "Header Marshaling").Err(err).Msg("")
+		return false, fmt.Errorf("Gapless Request Marshaling error: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "Gapless").Str("Action", "Request").
+		RawJSON("Headers", headerBytesReq).
+		Msg(string(xmlbuilder))
+
+	res, err := client.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("Gapless Do POST error: %w", err)
+	}
+	defer res.Body.Close()
+
+	headerBytesRes, err := json.Marshal(res.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "Gapless").Str("Action", "Header Marshaling #2").Err(err).Msg("")
+		return false, fmt.Errorf("Gapless Response Marshaling error: %w", err)
+	}
+
+	resBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		p.Log().Error().Str("Method", "Gapless").Str("Action", "Readall").Err(err).Msg("")
+		return false, fmt.Errorf("Gapless Failed to read response: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "Gapless").Str("Action", "Response").Str("Status Code", strconv.Itoa(res.StatusCode)).
+		RawJSON("Headers", headerBytesRes).
+		Msg(string(resBytes))
+
+	var respMedialInfo getMediaInfoResponse
+
+	if err := xml.Unmarshal(resBytes, &respMedialInfo); err != nil {
+		p.Log().Error().Str("Method", "Gapless").Str("Action", "Unmarshal").Err(err).Msg("")
+		return false, fmt.Errorf("Gapless Failed to unmarshal response: %w", err)
+	}
+
+	nextURI := respMedialInfo.Body.GetMediaInfoResponse.NextURI
+	if nextURI != "NOT_IMPLEMENTED" && nextURI != "" {
+		return true, nil
+	}
+
+	return false, nil
 }
 
 // SendtoTV is a higher level method that gracefully handles the various

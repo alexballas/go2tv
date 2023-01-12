@@ -7,7 +7,6 @@ import (
 )
 
 func TestSetAVTransportSoapBuild(t *testing.T) {
-
 	tt := []struct {
 		name string
 		tv   *TVPayload
@@ -41,6 +40,48 @@ func TestSetAVTransportSoapBuild(t *testing.T) {
 			out, err := setAVTransportSoapBuild(tc.tv)
 			if err != nil {
 				t.Fatalf("%s: Failed to call setAVTransportSoapBuild due to %s", tc.name, err.Error())
+			}
+			if string(out) != want {
+				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, want)
+			}
+		})
+	}
+}
+
+func TestSetNextAVTransportSoapBuild(t *testing.T) {
+	tt := []struct {
+		name string
+		tv   *TVPayload
+	}{
+		{
+			`setNextAVTransportSoapBuild Test #1`,
+			&TVPayload{
+				MediaURL:     `http://192.168.88.250:3500/video%20%26%20%27example%27.mp4`,
+				MediaType:    "video/mp4",
+				SubtitlesURL: "http://192.168.88.250:3500/video_example.srt",
+				Transcode:    false,
+				Seekable:     true,
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			seekflag := "00"
+			if tc.tv.Seekable {
+				seekflag = "01"
+			}
+
+			contentFeatures, err := utils.BuildContentFeatures(tc.tv.MediaType, seekflag, tc.tv.Transcode)
+			if err != nil {
+				t.Fatalf("%s: setNextAVTransportSoapBuild failed to build contentFeatures: %s", tc.name, err.Error())
+			}
+
+			want := `<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:SetNextAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><NextURI>http://192.168.88.250:3500/video%20%26%20%27example%27.mp4</NextURI><NextURIMetaData>&lt;DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:sec="http://www.sec.co.kr/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"&gt;&lt;item id="1" parentID="0" restricted="1"&gt;&lt;sec:CaptionInfo sec:type="srt"&gt;http://192.168.88.250:3500/video_example.srt&lt;/sec:CaptionInfo&gt;&lt;sec:CaptionInfoEx sec:type="srt"&gt;http://192.168.88.250:3500/video_example.srt&lt;/sec:CaptionInfoEx&gt;&lt;dc:title&gt;video  &#39;example&#39;.mp4&lt;/dc:title&gt;&lt;upnp:class&gt;object.item.videoItem.movie&lt;/upnp:class&gt;&lt;res protocolInfo="http-get:*:video/mp4:` + contentFeatures + `"&gt;http://192.168.88.250:3500/video%20%26%20%27example%27.mp4&lt;/res&gt;&lt;res protocolInfo="http-get:*:text/srt:*"&gt;http://192.168.88.250:3500/video_example.srt&lt;/res&gt;&lt;/item&gt;&lt;/DIDL-Lite&gt;</NextURIMetaData></u:SetNextAVTransportURI></s:Body></s:Envelope>`
+
+			out, err := setNextAVTransportSoapBuild(tc.tv)
+			if err != nil {
+				t.Fatalf("%s: Failed to call setNextAVTransportSoapBuild due to %s", tc.name, err.Error())
 			}
 			if string(out) != want {
 				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, want)

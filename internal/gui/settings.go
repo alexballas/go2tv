@@ -1,11 +1,11 @@
 package gui
 
 import (
+	"fmt"
 	"image/color"
 	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
@@ -66,7 +66,7 @@ func (m go2tvTheme) Size(name fyne.ThemeSizeName) float32 {
 func settingsWindow(s *NewScreen) fyne.CanvasObject {
 	w := s.Current
 
-	themeText := canvas.NewText("Theme", nil)
+	themeText := widget.NewLabel("Theme")
 	dropdown := widget.NewSelect([]string{"Light", "Dark", "Default"}, parseTheme(s))
 	theme := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "Default")
 	switch theme {
@@ -78,7 +78,7 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 		dropdown.PlaceHolder = "Default"
 	}
 
-	debugText := canvas.NewText("Debug", nil)
+	debugText := widget.NewLabel("Debug")
 	debugExport := widget.NewButton("Export Debug Logs", func() {
 		var itemInRing bool
 		s.Debug.ring.Do(func(p interface{}) {
@@ -106,8 +106,15 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 
 	})
 
+	gaplessText := widget.NewLabel("Gapless Playback")
+	gaplessdropdown := widget.NewSelect([]string{"Enabled", "Disabled"}, func(s string) {
+		fmt.Println(s)
+	})
+	gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
+	gaplessdropdown.SetSelected(gaplessOption)
+
 	dropdown.Refresh()
-	settings := container.New(layout.NewFormLayout(), themeText, dropdown, debugText, debugExport)
+	settings := container.New(layout.NewFormLayout(), themeText, dropdown, gaplessText, gaplessdropdown, debugText, debugExport)
 	return settings
 }
 
