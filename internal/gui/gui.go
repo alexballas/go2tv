@@ -38,6 +38,7 @@ type NewScreen struct {
 	Stop                 *widget.Button
 	DeviceList           *widget.List
 	httpserver           *httphandlers.HTTPserver
+	httpNexterver        *httphandlers.HTTPserver
 	ExternalMediaURL     *widget.Check
 	MuteUnmute           *widget.Button
 	VolumeUp             *widget.Button
@@ -139,8 +140,17 @@ func (p *NewScreen) EmitMsg(a string) {
 // Will only be executed when we receive a callback message,
 // not when we explicitly click the Stop button.
 func (p *NewScreen) Fini() {
-	if p.NextMedia {
-		selectNextMedia(p)
+	gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
+
+	if p.NextMedia && gaplessOption == "Disabled" {
+		p.MediaText.Text, p.mediafile = getNextMedia(p)
+		p.MediaText.Refresh()
+
+		if !p.CustomSubsCheck.Checked {
+			selectSubs(p.mediafile, p)
+		}
+
+		playAction(p)
 	}
 	// Main media loop logic
 	if p.Medialoop {
@@ -188,15 +198,16 @@ func check(s *NewScreen, err error) {
 	}
 }
 
-func selectNextMedia(screen *NewScreen) {
+func getNextMedia(screen *NewScreen) (string, string) {
 	filedir := filepath.Dir(screen.mediafile)
 	filelist, err := os.ReadDir(filedir)
 	check(screen, err)
 
-	var breaknext bool
-	var n int
-	var totalMedia int
-	var firstMedia string
+	var (
+		breaknext                    bool
+		totalMedia, counter          int
+		firstMedia, resName, resPath string
+	)
 
 	for _, f := range filelist {
 		isMedia := false
@@ -232,14 +243,13 @@ func selectNextMedia(screen *NewScreen) {
 			continue
 		}
 
-		n += 1
+		counter += 1
 
 		if f.Name() == filepath.Base(screen.mediafile) {
-			if totalMedia == n {
+			if totalMedia == counter {
 				// start over
-				screen.MediaText.Text = firstMedia
-				screen.mediafile = filepath.Join(filedir, firstMedia)
-				screen.MediaText.Refresh()
+				resName = firstMedia
+				resPath = filepath.Join(filedir, firstMedia)
 			}
 
 			breaknext = true
@@ -247,31 +257,34 @@ func selectNextMedia(screen *NewScreen) {
 		}
 
 		if breaknext {
-			screen.MediaText.Text = f.Name()
-			screen.mediafile = filepath.Join(filedir, f.Name())
-			screen.MediaText.Refresh()
-
-			if !screen.CustomSubsCheck.Checked {
-				selectSubs(screen.mediafile, screen)
-			}
+			resName = f.Name()
+			resPath = filepath.Join(filedir, f.Name())
 			break
 		}
 	}
+
+	return resName, resPath
 }
 
 func selectSubs(v string, screen *NewScreen) {
+	name, path := getNextPossibleSubs(v, screen)
+	screen.SubsText.Text = name
+	screen.subsfile = path
+	screen.SubsText.Refresh()
+}
+
+func getNextPossibleSubs(v string, screen *NewScreen) (string, string) {
+	var name, path string
+
 	possibleSub := v[0:len(v)-
 		len(filepath.Ext(v))] + ".srt"
 
-	screen.SubsText.Text = filepath.Base(possibleSub)
-	screen.subsfile = possibleSub
-
-	if _, err := os.Stat(possibleSub); os.IsNotExist(err) {
-		screen.SubsText.Text = ""
-		screen.subsfile = ""
+	if _, err := os.Stat(possibleSub); err == nil {
+		name = filepath.Base(possibleSub)
+		path = possibleSub
 	}
 
-	screen.SubsText.Refresh()
+	return name, path
 }
 
 func setPlayPauseView(s string, screen *NewScreen) {

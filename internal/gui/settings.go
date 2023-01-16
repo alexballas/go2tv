@@ -1,7 +1,6 @@
 package gui
 
 import (
-	"fmt"
 	"image/color"
 	"time"
 
@@ -108,7 +107,7 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 
 	gaplessText := widget.NewLabel("Gapless Playback")
 	gaplessdropdown := widget.NewSelect([]string{"Enabled", "Disabled"}, func(s string) {
-		fmt.Println(s)
+		fyne.CurrentApp().Preferences().SetString("Gapless", s)
 	})
 	gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
 	gaplessdropdown.SetSelected(gaplessOption)

@@ -974,6 +974,13 @@ func (p *TVPayload) Gapless() (bool, error) {
 // SendtoTV is a higher level method that gracefully handles the various
 // states when communicating with the DMR devices.
 func (p *TVPayload) SendtoTV(action string) error {
+	if action == "Queue" {
+		if err := p.setNextAVTransportSoapCall(); err != nil {
+			return fmt.Errorf("SendtoTV setNextAVTransportSoapCall call error: %w", err)
+		}
+		return nil
+	}
+
 	if action == "Play1" {
 		if err := p.GetProtocolInfo(); err != nil {
 			return fmt.Errorf("SendtoTV getProtocolInfo call error: %w", err)

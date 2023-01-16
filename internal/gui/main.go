@@ -145,7 +145,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	sfilecheck := widget.NewCheck("Custom Subtitles", func(b bool) {})
 	externalmedia := widget.NewCheck("Media from URL", func(b bool) {})
 	medialoop := widget.NewCheck("Loop Selected", func(b bool) {})
-	nextmedia := widget.NewCheck("Auto-Select Next File", func(b bool) {})
+	nextmedia := widget.NewCheck("Auto-Play Next File", func(b bool) {})
 	transcode := widget.NewCheck("Transcode", func(b bool) {})
 
 	_, err := exec.LookPath("ffmpeg")
@@ -274,10 +274,22 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 	medialoop.OnChanged = func(b bool) {
 		s.Medialoop = b
+		if b {
+			nextmedia.SetChecked(false)
+			nextmedia.Disable()
+			return
+		}
+		nextmedia.Enable()
 	}
 
 	nextmedia.OnChanged = func(b bool) {
 		s.NextMedia = b
+		if b {
+			medialoop.SetChecked(false)
+			medialoop.Disable()
+			return
+		}
+		medialoop.Enable()
 	}
 
 	// Device list auto-refresh

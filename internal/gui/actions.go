@@ -317,6 +317,15 @@ func playAction(screen *NewScreen) {
 		screen.controlURL = ""
 		stopAction(screen)
 	}
+
+	gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
+	if screen.NextMedia && gaplessOption == "Enabled" {
+		if err := queueNext(screen); err != nil {
+			return
+		}
+
+	}
+
 }
 
 func pauseAction(screen *NewScreen) {
@@ -337,7 +346,15 @@ func clearsubsAction(screen *NewScreen) {
 }
 
 func skipNextAction(screen *NewScreen) {
-	selectNextMedia(screen)
+	name, path := getNextMedia(screen)
+	screen.MediaText.Text = name
+	screen.mediafile = path
+	screen.MediaText.Refresh()
+
+	if !screen.CustomSubsCheck.Checked {
+		selectSubs(screen.mediafile, screen)
+	}
+
 	stopAction(screen)
 	playAction(screen)
 }
@@ -449,4 +466,76 @@ func volumeAction(screen *NewScreen, up bool) {
 	if err := screen.tvdata.SetVolumeSoapCall(stringVolume); err != nil {
 		check(screen, errors.New("could not send volume action"))
 	}
+}
+
+func queueNext(screen *NewScreen) error {
+	fname, fpath := getNextMedia(screen)
+	_, spath := getNextPossibleSubs(fname, screen)
+
+	whereToListen, err := utils.URLtoListenIPandPort(screen.controlURL)
+	check(screen, err)
+	if err != nil {
+		return err
+	}
+
+	var mediaType string
+	var isSeek bool
+
+	mfile, err := os.Open(fpath)
+	check(screen, err)
+	if err != nil {
+		return err
+	}
+
+	mediaType, err = utils.GetMimeDetailsFromFile(mfile)
+	check(screen, err)
+	if err != nil {
+		return err
+	}
+
+	if !screen.Transcode {
+		isSeek = true
+	}
+
+	var mediaFile interface{} = fpath
+
+	nextTvData := &soapcalls.TVPayload{
+		ControlURL:                  screen.controlURL,
+		EventURL:                    screen.eventlURL,
+		RenderingControlURL:         screen.renderingControlURL,
+		ConnectionManagerURL:        screen.connectionManagerURL,
+		MediaURL:                    "http://" + whereToListen + "/" + utils.ConvertFilename(fname),
+		SubtitlesURL:                "http://" + whereToListen + "/" + utils.ConvertFilename(spath),
+		CallbackURL:                 screen.tvdata.CallbackURL,
+		MediaType:                   mediaType,
+		MediaPath:                   screen.mediafile,
+		CurrentTimers:               make(map[string]*time.Timer),
+		MediaRenderersStates:        make(map[string]*soapcalls.States),
+		InitialMediaRenderersStates: make(map[string]bool),
+		Transcode:                   screen.Transcode,
+		Seekable:                    isSeek,
+		Logging:                     screen.Debug,
+	}
+
+	screen.httpNexterver = httphandlers.NewServer(whereToListen)
+	serverStarted := make(chan error)
+
+	// We pass the tvdata here as we need the callback handlers to be able to react
+	// to the different media renderer states.
+	go func() {
+		screen.httpNexterver.StartServer(serverStarted, mediaFile, spath, nextTvData, screen)
+	}()
+	// Wait for the HTTP server to properly initialize.
+	err = <-serverStarted
+	check(screen, err)
+	if err != nil {
+		return err
+	}
+
+	if err := screen.tvdata.SendtoTV("Queue"); err != nil {
+		check(screen, err)
+		return err
+	}
+
+	return nil
 }
