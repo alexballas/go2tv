@@ -38,8 +38,9 @@ type NewScreen struct {
 	Stop                 *widget.Button
 	DeviceList           *widget.List
 	httpserver           *httphandlers.HTTPserver
-	httpNexterver        *httphandlers.HTTPserver
+	serverStopCTX        context.Context
 	ExternalMediaURL     *widget.Check
+	GaplessMediaWatcher  func(context.Context, *NewScreen, *soapcalls.TVPayload)
 	MuteUnmute           *widget.Button
 	VolumeUp             *widget.Button
 	tvdata               *soapcalls.TVPayload
@@ -56,7 +57,7 @@ type NewScreen struct {
 	mediaFormats         []string
 	Transcode            bool
 	ErrorVisible         bool
-	NextMedia            bool
+	NextMediaCheck       *widget.Check
 	Medialoop            bool
 	Hotkeys              bool
 }
@@ -142,7 +143,7 @@ func (p *NewScreen) EmitMsg(a string) {
 func (p *NewScreen) Fini() {
 	gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
 
-	if p.NextMedia && gaplessOption == "Disabled" {
+	if p.NextMediaCheck.Checked && gaplessOption == "Disabled" {
 		p.MediaText.Text, p.mediafile = getNextMedia(p)
 		p.MediaText.Refresh()
 

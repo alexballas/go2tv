@@ -191,23 +191,20 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 	return nil
 }
 
-func (p *TVPayload) setNextAVTransportSoapCall() error {
+func (p *TVPayload) setNextAVTransportSoapCall(clear bool) error {
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
 		return fmt.Errorf("setNextAVTransportSoapCall parse error: %w", err)
 	}
 
-	xml, err := setNextAVTransportSoapBuild(p)
+	xml, err := setNextAVTransportSoapBuild(p, clear)
 	if err != nil {
 		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "setNextAVTransportSoapBuild").Err(err).Msg("")
 		return fmt.Errorf("setNextAVTransportSoapCall soap build error: %w", err)
 	}
 
-	retryClient := retryablehttp.NewClient()
-	retryClient.RetryMax = 3
-	retryClient.Logger = nil
-	client := retryClient.StandardClient()
+	client := &http.Client{}
 
 	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xml))
 	if err != nil {
@@ -974,8 +971,15 @@ func (p *TVPayload) Gapless() (bool, error) {
 // SendtoTV is a higher level method that gracefully handles the various
 // states when communicating with the DMR devices.
 func (p *TVPayload) SendtoTV(action string) error {
+	if action == "ClearQueue" {
+		if err := p.setNextAVTransportSoapCall(true); err != nil {
+			return fmt.Errorf("SendtoTV setNextAVTransportSoapCall call error: %w", err)
+		}
+		return nil
+	}
+
 	if action == "Queue" {
-		if err := p.setNextAVTransportSoapCall(); err != nil {
+		if err := p.setNextAVTransportSoapCall(false); err != nil {
 			return fmt.Errorf("SendtoTV setNextAVTransportSoapCall call error: %w", err)
 		}
 		return nil

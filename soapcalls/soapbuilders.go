@@ -414,7 +414,7 @@ func setAVTransportSoapBuild(tvdata *TVPayload) ([]byte, error) {
 	return append(xmlStart, b...), nil
 }
 
-func setNextAVTransportSoapBuild(tvdata *TVPayload) ([]byte, error) {
+func setNextAVTransportSoapBuild(tvdata *TVPayload, clear bool) ([]byte, error) {
 	mediaTypeSlice := strings.Split(tvdata.MediaType, "/")
 	seekflag := "00"
 	if tvdata.Seekable {
@@ -436,7 +436,12 @@ func setNextAVTransportSoapBuild(tvdata *TVPayload) ([]byte, error) {
 		class = "object.item.videoItem.movie"
 	}
 
-	mediaTitlefromURL, err := url.Parse(tvdata.MediaURL)
+	murl := tvdata.MediaURL
+	if clear {
+		murl = ""
+	}
+
+	mediaTitlefromURL, err := url.Parse(murl)
 	if err != nil {
 		return nil, fmt.Errorf("setNextAVTransportSoapBuild url parse error: %w", err)
 	}
@@ -458,14 +463,14 @@ func setNextAVTransportSoapBuild(tvdata *TVPayload) ([]byte, error) {
 		resNodeData = append(resNodeData, resNode{
 			XMLName:      xml.Name{},
 			ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", tvdata.MediaType, contentFeatures),
-			Value:        tvdata.MediaURL,
+			Value:        murl,
 		})
 	default:
 		resNodeData = append(resNodeData, resNode{
 			XMLName:      xml.Name{},
 			Duration:     duration,
 			ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", tvdata.MediaType, contentFeatures),
-			Value:        tvdata.MediaURL,
+			Value:        murl,
 		})
 	}
 
@@ -531,7 +536,7 @@ func setNextAVTransportSoapBuild(tvdata *TVPayload) ([]byte, error) {
 				XMLName:     xml.Name{},
 				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
 				InstanceID:  "0",
-				NextURI:     tvdata.MediaURL,
+				NextURI:     murl,
 				NextURIMetaData: nextURIMetaData{
 					XMLName: xml.Name{},
 					Value:   a,

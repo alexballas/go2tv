@@ -180,6 +180,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	s.DeviceList = list
 	s.VolumeUp = volumeup
 	s.VolumeDown = volumedown
+	s.NextMediaCheck = nextmedia
 
 	actionbuttons := container.New(&mainButtonsLayout{buttonHeight: 1.0, buttonPadding: theme.Padding()},
 		playpause,
@@ -283,12 +284,32 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	}
 
 	nextmedia.OnChanged = func(b bool) {
-		s.NextMedia = b
+		gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
+
 		if b {
+			if gaplessOption == "Enabled" {
+				switch s.State {
+				case "Playing", "Paused":
+					newTVPayload, err := queueNext(s, false)
+					if err == nil && s.GaplessMediaWatcher == nil {
+						s.GaplessMediaWatcher = gaplessMediaWatcher
+						go s.GaplessMediaWatcher(s.serverStopCTX, s, newTVPayload)
+					}
+				}
+			}
+
 			medialoop.SetChecked(false)
 			medialoop.Disable()
 			return
 		}
+
+		if s.tvdata != nil && s.tvdata.CallbackURL != "" {
+			_, err = queueNext(s, true)
+			if err != nil {
+				stopAction(s)
+			}
+		}
+
 		medialoop.Enable()
 	}
 

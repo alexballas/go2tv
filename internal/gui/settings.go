@@ -106,8 +106,12 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 	})
 
 	gaplessText := widget.NewLabel("Gapless Playback")
-	gaplessdropdown := widget.NewSelect([]string{"Enabled", "Disabled"}, func(s string) {
-		fyne.CurrentApp().Preferences().SetString("Gapless", s)
+	gaplessdropdown := widget.NewSelect([]string{"Enabled", "Disabled"}, func(ss string) {
+		fyne.CurrentApp().Preferences().SetString("Gapless", ss)
+		if s.NextMediaCheck.Checked {
+			s.NextMediaCheck.SetChecked(false)
+			s.NextMediaCheck.SetChecked(true)
+		}
 	})
 	gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
 	gaplessdropdown.SetSelected(gaplessOption)

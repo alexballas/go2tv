@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -295,12 +296,16 @@ func playAction(screen *NewScreen) {
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)
 	serverStarted := make(chan error)
+	serverStoppedCTX, serverCTXStop := context.WithCancel(context.Background())
+	screen.serverStopCTX = serverStoppedCTX
 
 	// We pass the tvdata here as we need the callback handlers to be able to react
 	// to the different media renderer states.
 	go func() {
 		screen.httpserver.StartServer(serverStarted, mediaFile, screen.subsfile, screen.tvdata, screen)
+		serverCTXStop()
 	}()
+
 	// Wait for the HTTP server to properly initialize.
 	err = <-serverStarted
 	check(screen, err)
@@ -319,13 +324,33 @@ func playAction(screen *NewScreen) {
 	}
 
 	gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
-	if screen.NextMedia && gaplessOption == "Enabled" {
-		if err := queueNext(screen); err != nil {
+	if screen.NextMediaCheck.Checked && gaplessOption == "Enabled" {
+		newTVPayload, err := queueNext(screen, false)
+		if err != nil {
 			return
 		}
 
+		if screen.GaplessMediaWatcher == nil {
+			screen.GaplessMediaWatcher = gaplessMediaWatcher
+			go screen.GaplessMediaWatcher(serverStoppedCTX, screen, newTVPayload)
+		}
 	}
 
+}
+
+func gaplessMediaWatcher(ctx context.Context, screen *NewScreen, payload *soapcalls.TVPayload) {
+	t := time.NewTicker(1 * time.Second)
+out:
+	for {
+		select {
+		case <-t.C:
+			fmt.Println(payload.Gapless())
+		case <-ctx.Done():
+			t.Stop()
+			screen.GaplessMediaWatcher = nil
+			break out
+		}
+	}
 }
 
 func pauseAction(screen *NewScreen) {
@@ -468,15 +493,22 @@ func volumeAction(screen *NewScreen, up bool) {
 	}
 }
 
-func queueNext(screen *NewScreen) error {
+func queueNext(screen *NewScreen, clear bool) (*soapcalls.TVPayload, error) {
+	if screen.tvdata == nil {
+		return nil, errors.New("queueNext, nil tvdata")
+	}
+
+	if clear {
+		if err := screen.tvdata.SendtoTV("ClearQueue"); err != nil {
+			check(screen, err)
+			return nil, err
+		}
+
+		return nil, nil
+	}
+
 	fname, fpath := getNextMedia(screen)
 	_, spath := getNextPossibleSubs(fname, screen)
-
-	whereToListen, err := utils.URLtoListenIPandPort(screen.controlURL)
-	check(screen, err)
-	if err != nil {
-		return err
-	}
 
 	var mediaType string
 	var isSeek bool
@@ -484,13 +516,13 @@ func queueNext(screen *NewScreen) error {
 	mfile, err := os.Open(fpath)
 	check(screen, err)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	mediaType, err = utils.GetMimeDetailsFromFile(mfile)
 	check(screen, err)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if !screen.Transcode {
@@ -498,14 +530,15 @@ func queueNext(screen *NewScreen) error {
 	}
 
 	var mediaFile interface{} = fpath
+	oldURL, _ := url.Parse(screen.tvdata.MediaURL)
 
 	nextTvData := &soapcalls.TVPayload{
 		ControlURL:                  screen.controlURL,
 		EventURL:                    screen.eventlURL,
 		RenderingControlURL:         screen.renderingControlURL,
 		ConnectionManagerURL:        screen.connectionManagerURL,
-		MediaURL:                    "http://" + whereToListen + "/" + utils.ConvertFilename(fname),
-		SubtitlesURL:                "http://" + whereToListen + "/" + utils.ConvertFilename(spath),
+		MediaURL:                    "http://" + oldURL.Host + "/" + utils.ConvertFilename(fname),
+		SubtitlesURL:                "http://" + oldURL.Host + "/" + utils.ConvertFilename(spath),
 		CallbackURL:                 screen.tvdata.CallbackURL,
 		MediaType:                   mediaType,
 		MediaPath:                   screen.mediafile,
@@ -517,25 +550,35 @@ func queueNext(screen *NewScreen) error {
 		Logging:                     screen.Debug,
 	}
 
-	screen.httpNexterver = httphandlers.NewServer(whereToListen)
-	serverStarted := make(chan error)
-
-	// We pass the tvdata here as we need the callback handlers to be able to react
-	// to the different media renderer states.
-	go func() {
-		screen.httpNexterver.StartServer(serverStarted, mediaFile, spath, nextTvData, screen)
-	}()
-	// Wait for the HTTP server to properly initialize.
-	err = <-serverStarted
-	check(screen, err)
+	//screen.httpNexterver.StartServer(serverStarted, mediaFile, spath, nextTvData, screen)
+	mURL, err := url.Parse(nextTvData.MediaURL)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if err := screen.tvdata.SendtoTV("Queue"); err != nil {
+	sURL, err := url.Parse(nextTvData.SubtitlesURL)
+	if err != nil {
+		return nil, err
+	}
+
+	func() {
+		defer func() {
+			_ = recover()
+		}()
+		screen.httpserver.Mux.HandleFunc(mURL.Path, screen.httpserver.ServeMediaHandler(nextTvData, mediaFile))
+	}()
+
+	func() {
+		defer func() {
+			_ = recover()
+		}()
+		screen.httpserver.Mux.HandleFunc(sURL.Path, screen.httpserver.ServeMediaHandler(nil, spath))
+	}()
+
+	if err := nextTvData.SendtoTV("Queue"); err != nil {
 		check(screen, err)
-		return err
+		return nil, err
 	}
 
-	return nil
+	return nextTvData, nil
 }
