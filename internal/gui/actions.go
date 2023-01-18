@@ -327,7 +327,7 @@ func playAction(screen *NewScreen) {
 	if screen.NextMediaCheck.Checked && gaplessOption == "Enabled" {
 		newTVPayload, err := queueNext(screen, false)
 		if err != nil {
-			return
+			stopAction(screen)
 		}
 
 		if screen.GaplessMediaWatcher == nil {
@@ -344,7 +344,24 @@ out:
 	for {
 		select {
 		case <-t.C:
-			fmt.Println(payload.Gapless())
+			gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
+			gapless, _ := payload.Gapless()
+
+			if !gapless && gaplessOption == "Enabled" && screen.NextMediaCheck.Checked {
+				screen.MediaText.Text, screen.mediafile = getNextMedia(screen)
+				screen.MediaText.Refresh()
+
+				if !screen.CustomSubsCheck.Checked {
+					selectSubs(screen.mediafile, screen)
+				}
+
+				newTVPayload, err := queueNext(screen, false)
+				if err != nil {
+					stopAction(screen)
+				}
+				screen.tvdata = payload
+				payload = newTVPayload
+			}
 		case <-ctx.Done():
 			t.Stop()
 			screen.GaplessMediaWatcher = nil
@@ -500,7 +517,6 @@ func queueNext(screen *NewScreen, clear bool) (*soapcalls.TVPayload, error) {
 
 	if clear {
 		if err := screen.tvdata.SendtoTV("ClearQueue"); err != nil {
-			check(screen, err)
 			return nil, err
 		}
 
@@ -514,13 +530,11 @@ func queueNext(screen *NewScreen, clear bool) (*soapcalls.TVPayload, error) {
 	var isSeek bool
 
 	mfile, err := os.Open(fpath)
-	check(screen, err)
 	if err != nil {
 		return nil, err
 	}
 
 	mediaType, err = utils.GetMimeDetailsFromFile(mfile)
-	check(screen, err)
 	if err != nil {
 		return nil, err
 	}
@@ -576,7 +590,6 @@ func queueNext(screen *NewScreen, clear bool) (*soapcalls.TVPayload, error) {
 	}()
 
 	if err := nextTvData.SendtoTV("Queue"); err != nil {
-		check(screen, err)
 		return nil, err
 	}
 

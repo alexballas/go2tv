@@ -284,33 +284,35 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	}
 
 	nextmedia.OnChanged = func(b bool) {
-		gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
+		go func() {
+			gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
 
-		if b {
-			if gaplessOption == "Enabled" {
-				switch s.State {
-				case "Playing", "Paused":
-					newTVPayload, err := queueNext(s, false)
-					if err == nil && s.GaplessMediaWatcher == nil {
-						s.GaplessMediaWatcher = gaplessMediaWatcher
-						go s.GaplessMediaWatcher(s.serverStopCTX, s, newTVPayload)
+			if b {
+				if gaplessOption == "Enabled" {
+					switch s.State {
+					case "Playing", "Paused":
+						newTVPayload, err := queueNext(s, false)
+						if err == nil && s.GaplessMediaWatcher == nil {
+							s.GaplessMediaWatcher = gaplessMediaWatcher
+							go s.GaplessMediaWatcher(s.serverStopCTX, s, newTVPayload)
+						}
 					}
+				}
+
+				medialoop.SetChecked(false)
+				medialoop.Disable()
+				return
+			}
+
+			if s.tvdata != nil && s.tvdata.CallbackURL != "" {
+				_, err = queueNext(s, true)
+				if err != nil {
+					stopAction(s)
 				}
 			}
 
-			medialoop.SetChecked(false)
-			medialoop.Disable()
-			return
-		}
-
-		if s.tvdata != nil && s.tvdata.CallbackURL != "" {
-			_, err = queueNext(s, true)
-			if err != nil {
-				stopAction(s)
-			}
-		}
-
-		medialoop.Enable()
+			medialoop.Enable()
+		}()
 	}
 
 	// Device list auto-refresh

@@ -892,6 +892,10 @@ func (p *TVPayload) GetProtocolInfo() error {
 
 // Gapless requests our device's media info and checks if Next URI exists.
 func (p *TVPayload) Gapless() (bool, error) {
+	if p == nil {
+		return false, errors.New("Gapless, nil tvdata")
+	}
+
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "Gapless").Str("Action", "URL Parse").Err(err).Msg("")
@@ -1021,8 +1025,8 @@ func (p *TVPayload) SendtoTV(action string) error {
 			delete(p.CurrentTimers, uuid)
 		}
 	}
-	err := p.AVTransportActionSoapCall(action)
-	if err != nil {
+
+	if err := p.AVTransportActionSoapCall(action); err != nil {
 		return fmt.Errorf("SendtoTV Play/Stop/Pause action error: %w", err)
 	}
 
