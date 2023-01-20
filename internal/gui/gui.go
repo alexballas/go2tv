@@ -24,12 +24,12 @@ import (
 
 // NewScreen .
 type NewScreen struct {
-	mu                   sync.RWMutex
 	muError              sync.RWMutex
+	mu                   sync.RWMutex
+	serverStopCTX        context.Context
 	Current              fyne.Window
-	VolumeDown           *widget.Button
-	MediaText            *widget.Entry
-	Debug                *debugWriter
+	VolumeUp             *widget.Button
+	tvdata               *soapcalls.TVPayload
 	tabs                 *container.AppTabs
 	CheckVersion         *widget.Button
 	SubsText             *widget.Entry
@@ -38,26 +38,26 @@ type NewScreen struct {
 	Stop                 *widget.Button
 	DeviceList           *widget.List
 	httpserver           *httphandlers.HTTPserver
-	serverStopCTX        context.Context
+	MediaText            *widget.Entry
 	ExternalMediaURL     *widget.Check
 	GaplessMediaWatcher  func(context.Context, *NewScreen, *soapcalls.TVPayload)
 	MuteUnmute           *widget.Button
-	VolumeUp             *widget.Button
-	tvdata               *soapcalls.TVPayload
+	VolumeDown           *widget.Button
+	Debug                *debugWriter
+	NextMediaCheck       *widget.Check
 	selectedDevice       devType
-	currentmfolder       string
-	mediafile            string
-	eventlURL            string
+	State                string
+	subsfile             string
 	controlURL           string
 	renderingControlURL  string
 	connectionManagerURL string
-	State                string
+	currentmfolder       string
 	version              string
-	subsfile             string
+	eventlURL            string
+	mediafile            string
 	mediaFormats         []string
 	Transcode            bool
 	ErrorVisible         bool
-	NextMediaCheck       *widget.Check
 	Medialoop            bool
 	Hotkeys              bool
 }
