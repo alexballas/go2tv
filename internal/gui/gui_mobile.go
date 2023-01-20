@@ -40,6 +40,7 @@ type NewScreen struct {
 	mediafile            fyne.URI
 	subsfile             fyne.URI
 	selectedDevice       devType
+	NextMediaCheck       *widget.Check
 	State                string
 	controlURL           string
 	eventlURL            string
