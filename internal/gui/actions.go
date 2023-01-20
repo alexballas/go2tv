@@ -388,6 +388,11 @@ func clearsubsAction(screen *NewScreen) {
 }
 
 func skipNextAction(screen *NewScreen) {
+	if screen.controlURL == "" {
+		check(screen, errors.New("please select a device"))
+		return
+	}
+
 	name, path := getNextMedia(screen)
 	screen.MediaText.Text = name
 	screen.mediafile = path
