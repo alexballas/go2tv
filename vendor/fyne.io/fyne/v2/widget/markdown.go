@@ -195,7 +195,7 @@ func makeImage(n *ast.Image) *ImageSegment {
 
 func makeLink(n *ast.Link) *HyperlinkSegment {
 	link, _ := url.Parse(string(n.Destination))
-	return &HyperlinkSegment{fyne.TextAlignLeading, "", link, nil}
+	return &HyperlinkSegment{fyne.TextAlignLeading, "", link}
 }
 
 func parseMarkdown(content string) []RichTextSegment {

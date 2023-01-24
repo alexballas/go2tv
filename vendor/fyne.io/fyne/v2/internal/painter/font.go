@@ -8,9 +8,6 @@ import (
 	"math"
 	"sync"
 
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/internal/cache"
-	"fyne.io/fyne/v2/theme"
 	"github.com/go-text/typesetting/di"
 	gotext "github.com/go-text/typesetting/font"
 	"github.com/go-text/typesetting/shaping"
@@ -18,6 +15,10 @@ import (
 	"github.com/goki/freetype/truetype"
 	"golang.org/x/image/font"
 	"golang.org/x/image/math/fixed"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/internal/cache"
+	"fyne.io/fyne/v2/theme"
 )
 
 const (
@@ -75,6 +76,7 @@ func CachedFontFace(style fyne.TextStyle, fontDP float32, texScale float32) (fon
 		var opts truetype.Options
 		opts.Size = float64(fontDP)
 		opts.DPI = float64(TextDPI * texScale)
+
 		f1 := truetype.NewFace(comp.font, &opts)
 		f2 := truetype.NewFace(comp.fallback, &opts)
 		face = newFontWithFallback(f1, f2, comp.font, comp.fallback)
@@ -101,6 +103,7 @@ func CachedFontFace(style fyne.TextStyle, fontDP float32, texScale float32) (fon
 		comp.measureFaces[key] = measureFace
 		comp.facesMutex.Unlock()
 	}
+
 	return face, measureFace
 }
 
@@ -153,7 +156,6 @@ func loadMeasureFont(data fyne.Resource) gotext.Face {
 // MeasureString returns how far dot would advance by drawing s with f.
 // Tabs are translated into a dot location change.
 func MeasureString(f gotext.Face, s string, textSize float32, tabWidth int) (size fyne.Size, advance fixed.Int26_6) {
-
 	return walkString(f, s, float32ToFixed266(textSize), tabWidth, &advance, 1, func(gotext.GID) {})
 }
 
@@ -250,6 +252,7 @@ func walkString(f gotext.Face, s string, textSize fixed.Int26_6, tabWidth int, a
 			}
 		}
 	}
+
 	return fyne.NewSize(fixed266ToFloat32(*advance), fixed266ToFloat32(out.LineBounds.LineHeight())),
 		out.LineBounds.Ascent
 }

@@ -48,7 +48,7 @@ func findFreedestktopColorScheme() fyne.ThemeVariant {
 		"color-scheme",
 	)
 	if call.Err != nil {
-		// many desktops don't have this exported yet
+		fyne.LogError("failed to read theme variant from D-Bus", call.Err)
 		return theme.VariantDark
 	}
 

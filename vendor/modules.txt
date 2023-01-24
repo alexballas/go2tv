@@ -1,4 +1,4 @@
-# fyne.io/fyne/v2 v2.3.0 => ../fyne
+# fyne.io/fyne/v2 v2.3.0
 ## explicit; go 1.14
 fyne.io/fyne/v2
 fyne.io/fyne/v2/app
@@ -138,7 +138,7 @@ github.com/go-gl/glfw/v3.3/glfw/glfw/deps/mingw
 github.com/go-gl/glfw/v3.3/glfw/glfw/deps/vs2008
 github.com/go-gl/glfw/v3.3/glfw/glfw/include/GLFW
 github.com/go-gl/glfw/v3.3/glfw/glfw/src
-# github.com/go-text/typesetting v0.0.0-20230104230035-6cdafd18ca27
+# github.com/go-text/typesetting v0.0.0-20230122153906-bd3bf1820a88
 ## explicit; go 1.15
 github.com/go-text/typesetting/di
 github.com/go-text/typesetting/font
@@ -289,4 +289,3 @@ gopkg.in/yaml.v3
 # honnef.co/go/js/dom v0.0.0-20221001195520-26252dedbe70
 ## explicit
 honnef.co/go/js/dom
-# fyne.io/fyne/v2 => ../fyne

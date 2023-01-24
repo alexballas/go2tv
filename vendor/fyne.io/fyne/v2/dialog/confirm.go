@@ -2,7 +2,6 @@ package dialog
 
 import (
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -34,7 +33,7 @@ func NewConfirm(title, message string, callback func(bool), parent fyne.Window) 
 			d.hideWithResponse(true)
 		},
 	}
-	d.create(container.NewGridWithColumns(2, d.dismiss, confirm))
+	d.create(newButtonList(d.dismiss, confirm))
 
 	return &ConfirmDialog{d, confirm}
 }

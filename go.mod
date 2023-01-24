@@ -27,7 +27,7 @@ require (
 	github.com/gdamore/encoding v1.0.0 // indirect
 	github.com/go-gl/gl v0.0.0-20211210172815-726fda9656d6 // indirect
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20221017161538-93cebf72946b // indirect
-	github.com/go-text/typesetting v0.0.0-20230104230035-6cdafd18ca27 // indirect
+	github.com/go-text/typesetting v0.0.0-20230122153906-bd3bf1820a88 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/goki/freetype v0.0.0-20220119013949-7a161fd3728c // indirect
 	github.com/gopherjs/gopherjs v1.17.2 // indirect
@@ -52,5 +52,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	honnef.co/go/js/dom v0.0.0-20221001195520-26252dedbe70 // indirect
 )
-
-replace fyne.io/fyne/v2 => ../fyne
