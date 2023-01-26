@@ -276,6 +276,24 @@ type getMediaInfoAction struct {
 	InstanceID  string
 }
 
+type getTransportInfoEnvelope struct {
+	XMLName              xml.Name             `xml:"s:Envelope"`
+	Schema               string               `xml:"xmlns:s,attr"`
+	Encoding             string               `xml:"s:encodingStyle,attr"`
+	GetTransportInfoBody getTransportInfoBody `xml:"s:Body"`
+}
+
+type getTransportInfoBody struct {
+	XMLName                xml.Name               `xml:"s:Body"`
+	GetTransportInfoAction getTransportInfoAction `xml:"u:GetTransportInfo"`
+}
+
+type getTransportInfoAction struct {
+	XMLName     xml.Name `xml:"u:GetTransportInfo"`
+	AVTransport string   `xml:"xmlns:u,attr"`
+	InstanceID  string
+}
+
 func setAVTransportSoapBuild(tvdata *TVPayload) ([]byte, error) {
 	mediaTypeSlice := strings.Split(tvdata.MediaType, "/")
 	seekflag := "00"
@@ -771,6 +789,29 @@ func getMediaInfoSoapBuild() ([]byte, error) {
 	b, err := xml.Marshal(d)
 	if err != nil {
 		return nil, fmt.Errorf("getMediaInfoSoapBuild Marshal error: %w", err)
+	}
+
+	return append(xmlStart, b...), nil
+}
+
+func getTransportInfoSoapBuild() ([]byte, error) {
+	d := getTransportInfoEnvelope{
+		XMLName:  xml.Name{},
+		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
+		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
+		GetTransportInfoBody: getTransportInfoBody{
+			XMLName: xml.Name{},
+			GetTransportInfoAction: getTransportInfoAction{
+				XMLName:     xml.Name{},
+				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
+				InstanceID:  "0",
+			},
+		},
+	}
+	xmlStart := []byte(`<?xml version="1.0" encoding="utf-8"?>`)
+	b, err := xml.Marshal(d)
+	if err != nil {
+		return nil, fmt.Errorf("getTransportInfoSoapBuild Marshal error: %w", err)
 	}
 
 	return append(xmlStart, b...), nil

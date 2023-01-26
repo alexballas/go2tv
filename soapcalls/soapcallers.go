@@ -122,6 +122,23 @@ type getMediaInfoResponse struct {
 	} `xml:"Body"`
 }
 
+type getTransportInfoResponse struct {
+	XMLName       xml.Name `xml:"Envelope"`
+	Text          string   `xml:",chardata"`
+	S             string   `xml:"s,attr"`
+	EncodingStyle string   `xml:"encodingStyle,attr"`
+	Body          struct {
+		Text                     string `xml:",chardata"`
+		GetTransportInfoResponse struct {
+			Text                   string `xml:",chardata"`
+			U                      string `xml:"u,attr"`
+			CurrentTransportState  string `xml:"CurrentTransportState"`
+			CurrentTransportStatus string `xml:"CurrentTransportStatus"`
+			CurrentSpeed           string `xml:"CurrentSpeed"`
+		} `xml:"GetTransportInfoResponse"`
+	} `xml:"Body"`
+}
+
 func (p *TVPayload) setAVTransportSoapCall() error {
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
@@ -890,16 +907,16 @@ func (p *TVPayload) GetProtocolInfo() error {
 	return nil
 }
 
-// Gapless requests our device's media info and checks if Next URI exists.
-func (p *TVPayload) Gapless() (bool, error) {
+// Gapless requests our device's media info and returns the Next URI.
+func (p *TVPayload) Gapless() (string, error) {
 	if p == nil {
-		return false, errors.New("Gapless, nil tvdata")
+		return "", errors.New("Gapless, nil tvdata")
 	}
 
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "Gapless").Str("Action", "URL Parse").Err(err).Msg("")
-		return false, fmt.Errorf("Gapless parse error: %w", err)
+		return "", fmt.Errorf("Gapless parse error: %w", err)
 	}
 
 	var xmlbuilder []byte
@@ -907,14 +924,14 @@ func (p *TVPayload) Gapless() (bool, error) {
 	xmlbuilder, err = getMediaInfoSoapBuild()
 	if err != nil {
 		p.Log().Error().Str("Method", "Gapless").Str("Action", "Build").Err(err).Msg("")
-		return false, fmt.Errorf("Gapless build error: %w", err)
+		return "", fmt.Errorf("Gapless build error: %w", err)
 	}
 
 	client := &http.Client{}
 	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "Gapless").Str("Action", "Prepare POST").Err(err).Msg("")
-		return false, fmt.Errorf("Gapless POST error: %w", err)
+		return "", fmt.Errorf("Gapless POST error: %w", err)
 	}
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#GetMediaInfo"`},
@@ -926,7 +943,7 @@ func (p *TVPayload) Gapless() (bool, error) {
 	headerBytesReq, err := json.Marshal(req.Header)
 	if err != nil {
 		p.Log().Error().Str("Method", "Gapless").Str("Action", "Header Marshaling").Err(err).Msg("")
-		return false, fmt.Errorf("Gapless Request Marshaling error: %w", err)
+		return "", fmt.Errorf("Gapless Request Marshaling error: %w", err)
 	}
 
 	p.Log().Debug().
@@ -936,20 +953,20 @@ func (p *TVPayload) Gapless() (bool, error) {
 
 	res, err := client.Do(req)
 	if err != nil {
-		return false, fmt.Errorf("Gapless Do POST error: %w", err)
+		return "", fmt.Errorf("Gapless Do POST error: %w", err)
 	}
 	defer res.Body.Close()
 
 	headerBytesRes, err := json.Marshal(res.Header)
 	if err != nil {
 		p.Log().Error().Str("Method", "Gapless").Str("Action", "Header Marshaling #2").Err(err).Msg("")
-		return false, fmt.Errorf("Gapless Response Marshaling error: %w", err)
+		return "", fmt.Errorf("Gapless Response Marshaling error: %w", err)
 	}
 
 	resBytes, err := io.ReadAll(res.Body)
 	if err != nil {
 		p.Log().Error().Str("Method", "Gapless").Str("Action", "Readall").Err(err).Msg("")
-		return false, fmt.Errorf("Gapless Failed to read response: %w", err)
+		return "", fmt.Errorf("Gapless Failed to read response: %w", err)
 	}
 
 	p.Log().Debug().
@@ -961,15 +978,94 @@ func (p *TVPayload) Gapless() (bool, error) {
 
 	if err := xml.Unmarshal(resBytes, &respMedialInfo); err != nil {
 		p.Log().Error().Str("Method", "Gapless").Str("Action", "Unmarshal").Err(err).Msg("")
-		return false, fmt.Errorf("Gapless Failed to unmarshal response: %w", err)
+		return "", fmt.Errorf("Gapless Failed to unmarshal response: %w", err)
 	}
 
 	nextURI := respMedialInfo.Body.GetMediaInfoResponse.NextURI
-	if nextURI != "NOT_IMPLEMENTED" && nextURI != "" {
-		return true, nil
+
+	return nextURI, nil
+}
+
+// GetTransportInfo .
+func (p *TVPayload) GetTransportInfo() ([]string, error) {
+	if p == nil {
+		return nil, errors.New("GetTransportInfo, nil tvdata")
 	}
 
-	return false, nil
+	parsedURLtransport, err := url.Parse(p.ControlURL)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetTransportInfo").Str("Action", "URL Parse").Err(err).Msg("")
+		return nil, fmt.Errorf("GetTransportInfo parse error: %w", err)
+	}
+
+	var xmlbuilder []byte
+
+	xmlbuilder, err = getTransportInfoSoapBuild()
+	if err != nil {
+		p.Log().Error().Str("Method", "GetTransportInfo").Str("Action", "Build").Err(err).Msg("")
+		return nil, fmt.Errorf("GetTransportInfo build error: %w", err)
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
+	if err != nil {
+		p.Log().Error().Str("Method", "GetTransportInfo").Str("Action", "Prepare POST").Err(err).Msg("")
+		return nil, fmt.Errorf("GetTransportInfo POST error: %w", err)
+	}
+	req.Header = http.Header{
+		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"`},
+		"content-type": []string{"text/xml"},
+		"charset":      []string{"utf-8"},
+		"Connection":   []string{"close"},
+	}
+
+	headerBytesReq, err := json.Marshal(req.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetTransportInfo").Str("Action", "Header Marshaling").Err(err).Msg("")
+		return nil, fmt.Errorf("GetTransportInfo Request Marshaling error: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "GetTransportInfo").Str("Action", "Request").
+		RawJSON("Headers", headerBytesReq).
+		Msg(string(xmlbuilder))
+
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GetTransportInfo Do POST error: %w", err)
+	}
+	defer res.Body.Close()
+
+	headerBytesRes, err := json.Marshal(res.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetTransportInfo").Str("Action", "Header Marshaling #2").Err(err).Msg("")
+		return nil, fmt.Errorf("GetTransportInfo Response Marshaling error: %w", err)
+	}
+
+	resBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetTransportInfo").Str("Action", "Readall").Err(err).Msg("")
+		return nil, fmt.Errorf("GetTransportInfo Failed to read response: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "GetTransportInfo").Str("Action", "Response").Str("Status Code", strconv.Itoa(res.StatusCode)).
+		RawJSON("Headers", headerBytesRes).
+		Msg(string(resBytes))
+
+	var respTransportInfo getTransportInfoResponse
+
+	if err := xml.Unmarshal(resBytes, &respTransportInfo); err != nil {
+		p.Log().Error().Str("Method", "GetTransportInfo").Str("Action", "Unmarshal").Err(err).Msg("")
+		return nil, fmt.Errorf("GetTransportInfo Failed to unmarshal response: %w", err)
+	}
+
+	r := respTransportInfo.Body.GetTransportInfoResponse
+	state := r.CurrentTransportState
+	status := r.CurrentTransportStatus
+	speed := r.CurrentSpeed
+
+	return []string{state, status, speed}, nil
 }
 
 // SendtoTV is a higher level method that gracefully handles the various

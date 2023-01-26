@@ -24,12 +24,12 @@ import (
 
 // NewScreen .
 type NewScreen struct {
-	muError              sync.RWMutex
 	mu                   sync.RWMutex
-	serverStopCTX        context.Context
+	muError              sync.RWMutex
 	Current              fyne.Window
-	VolumeUp             *widget.Button
-	tvdata               *soapcalls.TVPayload
+	VolumeDown           *widget.Button
+	MediaText            *widget.Entry
+	Debug                *debugWriter
 	tabs                 *container.AppTabs
 	CheckVersion         *widget.Button
 	SubsText             *widget.Entry
@@ -38,26 +38,27 @@ type NewScreen struct {
 	Stop                 *widget.Button
 	DeviceList           *widget.List
 	httpserver           *httphandlers.HTTPserver
-	MediaText            *widget.Entry
+	serverStopCTX        context.Context
 	ExternalMediaURL     *widget.Check
 	GaplessMediaWatcher  func(context.Context, *NewScreen, *soapcalls.TVPayload)
+	cancelEnablePlay     context.CancelFunc
 	MuteUnmute           *widget.Button
-	VolumeDown           *widget.Button
-	Debug                *debugWriter
-	NextMediaCheck       *widget.Check
+	VolumeUp             *widget.Button
+	tvdata               *soapcalls.TVPayload
 	selectedDevice       devType
-	State                string
-	subsfile             string
+	currentmfolder       string
+	mediafile            string
+	eventlURL            string
 	controlURL           string
 	renderingControlURL  string
 	connectionManagerURL string
-	currentmfolder       string
+	State                string
 	version              string
-	eventlURL            string
-	mediafile            string
+	subsfile             string
 	mediaFormats         []string
 	Transcode            bool
 	ErrorVisible         bool
+	NextMediaCheck       *widget.Check
 	Medialoop            bool
 	Hotkeys              bool
 }
@@ -289,6 +290,10 @@ func getNextPossibleSubs(v string, screen *NewScreen) (string, string) {
 }
 
 func setPlayPauseView(s string, screen *NewScreen) {
+	if screen.cancelEnablePlay != nil {
+		screen.cancelEnablePlay()
+	}
+
 	screen.PlayPause.Enable()
 	switch s {
 	case "Play":

@@ -128,6 +128,37 @@ func playAction(screen *NewScreen) {
 
 	screen.PlayPause.Disable()
 
+	if screen.cancelEnablePlay != nil {
+		screen.cancelEnablePlay()
+	}
+
+	ctx, cancelEnablePlay := context.WithTimeout(context.Background(), 5*time.Second)
+	screen.cancelEnablePlay = cancelEnablePlay
+
+	go func() {
+		<-ctx.Done()
+
+		defer func() { screen.cancelEnablePlay = nil }()
+
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return
+		}
+
+		out, err := screen.tvdata.GetTransportInfo()
+		if err != nil {
+			return
+		}
+
+		switch out[0] {
+		case "PLAYING":
+			setPlayPauseView("Pause", screen)
+			screen.updateScreenState("Playing")
+		case "PAUSED":
+			setPlayPauseView("Play", screen)
+			screen.updateScreenState("Paused")
+		}
+	}()
+
 	currentState := screen.getScreenState()
 
 	if currentState == "Paused" {
@@ -153,20 +184,20 @@ func playAction(screen *NewScreen) {
 
 	if screen.mediafile == nil && screen.MediaText.Text == "" {
 		check(w, errors.New("please select a media file or enter a media URL"))
-		screen.PlayPause.Enable()
+		startAfreshPlayButton(screen)
 		return
 	}
 
 	if screen.controlURL == "" {
 		check(w, errors.New("please select a device"))
-		screen.PlayPause.Enable()
+		startAfreshPlayButton(screen)
 		return
 	}
 
 	whereToListen, err := utils.URLtoListenIPandPort(screen.controlURL)
 	check(w, err)
 	if err != nil {
-		screen.PlayPause.Enable()
+		startAfreshPlayButton(screen)
 		return
 	}
 
@@ -174,7 +205,7 @@ func playAction(screen *NewScreen) {
 
 	callbackPath, err := utils.RandomString()
 	if err != nil {
-		screen.PlayPause.Enable()
+		startAfreshPlayButton(screen)
 		return
 	}
 
@@ -182,21 +213,21 @@ func playAction(screen *NewScreen) {
 		mediaURL, err := storage.OpenFileFromURI(screen.mediafile)
 		check(screen.Current, err)
 		if err != nil {
-			screen.PlayPause.Enable()
+			startAfreshPlayButton(screen)
 			return
 		}
 
 		mediaURLinfo, err := storage.OpenFileFromURI(screen.mediafile)
 		check(screen.Current, err)
 		if err != nil {
-			screen.PlayPause.Enable()
+			startAfreshPlayButton(screen)
 			return
 		}
 
 		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
 		check(w, err)
 		if err != nil {
-			screen.PlayPause.Enable()
+			startAfreshPlayButton(screen)
 			return
 		}
 
@@ -205,7 +236,7 @@ func playAction(screen *NewScreen) {
 			readerToBytes, err := io.ReadAll(mediaURL)
 			mediaURL.Close()
 			if err != nil {
-				screen.PlayPause.Enable()
+				startAfreshPlayButton(screen)
 				return
 			}
 			mediaFile = readerToBytes
@@ -216,7 +247,7 @@ func playAction(screen *NewScreen) {
 		subsFile, err = storage.OpenFileFromURI(screen.subsfile)
 		check(screen.Current, err)
 		if err != nil {
-			screen.PlayPause.Enable()
+			startAfreshPlayButton(screen)
 			return
 		}
 	}
@@ -230,21 +261,21 @@ func playAction(screen *NewScreen) {
 		mediaURL, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
 		check(screen.Current, err)
 		if err != nil {
-			screen.PlayPause.Enable()
+			startAfreshPlayButton(screen)
 			return
 		}
 
 		mediaURLinfo, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
 		check(screen.Current, err)
 		if err != nil {
-			screen.PlayPause.Enable()
+			startAfreshPlayButton(screen)
 			return
 		}
 
 		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
 		check(w, err)
 		if err != nil {
-			screen.PlayPause.Enable()
+			startAfreshPlayButton(screen)
 			return
 		}
 
@@ -253,7 +284,7 @@ func playAction(screen *NewScreen) {
 			readerToBytes, err := io.ReadAll(mediaURL)
 			mediaURL.Close()
 			if err != nil {
-				screen.PlayPause.Enable()
+				startAfreshPlayButton(screen)
 				return
 			}
 			mediaFile = readerToBytes
@@ -393,4 +424,13 @@ func volumeAction(screen *NewScreen, up bool) {
 	if err := screen.tvdata.SetVolumeSoapCall(stringVolume); err != nil {
 		check(w, errors.New("could not send volume action"))
 	}
+}
+
+func startAfreshPlayButton(screen *NewScreen) {
+	if screen.cancelEnablePlay != nil {
+		screen.cancelEnablePlay()
+	}
+
+	setPlayPauseView("Play", screen)
+	screen.updateScreenState("Stopped")
 }

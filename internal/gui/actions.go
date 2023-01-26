@@ -158,6 +158,37 @@ func playAction(screen *NewScreen) {
 
 	screen.PlayPause.Disable()
 
+	if screen.cancelEnablePlay != nil {
+		screen.cancelEnablePlay()
+	}
+
+	ctx, cancelEnablePlay := context.WithTimeout(context.Background(), 5*time.Second)
+	screen.cancelEnablePlay = cancelEnablePlay
+
+	go func() {
+		<-ctx.Done()
+
+		defer func() { screen.cancelEnablePlay = nil }()
+
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return
+		}
+
+		out, err := screen.tvdata.GetTransportInfo()
+		if err != nil {
+			return
+		}
+
+		switch out[0] {
+		case "PLAYING":
+			setPlayPauseView("Pause", screen)
+			screen.updateScreenState("Playing")
+		case "PAUSED":
+			setPlayPauseView("Play", screen)
+			screen.updateScreenState("Paused")
+		}
+	}()
+
 	currentState := screen.getScreenState()
 
 	if currentState == "Paused" {
@@ -183,20 +214,20 @@ func playAction(screen *NewScreen) {
 
 	if screen.mediafile == "" && screen.MediaText.Text == "" {
 		check(screen, errors.New("please select a media file or enter a media URL"))
-		screen.PlayPause.Enable()
+		startAfreshPlayButton(screen)
 		return
 	}
 
 	if screen.controlURL == "" {
 		check(screen, errors.New("please select a device"))
-		screen.PlayPause.Enable()
+		startAfreshPlayButton(screen)
 		return
 	}
 
 	whereToListen, err := utils.URLtoListenIPandPort(screen.controlURL)
 	check(screen, err)
 	if err != nil {
-		screen.PlayPause.Enable()
+		startAfreshPlayButton(screen)
 		return
 	}
 
@@ -207,14 +238,14 @@ func playAction(screen *NewScreen) {
 		mfile, err := os.Open(screen.mediafile)
 		check(screen, err)
 		if err != nil {
-			screen.PlayPause.Enable()
+			startAfreshPlayButton(screen)
 			return
 		}
 
 		mediaType, err = utils.GetMimeDetailsFromFile(mfile)
 		check(screen, err)
 		if err != nil {
-			screen.PlayPause.Enable()
+			startAfreshPlayButton(screen)
 			return
 		}
 
@@ -225,7 +256,7 @@ func playAction(screen *NewScreen) {
 
 	callbackPath, err := utils.RandomString()
 	if err != nil {
-		screen.PlayPause.Enable()
+		startAfreshPlayButton(screen)
 		return
 	}
 
@@ -246,21 +277,21 @@ func playAction(screen *NewScreen) {
 		mediaURL, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
 		check(screen, err)
 		if err != nil {
-			screen.PlayPause.Enable()
+			startAfreshPlayButton(screen)
 			return
 		}
 
 		mediaURLinfo, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
 		check(screen, err)
 		if err != nil {
-			screen.PlayPause.Enable()
+			startAfreshPlayButton(screen)
 			return
 		}
 
 		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
 		check(screen, err)
 		if err != nil {
-			screen.PlayPause.Enable()
+			startAfreshPlayButton(screen)
 			return
 		}
 
@@ -269,7 +300,7 @@ func playAction(screen *NewScreen) {
 			readerToBytes, err := io.ReadAll(mediaURL)
 			mediaURL.Close()
 			if err != nil {
-				screen.PlayPause.Enable()
+				startAfreshPlayButton(screen)
 				return
 			}
 			mediaFile = readerToBytes
@@ -338,6 +369,15 @@ func playAction(screen *NewScreen) {
 
 }
 
+func startAfreshPlayButton(screen *NewScreen) {
+	if screen.cancelEnablePlay != nil {
+		screen.cancelEnablePlay()
+	}
+
+	setPlayPauseView("Play", screen)
+	screen.updateScreenState("Stopped")
+}
+
 func gaplessMediaWatcher(ctx context.Context, screen *NewScreen, payload *soapcalls.TVPayload) {
 	t := time.NewTicker(1 * time.Second)
 out:
@@ -345,9 +385,14 @@ out:
 		select {
 		case <-t.C:
 			gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
-			gapless, _ := payload.Gapless()
+			nextURI, _ := payload.Gapless()
 
-			if !gapless && gaplessOption == "Enabled" && screen.NextMediaCheck.Checked {
+			if nextURI == "NOT_IMPLEMENTED" || gaplessOption == "Disabled" {
+				screen.GaplessMediaWatcher = nil
+				break out
+			}
+
+			if nextURI == "" && screen.NextMediaCheck.Checked {
 				screen.MediaText.Text, screen.mediafile = getNextMedia(screen)
 				screen.MediaText.Refresh()
 

@@ -1,3 +1,6 @@
+//go:build !(android || ios)
+// +build !android,!ios
+
 package gui
 
 import (
@@ -109,8 +112,26 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 	gaplessdropdown := widget.NewSelect([]string{"Enabled", "Disabled"}, func(ss string) {
 		fyne.CurrentApp().Preferences().SetString("Gapless", ss)
 		if s.NextMediaCheck.Checked {
-			s.NextMediaCheck.SetChecked(false)
-			s.NextMediaCheck.SetChecked(true)
+			switch ss {
+			case "Enabled":
+				switch s.State {
+				case "Playing", "Paused":
+					newTVPayload, err := queueNext(s, false)
+					if err == nil && s.GaplessMediaWatcher == nil {
+						s.GaplessMediaWatcher = gaplessMediaWatcher
+						go s.GaplessMediaWatcher(s.serverStopCTX, s, newTVPayload)
+					}
+				}
+			case "Disabled":
+				// We're disabling gapless playback. If for some reason
+				// we fail to clear the NextURI it would be best to stop and
+				// avoid inconsistent where gapless playback appears disabled
+				// but in reality it's not.
+				_, err := queueNext(s, true)
+				if err != nil {
+					stopAction(s)
+				}
+			}
 		}
 	})
 	gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")

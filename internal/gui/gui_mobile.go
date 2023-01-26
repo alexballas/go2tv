@@ -32,6 +32,7 @@ type NewScreen struct {
 	CheckVersion         *widget.Button
 	CustomSubsCheck      *widget.Check
 	ExternalMediaURL     *widget.Check
+	cancelEnablePlay     context.CancelFunc
 	MediaText            *widget.Entry
 	SubsText             *widget.Entry
 	DeviceList           *widget.List
@@ -157,6 +158,10 @@ func (p *NewScreen) getScreenState() string {
 }
 
 func setPlayPauseView(s string, screen *NewScreen) {
+	if screen.cancelEnablePlay != nil {
+		screen.cancelEnablePlay()
+	}
+
 	screen.PlayPause.Enable()
 	switch s {
 	case "Play":

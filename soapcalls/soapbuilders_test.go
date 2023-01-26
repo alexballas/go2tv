@@ -266,3 +266,27 @@ func TestSetVolumeSoapBuild(t *testing.T) {
 		})
 	}
 }
+
+func TestGetTransportInfoSoapBuild(t *testing.T) {
+	tt := []struct {
+		name string
+		want string
+	}{
+		{
+			`getTransportInfoSoapBuildTest #1`,
+			`<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:GetTransportInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:GetTransportInfo></s:Body></s:Envelope>`,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := getTransportInfoSoapBuild()
+			if err != nil {
+				t.Fatalf("%s: Failed to call getTransportInfoSoapBuild due to %s", tc.name, err.Error())
+			}
+			if string(out) != tc.want {
+				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, tc.want)
+			}
+		})
+	}
+}
