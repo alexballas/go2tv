@@ -125,7 +125,7 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 			case "Disabled":
 				// We're disabling gapless playback. If for some reason
 				// we fail to clear the NextURI it would be best to stop and
-				// avoid inconsistent where gapless playback appears disabled
+				// avoid inconsistencies where gapless playback appears disabled
 				// but in reality it's not.
 				_, err := queueNext(s, true)
 				if err != nil {
