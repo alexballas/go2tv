@@ -290,3 +290,27 @@ func TestGetTransportInfoSoapBuild(t *testing.T) {
 		})
 	}
 }
+
+func TestGetPositionInfoSoapBuild(t *testing.T) {
+	tt := []struct {
+		name string
+		want string
+	}{
+		{
+			`getPositionInfoSoapBuildTest #1`,
+			`<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:GetPositionInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:GetPositionInfo></s:Body></s:Envelope>`,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := getPositionInfoSoapBuild()
+			if err != nil {
+				t.Fatalf("%s: Failed to call getPositionInfoSoapBuild due to %s", tc.name, err.Error())
+			}
+			if string(out) != tc.want {
+				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, tc.want)
+			}
+		})
+	}
+}

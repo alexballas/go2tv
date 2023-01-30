@@ -139,6 +139,28 @@ type getTransportInfoResponse struct {
 	} `xml:"Body"`
 }
 
+type getPositionInfoResponse struct {
+	XMLName       xml.Name `xml:"Envelope"`
+	Text          string   `xml:",chardata"`
+	S             string   `xml:"s,attr"`
+	EncodingStyle string   `xml:"encodingStyle,attr"`
+	Body          struct {
+		Text                    string `xml:",chardata"`
+		GetPositionInfoResponse struct {
+			Text          string `xml:",chardata"`
+			U             string `xml:"u,attr"`
+			Track         string `xml:"Track"`
+			TrackDuration string `xml:"TrackDuration"`
+			TrackMetaData string `xml:"TrackMetaData"`
+			TrackURI      string `xml:"TrackURI"`
+			RelTime       string `xml:"RelTime"`
+			AbsTime       string `xml:"AbsTime"`
+			RelCount      string `xml:"RelCount"`
+			AbsCount      string `xml:"AbsCount"`
+		} `xml:"GetPositionInfoResponse"`
+	} `xml:"Body"`
+}
+
 func (p *TVPayload) setAVTransportSoapCall() error {
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
@@ -1066,6 +1088,87 @@ func (p *TVPayload) GetTransportInfo() ([]string, error) {
 	speed := r.CurrentSpeed
 
 	return []string{state, status, speed}, nil
+}
+
+// GetPositionInfo .
+func (p *TVPayload) GetPositionInfo() ([]string, error) {
+	if p == nil {
+		return nil, errors.New("GetPositionInfo, nil tvdata")
+	}
+
+	parsedURLtransport, err := url.Parse(p.ControlURL)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetPositionInfo").Str("Action", "URL Parse").Err(err).Msg("")
+		return nil, fmt.Errorf("GetPositionInfo parse error: %w", err)
+	}
+
+	var xmlbuilder []byte
+
+	xmlbuilder, err = getPositionInfoSoapBuild()
+	if err != nil {
+		p.Log().Error().Str("Method", "GetPositionInfo").Str("Action", "Build").Err(err).Msg("")
+		return nil, fmt.Errorf("GetPositionInfo build error: %w", err)
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
+	if err != nil {
+		p.Log().Error().Str("Method", "GetPositionInfo").Str("Action", "Prepare POST").Err(err).Msg("")
+		return nil, fmt.Errorf("GetPositionInfo POST error: %w", err)
+	}
+	req.Header = http.Header{
+		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"`},
+		"content-type": []string{"text/xml"},
+		"charset":      []string{"utf-8"},
+		"Connection":   []string{"close"},
+	}
+
+	headerBytesReq, err := json.Marshal(req.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetPositionInfo").Str("Action", "Header Marshaling").Err(err).Msg("")
+		return nil, fmt.Errorf("GetPositionInfo Request Marshaling error: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "GetPositionInfo").Str("Action", "Request").
+		RawJSON("Headers", headerBytesReq).
+		Msg(string(xmlbuilder))
+
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GetPositionInfo Do POST error: %w", err)
+	}
+	defer res.Body.Close()
+
+	headerBytesRes, err := json.Marshal(res.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetPositionInfo").Str("Action", "Header Marshaling #2").Err(err).Msg("")
+		return nil, fmt.Errorf("GetPositionInfo Response Marshaling error: %w", err)
+	}
+
+	resBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetPositionInfo").Str("Action", "Readall").Err(err).Msg("")
+		return nil, fmt.Errorf("GetPositionInfo Failed to read response: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "GetPositionInfo").Str("Action", "Response").Str("Status Code", strconv.Itoa(res.StatusCode)).
+		RawJSON("Headers", headerBytesRes).
+		Msg(string(resBytes))
+
+	var respPositionInfo getPositionInfoResponse
+
+	if err := xml.Unmarshal(resBytes, &respPositionInfo); err != nil {
+		p.Log().Error().Str("Method", "GetPositionInfo").Str("Action", "Unmarshal").Err(err).Msg("")
+		return nil, fmt.Errorf("GetPositionInfo Failed to unmarshal response: %w", err)
+	}
+
+	r := respPositionInfo.Body.GetPositionInfoResponse
+	duration := r.TrackDuration
+	reltime := r.RelTime
+
+	return []string{duration, reltime}, nil
 }
 
 // SendtoTV is a higher level method that gracefully handles the various
