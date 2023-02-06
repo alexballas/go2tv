@@ -76,3 +76,77 @@ func TestBuildContentFeatures(t *testing.T) {
 		})
 	}
 }
+
+func TestClockTimeToSeconds(t *testing.T) {
+	tt := []struct {
+		name    string
+		strtime string
+		want    int
+	}{
+		{
+			`Test #1`,
+			`00:01:30`,
+			90,
+		},
+		{
+			`Test #2`,
+			`00:01:31`,
+			91,
+		},
+		{
+			`Test #3`,
+			`01:01:30`,
+			3690,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := ClockTimeToSeconds(tc.strtime)
+			if err != nil {
+				t.Fatalf("%s: got: %d, want: %d.", tc.name, out, tc.want)
+			}
+
+			if out != tc.want {
+				t.Fatalf("%s: got: %d, want: %d.", tc.name, out, tc.want)
+			}
+		})
+	}
+}
+
+func TestSecondsToClockTime(t *testing.T) {
+	tt := []struct {
+		name  string
+		input int
+		want  string
+	}{
+		{
+			`Test #1`,
+			90,
+			`00:01:30`,
+		},
+		{
+			`Test #2`,
+			91,
+			`00:01:31`,
+		},
+		{
+			`Test #3`,
+			3690,
+			`01:01:30`,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := SecondsToClockTime(tc.input)
+			if err != nil {
+				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, tc.want)
+			}
+
+			if out != tc.want {
+				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, tc.want)
+			}
+		})
+	}
+}

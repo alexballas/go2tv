@@ -296,8 +296,8 @@ func (p *TVPayload) setNextAVTransportSoapCall(clear bool) error {
 	return nil
 }
 
-// AVTransportActionSoapCall builds and sends the AVTransport actions
-func (p *TVPayload) AVTransportActionSoapCall(action string) error {
+// PlayPauseStopSoapCall builds and sends the AVTransport actions for Play Pause and Stop.
+func (p *TVPayload) PlayPauseStopSoapCall(action string) error {
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "AVTransportActionSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
@@ -375,6 +375,83 @@ func (p *TVPayload) AVTransportActionSoapCall(action string) error {
 
 	p.Log().Debug().
 		Str("Method", "AVTransportActionSoapCall").Str("Action", action+" Response").Str("Status Code", strconv.Itoa(res.StatusCode)).
+		RawJSON("Headers", headerBytesRes).
+		Msg(string(resBytes))
+
+	return nil
+}
+
+// SeekSoapCall builds and sends the AVTransport actions for Seek.
+func (p *TVPayload) SeekSoapCall(reltime string) error {
+	parsedURLtransport, err := url.Parse(p.ControlURL)
+	if err != nil {
+		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
+		return fmt.Errorf("SeekSoapCall parse error: %w", err)
+	}
+
+	var xml []byte
+	retry := false
+
+	xml, err = seekSoapBuild(reltime)
+	if err != nil {
+		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "Action Error").Err(err).Msg("")
+		return fmt.Errorf("SeekSoapCall action error: %w", err)
+	}
+
+	client := &http.Client{}
+
+	if retry {
+		retryClient := retryablehttp.NewClient()
+		retryClient.RetryMax = 3
+		retryClient.Logger = nil
+		client = retryClient.StandardClient()
+	}
+
+	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xml))
+	if err != nil {
+		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
+		return fmt.Errorf("SeekSoapCall POST error: %w", err)
+	}
+
+	req.Header = http.Header{
+		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#Seek"`},
+		"content-type": []string{"text/xml"},
+		"charset":      []string{"utf-8"},
+		"Connection":   []string{"close"},
+	}
+
+	headerBytesReq, err := json.Marshal(req.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "Header Marshaling").Err(err).Msg("")
+		return fmt.Errorf("SeekSoapCall Request Marshaling error: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "SeekSoapCall").Str("Action", "Seek Request").
+		RawJSON("Headers", headerBytesReq).
+		Msg(string(xml))
+
+	res, err := client.Do(req)
+	if err != nil {
+		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "Do POST").Err(err).Msg("")
+		return fmt.Errorf("SeekSoapCall Do POST error: %w", err)
+	}
+	defer res.Body.Close()
+
+	resBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "Readall").Err(err).Msg("")
+		return fmt.Errorf("SeekSoapCall Failed to read response: %w", err)
+	}
+
+	headerBytesRes, err := json.Marshal(res.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "Header Marshaling #2").Err(err).Msg("")
+		return fmt.Errorf("SeekSoapCall Response Marshaling error: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "SeekSoapCall").Str("Action", "Seek Response").Str("Status Code", strconv.Itoa(res.StatusCode)).
 		RawJSON("Headers", headerBytesRes).
 		Msg(string(resBytes))
 
@@ -1225,7 +1302,7 @@ func (p *TVPayload) SendtoTV(action string) error {
 		}
 	}
 
-	if err := p.AVTransportActionSoapCall(action); err != nil {
+	if err := p.PlayPauseStopSoapCall(action); err != nil {
 		return fmt.Errorf("SendtoTV Play/Stop/Pause action error: %w", err)
 	}
 
