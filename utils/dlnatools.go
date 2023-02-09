@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
 
@@ -130,6 +131,7 @@ func GetMimeDetailsFromStream(s io.ReadCloser) (string, error) {
 	return fmt.Sprintf("%s/%s", kind.MIME.Type, kind.MIME.Subtype), nil
 }
 
+// ClockTimeToSeconds converts relative time to seconds.
 func ClockTimeToSeconds(strtime string) (int, error) {
 	var out int
 	v := make([]int, 0, 3)
@@ -139,13 +141,24 @@ func ClockTimeToSeconds(strtime string) (int, error) {
 		return 0, ErrInvalidClockFormat
 	}
 
-	for _, i := range s {
-		num, err := strconv.Atoi(i)
-		if err != nil {
-			return 0, ErrInvalidClockFormat
-		}
-		v = append(v, num)
+	num, err := strconv.Atoi(s[0])
+	if err != nil {
+		return 0, ErrInvalidClockFormat
 	}
+	v = append(v, num)
+
+	num, err = strconv.Atoi(s[1])
+	if err != nil {
+		return 0, ErrInvalidClockFormat
+	}
+	v = append(v, num)
+
+	f, err := strconv.ParseFloat(s[2], 32)
+	if err != nil {
+		return 0, ErrInvalidClockFormat
+	}
+	f = math.Round(f)
+	v = append(v, int(f))
 
 	for n, i := range v {
 		switch n {
@@ -161,6 +174,7 @@ func ClockTimeToSeconds(strtime string) (int, error) {
 	return out, nil
 }
 
+// SecondsToClockTime converts seconds to seconds relative time.
 func SecondsToClockTime(secs int) (string, error) {
 	hours := secs / 3600
 	secs %= 3600

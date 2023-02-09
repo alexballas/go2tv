@@ -98,6 +98,16 @@ func TestClockTimeToSeconds(t *testing.T) {
 			`01:01:30`,
 			3690,
 		},
+		{
+			`Test #4`,
+			`01:01:30.823`,
+			3691,
+		},
+		{
+			`Test #5`,
+			`01:01:30.423`,
+			3690,
+		},
 	}
 
 	for _, tc := range tt {
