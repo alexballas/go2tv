@@ -5,6 +5,7 @@ package gui
 
 import (
 	"errors"
+	"math"
 	"net/url"
 	"os/exec"
 	"sort"
@@ -21,6 +22,95 @@ import (
 	"github.com/alexballas/go2tv/utils"
 	"golang.org/x/time/rate"
 )
+
+type tappedSlider struct {
+	widget.Slider
+	screen *NewScreen
+}
+
+func newTappableSlider(s *NewScreen) *tappedSlider {
+	slider := &tappedSlider{
+		Slider: widget.Slider{
+			Max: 100,
+		},
+		screen: s,
+	}
+	slider.ExtendBaseWidget(slider)
+	return slider
+}
+
+func (t *tappedSlider) DragEnd() {
+	if t.screen.State == "Playing" {
+		getPos, err := t.screen.tvdata.GetPositionInfo()
+		if err != nil {
+			return
+		}
+
+		total, err := utils.ClockTimeToSeconds(getPos[0])
+		if err != nil {
+			return
+		}
+
+		cur := (float64(total) * t.screen.SlideBar.Value) / t.screen.SlideBar.Max
+		roundedInt := int(math.Round(cur))
+
+		reltime, err := utils.SecondsToClockTime(roundedInt)
+		if err != nil {
+			return
+		}
+
+		if err := t.screen.tvdata.SeekSoapCall(reltime); err != nil {
+			return
+		}
+	}
+}
+
+func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
+	gaussian := func(x float64, mu float64, sigma float64) float64 {
+		return math.Exp(-math.Pow(x-mu, 2) / (2 * math.Pow(sigma, 2)))
+	}
+
+	newpos := (p.Position.X / t.Size().Width) * float32(t.Max)
+	padding := theme.Padding() + theme.InnerPadding()
+	correction := (1 - gaussian(float64(newpos), 50, 20)) * float64(padding)
+
+	switch {
+	case newpos > 50:
+		newpos = ((p.Position.X + float32(math.Ceil(correction))) / t.Size().Width) * float32(t.Max)
+	case newpos < 50:
+		newpos = ((p.Position.X - float32(math.Ceil(correction))) / t.Size().Width) * float32(t.Max)
+	}
+
+	if math.IsNaN(float64(newpos)) {
+		return
+	}
+
+	t.SetValue(float64(newpos))
+
+	if t.screen.State == "Playing" {
+		getPos, err := t.screen.tvdata.GetPositionInfo()
+		if err != nil {
+			return
+		}
+
+		total, err := utils.ClockTimeToSeconds(getPos[0])
+		if err != nil {
+			return
+		}
+
+		cur := (float64(total) * t.screen.SlideBar.Value) / t.screen.SlideBar.Max
+		roundedInt := int(math.Round(cur))
+
+		reltime, err := utils.SecondsToClockTime(roundedInt)
+		if err != nil {
+			return
+		}
+
+		if err := t.screen.tvdata.SeekSoapCall(reltime); err != nil {
+			return
+		}
+	}
+}
 
 func mainWindow(s *NewScreen) fyne.CanvasObject {
 	w := s.Current
@@ -129,6 +219,8 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		go skipNextAction(s)
 	})
 
+	sliderBar := newTappableSlider(s)
+
 	// previewmedia spawns external applications.
 	// Since there is no way to monitor the time it takes
 	// for the apps to load, we introduce a rate limit
@@ -181,6 +273,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	s.VolumeUp = volumeup
 	s.VolumeDown = volumedown
 	s.NextMediaCheck = nextmedia
+	s.SlideBar = sliderBar
 
 	actionbuttons := container.New(&mainButtonsLayout{buttonHeight: 1.0, buttonPadding: theme.Padding()},
 		playpause,
@@ -196,7 +289,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, mrightbuttons), mrightbuttons, mfiletext)
 	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
 	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
-	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, actionbuttons, container.NewPadded(devicelabel))
+	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, sliderBar, actionbuttons, container.NewPadded(devicelabel))
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
 
 	// Widgets actions
@@ -315,12 +408,17 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		}()
 	}
 
-	// Device list auto-refresh
+	// Device list auto-refresh.
+	// TODO: Add context to cancel
 	go refreshDevList(s, &data)
 
-	// Check mute status for selected device
+	// Check mute status for selected device.
+	// TODO: Add context to cancel
 	go checkMutefunc(s)
 
+	// Keep track of the media progress and reflect that to the slide bar.
+	// TODO: Add context to cancel
+	go sliderUpdate(s)
 	return content
 }
 
@@ -410,6 +508,37 @@ func checkMutefunc(s *NewScreen) {
 			setMuteUnmuteView("Unmute", s)
 		case "0":
 			setMuteUnmuteView("Mute", s)
+		}
+	}
+}
+
+func sliderUpdate(s *NewScreen) {
+	t := time.NewTicker(time.Second)
+	for range t.C {
+		if s.State == "Stopped" || s.State == "" {
+			s.SlideBar.Slider.SetValue(0)
+		}
+
+		if s.State == "Playing" {
+			getPos, err := s.tvdata.GetPositionInfo()
+			if err != nil {
+				continue
+			}
+
+			total, err := utils.ClockTimeToSeconds(getPos[0])
+			if err != nil {
+				continue
+			}
+
+			current, err := utils.ClockTimeToSeconds(getPos[1])
+			if err != nil {
+				continue
+			}
+
+			valueToSet := float64(current) * s.SlideBar.Max / float64(total)
+			if !math.IsNaN(valueToSet) {
+				s.SlideBar.SetValue(valueToSet)
+			}
 		}
 	}
 }

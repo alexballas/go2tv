@@ -73,6 +73,26 @@ type stopAction struct {
 	Speed       string
 }
 
+type seekEnvelope struct {
+	XMLName  xml.Name `xml:"s:Envelope"`
+	Schema   string   `xml:"xmlns:s,attr"`
+	Encoding string   `xml:"s:encodingStyle,attr"`
+	SeekBody seekBody `xml:"s:Body"`
+}
+
+type seekBody struct {
+	XMLName    xml.Name   `xml:"s:Body"`
+	SeekAction seekAction `xml:"u:Seek"`
+}
+
+type seekAction struct {
+	XMLName     xml.Name `xml:"u:Seek"`
+	AVTransport string   `xml:"xmlns:u,attr"`
+	InstanceID  string
+	Unit        string
+	Target      string
+}
+
 type setAVTransportEnvelope struct {
 	XMLName  xml.Name           `xml:"s:Envelope"`
 	Schema   string             `xml:"xmlns:s,attr"`
@@ -853,6 +873,31 @@ func getPositionInfoSoapBuild() ([]byte, error) {
 	b, err := xml.Marshal(d)
 	if err != nil {
 		return nil, fmt.Errorf("getPositionInfoSoapBuild Marshal error: %w", err)
+	}
+
+	return append(xmlStart, b...), nil
+}
+
+func seekSoapBuild(reltime string) ([]byte, error) {
+	d := seekEnvelope{
+		XMLName:  xml.Name{},
+		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
+		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
+		SeekBody: seekBody{
+			XMLName: xml.Name{},
+			SeekAction: seekAction{
+				XMLName:     xml.Name{},
+				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
+				InstanceID:  "0",
+				Unit:        "REL_TIME",
+				Target:      reltime,
+			},
+		},
+	}
+	xmlStart := []byte(`<?xml version="1.0" encoding="utf-8"?>`)
+	b, err := xml.Marshal(d)
+	if err != nil {
+		return nil, fmt.Errorf("seekSoapBuild Marshal error: %w", err)
 	}
 
 	return append(xmlStart, b...), nil
