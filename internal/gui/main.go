@@ -24,13 +24,13 @@ import (
 )
 
 type tappedSlider struct {
-	widget.Slider
+	*widget.Slider
 	screen *NewScreen
 }
 
 func newTappableSlider(s *NewScreen) *tappedSlider {
 	slider := &tappedSlider{
-		Slider: widget.Slider{
+		Slider: &widget.Slider{
 			Max: 100,
 		},
 		screen: s,
@@ -66,26 +66,7 @@ func (t *tappedSlider) DragEnd() {
 }
 
 func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
-	gaussian := func(x float64, mu float64, sigma float64) float64 {
-		return math.Exp(-math.Pow(x-mu, 2) / (2 * math.Pow(sigma, 2)))
-	}
-
-	newpos := (p.Position.X / t.Size().Width) * float32(t.Max)
-	padding := theme.Padding() + theme.InnerPadding()
-	correction := (1 - gaussian(float64(newpos), 50, 20)) * float64(padding)
-
-	switch {
-	case newpos > 50:
-		newpos = ((p.Position.X + float32(math.Ceil(correction))) / t.Size().Width) * float32(t.Max)
-	case newpos < 50:
-		newpos = ((p.Position.X - float32(math.Ceil(correction))) / t.Size().Width) * float32(t.Max)
-	}
-
-	if math.IsNaN(float64(newpos)) {
-		return
-	}
-
-	t.SetValue(float64(newpos))
+	t.Slider.Tapped(p)
 
 	if t.screen.State == "Playing" {
 		getPos, err := t.screen.tvdata.GetPositionInfo()

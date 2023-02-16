@@ -109,6 +109,11 @@ type HyperlinkSegment struct {
 	Alignment fyne.TextAlign
 	Text      string
 	URL       *url.URL
+
+	// OnTapped overrides the default `fyne.OpenURL` call when the link is tapped
+	//
+	// Since: 2.4
+	OnTapped func()
 }
 
 // Inline returns true as hyperlinks are inside other elements.
@@ -125,6 +130,7 @@ func (h *HyperlinkSegment) Textual() string {
 func (h *HyperlinkSegment) Visual() fyne.CanvasObject {
 	link := NewHyperlink(h.Text, h.URL)
 	link.Alignment = h.Alignment
+	link.OnTapped = h.OnTapped
 	return &fyne.Container{Layout: &unpadTextWidgetLayout{}, Objects: []fyne.CanvasObject{link}}
 }
 
@@ -134,6 +140,7 @@ func (h *HyperlinkSegment) Update(o fyne.CanvasObject) {
 	link.Text = h.Text
 	link.URL = h.URL
 	link.Alignment = h.Alignment
+	link.OnTapped = h.OnTapped
 	link.Refresh()
 }
 
@@ -486,13 +493,13 @@ type unpadTextWidgetLayout struct {
 
 func (u *unpadTextWidgetLayout) Layout(o []fyne.CanvasObject, s fyne.Size) {
 	pad := theme.InnerPadding() * -1
-	pad2 := pad * -1
+	pad2 := pad * -2
 
 	o[0].Move(fyne.NewPos(pad, pad))
 	o[0].Resize(s.Add(fyne.NewSize(pad2, pad2)))
 }
 
 func (u *unpadTextWidgetLayout) MinSize(o []fyne.CanvasObject) fyne.Size {
-	pad4 := theme.InnerPadding() * 2
-	return o[0].MinSize().Subtract(fyne.NewSize(pad4, pad4))
+	pad := theme.InnerPadding() * 2
+	return o[0].MinSize().Subtract(fyne.NewSize(pad, pad))
 }
