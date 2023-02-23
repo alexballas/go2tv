@@ -335,8 +335,14 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			return
 		}
 
-		medialoop.Enable()
-		nextmedia.Enable()
+		if !nextmedia.Checked {
+			medialoop.Enable()
+		}
+
+		if !medialoop.Checked {
+			nextmedia.Enable()
+		}
+
 		mfile.Enable()
 		previewmedia.Enable()
 		mediafilelabel.Text = "File:"
@@ -354,7 +360,10 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			nextmedia.Disable()
 			return
 		}
-		nextmedia.Enable()
+
+		if !externalmedia.Checked {
+			nextmedia.Enable()
+		}
 	}
 
 	nextmedia.OnChanged = func(b bool) {
