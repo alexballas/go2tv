@@ -39,7 +39,17 @@ func newTappableSlider(s *NewScreen) *tappedSlider {
 	return slider
 }
 
+func (t *tappedSlider) Dragged(e *fyne.DragEvent) {
+	t.Slider.Dragged(e)
+	t.screen.sliderActive = true
+}
+
 func (t *tappedSlider) DragEnd() {
+	// This is a way to making the slider due to the DragEnd
+	// action racing the auto-refresh action. The auto-refresh action
+	// should reset this back to false after the first iterration.
+	t.screen.sliderActive = true
+
 	if t.screen.State == "Playing" {
 		getPos, err := t.screen.tvdata.GetPositionInfo()
 		if err != nil {
@@ -66,7 +76,32 @@ func (t *tappedSlider) DragEnd() {
 }
 
 func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
-	t.Slider.Tapped(p)
+	// This is a way to making the slider due to the tapped
+	// action racing the auto-refresh action. The auto-refresh action
+	// should reset this back to false after the first iterration.
+	t.screen.sliderActive = true
+
+	// To remove this part when a new fyne version introduces t.Slider.Tapped(p)
+	gaussian := func(x float64, mu float64, sigma float64) float64 {
+		return math.Exp(-math.Pow(x-mu, 2) / (2 * math.Pow(sigma, 2)))
+	}
+
+	newpos := (p.Position.X / t.Size().Width) * float32(t.Max)
+	padding := theme.Padding() + theme.InnerPadding()
+	correction := (1 - gaussian(float64(newpos), 50, 20)) * float64(padding)
+
+	switch {
+	case newpos > 50:
+		newpos = ((p.Position.X + float32(math.Ceil(correction))) / t.Size().Width) * float32(t.Max)
+	case newpos < 50:
+		newpos = ((p.Position.X - float32(math.Ceil(correction))) / t.Size().Width) * float32(t.Max)
+	}
+
+	if math.IsNaN(float64(newpos)) {
+		return
+	}
+
+	t.SetValue(float64(newpos))
 
 	if t.screen.State == "Playing" {
 		getPos, err := t.screen.tvdata.GetPositionInfo()
@@ -470,7 +505,6 @@ func checkMutefunc(s *NewScreen) {
 
 	var checkMuteCounter int
 	for range checkMute.C {
-
 		// Stop trying after 5 failures
 		// to get the mute status
 		if checkMuteCounter == 5 {
@@ -506,6 +540,11 @@ func checkMutefunc(s *NewScreen) {
 func sliderUpdate(s *NewScreen) {
 	t := time.NewTicker(time.Second)
 	for range t.C {
+		if s.sliderActive {
+			s.sliderActive = false
+			continue
+		}
+
 		if s.State == "Stopped" || s.State == "" {
 			s.SlideBar.Slider.SetValue(0)
 		}

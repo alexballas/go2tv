@@ -73,8 +73,6 @@ func (p *painter) Init() {
 	p.logError()
 	p.program = p.createProgram("simple")
 	p.lineProgram = p.createProgram("line")
-	p.rectangleProgram = p.createProgram("rectangle")
-	p.roundRectangleProgram = p.createProgram("round_rectangle")
 }
 
 type coreContext struct{}
@@ -164,10 +162,6 @@ func (c *coreContext) Enable(capability uint32) {
 
 func (c *coreContext) EnableVertexAttribArray(attribute Attribute) {
 	gl.EnableVertexAttribArray(uint32(attribute))
-}
-
-func (c *coreContext) DisableVertexAttribArray(attribute Attribute) {
-	gl.DisableVertexAttribArray(uint32(attribute))
 }
 
 func (c *coreContext) GetAttribLocation(program Program, name string) Attribute {

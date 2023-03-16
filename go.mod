@@ -3,7 +3,7 @@ module github.com/alexballas/go2tv
 go 1.19
 
 require (
-	fyne.io/fyne/v2 v2.3.1-rc2.0.20230213132432-11d055f123e8
+	fyne.io/fyne/v2 v2.3.1
 	github.com/gdamore/tcell/v2 v2.6.0
 	github.com/h2non/filetype v1.1.3
 	github.com/hashicorp/go-retryablehttp v0.7.2
@@ -16,7 +16,7 @@ require (
 )
 
 require (
-	fyne.io/systray v1.10.1-0.20230207085535-4a244dbb9d03 // indirect
+	fyne.io/systray v1.10.1-0.20230312215936-7f71b037e260 // indirect
 	github.com/benoitkugler/textlayout v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fredbi/uri v1.0.0 // indirect

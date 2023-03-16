@@ -70,8 +70,6 @@ func (p *painter) Init() {
 	p.glctx().Enable(gl.Blend)
 	p.program = p.createProgram("simple_es")
 	p.lineProgram = p.createProgram("line_es")
-	p.rectangleProgram = p.createProgram("rectangle_es")
-	p.roundRectangleProgram = p.createProgram("round_rectangle_es")
 }
 
 // f32Bytes returns the byte representation of float32 values in the given byte
@@ -189,9 +187,6 @@ func (c *mobileContext) Enable(capability uint32) {
 
 func (c *mobileContext) EnableVertexAttribArray(attribute Attribute) {
 	c.glContext.EnableVertexAttribArray(gl.Attrib(attribute))
-}
-
-func (c *mobileContext) DisableVertexAttribArray(attribute Attribute) {
 }
 
 func (c *mobileContext) GetAttribLocation(program Program, name string) Attribute {

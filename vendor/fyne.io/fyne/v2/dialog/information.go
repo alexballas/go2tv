@@ -2,7 +2,6 @@ package dialog
 
 import (
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -13,7 +12,7 @@ func createTextDialog(title, message string, icon fyne.Resource, parent fyne.Win
 	d.dismiss = &widget.Button{Text: "OK",
 		OnTapped: d.Hide,
 	}
-	d.create(container.NewGridWithColumns(1, d.dismiss))
+	d.create(newButtonList(d.dismiss))
 
 	return d
 }

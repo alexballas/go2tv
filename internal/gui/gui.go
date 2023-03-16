@@ -48,6 +48,7 @@ type NewScreen struct {
 	SlideBar             *tappedSlider
 	NextMediaCheck       *widget.Check
 	selectedDevice       devType
+	sliderActive         bool
 	State                string
 	subsfile             string
 	controlURL           string
