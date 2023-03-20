@@ -3,7 +3,7 @@ module github.com/alexballas/go2tv
 go 1.19
 
 require (
-	fyne.io/fyne/v2 v2.3.1
+	fyne.io/fyne/v2 v2.3.2
 	github.com/gdamore/tcell/v2 v2.6.0
 	github.com/h2non/filetype v1.1.3
 	github.com/hashicorp/go-retryablehttp v0.7.2
@@ -52,3 +52,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	honnef.co/go/js/dom v0.0.0-20221001195520-26252dedbe70 // indirect
 )
+
+replace fyne.io/fyne/v2 => github.com/alexballas/fyne/v2 v2.3.2-fixsliderwobble

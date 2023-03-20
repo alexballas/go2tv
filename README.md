@@ -59,7 +59,7 @@ This is a GUI only limitation.
 
 Build requirements and dependencies
 -----
-- Go v1.16+
+- Go v1.19+
 - ffmpeg (optional)
 
 **Build using Docker**

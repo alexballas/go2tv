@@ -474,6 +474,7 @@ func previewmedia(screen *NewScreen) {
 	case "image":
 		img := canvas.NewImageFromFile(screen.mediafile)
 		img.FillMode = canvas.ImageFillContain
+		img.ScaleMode = canvas.ImageScaleFastest
 		imgw := fyne.CurrentApp().NewWindow(filepath.Base(screen.mediafile))
 		imgw.SetContent(img)
 		imgw.Resize(fyne.NewSize(800, 600))
