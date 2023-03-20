@@ -5,12 +5,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: Set env
       run: if grep -Fxq "devel" cmd/go2tv/version.txt;then echo "GO2TV_VERSION=$(cat cmd/go2tv/version.txt)";else echo "GO2TV_VERSION=v$(cat cmd/go2tv/version.txt)";fi  >> $GITHUB_ENV
 
-    - uses: pguyot/arm-runner-action@v2.3.1
+    - uses: pguyot/arm-runner-action@v2
       id: main_image
       with:
         copy_repository_path: /go2tv_dir
@@ -19,7 +19,7 @@ jobs:
         commands: |
             cd /
             sudo apt update
-            sudo apt install -y xorg-dev
+            sudo apt install -y xorg-dev libgles-dev
             sudo apt clean
             wget -nv https://go.dev/dl/go1.19.linux-armv6l.tar.gz
             tar -xzf go1.19.linux-armv6l.tar.gz

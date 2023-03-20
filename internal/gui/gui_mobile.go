@@ -32,6 +32,7 @@ type NewScreen struct {
 	CheckVersion         *widget.Button
 	CustomSubsCheck      *widget.Check
 	ExternalMediaURL     *widget.Check
+	cancelEnablePlay     context.CancelFunc
 	MediaText            *widget.Entry
 	SubsText             *widget.Entry
 	DeviceList           *widget.List
@@ -40,6 +41,7 @@ type NewScreen struct {
 	mediafile            fyne.URI
 	subsfile             fyne.URI
 	selectedDevice       devType
+	NextMediaCheck       *widget.Check
 	State                string
 	controlURL           string
 	eventlURL            string
@@ -60,7 +62,8 @@ type devType struct {
 }
 
 type mainButtonsLayout struct {
-	buttonHeight float32
+	buttonHeight  float32
+	buttonPadding float32
 }
 
 func (f *debugWriter) Write(b []byte) (int, error) {
@@ -126,7 +129,7 @@ func InitFyneNewScreen(v string) *NewScreen {
 
 	return &NewScreen{
 		Current:      w,
-		mediaFormats: []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".jpg", ".jpeg", ".png"},
+		mediaFormats: []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".m4a", ".jpg", ".jpeg", ".png"},
 		version:      v,
 	}
 }
@@ -155,6 +158,10 @@ func (p *NewScreen) getScreenState() string {
 }
 
 func setPlayPauseView(s string, screen *NewScreen) {
+	if screen.cancelEnablePlay != nil {
+		screen.cancelEnablePlay()
+	}
+
 	screen.PlayPause.Enable()
 	switch s {
 	case "Play":

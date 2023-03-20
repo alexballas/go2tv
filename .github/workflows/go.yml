@@ -6,15 +6,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - uses: WillAbides/setup-go-faster@v1.7.0
       id: setup-go-faster
       with:
         go-version: "*"
 
-    - name: Install xorg-dev
-      run: sudo apt update && sudo apt install xorg-dev
+    - name: Install xorg-dev libgles-dev
+      run: sudo apt update && sudo apt install xorg-dev libgles-dev
 
     - name: Build
       run: go build -v ./...

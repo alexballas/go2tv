@@ -5,6 +5,7 @@ package gui
 
 import (
 	"errors"
+	"math"
 	"net/url"
 	"os/exec"
 	"sort"
@@ -21,6 +22,111 @@ import (
 	"github.com/alexballas/go2tv/utils"
 	"golang.org/x/time/rate"
 )
+
+type tappedSlider struct {
+	*widget.Slider
+	screen *NewScreen
+}
+
+func newTappableSlider(s *NewScreen) *tappedSlider {
+	slider := &tappedSlider{
+		Slider: &widget.Slider{
+			Max: 100,
+		},
+		screen: s,
+	}
+	slider.ExtendBaseWidget(slider)
+	return slider
+}
+
+func (t *tappedSlider) Dragged(e *fyne.DragEvent) {
+	t.Slider.Dragged(e)
+	t.screen.sliderActive = true
+}
+
+func (t *tappedSlider) DragEnd() {
+	// This is a way to making the slider due to the DragEnd
+	// action racing the auto-refresh action. The auto-refresh action
+	// should reset this back to false after the first iterration.
+	t.screen.sliderActive = true
+
+	if t.screen.State == "Playing" {
+		getPos, err := t.screen.tvdata.GetPositionInfo()
+		if err != nil {
+			return
+		}
+
+		total, err := utils.ClockTimeToSeconds(getPos[0])
+		if err != nil {
+			return
+		}
+
+		cur := (float64(total) * t.screen.SlideBar.Value) / t.screen.SlideBar.Max
+		roundedInt := int(math.Round(cur))
+
+		reltime, err := utils.SecondsToClockTime(roundedInt)
+		if err != nil {
+			return
+		}
+
+		if err := t.screen.tvdata.SeekSoapCall(reltime); err != nil {
+			return
+		}
+	}
+}
+
+func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
+	// This is a way to making the slider due to the tapped
+	// action racing the auto-refresh action. The auto-refresh action
+	// should reset this back to false after the first iterration.
+	t.screen.sliderActive = true
+
+	// To remove this part when a new fyne version introduces t.Slider.Tapped(p)
+	gaussian := func(x float64, mu float64, sigma float64) float64 {
+		return math.Exp(-math.Pow(x-mu, 2) / (2 * math.Pow(sigma, 2)))
+	}
+
+	newpos := (p.Position.X / t.Size().Width) * float32(t.Max)
+	padding := theme.Padding() + theme.InnerPadding()
+	correction := (1 - gaussian(float64(newpos), 50, 20)) * float64(padding)
+
+	switch {
+	case newpos > 50:
+		newpos = ((p.Position.X + float32(math.Ceil(correction))) / t.Size().Width) * float32(t.Max)
+	case newpos < 50:
+		newpos = ((p.Position.X - float32(math.Ceil(correction))) / t.Size().Width) * float32(t.Max)
+	}
+
+	if math.IsNaN(float64(newpos)) {
+		return
+	}
+
+	t.SetValue(float64(newpos))
+
+	if t.screen.State == "Playing" {
+		getPos, err := t.screen.tvdata.GetPositionInfo()
+		if err != nil {
+			return
+		}
+
+		total, err := utils.ClockTimeToSeconds(getPos[0])
+		if err != nil {
+			return
+		}
+
+		cur := (float64(total) * t.screen.SlideBar.Value) / t.screen.SlideBar.Max
+		roundedInt := int(math.Round(cur))
+
+		reltime, err := utils.SecondsToClockTime(roundedInt)
+		if err != nil {
+			return
+		}
+
+		if err := t.screen.tvdata.SeekSoapCall(reltime); err != nil {
+			return
+		}
+	}
+}
 
 func mainWindow(s *NewScreen) fyne.CanvasObject {
 	w := s.Current
@@ -125,6 +231,12 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		go clearsubsAction(s)
 	})
 
+	skipNext := widget.NewButtonWithIcon("", theme.MediaSkipNextIcon(), func() {
+		go skipNextAction(s)
+	})
+
+	sliderBar := newTappableSlider(s)
+
 	// previewmedia spawns external applications.
 	// Since there is no way to monitor the time it takes
 	// for the apps to load, we introduce a rate limit
@@ -141,7 +253,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	sfilecheck := widget.NewCheck("Custom Subtitles", func(b bool) {})
 	externalmedia := widget.NewCheck("Media from URL", func(b bool) {})
 	medialoop := widget.NewCheck("Loop Selected", func(b bool) {})
-	nextmedia := widget.NewCheck("Auto-Select Next File", func(b bool) {})
+	nextmedia := widget.NewCheck("Auto-Play Next File", func(b bool) {})
 	transcode := widget.NewCheck("Transcode", func(b bool) {})
 
 	_, err := exec.LookPath("ffmpeg")
@@ -153,12 +265,14 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	subsfilelabel := canvas.NewText("Subtitles:", nil)
 	devicelabel := canvas.NewText("Select Device:", nil)
 
+	var intListCont fyne.CanvasObject
 	list = widget.NewList(
 		func() int {
 			return len(data)
 		},
 		func() fyne.CanvasObject {
-			return container.NewHBox(widget.NewIcon(theme.NavigateNextIcon()), widget.NewLabel("Template Object"))
+			intListCont = container.NewHBox(widget.NewIcon(theme.NavigateNextIcon()), widget.NewLabel(""))
+			return intListCont
 		},
 		func(i widget.ListItemID, o fyne.CanvasObject) {
 			o.(*fyne.Container).Objects[1].(*widget.Label).SetText(data[i].name)
@@ -174,17 +288,24 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	s.DeviceList = list
 	s.VolumeUp = volumeup
 	s.VolumeDown = volumedown
+	s.NextMediaCheck = nextmedia
+	s.SlideBar = sliderBar
 
-	actionbuttons := container.New(&mainButtonsLayout{buttonHeight: 1.0}, playpause, volumedown, muteunmute, volumeup, stop)
+	actionbuttons := container.New(&mainButtonsLayout{buttonHeight: 1.0, buttonPadding: theme.Padding()},
+		playpause,
+		volumedown,
+		muteunmute,
+		volumeup,
+		stop)
 
-	mrightbuttons := container.NewHBox(previewmedia, clearmedia)
+	mrightbuttons := container.NewHBox(skipNext, previewmedia, clearmedia)
 
 	checklists := container.NewHBox(externalmedia, sfilecheck, medialoop, nextmedia, transcode)
 	mediasubsbuttons := container.New(layout.NewGridLayout(2), mfile, sfile)
 	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, mrightbuttons), mrightbuttons, mfiletext)
 	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
 	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
-	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, actionbuttons, container.NewPadded(devicelabel))
+	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, sliderBar, actionbuttons, container.NewPadded(devicelabel))
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
 
 	// Widgets actions
@@ -249,8 +370,14 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			return
 		}
 
-		medialoop.Enable()
-		nextmedia.Enable()
+		if !nextmedia.Checked {
+			medialoop.Enable()
+		}
+
+		if !medialoop.Checked {
+			nextmedia.Enable()
+		}
+
 		mfile.Enable()
 		previewmedia.Enable()
 		mediafilelabel.Text = "File:"
@@ -263,18 +390,60 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 	medialoop.OnChanged = func(b bool) {
 		s.Medialoop = b
+		if b {
+			nextmedia.SetChecked(false)
+			nextmedia.Disable()
+			return
+		}
+
+		if !externalmedia.Checked {
+			nextmedia.Enable()
+		}
 	}
 
 	nextmedia.OnChanged = func(b bool) {
-		s.NextMedia = b
+		go func() {
+			gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
+
+			if b {
+				if gaplessOption == "Enabled" {
+					switch s.State {
+					case "Playing", "Paused":
+						newTVPayload, err := queueNext(s, false)
+						if err == nil && s.GaplessMediaWatcher == nil {
+							s.GaplessMediaWatcher = gaplessMediaWatcher
+							go s.GaplessMediaWatcher(s.serverStopCTX, s, newTVPayload)
+						}
+					}
+				}
+
+				medialoop.SetChecked(false)
+				medialoop.Disable()
+				return
+			}
+
+			if s.tvdata != nil && s.tvdata.CallbackURL != "" {
+				_, err = queueNext(s, true)
+				if err != nil {
+					stopAction(s)
+				}
+			}
+
+			medialoop.Enable()
+		}()
 	}
 
-	// Device list auto-refresh
+	// Device list auto-refresh.
+	// TODO: Add context to cancel
 	go refreshDevList(s, &data)
 
-	// Check mute status for selected device
+	// Check mute status for selected device.
+	// TODO: Add context to cancel
 	go checkMutefunc(s)
 
+	// Keep track of the media progress and reflect that to the slide bar.
+	// TODO: Add context to cancel
+	go sliderUpdate(s)
 	return content
 }
 
@@ -288,7 +457,6 @@ func refreshDevList(s *NewScreen, data *[]devType) {
 
 	for range refreshDevices.C {
 		datanew, _ := getDevices(2)
-		oldListSize := len(*data)
 
 		// check to see if the new refresh includes
 		// one of the already selected devices
@@ -316,14 +484,16 @@ func refreshDevList(s *NewScreen, data *[]devType) {
 			}
 		}
 
-		if oldListSize != len(*data) {
-			// Something changed in the list, so we need to
-			// also refresh the active selection.
-			for n, a := range *data {
-				if s.selectedDevice == a {
-					s.DeviceList.Select(n)
-				}
+		var found bool
+		for n, a := range *data {
+			if s.selectedDevice.addr == a.addr {
+				found = true
+				s.DeviceList.Select(n)
 			}
+		}
+
+		if !found {
+			s.DeviceList.UnselectAll()
 		}
 
 		s.DeviceList.Refresh()
@@ -335,7 +505,6 @@ func checkMutefunc(s *NewScreen) {
 
 	var checkMuteCounter int
 	for range checkMute.C {
-
 		// Stop trying after 5 failures
 		// to get the mute status
 		if checkMuteCounter == 5 {
@@ -364,6 +533,42 @@ func checkMutefunc(s *NewScreen) {
 			setMuteUnmuteView("Unmute", s)
 		case "0":
 			setMuteUnmuteView("Mute", s)
+		}
+	}
+}
+
+func sliderUpdate(s *NewScreen) {
+	t := time.NewTicker(time.Second)
+	for range t.C {
+		if s.sliderActive {
+			s.sliderActive = false
+			continue
+		}
+
+		if s.State == "Stopped" || s.State == "" {
+			s.SlideBar.Slider.SetValue(0)
+		}
+
+		if s.State == "Playing" {
+			getPos, err := s.tvdata.GetPositionInfo()
+			if err != nil {
+				continue
+			}
+
+			total, err := utils.ClockTimeToSeconds(getPos[0])
+			if err != nil {
+				continue
+			}
+
+			current, err := utils.ClockTimeToSeconds(getPos[1])
+			if err != nil {
+				continue
+			}
+
+			valueToSet := float64(current) * s.SlideBar.Max / float64(total)
+			if !math.IsNaN(valueToSet) {
+				s.SlideBar.SetValue(valueToSet)
+			}
 		}
 	}
 }

@@ -24,10 +24,12 @@ import (
 
 // NewScreen .
 type NewScreen struct {
+	muError              sync.RWMutex
 	mu                   sync.RWMutex
+	serverStopCTX        context.Context
 	Current              fyne.Window
-	VolumeDown           *widget.Button
-	MediaText            *widget.Entry
+	cancelEnablePlay     context.CancelFunc
+	tvdata               *soapcalls.TVPayload
 	Debug                *debugWriter
 	tabs                 *container.AppTabs
 	CheckVersion         *widget.Button
@@ -37,24 +39,28 @@ type NewScreen struct {
 	Stop                 *widget.Button
 	DeviceList           *widget.List
 	httpserver           *httphandlers.HTTPserver
+	MediaText            *widget.Entry
 	ExternalMediaURL     *widget.Check
+	GaplessMediaWatcher  func(context.Context, *NewScreen, *soapcalls.TVPayload)
+	VolumeDown           *widget.Button
 	MuteUnmute           *widget.Button
 	VolumeUp             *widget.Button
-	tvdata               *soapcalls.TVPayload
+	SlideBar             *tappedSlider
+	NextMediaCheck       *widget.Check
 	selectedDevice       devType
-	currentmfolder       string
-	mediafile            string
-	eventlURL            string
+	sliderActive         bool
+	State                string
+	subsfile             string
 	controlURL           string
 	renderingControlURL  string
 	connectionManagerURL string
-	State                string
+	currentmfolder       string
 	version              string
-	subsfile             string
+	eventlURL            string
+	mediafile            string
 	mediaFormats         []string
 	Transcode            bool
 	ErrorVisible         bool
-	NextMedia            bool
 	Medialoop            bool
 	Hotkeys              bool
 }
@@ -69,7 +75,8 @@ type devType struct {
 }
 
 type mainButtonsLayout struct {
-	buttonHeight float32
+	buttonHeight  float32
+	buttonPadding float32
 }
 
 func (f *debugWriter) Write(b []byte) (int, error) {
@@ -89,7 +96,8 @@ func Start(ctx context.Context, s *NewScreen) {
 
 	s.Hotkeys = true
 	tabs.OnSelected = func(t *container.TabItem) {
-		t.Content.Refresh()
+		theme := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "Default")
+		fyne.CurrentApp().Settings().SetTheme(go2tvTheme{theme})
 
 		if t.Text == "Go2TV" {
 			s.Hotkeys = true
@@ -101,7 +109,7 @@ func Start(ctx context.Context, s *NewScreen) {
 	s.tabs = tabs
 
 	w.SetContent(tabs)
-	w.Resize(fyne.NewSize(w.Canvas().Size().Width, w.Canvas().Size().Height*1.3))
+	w.Resize(fyne.NewSize(w.Canvas().Size().Width, w.Canvas().Size().Height*1.2))
 	w.CenterOnScreen()
 	w.SetMaster()
 
@@ -136,8 +144,17 @@ func (p *NewScreen) EmitMsg(a string) {
 // Will only be executed when we receive a callback message,
 // not when we explicitly click the Stop button.
 func (p *NewScreen) Fini() {
-	if p.NextMedia {
-		selectNextMedia(p)
+	gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
+
+	if p.NextMediaCheck.Checked && gaplessOption == "Disabled" {
+		p.MediaText.Text, p.mediafile = getNextMedia(p)
+		p.MediaText.Refresh()
+
+		if !p.CustomSubsCheck.Checked {
+			selectSubs(p.mediafile, p)
+		}
+
+		playAction(p)
 	}
 	// Main media loop logic
 	if p.Medialoop {
@@ -164,13 +181,16 @@ func InitFyneNewScreen(v string) *NewScreen {
 	return &NewScreen{
 		Current:        w,
 		currentmfolder: currentdir,
-		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".jpg", ".jpeg", ".png"},
+		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".m4a", ".jpg", ".jpeg", ".png"},
 		version:        v,
 		Debug:          dw,
 	}
 }
 
 func check(s *NewScreen, err error) {
+	s.muError.Lock()
+	defer s.muError.Unlock()
+
 	if err != nil && !s.ErrorVisible {
 		s.ErrorVisible = true
 		cleanErr := strings.ReplaceAll(err.Error(), ": ", "\n")
@@ -182,15 +202,16 @@ func check(s *NewScreen, err error) {
 	}
 }
 
-func selectNextMedia(screen *NewScreen) {
+func getNextMedia(screen *NewScreen) (string, string) {
 	filedir := filepath.Dir(screen.mediafile)
 	filelist, err := os.ReadDir(filedir)
 	check(screen, err)
 
-	var breaknext bool
-	var n int
-	var totalMedia int
-	var firstMedia string
+	var (
+		breaknext                    bool
+		totalMedia, counter          int
+		firstMedia, resName, resPath string
+	)
 
 	for _, f := range filelist {
 		isMedia := false
@@ -226,14 +247,13 @@ func selectNextMedia(screen *NewScreen) {
 			continue
 		}
 
-		n += 1
+		counter += 1
 
 		if f.Name() == filepath.Base(screen.mediafile) {
-			if totalMedia == n {
+			if totalMedia == counter {
 				// start over
-				screen.MediaText.Text = firstMedia
-				screen.mediafile = filepath.Join(filedir, firstMedia)
-				screen.MediaText.Refresh()
+				resName = firstMedia
+				resPath = filepath.Join(filedir, firstMedia)
 			}
 
 			breaknext = true
@@ -241,34 +261,41 @@ func selectNextMedia(screen *NewScreen) {
 		}
 
 		if breaknext {
-			screen.MediaText.Text = f.Name()
-			screen.mediafile = filepath.Join(filedir, f.Name())
-			screen.MediaText.Refresh()
-
-			if !screen.CustomSubsCheck.Checked {
-				selectSubs(screen.mediafile, screen)
-			}
+			resName = f.Name()
+			resPath = filepath.Join(filedir, f.Name())
 			break
 		}
 	}
+
+	return resName, resPath
 }
 
 func selectSubs(v string, screen *NewScreen) {
-	possibleSub := v[0:len(v)-
-		len(filepath.Ext(v))] + ".srt"
-
-	screen.SubsText.Text = filepath.Base(possibleSub)
-	screen.subsfile = possibleSub
-
-	if _, err := os.Stat(possibleSub); os.IsNotExist(err) {
-		screen.SubsText.Text = ""
-		screen.subsfile = ""
-	}
-
+	name, path := getNextPossibleSubs(v, screen)
+	screen.SubsText.Text = name
+	screen.subsfile = path
 	screen.SubsText.Refresh()
 }
 
+func getNextPossibleSubs(v string, screen *NewScreen) (string, string) {
+	var name, path string
+
+	possibleSub := v[0:len(v)-
+		len(filepath.Ext(v))] + ".srt"
+
+	if _, err := os.Stat(possibleSub); err == nil {
+		name = filepath.Base(possibleSub)
+		path = possibleSub
+	}
+
+	return name, path
+}
+
 func setPlayPauseView(s string, screen *NewScreen) {
+	if screen.cancelEnablePlay != nil {
+		screen.cancelEnablePlay()
+	}
+
 	screen.PlayPause.Enable()
 	switch s {
 	case "Play":

@@ -21,7 +21,7 @@ import (
 // HTTPserver - new http.Server instance.
 type HTTPserver struct {
 	http *http.Server
-	mux  *http.ServeMux
+	Mux  *http.ServeMux
 	// We only need to run one ffmpeg
 	// command at a time, per server instance
 	ffmpeg *exec.Cmd
@@ -66,9 +66,9 @@ func (s *HTTPserver) StartServer(serverStarted chan<- error, media, subtitles in
 		return
 	}
 
-	s.mux.HandleFunc(mURL.Path, s.serveMediaHandler(tvpayload, media))
-	s.mux.HandleFunc(sURL.Path, s.serveMediaHandler(nil, subtitles))
-	s.mux.HandleFunc(callbackURL.Path, s.callbackHandler(tvpayload, screen))
+	s.Mux.HandleFunc(mURL.Path, s.ServeMediaHandler(tvpayload, media))
+	s.Mux.HandleFunc(sURL.Path, s.ServeMediaHandler(nil, subtitles))
+	s.Mux.HandleFunc(callbackURL.Path, s.callbackHandler(tvpayload, screen))
 
 	ln, err := net.Listen("tcp", s.http.Addr)
 	if err != nil {
@@ -80,7 +80,8 @@ func (s *HTTPserver) StartServer(serverStarted chan<- error, media, subtitles in
 	_ = s.http.Serve(ln)
 }
 
-func (s *HTTPserver) serveMediaHandler(tv *soapcalls.TVPayload, media interface{}) http.HandlerFunc {
+// ServeMediaHandler is a helper method used to properly handle media and subtitle streaming.
+func (s *HTTPserver) ServeMediaHandler(tv *soapcalls.TVPayload, media interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		var media2 interface{}
 		media2 = media
@@ -183,7 +184,7 @@ func NewServer(a string) *HTTPserver {
 	mux := http.NewServeMux()
 	srv := HTTPserver{
 		http:   &http.Server{Addr: a, Handler: mux},
-		mux:    mux,
+		Mux:    mux,
 		ffmpeg: new(exec.Cmd),
 	}
 
@@ -244,7 +245,6 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, mediaType str
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
 		contentFeatures, err := utils.BuildContentFeatures(mediaType, "00", transcode)
 		if err != nil {
-			fmt.Println(err)
 			http.NotFound(w, r)
 			return
 		}

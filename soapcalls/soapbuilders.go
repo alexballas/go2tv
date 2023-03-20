@@ -73,6 +73,26 @@ type stopAction struct {
 	Speed       string
 }
 
+type seekEnvelope struct {
+	XMLName  xml.Name `xml:"s:Envelope"`
+	Schema   string   `xml:"xmlns:s,attr"`
+	Encoding string   `xml:"s:encodingStyle,attr"`
+	SeekBody seekBody `xml:"s:Body"`
+}
+
+type seekBody struct {
+	XMLName    xml.Name   `xml:"s:Body"`
+	SeekAction seekAction `xml:"u:Seek"`
+}
+
+type seekAction struct {
+	XMLName     xml.Name `xml:"u:Seek"`
+	AVTransport string   `xml:"xmlns:u,attr"`
+	InstanceID  string
+	Unit        string
+	Target      string
+}
+
 type setAVTransportEnvelope struct {
 	XMLName  xml.Name           `xml:"s:Envelope"`
 	Schema   string             `xml:"xmlns:s,attr"`
@@ -95,6 +115,31 @@ type setAVTransportURI struct {
 
 type currentURIMetaData struct {
 	XMLName xml.Name `xml:"CurrentURIMetaData"`
+	Value   []byte   `xml:",chardata"`
+}
+
+type setNextAVTransportEnvelope struct {
+	XMLName  xml.Name               `xml:"s:Envelope"`
+	Schema   string                 `xml:"xmlns:s,attr"`
+	Encoding string                 `xml:"s:encodingStyle,attr"`
+	Body     setNextAVTransportBody `xml:"s:Body"`
+}
+
+type setNextAVTransportBody struct {
+	XMLName               xml.Name              `xml:"s:Body"`
+	SetNextAVTransportURI setNextAVTransportURI `xml:"u:SetNextAVTransportURI"`
+}
+
+type setNextAVTransportURI struct {
+	XMLName         xml.Name `xml:"u:SetNextAVTransportURI"`
+	AVTransport     string   `xml:"xmlns:u,attr"`
+	InstanceID      string
+	NextURI         string
+	NextURIMetaData nextURIMetaData `xml:"NextURIMetaData"`
+}
+
+type nextURIMetaData struct {
+	XMLName xml.Name `xml:"NextURIMetaData"`
 	Value   []byte   `xml:",chardata"`
 }
 
@@ -121,6 +166,7 @@ type didLLiteItem struct {
 
 type resNode struct {
 	XMLName      xml.Name `xml:"res"`
+	Duration     string   `xml:"duration,attr,omitempty"`
 	ProtocolInfo string   `xml:"protocolInfo,attr"`
 	Value        string   `xml:",chardata"`
 }
@@ -223,8 +269,8 @@ type getProtocolInfoEnvelope struct {
 }
 
 type getProtocolInfoBody struct {
-	XMLName              xml.Name              `xml:"s:Body"`
-	GetProtocolInfoction getProtocolInfoAction `xml:"u:GetProtocolInfo"`
+	XMLName               xml.Name              `xml:"s:Body"`
+	GetProtocolInfoAction getProtocolInfoAction `xml:"u:GetProtocolInfo"`
 }
 
 type getProtocolInfoAction struct {
@@ -232,14 +278,68 @@ type getProtocolInfoAction struct {
 	ConnectionManager string   `xml:"xmlns:u,attr"`
 }
 
-func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string, transcode, seek bool) ([]byte, error) {
-	mediaTypeSlice := strings.Split(mediaType, "/")
+type getMediaInfoEnvelope struct {
+	XMLName          xml.Name         `xml:"s:Envelope"`
+	Schema           string           `xml:"xmlns:s,attr"`
+	Encoding         string           `xml:"s:encodingStyle,attr"`
+	GetMediaInfoBody getMediaInfoBody `xml:"s:Body"`
+}
+
+type getMediaInfoBody struct {
+	XMLName            xml.Name           `xml:"s:Body"`
+	GetMediaInfoAction getMediaInfoAction `xml:"u:GetMediaInfo"`
+}
+
+type getMediaInfoAction struct {
+	XMLName     xml.Name `xml:"u:GetMediaInfo"`
+	AVTransport string   `xml:"xmlns:u,attr"`
+	InstanceID  string
+}
+
+type getTransportInfoEnvelope struct {
+	XMLName              xml.Name             `xml:"s:Envelope"`
+	Schema               string               `xml:"xmlns:s,attr"`
+	Encoding             string               `xml:"s:encodingStyle,attr"`
+	GetTransportInfoBody getTransportInfoBody `xml:"s:Body"`
+}
+
+type getTransportInfoBody struct {
+	XMLName                xml.Name               `xml:"s:Body"`
+	GetTransportInfoAction getTransportInfoAction `xml:"u:GetTransportInfo"`
+}
+
+type getTransportInfoAction struct {
+	XMLName     xml.Name `xml:"u:GetTransportInfo"`
+	AVTransport string   `xml:"xmlns:u,attr"`
+	InstanceID  string
+}
+
+type getPositionInfoEnvelope struct {
+	XMLName             xml.Name            `xml:"s:Envelope"`
+	Schema              string              `xml:"xmlns:s,attr"`
+	Encoding            string              `xml:"s:encodingStyle,attr"`
+	GetPositionInfoBody getPositionInfoBody `xml:"s:Body"`
+}
+
+type getPositionInfoBody struct {
+	XMLName               xml.Name              `xml:"s:Body"`
+	GetPositionInfoAction getPositionInfoAction `xml:"u:GetPositionInfo"`
+}
+
+type getPositionInfoAction struct {
+	XMLName     xml.Name `xml:"u:GetPositionInfo"`
+	AVTransport string   `xml:"xmlns:u,attr"`
+	InstanceID  string
+}
+
+func setAVTransportSoapBuild(tvdata *TVPayload) ([]byte, error) {
+	mediaTypeSlice := strings.Split(tvdata.MediaType, "/")
 	seekflag := "00"
-	if seek {
+	if tvdata.Seekable {
 		seekflag = "01"
 	}
 
-	contentFeatures, err := utils.BuildContentFeatures(mediaType, seekflag, transcode)
+	contentFeatures, err := utils.BuildContentFeatures(tvdata.MediaType, seekflag, tvdata.Transcode)
 	if err != nil {
 		return nil, fmt.Errorf("setAVTransportSoapBuild failed to build contentFeatures: %w", err)
 	}
@@ -254,7 +354,7 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string, transcode,
 		class = "object.item.videoItem.movie"
 	}
 
-	mediaTitlefromURL, err := url.Parse(mediaURL)
+	mediaTitlefromURL, err := url.Parse(tvdata.MediaURL)
 	if err != nil {
 		return nil, fmt.Errorf("setAVTransportSoapBuild url parse error: %w", err)
 	}
@@ -268,6 +368,24 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string, transcode,
 	mediaTitle = re.ReplaceAllString(mediaTitle, "")
 
 	var didl didLLiteItem
+	resNodeData := []resNode{}
+	duration, _ := utils.DurationForMedia(tvdata.MediaPath)
+
+	switch duration {
+	case "":
+		resNodeData = append(resNodeData, resNode{
+			XMLName:      xml.Name{},
+			ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", tvdata.MediaType, contentFeatures),
+			Value:        tvdata.MediaURL,
+		})
+	default:
+		resNodeData = append(resNodeData, resNode{
+			XMLName:      xml.Name{},
+			Duration:     duration,
+			ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", tvdata.MediaType, contentFeatures),
+			Value:        tvdata.MediaURL,
+		})
+	}
 
 	didl = didLLiteItem{
 		XMLName:    xml.Name{},
@@ -276,16 +394,16 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string, transcode,
 		Restricted: "1",
 		UPNPClass:  class,
 		DCtitle:    mediaTitle,
-		ResNode: []resNode{
-			{
-				XMLName:      xml.Name{},
-				ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", mediaType, contentFeatures),
-				Value:        mediaURL,
-			},
-		},
+		ResNode:    resNodeData,
 	}
 
-	if strings.Contains(subtitleURL, "srt") {
+	if strings.Contains(tvdata.SubtitlesURL, "srt") {
+		resNodeData = append(resNodeData, resNode{
+			XMLName:      xml.Name{},
+			ProtocolInfo: "http-get:*:text/srt:*",
+			Value:        tvdata.SubtitlesURL,
+		})
+
 		didl = didLLiteItem{
 			XMLName:    xml.Name{},
 			ID:         "1",
@@ -293,26 +411,16 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string, transcode,
 			Restricted: "1",
 			DCtitle:    mediaTitle,
 			UPNPClass:  class,
-			ResNode: []resNode{
-				{
-					XMLName:      xml.Name{},
-					ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", mediaType, contentFeatures),
-					Value:        mediaURL,
-				}, {
-					XMLName:      xml.Name{},
-					ProtocolInfo: "http-get:*:text/srt:*",
-					Value:        subtitleURL,
-				},
-			},
+			ResNode:    resNodeData,
 			SecCaptionInfo: &secCaptionInfo{
 				XMLName: xml.Name{},
 				Type:    "srt",
-				Value:   subtitleURL,
+				Value:   tvdata.SubtitlesURL,
 			},
 			SecCaptionInfoEx: &secCaptionInfoEx{
 				XMLName: xml.Name{},
 				Type:    "srt",
-				Value:   subtitleURL,
+				Value:   tvdata.SubtitlesURL,
 			},
 		}
 	}
@@ -341,7 +449,7 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string, transcode,
 				XMLName:     xml.Name{},
 				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
 				InstanceID:  "0",
-				CurrentURI:  mediaURL,
+				CurrentURI:  tvdata.MediaURL,
 				CurrentURIMetaData: currentURIMetaData{
 					XMLName: xml.Name{},
 					Value:   a,
@@ -353,6 +461,149 @@ func setAVTransportSoapBuild(mediaURL, mediaType, subtitleURL string, transcode,
 	b, err := xml.Marshal(d)
 	if err != nil {
 		return nil, fmt.Errorf("setAVTransportSoapBuild #2 Marshal error: %w", err)
+	}
+
+	// Samsung TV hack.
+	b = bytes.ReplaceAll(b, []byte("&#34;"), []byte(`"`))
+	b = bytes.ReplaceAll(b, []byte("&amp;"), []byte("&"))
+
+	return append(xmlStart, b...), nil
+}
+
+func setNextAVTransportSoapBuild(tvdata *TVPayload, clear bool) ([]byte, error) {
+	mediaTypeSlice := strings.Split(tvdata.MediaType, "/")
+	seekflag := "00"
+	if tvdata.Seekable {
+		seekflag = "01"
+	}
+
+	contentFeatures, err := utils.BuildContentFeatures(tvdata.MediaType, seekflag, tvdata.Transcode)
+	if err != nil {
+		return nil, fmt.Errorf("setNextAVTransportSoapBuild failed to build contentFeatures: %w", err)
+	}
+
+	var class string
+	switch mediaTypeSlice[0] {
+	case "audio":
+		class = "object.item.audioItem.musicTrack"
+	case "image":
+		class = "object.item.imageItem.photo"
+	default:
+		class = "object.item.videoItem.movie"
+	}
+
+	murl := tvdata.MediaURL
+	if clear {
+		murl = ""
+	}
+
+	mediaTitlefromURL, err := url.Parse(murl)
+	if err != nil {
+		return nil, fmt.Errorf("setNextAVTransportSoapBuild url parse error: %w", err)
+	}
+
+	mediaTitle := strings.TrimLeft(mediaTitlefromURL.Path, "/")
+
+	re, err := regexp.Compile(`[&<>\\]+`)
+	if err != nil {
+		return nil, fmt.Errorf("setNextAVTransportSoapBuild regex compile error: %w", err)
+	}
+	mediaTitle = re.ReplaceAllString(mediaTitle, "")
+
+	var didl didLLiteItem
+	resNodeData := []resNode{}
+	duration, _ := utils.DurationForMedia(tvdata.MediaPath)
+
+	switch duration {
+	case "":
+		resNodeData = append(resNodeData, resNode{
+			XMLName:      xml.Name{},
+			ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", tvdata.MediaType, contentFeatures),
+			Value:        murl,
+		})
+	default:
+		resNodeData = append(resNodeData, resNode{
+			XMLName:      xml.Name{},
+			Duration:     duration,
+			ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", tvdata.MediaType, contentFeatures),
+			Value:        murl,
+		})
+	}
+
+	didl = didLLiteItem{
+		XMLName:    xml.Name{},
+		ID:         "1",
+		ParentID:   "0",
+		Restricted: "1",
+		UPNPClass:  class,
+		DCtitle:    mediaTitle,
+		ResNode:    resNodeData,
+	}
+
+	if strings.Contains(tvdata.SubtitlesURL, "srt") {
+		resNodeData = append(resNodeData, resNode{
+			XMLName:      xml.Name{},
+			ProtocolInfo: "http-get:*:text/srt:*",
+			Value:        tvdata.SubtitlesURL,
+		})
+
+		didl = didLLiteItem{
+			XMLName:    xml.Name{},
+			ID:         "1",
+			ParentID:   "0",
+			Restricted: "1",
+			DCtitle:    mediaTitle,
+			UPNPClass:  class,
+			ResNode:    resNodeData,
+			SecCaptionInfo: &secCaptionInfo{
+				XMLName: xml.Name{},
+				Type:    "srt",
+				Value:   tvdata.SubtitlesURL,
+			},
+			SecCaptionInfoEx: &secCaptionInfoEx{
+				XMLName: xml.Name{},
+				Type:    "srt",
+				Value:   tvdata.SubtitlesURL,
+			},
+		}
+	}
+
+	l := didLLite{
+		XMLName:      xml.Name{},
+		SchemaDIDL:   "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
+		DC:           "http://purl.org/dc/elements/1.1/",
+		Sec:          "http://www.sec.co.kr/",
+		SchemaUPNP:   "urn:schemas-upnp-org:metadata-1-0/upnp/",
+		DIDLLiteItem: didl,
+	}
+
+	a, err := xml.Marshal(l)
+	if err != nil {
+		return nil, fmt.Errorf("setNextAVTransportSoapBuild #1 Marshal error: %w", err)
+	}
+
+	d := setNextAVTransportEnvelope{
+		XMLName:  xml.Name{},
+		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
+		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
+		Body: setNextAVTransportBody{
+			XMLName: xml.Name{},
+			SetNextAVTransportURI: setNextAVTransportURI{
+				XMLName:     xml.Name{},
+				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
+				InstanceID:  "0",
+				NextURI:     murl,
+				NextURIMetaData: nextURIMetaData{
+					XMLName: xml.Name{},
+					Value:   a,
+				},
+			},
+		},
+	}
+	xmlStart := []byte(`<?xml version="1.0" encoding="utf-8"?>`)
+	b, err := xml.Marshal(d)
+	if err != nil {
+		return nil, fmt.Errorf("setNextAVTransportSoapBuild #2 Marshal error: %w", err)
 	}
 
 	// Samsung TV hack.
@@ -543,7 +794,7 @@ func getProtocolInfoSoapBuild() ([]byte, error) {
 		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
 		GetProtocolInfoBody: getProtocolInfoBody{
 			XMLName: xml.Name{},
-			GetProtocolInfoction: getProtocolInfoAction{
+			GetProtocolInfoAction: getProtocolInfoAction{
 				XMLName:           xml.Name{},
 				ConnectionManager: "urn:schemas-upnp-org:service:ConnectionManager:1",
 			},
@@ -552,7 +803,101 @@ func getProtocolInfoSoapBuild() ([]byte, error) {
 	xmlStart := []byte(`<?xml version="1.0" encoding="utf-8"?>`)
 	b, err := xml.Marshal(d)
 	if err != nil {
-		return nil, fmt.Errorf("setVolumeSoapBuild Marshal error: %w", err)
+		return nil, fmt.Errorf("getProtocolInfoSoapBuild Marshal error: %w", err)
+	}
+
+	return append(xmlStart, b...), nil
+}
+
+func getMediaInfoSoapBuild() ([]byte, error) {
+	d := getMediaInfoEnvelope{
+		XMLName:  xml.Name{},
+		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
+		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
+		GetMediaInfoBody: getMediaInfoBody{
+			XMLName: xml.Name{},
+			GetMediaInfoAction: getMediaInfoAction{
+				XMLName:     xml.Name{},
+				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
+				InstanceID:  "0",
+			},
+		},
+	}
+	xmlStart := []byte(`<?xml version="1.0" encoding="utf-8"?>`)
+	b, err := xml.Marshal(d)
+	if err != nil {
+		return nil, fmt.Errorf("getMediaInfoSoapBuild Marshal error: %w", err)
+	}
+
+	return append(xmlStart, b...), nil
+}
+
+func getTransportInfoSoapBuild() ([]byte, error) {
+	d := getTransportInfoEnvelope{
+		XMLName:  xml.Name{},
+		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
+		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
+		GetTransportInfoBody: getTransportInfoBody{
+			XMLName: xml.Name{},
+			GetTransportInfoAction: getTransportInfoAction{
+				XMLName:     xml.Name{},
+				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
+				InstanceID:  "0",
+			},
+		},
+	}
+	xmlStart := []byte(`<?xml version="1.0" encoding="utf-8"?>`)
+	b, err := xml.Marshal(d)
+	if err != nil {
+		return nil, fmt.Errorf("getTransportInfoSoapBuild Marshal error: %w", err)
+	}
+
+	return append(xmlStart, b...), nil
+}
+
+func getPositionInfoSoapBuild() ([]byte, error) {
+	d := getPositionInfoEnvelope{
+		XMLName:  xml.Name{},
+		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
+		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
+		GetPositionInfoBody: getPositionInfoBody{
+			XMLName: xml.Name{},
+			GetPositionInfoAction: getPositionInfoAction{
+				XMLName:     xml.Name{},
+				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
+				InstanceID:  "0",
+			},
+		},
+	}
+	xmlStart := []byte(`<?xml version="1.0" encoding="utf-8"?>`)
+	b, err := xml.Marshal(d)
+	if err != nil {
+		return nil, fmt.Errorf("getPositionInfoSoapBuild Marshal error: %w", err)
+	}
+
+	return append(xmlStart, b...), nil
+}
+
+func seekSoapBuild(reltime string) ([]byte, error) {
+	d := seekEnvelope{
+		XMLName:  xml.Name{},
+		Schema:   "http://schemas.xmlsoap.org/soap/envelope/",
+		Encoding: "http://schemas.xmlsoap.org/soap/encoding/",
+		SeekBody: seekBody{
+			XMLName: xml.Name{},
+			SeekAction: seekAction{
+				XMLName:     xml.Name{},
+				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
+				InstanceID:  "0",
+				Unit:        "REL_TIME",
+				Target:      reltime,
+			},
+		},
+	}
+	xmlStart := []byte(`<?xml version="1.0" encoding="utf-8"?>`)
+	b, err := xml.Marshal(d)
+	if err != nil {
+		return nil, fmt.Errorf("seekSoapBuild Marshal error: %w", err)
 	}
 
 	return append(xmlStart, b...), nil

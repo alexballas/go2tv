@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"strconv"
 	"strings"
 
 	"github.com/h2non/filetype"
@@ -42,7 +44,8 @@ var (
 		"image/png":               "PNG_LRG",
 	}
 
-	ErrInvalidSeekFlag = errors.New("invalid seek flag")
+	ErrInvalidSeekFlag    = errors.New("invalid seek flag")
+	ErrInvalidClockFormat = errors.New("invalid clock format")
 )
 
 func defaultStreamingFlags() string {
@@ -126,4 +129,58 @@ func GetMimeDetailsFromStream(s io.ReadCloser) (string, error) {
 	}
 
 	return fmt.Sprintf("%s/%s", kind.MIME.Type, kind.MIME.Subtype), nil
+}
+
+// ClockTimeToSeconds converts relative time to seconds.
+func ClockTimeToSeconds(strtime string) (int, error) {
+	var out int
+	v := make([]int, 0, 3)
+
+	s := strings.Split(strtime, ":")
+	if len(s) != 3 {
+		return 0, ErrInvalidClockFormat
+	}
+
+	num, err := strconv.Atoi(s[0])
+	if err != nil {
+		return 0, ErrInvalidClockFormat
+	}
+	v = append(v, num)
+
+	num, err = strconv.Atoi(s[1])
+	if err != nil {
+		return 0, ErrInvalidClockFormat
+	}
+	v = append(v, num)
+
+	f, err := strconv.ParseFloat(s[2], 32)
+	if err != nil {
+		return 0, ErrInvalidClockFormat
+	}
+	f = math.Round(f)
+	v = append(v, int(f))
+
+	for n, i := range v {
+		switch n {
+		case 0:
+			out += i * 3600
+		case 1:
+			out += i * 60
+		case 2:
+			out += i
+		}
+	}
+
+	return out, nil
+}
+
+// SecondsToClockTime converts seconds to seconds relative time.
+func SecondsToClockTime(secs int) (string, error) {
+	hours := secs / 3600
+	secs %= 3600
+	minutes := secs / 60
+	secs %= 60
+
+	str := fmt.Sprintf("%02d:%02d:%02d", hours, minutes, secs)
+	return str, nil
 }

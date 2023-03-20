@@ -56,7 +56,7 @@ func main() {
 		}
 
 		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+			fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 			os.Exit(1)
 		}
 	}
@@ -154,7 +154,7 @@ func run() error {
 		Mtype:     mediaType,
 		Transcode: *transcodePtr,
 		Seek:      isSeek,
-		Logging:   os.Stdout,
+		Logging:   nil,
 	})
 	if err != nil {
 		return err

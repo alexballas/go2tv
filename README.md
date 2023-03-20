@@ -24,8 +24,8 @@ Cast your media files to UPnP/DLNA Media Renderers and Smart TVs.
 ---
 GUI mode
 -----
-![](https://i.imgur.com/nrfIc81.png)
-![](https://i.imgur.com/ksCaCFl.png)
+![](https://i.imgur.com/ogbSCZF.png)
+![](https://i.imgur.com/ncBpyw4.png)
 
 CLI mode
 -----
@@ -59,7 +59,7 @@ This is a GUI only limitation.
 
 Build requirements and dependencies
 -----
-- Go v1.16+
+- Go v1.19+
 - ffmpeg (optional)
 
 **Build using Docker**

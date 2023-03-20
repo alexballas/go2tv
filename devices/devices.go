@@ -19,7 +19,7 @@ var (
 // AVTransport service.
 func LoadSSDPservices(delay int) (map[string]string, error) {
 	// Reset device list every time we call this.
-	deviceList := make(map[string]string)
+	urlList := make(map[string]string)
 	list, err := ssdp.Search(ssdp.All, delay, "")
 	if err != nil {
 		return nil, fmt.Errorf("LoadSSDPservices search error: %w", err)
@@ -35,7 +35,28 @@ func LoadSSDPservices(delay int) (map[string]string, error) {
 				continue
 			}
 
-			deviceList[friendlyName] = srv.Location
+			urlList[srv.Location] = friendlyName
+		}
+	}
+
+	deviceList := make(map[string]string)
+	dupNames := make(map[string]int)
+	for loc, fn := range urlList {
+		_, exists := dupNames[fn]
+		dupNames[fn]++
+		if exists {
+			fn = fn + " (" + loc + ")"
+		}
+
+		deviceList[fn] = loc
+	}
+
+	for fn, c := range dupNames {
+		if c > 1 {
+			loc := deviceList[fn]
+			delete(deviceList, fn)
+			fn = fn + " (" + loc + ")"
+			deviceList[fn] = loc
 		}
 	}
 

@@ -31,26 +31,26 @@ var (
 	ErrZombieCallbacks    = errors.New("zombie callbacks, we should ignore those")
 )
 
-// TVPayload this is the heart of Go2TV. We pass that type to the
+// TVPayload is the heart of Go2TV. We pass that type to the
 // webserver. We need to explicitly initialize it.
 type TVPayload struct {
-	MediaFile                   interface{}
+	mu                          sync.RWMutex
+	initLogOnce                 sync.Once
 	Logging                     io.Writer
 	CurrentTimers               map[string]*time.Timer
 	InitialMediaRenderersStates map[string]bool
-	mu                          sync.RWMutex
 	MediaRenderersStates        map[string]*States
-	RenderingControlURL         string
-	ConnectionManagerURL        string
-	EventURL                    string
 	ControlURL                  string
+	EventURL                    string
 	MediaURL                    string
 	MediaType                   string
+	MediaPath                   string
 	SubtitlesURL                string
 	CallbackURL                 string
+	ConnectionManagerURL        string
+	RenderingControlURL         string
 	Transcode                   bool
 	Seekable                    bool
-	initLogOnce                 sync.Once
 }
 
 type getMuteRespBody struct {
@@ -99,6 +99,68 @@ type protocolInfoResponse struct {
 	} `xml:"Body"`
 }
 
+type getMediaInfoResponse struct {
+	XMLName       xml.Name `xml:"Envelope"`
+	Text          string   `xml:",chardata"`
+	EncodingStyle string   `xml:"encodingStyle,attr"`
+	S             string   `xml:"s,attr"`
+	Body          struct {
+		Text                 string `xml:",chardata"`
+		GetMediaInfoResponse struct {
+			Text               string `xml:",chardata"`
+			U                  string `xml:"u,attr"`
+			NrTracks           string `xml:"NrTracks"`
+			MediaDuration      string `xml:"MediaDuration"`
+			CurrentURI         string `xml:"CurrentURI"`
+			CurrentURIMetaData string `xml:"CurrentURIMetaData"`
+			NextURI            string `xml:"NextURI"`
+			NextURIMetaData    string `xml:"NextURIMetaData"`
+			PlayMedium         string `xml:"PlayMedium"`
+			RecordMedium       string `xml:"RecordMedium"`
+			WriteStatus        string `xml:"WriteStatus"`
+		} `xml:"GetMediaInfoResponse"`
+	} `xml:"Body"`
+}
+
+type getTransportInfoResponse struct {
+	XMLName       xml.Name `xml:"Envelope"`
+	Text          string   `xml:",chardata"`
+	S             string   `xml:"s,attr"`
+	EncodingStyle string   `xml:"encodingStyle,attr"`
+	Body          struct {
+		Text                     string `xml:",chardata"`
+		GetTransportInfoResponse struct {
+			Text                   string `xml:",chardata"`
+			U                      string `xml:"u,attr"`
+			CurrentTransportState  string `xml:"CurrentTransportState"`
+			CurrentTransportStatus string `xml:"CurrentTransportStatus"`
+			CurrentSpeed           string `xml:"CurrentSpeed"`
+		} `xml:"GetTransportInfoResponse"`
+	} `xml:"Body"`
+}
+
+type getPositionInfoResponse struct {
+	XMLName       xml.Name `xml:"Envelope"`
+	Text          string   `xml:",chardata"`
+	S             string   `xml:"s,attr"`
+	EncodingStyle string   `xml:"encodingStyle,attr"`
+	Body          struct {
+		Text                    string `xml:",chardata"`
+		GetPositionInfoResponse struct {
+			Text          string `xml:",chardata"`
+			U             string `xml:"u,attr"`
+			Track         string `xml:"Track"`
+			TrackDuration string `xml:"TrackDuration"`
+			TrackMetaData string `xml:"TrackMetaData"`
+			TrackURI      string `xml:"TrackURI"`
+			RelTime       string `xml:"RelTime"`
+			AbsTime       string `xml:"AbsTime"`
+			RelCount      string `xml:"RelCount"`
+			AbsCount      string `xml:"AbsCount"`
+		} `xml:"GetPositionInfoResponse"`
+	} `xml:"Body"`
+}
+
 func (p *TVPayload) setAVTransportSoapCall() error {
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
@@ -106,7 +168,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 		return fmt.Errorf("setAVTransportSoapCall parse error: %w", err)
 	}
 
-	xml, err := setAVTransportSoapBuild(p.MediaURL, p.MediaType, p.SubtitlesURL, p.Transcode, p.Seekable)
+	xml, err := setAVTransportSoapBuild(p)
 	if err != nil {
 		p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "setAVTransportSoapBuild").Err(err).Msg("")
 		return fmt.Errorf("setAVTransportSoapCall soap build error: %w", err)
@@ -168,8 +230,74 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 	return nil
 }
 
-// AVTransportActionSoapCall builds and sends the AVTransport actions
-func (p *TVPayload) AVTransportActionSoapCall(action string) error {
+func (p *TVPayload) setNextAVTransportSoapCall(clear bool) error {
+	parsedURLtransport, err := url.Parse(p.ControlURL)
+	if err != nil {
+		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
+		return fmt.Errorf("setNextAVTransportSoapCall parse error: %w", err)
+	}
+
+	xml, err := setNextAVTransportSoapBuild(p, clear)
+	if err != nil {
+		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "setNextAVTransportSoapBuild").Err(err).Msg("")
+		return fmt.Errorf("setNextAVTransportSoapCall soap build error: %w", err)
+	}
+
+	client := &http.Client{}
+
+	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xml))
+	if err != nil {
+		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
+		return fmt.Errorf("setNextAVTransportSoapCall POST error: %w", err)
+	}
+
+	req.Header = http.Header{
+		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#SetNextAVTransportURI"`},
+		"content-type": []string{"text/xml"},
+		"charset":      []string{"utf-8"},
+		"Connection":   []string{"close"},
+	}
+
+	headerBytesReq, err := json.Marshal(req.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "Header Marshaling").Err(err).Msg("")
+		return fmt.Errorf("setNextAVTransportSoapCall Request Marshaling error: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "setNextAVTransportSoapCall").Str("Action", "Request").
+		RawJSON("Headers", headerBytesReq).
+		Msg(string(xml))
+
+	res, err := client.Do(req)
+	if err != nil {
+		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "Do POST").Err(err).Msg("")
+		return fmt.Errorf("setNextAVTransportSoapCall Do POST error: %w", err)
+	}
+	defer res.Body.Close()
+
+	resBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "Readall").Err(err).Msg("")
+		return fmt.Errorf("setNextAVTransportSoapCall Failed to read response: %w", err)
+	}
+
+	headerBytesRes, err := json.Marshal(res.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "Header Marshaling #2").Err(err).Msg("")
+		return fmt.Errorf("setNextAVTransportSoapCall Response Marshaling error: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "setNextAVTransportSoapCall").Str("Action", "Response").Str("Status Code", strconv.Itoa(res.StatusCode)).
+		RawJSON("Headers", headerBytesRes).
+		Msg(string(resBytes))
+
+	return nil
+}
+
+// PlayPauseStopSoapCall builds and sends the AVTransport actions for Play Pause and Stop.
+func (p *TVPayload) PlayPauseStopSoapCall(action string) error {
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "AVTransportActionSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
@@ -247,6 +375,83 @@ func (p *TVPayload) AVTransportActionSoapCall(action string) error {
 
 	p.Log().Debug().
 		Str("Method", "AVTransportActionSoapCall").Str("Action", action+" Response").Str("Status Code", strconv.Itoa(res.StatusCode)).
+		RawJSON("Headers", headerBytesRes).
+		Msg(string(resBytes))
+
+	return nil
+}
+
+// SeekSoapCall builds and sends the AVTransport actions for Seek.
+func (p *TVPayload) SeekSoapCall(reltime string) error {
+	parsedURLtransport, err := url.Parse(p.ControlURL)
+	if err != nil {
+		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
+		return fmt.Errorf("SeekSoapCall parse error: %w", err)
+	}
+
+	var xml []byte
+	retry := false
+
+	xml, err = seekSoapBuild(reltime)
+	if err != nil {
+		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "Action Error").Err(err).Msg("")
+		return fmt.Errorf("SeekSoapCall action error: %w", err)
+	}
+
+	client := &http.Client{}
+
+	if retry {
+		retryClient := retryablehttp.NewClient()
+		retryClient.RetryMax = 3
+		retryClient.Logger = nil
+		client = retryClient.StandardClient()
+	}
+
+	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xml))
+	if err != nil {
+		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
+		return fmt.Errorf("SeekSoapCall POST error: %w", err)
+	}
+
+	req.Header = http.Header{
+		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#Seek"`},
+		"content-type": []string{"text/xml"},
+		"charset":      []string{"utf-8"},
+		"Connection":   []string{"close"},
+	}
+
+	headerBytesReq, err := json.Marshal(req.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "Header Marshaling").Err(err).Msg("")
+		return fmt.Errorf("SeekSoapCall Request Marshaling error: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "SeekSoapCall").Str("Action", "Seek Request").
+		RawJSON("Headers", headerBytesReq).
+		Msg(string(xml))
+
+	res, err := client.Do(req)
+	if err != nil {
+		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "Do POST").Err(err).Msg("")
+		return fmt.Errorf("SeekSoapCall Do POST error: %w", err)
+	}
+	defer res.Body.Close()
+
+	resBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "Readall").Err(err).Msg("")
+		return fmt.Errorf("SeekSoapCall Failed to read response: %w", err)
+	}
+
+	headerBytesRes, err := json.Marshal(res.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "Header Marshaling #2").Err(err).Msg("")
+		return fmt.Errorf("SeekSoapCall Response Marshaling error: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "SeekSoapCall").Str("Action", "Seek Response").Str("Status Code", strconv.Itoa(res.StatusCode)).
 		RawJSON("Headers", headerBytesRes).
 		Msg(string(resBytes))
 
@@ -801,9 +1006,265 @@ func (p *TVPayload) GetProtocolInfo() error {
 	return nil
 }
 
+// Gapless requests our device's media info and returns the Next URI.
+func (p *TVPayload) Gapless() (string, error) {
+	if p == nil {
+		return "", errors.New("Gapless, nil tvdata")
+	}
+
+	parsedURLtransport, err := url.Parse(p.ControlURL)
+	if err != nil {
+		p.Log().Error().Str("Method", "Gapless").Str("Action", "URL Parse").Err(err).Msg("")
+		return "", fmt.Errorf("Gapless parse error: %w", err)
+	}
+
+	var xmlbuilder []byte
+
+	xmlbuilder, err = getMediaInfoSoapBuild()
+	if err != nil {
+		p.Log().Error().Str("Method", "Gapless").Str("Action", "Build").Err(err).Msg("")
+		return "", fmt.Errorf("Gapless build error: %w", err)
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
+	if err != nil {
+		p.Log().Error().Str("Method", "Gapless").Str("Action", "Prepare POST").Err(err).Msg("")
+		return "", fmt.Errorf("Gapless POST error: %w", err)
+	}
+	req.Header = http.Header{
+		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#GetMediaInfo"`},
+		"content-type": []string{"text/xml"},
+		"charset":      []string{"utf-8"},
+		"Connection":   []string{"close"},
+	}
+
+	headerBytesReq, err := json.Marshal(req.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "Gapless").Str("Action", "Header Marshaling").Err(err).Msg("")
+		return "", fmt.Errorf("Gapless Request Marshaling error: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "Gapless").Str("Action", "Request").
+		RawJSON("Headers", headerBytesReq).
+		Msg(string(xmlbuilder))
+
+	res, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("Gapless Do POST error: %w", err)
+	}
+	defer res.Body.Close()
+
+	headerBytesRes, err := json.Marshal(res.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "Gapless").Str("Action", "Header Marshaling #2").Err(err).Msg("")
+		return "", fmt.Errorf("Gapless Response Marshaling error: %w", err)
+	}
+
+	resBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		p.Log().Error().Str("Method", "Gapless").Str("Action", "Readall").Err(err).Msg("")
+		return "", fmt.Errorf("Gapless Failed to read response: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "Gapless").Str("Action", "Response").Str("Status Code", strconv.Itoa(res.StatusCode)).
+		RawJSON("Headers", headerBytesRes).
+		Msg(string(resBytes))
+
+	var respMedialInfo getMediaInfoResponse
+
+	if err := xml.Unmarshal(resBytes, &respMedialInfo); err != nil {
+		p.Log().Error().Str("Method", "Gapless").Str("Action", "Unmarshal").Err(err).Msg("")
+		return "", fmt.Errorf("Gapless Failed to unmarshal response: %w", err)
+	}
+
+	nextURI := respMedialInfo.Body.GetMediaInfoResponse.NextURI
+
+	return nextURI, nil
+}
+
+// GetTransportInfo .
+func (p *TVPayload) GetTransportInfo() ([]string, error) {
+	if p == nil {
+		return nil, errors.New("GetTransportInfo, nil tvdata")
+	}
+
+	parsedURLtransport, err := url.Parse(p.ControlURL)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetTransportInfo").Str("Action", "URL Parse").Err(err).Msg("")
+		return nil, fmt.Errorf("GetTransportInfo parse error: %w", err)
+	}
+
+	var xmlbuilder []byte
+
+	xmlbuilder, err = getTransportInfoSoapBuild()
+	if err != nil {
+		p.Log().Error().Str("Method", "GetTransportInfo").Str("Action", "Build").Err(err).Msg("")
+		return nil, fmt.Errorf("GetTransportInfo build error: %w", err)
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
+	if err != nil {
+		p.Log().Error().Str("Method", "GetTransportInfo").Str("Action", "Prepare POST").Err(err).Msg("")
+		return nil, fmt.Errorf("GetTransportInfo POST error: %w", err)
+	}
+	req.Header = http.Header{
+		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"`},
+		"content-type": []string{"text/xml"},
+		"charset":      []string{"utf-8"},
+		"Connection":   []string{"close"},
+	}
+
+	headerBytesReq, err := json.Marshal(req.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetTransportInfo").Str("Action", "Header Marshaling").Err(err).Msg("")
+		return nil, fmt.Errorf("GetTransportInfo Request Marshaling error: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "GetTransportInfo").Str("Action", "Request").
+		RawJSON("Headers", headerBytesReq).
+		Msg(string(xmlbuilder))
+
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GetTransportInfo Do POST error: %w", err)
+	}
+	defer res.Body.Close()
+
+	headerBytesRes, err := json.Marshal(res.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetTransportInfo").Str("Action", "Header Marshaling #2").Err(err).Msg("")
+		return nil, fmt.Errorf("GetTransportInfo Response Marshaling error: %w", err)
+	}
+
+	resBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetTransportInfo").Str("Action", "Readall").Err(err).Msg("")
+		return nil, fmt.Errorf("GetTransportInfo Failed to read response: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "GetTransportInfo").Str("Action", "Response").Str("Status Code", strconv.Itoa(res.StatusCode)).
+		RawJSON("Headers", headerBytesRes).
+		Msg(string(resBytes))
+
+	var respTransportInfo getTransportInfoResponse
+
+	if err := xml.Unmarshal(resBytes, &respTransportInfo); err != nil {
+		p.Log().Error().Str("Method", "GetTransportInfo").Str("Action", "Unmarshal").Err(err).Msg("")
+		return nil, fmt.Errorf("GetTransportInfo Failed to unmarshal response: %w", err)
+	}
+
+	r := respTransportInfo.Body.GetTransportInfoResponse
+	state := r.CurrentTransportState
+	status := r.CurrentTransportStatus
+	speed := r.CurrentSpeed
+
+	return []string{state, status, speed}, nil
+}
+
+// GetPositionInfo .
+func (p *TVPayload) GetPositionInfo() ([]string, error) {
+	if p == nil {
+		return nil, errors.New("GetPositionInfo, nil tvdata")
+	}
+
+	parsedURLtransport, err := url.Parse(p.ControlURL)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetPositionInfo").Str("Action", "URL Parse").Err(err).Msg("")
+		return nil, fmt.Errorf("GetPositionInfo parse error: %w", err)
+	}
+
+	var xmlbuilder []byte
+
+	xmlbuilder, err = getPositionInfoSoapBuild()
+	if err != nil {
+		p.Log().Error().Str("Method", "GetPositionInfo").Str("Action", "Build").Err(err).Msg("")
+		return nil, fmt.Errorf("GetPositionInfo build error: %w", err)
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
+	if err != nil {
+		p.Log().Error().Str("Method", "GetPositionInfo").Str("Action", "Prepare POST").Err(err).Msg("")
+		return nil, fmt.Errorf("GetPositionInfo POST error: %w", err)
+	}
+	req.Header = http.Header{
+		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"`},
+		"content-type": []string{"text/xml"},
+		"charset":      []string{"utf-8"},
+		"Connection":   []string{"close"},
+	}
+
+	headerBytesReq, err := json.Marshal(req.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetPositionInfo").Str("Action", "Header Marshaling").Err(err).Msg("")
+		return nil, fmt.Errorf("GetPositionInfo Request Marshaling error: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "GetPositionInfo").Str("Action", "Request").
+		RawJSON("Headers", headerBytesReq).
+		Msg(string(xmlbuilder))
+
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GetPositionInfo Do POST error: %w", err)
+	}
+	defer res.Body.Close()
+
+	headerBytesRes, err := json.Marshal(res.Header)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetPositionInfo").Str("Action", "Header Marshaling #2").Err(err).Msg("")
+		return nil, fmt.Errorf("GetPositionInfo Response Marshaling error: %w", err)
+	}
+
+	resBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		p.Log().Error().Str("Method", "GetPositionInfo").Str("Action", "Readall").Err(err).Msg("")
+		return nil, fmt.Errorf("GetPositionInfo Failed to read response: %w", err)
+	}
+
+	p.Log().Debug().
+		Str("Method", "GetPositionInfo").Str("Action", "Response").Str("Status Code", strconv.Itoa(res.StatusCode)).
+		RawJSON("Headers", headerBytesRes).
+		Msg(string(resBytes))
+
+	var respPositionInfo getPositionInfoResponse
+
+	if err := xml.Unmarshal(resBytes, &respPositionInfo); err != nil {
+		p.Log().Error().Str("Method", "GetPositionInfo").Str("Action", "Unmarshal").Err(err).Msg("")
+		return nil, fmt.Errorf("GetPositionInfo Failed to unmarshal response: %w", err)
+	}
+
+	r := respPositionInfo.Body.GetPositionInfoResponse
+	duration := r.TrackDuration
+	reltime := r.RelTime
+
+	return []string{duration, reltime}, nil
+}
+
 // SendtoTV is a higher level method that gracefully handles the various
 // states when communicating with the DMR devices.
 func (p *TVPayload) SendtoTV(action string) error {
+	if action == "ClearQueue" {
+		if err := p.setNextAVTransportSoapCall(true); err != nil {
+			return fmt.Errorf("SendtoTV setNextAVTransportSoapCall call error: %w", err)
+		}
+		return nil
+	}
+
+	if action == "Queue" {
+		if err := p.setNextAVTransportSoapCall(false); err != nil {
+			return fmt.Errorf("SendtoTV setNextAVTransportSoapCall call error: %w", err)
+		}
+		return nil
+	}
+
 	if action == "Play1" {
 		if err := p.GetProtocolInfo(); err != nil {
 			return fmt.Errorf("SendtoTV getProtocolInfo call error: %w", err)
@@ -840,8 +1301,8 @@ func (p *TVPayload) SendtoTV(action string) error {
 			delete(p.CurrentTimers, uuid)
 		}
 	}
-	err := p.AVTransportActionSoapCall(action)
-	if err != nil {
+
+	if err := p.PlayPauseStopSoapCall(action); err != nil {
 		return fmt.Errorf("SendtoTV Play/Stop/Pause action error: %w", err)
 	}
 

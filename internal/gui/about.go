@@ -4,7 +4,10 @@
 package gui
 
 import (
+	"encoding/base64"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -13,15 +16,21 @@ import (
 	"time"
 
 	fyne "fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/storage/repository"
 	"fyne.io/fyne/v2/widget"
 )
 
 func aboutWindow(s *NewScreen) fyne.CanvasObject {
-	richhead := widget.NewRichTextFromMarkdown(`
-# Go2TV
+	var _ repository.Repository = (*DataRepository)(nil)
+	repo := &DataRepository{}
+	repository.Register("data", repo)
 
+	sr := fyne.NewStaticResource("Go2TV Icon", go2tvSmallIcon)
+	go2tvImage := canvas.NewImageFromResource(sr)
+	richhead := widget.NewRichTextFromMarkdown(`
 Cast your media files to UPnP/DLNA Media Renderers and Smart TVs
 
 ---
@@ -55,8 +64,17 @@ MIT
 	})
 
 	s.CheckVersion = checkversion
+	go2tvImage.SetMinSize(fyne.Size{
+		Width:  64,
+		Height: 64,
+	})
 
-	return container.NewVBox(richhead, container.NewCenter(container.NewHBox(githubbutton, checkversion)))
+	imageContainer := container.NewCenter(go2tvImage)
+	cont := container.NewVBox(
+		imageContainer,
+		container.NewCenter(richhead),
+		container.NewCenter(container.NewHBox(githubbutton, checkversion)))
+	return container.NewPadded(cont)
 }
 
 func checkVersion(s *NewScreen) {
@@ -119,4 +137,61 @@ func checkVersion(s *NewScreen) {
 	}
 
 	dialog.ShowError(errVersionGet, s.Current)
+}
+
+type DataRepository struct{}
+
+func (r *DataRepository) Exists(u fyne.URI) (bool, error) {
+	return true, nil
+}
+func (r *DataRepository) Reader(u fyne.URI) (fyne.URIReadCloser, error) {
+	path := u.Path()
+
+	if path == "" {
+		return nil, fmt.Errorf("invalid path '%s'", path)
+	}
+
+	b64data := strings.TrimLeft(path, "/")
+	b, err := base64.StdEncoding.DecodeString(b64data)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dataReadCloser{data: b, uri: u}, nil
+}
+
+func (r *DataRepository) CanRead(u fyne.URI) (bool, error) {
+	return true, nil
+}
+
+func (r *DataRepository) Destroy(string) {
+}
+
+type dataReadCloser struct {
+	uri        fyne.URI
+	data       []byte
+	readCursor int
+}
+
+func (f *dataReadCloser) Close() error {
+	return nil
+}
+
+func (f *dataReadCloser) Read(p []byte) (int, error) {
+	count := 0
+	for ; count < len(p) && f.readCursor < len(f.data); f.readCursor++ {
+		p[count] = f.data[f.readCursor]
+		count++
+	}
+
+	var err error
+	if f.readCursor >= len(f.data) {
+		err = io.EOF
+	}
+
+	return count, err
+}
+
+func (f *dataReadCloser) URI() fyne.URI {
+	return f.uri
 }

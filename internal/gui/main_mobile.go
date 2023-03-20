@@ -123,7 +123,12 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	s.SubsText = sfiletext
 	s.DeviceList = list
 
-	actionbuttons := container.New(&mainButtonsLayout{buttonHeight: 1.5}, playpause, volumedown, muteunmute, volumeup, stop)
+	actionbuttons := container.New(&mainButtonsLayout{buttonHeight: 1.5, buttonPadding: theme.Padding()},
+		playpause,
+		volumedown,
+		muteunmute,
+		volumeup,
+		stop)
 
 	checklists := container.NewHBox(externalmedia, medialoop)
 	mediasubsbuttons := container.New(layout.NewGridLayout(2), mfile, sfile)
@@ -210,7 +215,6 @@ func refreshDevList(s *NewScreen, data *[]devType) {
 
 	for range refreshDevices.C {
 		datanew, _ := getDevices(2)
-		oldListSize := len(*data)
 
 		// check to see if the new refresh includes
 		// one of the already selected devices
@@ -238,14 +242,16 @@ func refreshDevList(s *NewScreen, data *[]devType) {
 			}
 		}
 
-		if oldListSize != len(*data) {
-			// Something changed in the list, so we need to
-			// also refresh the active selection.
-			for n, a := range *data {
-				if s.selectedDevice == a {
-					s.DeviceList.Select(n)
-				}
+		var found bool
+		for n, a := range *data {
+			if s.selectedDevice.addr == a.addr {
+				found = true
+				s.DeviceList.Select(n)
 			}
+		}
+
+		if !found {
+			s.DeviceList.UnselectAll()
 		}
 
 		s.DeviceList.Refresh()

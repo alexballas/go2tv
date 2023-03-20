@@ -20,10 +20,10 @@ func (d *mainButtonsLayout) Layout(objects []fyne.CanvasObject, containerSize fy
 	bigButtonSize := containerSize.Width
 	for q, o := range objects {
 		if q != 0 && q != len(objects)-1 {
-			bigButtonSize = bigButtonSize - o.MinSize().Width
+			bigButtonSize = bigButtonSize - o.MinSize().Width - d.buttonPadding
 		}
 	}
-	bigButtonSize = bigButtonSize / 2
+	bigButtonSize = (bigButtonSize - d.buttonPadding) / 2
 
 	for q, o := range objects {
 		var size fyne.Size
@@ -34,8 +34,9 @@ func (d *mainButtonsLayout) Layout(objects []fyne.CanvasObject, containerSize fy
 			size = fyne.NewSize(o.MinSize().Width, o.MinSize().Height*d.buttonHeight)
 		}
 		o.Resize(size)
-		o.Move(pos)
 
-		pos = pos.Add(fyne.NewPos(size.Width, 0))
+		pos.Y = 3
+		o.Move(pos)
+		pos = pos.Add(fyne.NewPos(size.Width+d.buttonPadding, 0))
 	}
 }
