@@ -19,7 +19,7 @@ jobs:
         go-version: "*"
 
     - name: Get dependencies
-      run: sudo apt update && sudo apt install xorg-dev
+      run: sudo apt update && sudo apt install xorg-dev libgles-dev
 
     - name: Package (Linux)
       run: GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o go2tv cmd/go2tv/go2tv.go
