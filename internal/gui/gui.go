@@ -28,8 +28,8 @@ type NewScreen struct {
 	mu                   sync.RWMutex
 	serverStopCTX        context.Context
 	Current              fyne.Window
-	cancelEnablePlay     context.CancelFunc
-	tvdata               *soapcalls.TVPayload
+	VolumeDown           *widget.Button
+	SlideBar             *tappedSlider
 	Debug                *debugWriter
 	tabs                 *container.AppTabs
 	CheckVersion         *widget.Button
@@ -42,23 +42,23 @@ type NewScreen struct {
 	MediaText            *widget.Entry
 	ExternalMediaURL     *widget.Check
 	GaplessMediaWatcher  func(context.Context, *NewScreen, *soapcalls.TVPayload)
-	VolumeDown           *widget.Button
+	cancelEnablePlay     context.CancelFunc
 	MuteUnmute           *widget.Button
 	VolumeUp             *widget.Button
-	SlideBar             *tappedSlider
+	tvdata               *soapcalls.TVPayload
 	NextMediaCheck       *widget.Check
 	selectedDevice       devType
-	sliderActive         bool
-	State                string
+	version              string
+	eventlURL            string
 	subsfile             string
 	controlURL           string
 	renderingControlURL  string
 	connectionManagerURL string
-	currentmfolder       string
-	version              string
-	eventlURL            string
+	State                string
 	mediafile            string
+	currentmfolder       string
 	mediaFormats         []string
+	sliderActive         bool
 	Transcode            bool
 	ErrorVisible         bool
 	Medialoop            bool
