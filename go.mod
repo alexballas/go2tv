@@ -17,7 +17,6 @@ require (
 
 require (
 	fyne.io/systray v1.10.1-0.20230312215936-7f71b037e260 // indirect
-	github.com/benoitkugler/textlayout v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fredbi/uri v1.0.0 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
@@ -27,7 +26,7 @@ require (
 	github.com/gdamore/encoding v1.0.0 // indirect
 	github.com/go-gl/gl v0.0.0-20211210172815-726fda9656d6 // indirect
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20221017161538-93cebf72946b // indirect
-	github.com/go-text/typesetting v0.0.0-20230212093906-959574cbf271 // indirect
+	github.com/go-text/typesetting v0.0.0-20230326170714-a90f4704aff7 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/goki/freetype v0.0.0-20220119013949-7a161fd3728c // indirect
 	github.com/gopherjs/gopherjs v1.17.2 // indirect
@@ -53,4 +52,4 @@ require (
 	honnef.co/go/js/dom v0.0.0-20221001195520-26252dedbe70 // indirect
 )
 
-replace fyne.io/fyne/v2 => github.com/alexballas/fyne/v2 v2.3.2-fixsliderwobble
+replace fyne.io/fyne/v2 => github.com/alexballas/fyne/v2 v2.3.2-patchv2
