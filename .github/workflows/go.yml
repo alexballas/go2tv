@@ -13,8 +13,8 @@ jobs:
       with:
         go-version: "*"
 
-    - name: Install xorg-dev libgles-dev
-      run: sudo apt update && sudo apt install xorg-dev libgles-dev
+    - name: Install xorg-dev
+      run: sudo apt update && sudo apt install xorg-dev
 
     - name: Build
       run: go build -v ./...

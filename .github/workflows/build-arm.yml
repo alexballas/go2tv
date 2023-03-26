@@ -3,7 +3,7 @@ on: [push]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v3
 
@@ -19,7 +19,7 @@ jobs:
         commands: |
             cd /
             sudo apt update
-            sudo apt install -y xorg-dev libgles-dev
+            sudo apt install -y xorg-dev
             sudo apt clean
             wget -nv https://go.dev/dl/go1.19.linux-armv6l.tar.gz
             tar -xzf go1.19.linux-armv6l.tar.gz

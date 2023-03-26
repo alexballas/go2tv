@@ -1,4 +1,4 @@
-# fyne.io/fyne/v2 v2.3.2 => github.com/alexballas/fyne/v2 v2.3.2-fixsliderwobble
+# fyne.io/fyne/v2 v2.3.3 => github.com/alexballas/fyne/v2 v2.3.2-patches2
 ## explicit; go 1.14
 fyne.io/fyne/v2
 fyne.io/fyne/v2/app
@@ -45,19 +45,6 @@ fyne.io/fyne/v2/widget
 fyne.io/systray
 fyne.io/systray/internal/generated/menu
 fyne.io/systray/internal/generated/notifier
-# github.com/benoitkugler/textlayout v0.3.0
-## explicit; go 1.17
-github.com/benoitkugler/textlayout/fonts
-github.com/benoitkugler/textlayout/fonts/binaryreader
-github.com/benoitkugler/textlayout/fonts/glyphsnames
-github.com/benoitkugler/textlayout/fonts/psinterpreter
-github.com/benoitkugler/textlayout/fonts/simpleencodings
-github.com/benoitkugler/textlayout/fonts/truetype
-github.com/benoitkugler/textlayout/fonts/type1C
-github.com/benoitkugler/textlayout/graphite
-github.com/benoitkugler/textlayout/harfbuzz
-github.com/benoitkugler/textlayout/language
-github.com/benoitkugler/textlayout/unicodedata
 # github.com/davecgh/go-spew v1.1.1
 ## explicit
 github.com/davecgh/go-spew/spew
@@ -138,13 +125,21 @@ github.com/go-gl/glfw/v3.3/glfw/glfw/deps/mingw
 github.com/go-gl/glfw/v3.3/glfw/glfw/deps/vs2008
 github.com/go-gl/glfw/v3.3/glfw/glfw/include/GLFW
 github.com/go-gl/glfw/v3.3/glfw/glfw/src
-# github.com/go-text/typesetting v0.0.0-20230212093906-959574cbf271
+# github.com/go-text/typesetting v0.0.0-20230326170714-a90f4704aff7
 ## explicit; go 1.17
 github.com/go-text/typesetting/di
 github.com/go-text/typesetting/font
+github.com/go-text/typesetting/harfbuzz
 github.com/go-text/typesetting/language
+github.com/go-text/typesetting/opentype/api
+github.com/go-text/typesetting/opentype/api/font
+github.com/go-text/typesetting/opentype/api/font/cff
+github.com/go-text/typesetting/opentype/api/font/cff/interpreter
+github.com/go-text/typesetting/opentype/loader
+github.com/go-text/typesetting/opentype/tables
 github.com/go-text/typesetting/segmenter
 github.com/go-text/typesetting/shaping
+github.com/go-text/typesetting/unicodedata
 # github.com/godbus/dbus/v5 v5.1.0
 ## explicit; go 1.12
 github.com/godbus/dbus/v5
@@ -289,4 +284,4 @@ gopkg.in/yaml.v3
 # honnef.co/go/js/dom v0.0.0-20221001195520-26252dedbe70
 ## explicit
 honnef.co/go/js/dom
-# fyne.io/fyne/v2 => github.com/alexballas/fyne/v2 v2.3.2-fixsliderwobble
+# fyne.io/fyne/v2 => github.com/alexballas/fyne/v2 v2.3.2-patches2
