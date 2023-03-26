@@ -19,6 +19,8 @@ type go2tvTheme struct {
 	Theme string
 }
 
+var _ fyne.Theme = go2tvTheme{}
+
 func (m go2tvTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
 	switch m.Theme {
 	case "Dark":

@@ -17,5 +17,5 @@ uninstall:
 clean:
 	rm -rf ./build
 
-run:
-	go run cmd/go2tv/go2tv.go
+run: build
+	build/go2tv
