@@ -3,7 +3,7 @@ module github.com/alexballas/go2tv
 go 1.19
 
 require (
-	fyne.io/fyne/v2 v2.3.2
+	fyne.io/fyne/v2 v2.3.3
 	github.com/gdamore/tcell/v2 v2.6.0
 	github.com/h2non/filetype v1.1.3
 	github.com/hashicorp/go-retryablehttp v0.7.2
@@ -52,4 +52,4 @@ require (
 	honnef.co/go/js/dom v0.0.0-20221001195520-26252dedbe70 // indirect
 )
 
-replace fyne.io/fyne/v2 => github.com/alexballas/fyne/v2 v2.3.2-patchv2
+replace fyne.io/fyne/v2 => github.com/alexballas/fyne/v2 v2.3.2-patches2

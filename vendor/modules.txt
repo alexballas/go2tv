@@ -1,4 +1,4 @@
-# fyne.io/fyne/v2 v2.3.2 => github.com/alexballas/fyne/v2 v2.3.2-patchv2
+# fyne.io/fyne/v2 v2.3.3 => github.com/alexballas/fyne/v2 v2.3.2-patches2
 ## explicit; go 1.14
 fyne.io/fyne/v2
 fyne.io/fyne/v2/app
@@ -284,4 +284,4 @@ gopkg.in/yaml.v3
 # honnef.co/go/js/dom v0.0.0-20221001195520-26252dedbe70
 ## explicit
 honnef.co/go/js/dom
-# fyne.io/fyne/v2 => github.com/alexballas/fyne/v2 v2.3.2-patchv2
+# fyne.io/fyne/v2 => github.com/alexballas/fyne/v2 v2.3.2-patches2
