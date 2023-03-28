@@ -14,6 +14,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -72,6 +73,24 @@ func (t *tappedSlider) DragEnd() {
 		if err := t.screen.tvdata.SeekSoapCall(reltime); err != nil {
 			return
 		}
+
+		getPos, err = t.screen.tvdata.GetPositionInfo()
+		if err != nil {
+			return
+		}
+
+		end, err := utils.FormatClockTime(getPos[0])
+		if err != nil {
+			return
+		}
+
+		current, err := utils.FormatClockTime(getPos[1])
+		if err != nil {
+			return
+		}
+
+		t.screen.CurrentPos.Set(current)
+		t.screen.EndPos.Set(end)
 	}
 }
 
@@ -125,6 +144,24 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 		if err := t.screen.tvdata.SeekSoapCall(reltime); err != nil {
 			return
 		}
+
+		getPos, err = t.screen.tvdata.GetPositionInfo()
+		if err != nil {
+			return
+		}
+
+		end, err := utils.FormatClockTime(getPos[0])
+		if err != nil {
+			return
+		}
+
+		current, err := utils.FormatClockTime(getPos[1])
+		if err != nil {
+			return
+		}
+
+		t.screen.CurrentPos.Set(current)
+		t.screen.EndPos.Set(end)
 	}
 }
 
@@ -278,6 +315,9 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			o.(*fyne.Container).Objects[1].(*widget.Label).SetText(data[i].name)
 		})
 
+	curPos := binding.NewString()
+	endPos := binding.NewString()
+
 	s.PlayPause = playpause
 	s.Stop = stop
 	s.MuteUnmute = muteunmute
@@ -290,7 +330,13 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	s.VolumeDown = volumedown
 	s.NextMediaCheck = nextmedia
 	s.SlideBar = sliderBar
+	s.CurrentPos = curPos
+	s.EndPos = endPos
 
+	curPos.Set("00:00:00")
+	endPos.Set("00:00:00")
+
+	sliderArea := container.NewBorder(nil, nil, widget.NewLabelWithData(curPos), widget.NewLabelWithData(endPos), sliderBar)
 	actionbuttons := container.New(&mainButtonsLayout{buttonHeight: 1.0, buttonPadding: theme.Padding()},
 		playpause,
 		volumedown,
@@ -305,8 +351,36 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, mrightbuttons), mrightbuttons, mfiletext)
 	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
 	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
-	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, sliderBar, actionbuttons, container.NewPadded(devicelabel))
+	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, sliderArea, actionbuttons, container.NewPadded(devicelabel))
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
+
+	sliderBar.OnChanged = func(f float64) {
+		getPos, err := s.tvdata.GetPositionInfo()
+		if err != nil {
+			return
+		}
+
+		total, err := utils.ClockTimeToSeconds(getPos[0])
+		if err != nil {
+			return
+		}
+
+		cur := (float64(total) * s.SlideBar.Value) / s.SlideBar.Max
+		roundedInt := int(math.Round(cur))
+
+		reltime, err := utils.SecondsToClockTime(roundedInt)
+		if err != nil {
+			return
+		}
+
+		end, err := utils.FormatClockTime(getPos[0])
+		if err != nil {
+			return
+		}
+
+		endPos.Set(end)
+		curPos.Set(reltime)
+	}
 
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
@@ -547,6 +621,8 @@ func sliderUpdate(s *NewScreen) {
 
 		if s.State == "Stopped" || s.State == "" {
 			s.SlideBar.Slider.SetValue(0)
+			s.CurrentPos.Set("00:00:00")
+			s.EndPos.Set("00:00:00")
 		}
 
 		if s.State == "Playing" {
@@ -568,6 +644,19 @@ func sliderUpdate(s *NewScreen) {
 			valueToSet := float64(current) * s.SlideBar.Max / float64(total)
 			if !math.IsNaN(valueToSet) {
 				s.SlideBar.SetValue(valueToSet)
+
+				end, err := utils.FormatClockTime(getPos[0])
+				if err != nil {
+					return
+				}
+
+				current, err := utils.FormatClockTime(getPos[1])
+				if err != nil {
+					return
+				}
+
+				s.CurrentPos.Set(current)
+				s.EndPos.Set(end)
 			}
 		}
 	}

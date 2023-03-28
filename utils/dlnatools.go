@@ -184,3 +184,18 @@ func SecondsToClockTime(secs int) (string, error) {
 	str := fmt.Sprintf("%02d:%02d:%02d", hours, minutes, secs)
 	return str, nil
 }
+
+// FormatClockTime converts clock time to a more expected format of clock time.
+func FormatClockTime(strtime string) (string, error) {
+	sec, err := ClockTimeToSeconds(strtime)
+	if err != nil {
+		return "", ErrInvalidClockFormat
+	}
+
+	out, err := SecondsToClockTime(sec)
+	if err != nil {
+		return "", ErrInvalidClockFormat
+	}
+
+	return out, nil
+}

@@ -15,6 +15,7 @@ import (
 	fyne "fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -31,6 +32,8 @@ type NewScreen struct {
 	VolumeDown           *widget.Button
 	SlideBar             *tappedSlider
 	Debug                *debugWriter
+	CurrentPos           binding.String
+	EndPos               binding.String
 	tabs                 *container.AppTabs
 	CheckVersion         *widget.Button
 	SubsText             *widget.Entry
