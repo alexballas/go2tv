@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os/exec"
 	"sort"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -51,7 +52,7 @@ func (t *tappedSlider) DragEnd() {
 	// should reset this back to false after the first iterration.
 	t.screen.sliderActive = true
 
-	if t.screen.State == "Playing" {
+	if t.screen.State == "Playing" || t.screen.State == "Paused" {
 		getPos, err := t.screen.tvdata.GetPositionInfo()
 		if err != nil {
 			return
@@ -70,27 +71,17 @@ func (t *tappedSlider) DragEnd() {
 			return
 		}
 
-		if err := t.screen.tvdata.SeekSoapCall(reltime); err != nil {
-			return
-		}
-
-		getPos, err = t.screen.tvdata.GetPositionInfo()
-		if err != nil {
-			return
-		}
-
 		end, err := utils.FormatClockTime(getPos[0])
 		if err != nil {
 			return
 		}
 
-		current, err := utils.FormatClockTime(getPos[1])
-		if err != nil {
+		t.screen.CurrentPos.Set(reltime)
+		t.screen.EndPos.Set(end)
+
+		if err := t.screen.tvdata.SeekSoapCall(reltime); err != nil {
 			return
 		}
-
-		t.screen.CurrentPos.Set(current)
-		t.screen.EndPos.Set(end)
 	}
 }
 
@@ -122,7 +113,7 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 
 	t.SetValue(float64(newpos))
 
-	if t.screen.State == "Playing" {
+	if t.screen.State == "Playing" || t.screen.State == "Paused" {
 		getPos, err := t.screen.tvdata.GetPositionInfo()
 		if err != nil {
 			return
@@ -141,27 +132,17 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 			return
 		}
 
-		if err := t.screen.tvdata.SeekSoapCall(reltime); err != nil {
-			return
-		}
-
-		getPos, err = t.screen.tvdata.GetPositionInfo()
-		if err != nil {
-			return
-		}
-
 		end, err := utils.FormatClockTime(getPos[0])
 		if err != nil {
 			return
 		}
 
-		current, err := utils.FormatClockTime(getPos[1])
-		if err != nil {
+		t.screen.CurrentPos.Set(reltime)
+		t.screen.EndPos.Set(end)
+
+		if err := t.screen.tvdata.SeekSoapCall(reltime); err != nil {
 			return
 		}
-
-		t.screen.CurrentPos.Set(current)
-		t.screen.EndPos.Set(end)
 	}
 }
 
@@ -354,33 +335,55 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, sliderArea, actionbuttons, container.NewPadded(devicelabel))
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
 
-	sliderBar.OnChanged = func(f float64) {
-		getPos, err := s.tvdata.GetPositionInfo()
-		if err != nil {
-			return
+	sliderUpdatefunc := func() func(f float64) {
+		var end string
+		var mu sync.Mutex
+
+		return func(f float64) {
+			if end == "" {
+				getSliderPos, err := s.tvdata.GetPositionInfo()
+				if err != nil {
+					return
+				}
+
+				mu.Lock()
+				end = getSliderPos[0]
+				mu.Unlock()
+
+				// poor man's caching to reduce the amount of
+				// GetPositionInfo calls.
+				go func() {
+					time.Sleep(time.Second)
+					mu.Lock()
+					end = ""
+					mu.Unlock()
+				}()
+			}
+
+			total, err := utils.ClockTimeToSeconds(end)
+			if err != nil {
+				return
+			}
+
+			cur := (float64(total) * s.SlideBar.Value) / s.SlideBar.Max
+			roundedInt := int(math.Round(cur))
+
+			reltime, err := utils.SecondsToClockTime(roundedInt)
+			if err != nil {
+				return
+			}
+
+			end, err := utils.FormatClockTime(end)
+			if err != nil {
+				return
+			}
+
+			endPos.Set(end)
+			curPos.Set(reltime)
 		}
-
-		total, err := utils.ClockTimeToSeconds(getPos[0])
-		if err != nil {
-			return
-		}
-
-		cur := (float64(total) * s.SlideBar.Value) / s.SlideBar.Max
-		roundedInt := int(math.Round(cur))
-
-		reltime, err := utils.SecondsToClockTime(roundedInt)
-		if err != nil {
-			return
-		}
-
-		end, err := utils.FormatClockTime(getPos[0])
-		if err != nil {
-			return
-		}
-
-		endPos.Set(end)
-		curPos.Set(reltime)
 	}
+
+	sliderBar.OnChanged = sliderUpdatefunc()
 
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {

@@ -34,14 +34,14 @@ var (
 // TVPayload is the heart of Go2TV. We pass that type to the
 // webserver. We need to explicitly initialize it.
 type TVPayload struct {
-	mu                          sync.RWMutex
 	initLogOnce                 sync.Once
+	mu                          sync.RWMutex
 	Logging                     io.Writer
+	MediaRenderersStates        map[string]*States
 	CurrentTimers               map[string]*time.Timer
 	InitialMediaRenderersStates map[string]bool
-	MediaRenderersStates        map[string]*States
-	ControlURL                  string
 	EventURL                    string
+	ControlURL                  string
 	MediaURL                    string
 	MediaType                   string
 	MediaPath                   string
