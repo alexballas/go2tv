@@ -26,8 +26,10 @@ import (
 )
 
 type tappedSlider struct {
+	mu sync.Mutex
 	*widget.Slider
 	screen *NewScreen
+	end    string
 }
 
 func newTappableSlider(s *NewScreen) *tappedSlider {
@@ -44,6 +46,47 @@ func newTappableSlider(s *NewScreen) *tappedSlider {
 func (t *tappedSlider) Dragged(e *fyne.DragEvent) {
 	t.Slider.Dragged(e)
 	t.screen.sliderActive = true
+
+	if t.end == "" {
+		getSliderPos, err := t.screen.tvdata.GetPositionInfo()
+		if err != nil {
+			return
+		}
+
+		t.mu.Lock()
+		t.end = getSliderPos[0]
+		t.mu.Unlock()
+
+		// poor man's caching to reduce the amount of
+		// GetPositionInfo calls.
+		go func() {
+			time.Sleep(time.Second)
+			t.mu.Lock()
+			t.end = ""
+			t.mu.Unlock()
+		}()
+	}
+
+	total, err := utils.ClockTimeToSeconds(t.end)
+	if err != nil {
+		return
+	}
+
+	cur := (float64(total) * t.Slider.Value) / t.Slider.Max
+	roundedInt := int(math.Round(cur))
+
+	reltime, err := utils.SecondsToClockTime(roundedInt)
+	if err != nil {
+		return
+	}
+
+	end, err := utils.FormatClockTime(t.end)
+	if err != nil {
+		return
+	}
+
+	t.screen.EndPos.Set(end)
+	t.screen.CurrentPos.Set(reltime)
 }
 
 func (t *tappedSlider) DragEnd() {
@@ -335,56 +378,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, sliderArea, actionbuttons, container.NewPadded(devicelabel))
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
 
-	sliderUpdatefunc := func() func(f float64) {
-		var end string
-		var mu sync.Mutex
-
-		return func(f float64) {
-			if end == "" {
-				getSliderPos, err := s.tvdata.GetPositionInfo()
-				if err != nil {
-					return
-				}
-
-				mu.Lock()
-				end = getSliderPos[0]
-				mu.Unlock()
-
-				// poor man's caching to reduce the amount of
-				// GetPositionInfo calls.
-				go func() {
-					time.Sleep(time.Second)
-					mu.Lock()
-					end = ""
-					mu.Unlock()
-				}()
-			}
-
-			total, err := utils.ClockTimeToSeconds(end)
-			if err != nil {
-				return
-			}
-
-			cur := (float64(total) * s.SlideBar.Value) / s.SlideBar.Max
-			roundedInt := int(math.Round(cur))
-
-			reltime, err := utils.SecondsToClockTime(roundedInt)
-			if err != nil {
-				return
-			}
-
-			end, err := utils.FormatClockTime(end)
-			if err != nil {
-				return
-			}
-
-			endPos.Set(end)
-			curPos.Set(reltime)
-		}
-	}
-
-	sliderBar.OnChanged = sliderUpdatefunc()
-
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
 		playpause.Enable()
@@ -479,6 +472,14 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	}
 
 	nextmedia.OnChanged = func(b bool) {
+		switch b {
+		case true:
+			medialoop.SetChecked(false)
+			medialoop.Disable()
+		case false:
+			medialoop.Enable()
+		}
+
 		go func() {
 			gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
 
@@ -493,9 +494,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 						}
 					}
 				}
-
-				medialoop.SetChecked(false)
-				medialoop.Disable()
 				return
 			}
 
@@ -505,8 +503,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 					stopAction(s)
 				}
 			}
-
-			medialoop.Enable()
 		}()
 	}
 
