@@ -220,11 +220,9 @@ func getNextMedia(screen *NewScreen) (string, string) {
 		isMedia := false
 		for _, vext := range screen.mediaFormats {
 			if filepath.Ext(filepath.Join(filedir, f.Name())) == vext {
-
 				if firstMedia == "" {
 					firstMedia = f.Name()
 				}
-
 				isMedia = true
 				break
 			}

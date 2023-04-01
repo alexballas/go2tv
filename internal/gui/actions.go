@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -392,12 +393,21 @@ out:
 				break out
 			}
 
-			if nextURI == "" && screen.NextMediaCheck.Checked {
-				screen.MediaText.Text, screen.mediafile = getNextMedia(screen)
-				screen.MediaText.Refresh()
+			if screen.NextMediaCheck.Checked {
+				// If we change the current folder of media files we need to ensure
+				// that the next song is going to be requeued correctly.
+				next, _ := getNextMedia(screen)
+				if path.Base(nextURI) == utils.ConvertFilename(next) {
+					continue
+				}
 
-				if !screen.CustomSubsCheck.Checked {
-					selectSubs(screen.mediafile, screen)
+				if nextURI == "" {
+					screen.MediaText.Text, screen.mediafile = getNextMedia(screen)
+					screen.MediaText.Refresh()
+
+					if !screen.CustomSubsCheck.Checked {
+						selectSubs(screen.mediafile, screen)
+					}
 				}
 
 				newTVPayload, err := queueNext(screen, false)
