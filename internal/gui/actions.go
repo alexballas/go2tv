@@ -636,19 +636,8 @@ func queueNext(screen *NewScreen, clear bool) (*soapcalls.TVPayload, error) {
 		return nil, err
 	}
 
-	func() {
-		defer func() {
-			_ = recover()
-		}()
-		screen.httpserver.Mux.HandleFunc(mURL.Path, screen.httpserver.ServeMediaHandler(nextTvData, mediaFile))
-	}()
-
-	func() {
-		defer func() {
-			_ = recover()
-		}()
-		screen.httpserver.Mux.HandleFunc(sURL.Path, screen.httpserver.ServeMediaHandler(nil, spath))
-	}()
+	screen.httpserver.AddHandler(mURL.Path, nextTvData, mediaFile)
+	screen.httpserver.AddHandler(sURL.Path, nil, spath)
 
 	if err := nextTvData.SendtoTV("Queue"); err != nil {
 		return nil, err

@@ -5,6 +5,7 @@ package gui
 
 import (
 	"errors"
+	"log"
 	"math"
 	"net/url"
 	"os/exec"
@@ -529,7 +530,11 @@ func refreshDevList(s *NewScreen, data *[]devType) {
 	}
 
 	for range refreshDevices.C {
-		datanew, _ := getDevices(2)
+		datanew, err := getDevices(2)
+
+		if err != nil {
+			log.Println("Error #1:", err)
+		}
 
 		// check to see if the new refresh includes
 		// one of the already selected devices
