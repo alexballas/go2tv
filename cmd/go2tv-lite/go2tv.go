@@ -168,6 +168,7 @@ func run() error {
 	go func() {
 		s.StartServer(serverStarted, mediaFile, absSubtitlesFile, tvdata, scr)
 	}()
+
 	// Wait for HTTP server to properly initialize
 	if err := <-serverStarted; err != nil {
 		return err

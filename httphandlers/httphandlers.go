@@ -110,9 +110,9 @@ func (s *HTTPserver) StartServer(serverStarted chan<- error, media, subtitles in
 
 // ServeMediaHandler is a helper method used to properly handle media and subtitle streaming.
 func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, req *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
-		out, exists := s.handlers[req.URL.Path]
+		out, exists := s.handlers[r.URL.Path]
 		s.mu.Unlock()
 
 		if !exists {
@@ -120,35 +120,7 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 			return
 		}
 
-		tv := out.payload
-		media := out.media
-
-		var media2 interface{}
-		media2 = media
-
-		switch f := media.(type) {
-		case string:
-			m, err := os.Open(f)
-			if err != nil {
-				http.NotFound(w, req)
-				return
-			}
-			defer m.Close()
-
-			info, err := m.Stat()
-			if err != nil {
-				http.NotFound(w, req)
-				return
-			}
-
-			media2 = osFileType{
-				time: info.ModTime(),
-				file: m,
-				path: f,
-			}
-		}
-
-		serveContent(w, req, tv, media2, s.ffmpeg)
+		serveContent(w, r, out.payload, out.media, s.ffmpeg)
 	}
 }
 
@@ -257,8 +229,26 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 	}
 
 	switch f := mf.(type) {
-	case osFileType:
-		serveContentCustomType(w, r, mediaType, transcode, seek, f, ff)
+	case string:
+		m, err := os.Open(f)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		defer m.Close()
+
+		info, err := m.Stat()
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+
+		mediaFileType := osFileType{
+			time: info.ModTime(),
+			file: m,
+			path: f,
+		}
+		serveContentCustomType(w, r, mediaType, transcode, seek, mediaFileType, ff)
 	case []byte:
 		serveContentBytes(w, r, mediaType, f)
 	case io.ReadCloser:

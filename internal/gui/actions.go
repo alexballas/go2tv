@@ -402,6 +402,18 @@ out:
 				}
 
 				if nextURI == "" {
+					// No need to check for the error as this is something
+					// that we did in previous steps in our workflow
+					mPath, _ := url.Parse(screen.tvdata.MediaURL)
+					sPath, _ := url.Parse(screen.tvdata.SubtitlesURL)
+
+					// Make sure we clean up after ourselves and avoid
+					// leaving any dangling handlers. Given the nextURI is ""
+					// we know that the previously playing media entry was
+					// replaced by the one in the NextURI entry.
+					screen.httpserver.RemoveHandler(mPath.Path)
+					screen.httpserver.RemoveHandler(sPath.Path)
+
 					screen.MediaText.Text, screen.mediafile = getNextMedia(screen)
 					screen.MediaText.Refresh()
 
@@ -605,15 +617,23 @@ func queueNext(screen *NewScreen, clear bool) (*soapcalls.TVPayload, error) {
 	}
 
 	var mediaFile interface{} = fpath
-	oldURL, _ := url.Parse(screen.tvdata.MediaURL)
+	oldMediaURL, err := url.Parse(screen.tvdata.MediaURL)
+	if err != nil {
+		return nil, err
+	}
+
+	oldSubsURL, err := url.Parse(screen.tvdata.SubtitlesURL)
+	if err != nil {
+		return nil, err
+	}
 
 	nextTvData := &soapcalls.TVPayload{
 		ControlURL:                  screen.controlURL,
 		EventURL:                    screen.eventlURL,
 		RenderingControlURL:         screen.renderingControlURL,
 		ConnectionManagerURL:        screen.connectionManagerURL,
-		MediaURL:                    "http://" + oldURL.Host + "/" + utils.ConvertFilename(fname),
-		SubtitlesURL:                "http://" + oldURL.Host + "/" + utils.ConvertFilename(spath),
+		MediaURL:                    "http://" + oldMediaURL.Host + "/" + utils.ConvertFilename(fname),
+		SubtitlesURL:                "http://" + oldSubsURL.Host + "/" + utils.ConvertFilename(spath),
 		CallbackURL:                 screen.tvdata.CallbackURL,
 		MediaType:                   mediaType,
 		MediaPath:                   screen.mediafile,
