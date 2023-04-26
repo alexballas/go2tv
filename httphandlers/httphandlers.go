@@ -120,6 +120,28 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 			return
 		}
 
+		switch f := out.media.(type) {
+		case string:
+			m, err := os.Open(f)
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			defer m.Close()
+
+			info, err := m.Stat()
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+
+			out.media = osFileType{
+				time: info.ModTime(),
+				file: m,
+				path: f,
+			}
+		}
+
 		serveContent(w, r, out.payload, out.media, s.ffmpeg)
 	}
 }
@@ -229,26 +251,8 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 	}
 
 	switch f := mf.(type) {
-	case string:
-		m, err := os.Open(f)
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-		defer m.Close()
-
-		info, err := m.Stat()
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-
-		mediaFileType := osFileType{
-			time: info.ModTime(),
-			file: m,
-			path: f,
-		}
-		serveContentCustomType(w, r, mediaType, transcode, seek, mediaFileType, ff)
+	case osFileType:
+		serveContentCustomType(w, r, mediaType, transcode, seek, f, ff)
 	case []byte:
 		serveContentBytes(w, r, mediaType, f)
 	case io.ReadCloser:
