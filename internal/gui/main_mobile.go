@@ -17,7 +17,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/alexballas/go2tv/devices"
 	"github.com/alexballas/go2tv/soapcalls"
-	"github.com/alexballas/go2tv/utils"
+	"github.com/alexballas/go2tv/soapcalls/utils"
 )
 
 func mainWindow(s *NewScreen) fyne.CanvasObject {

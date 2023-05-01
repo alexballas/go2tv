@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/alexballas/go2tv/utils"
+	"github.com/alexballas/go2tv/soapcalls/utils"
 )
 
 type Options struct {
