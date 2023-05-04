@@ -204,7 +204,7 @@ func listFlagFunction() error {
 
 	// We loop through this map twice as we need to maintain
 	// the correct order.
-	keys := make([]string, 0)
+	var keys []string
 	for k := range deviceList {
 		keys = append(keys, k)
 	}

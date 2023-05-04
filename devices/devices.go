@@ -73,7 +73,7 @@ func DevicePicker(devices map[string]string, n int) (string, error) {
 		return "", ErrDeviceNotAvailable
 	}
 
-	keys := make([]string, 0)
+	var keys []string
 	for k := range devices {
 		keys = append(keys, k)
 	}

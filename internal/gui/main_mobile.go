@@ -25,7 +25,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 	list := new(widget.List)
 
-	data := make([]devType, 0)
+	var data []devType
 
 	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
 		if k.Name == "Space" || k.Name == "P" {

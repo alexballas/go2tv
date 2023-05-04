@@ -194,7 +194,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	w := s.Current
 	list := new(widget.List)
 
-	data := make([]devType, 0)
+	var data []devType
 
 	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
 		if !s.Hotkeys {
