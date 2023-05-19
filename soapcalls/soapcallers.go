@@ -572,7 +572,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 
 	timeoutReply := "300"
 	if len(res.Header["Timeout"]) > 0 {
-		timeoutReply = strings.TrimLeft(res.Header["Timeout"][0], "Second-")
+		timeoutReply = strings.TrimPrefix(res.Header["Timeout"][0], "Second-")
 	}
 
 	p.RefreshLoopUUIDSoapCall(uuid, timeoutReply)

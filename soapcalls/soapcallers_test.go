@@ -24,6 +24,7 @@ func TestParseProtocolInfo(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
+			testing.Short()
 			if err := parseProtocolInfo(tc.input, tc.mediaType); err != nil {
 				t.Fatalf("%s: Failed to call parseProtocolInfo due to %s", tc.name, err.Error())
 			}
