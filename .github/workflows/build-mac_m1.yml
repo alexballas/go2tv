@@ -23,7 +23,7 @@ jobs:
 
     - name: Install fyne-cross
       run: go install github.com/fyne-io/fyne-cross@latest
-    
+
     - name: Install Homebrew
       run: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
