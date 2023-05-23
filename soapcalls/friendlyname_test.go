@@ -1,6 +1,7 @@
 package soapcalls
 
 import (
+	"context"
 	"encoding/xml"
 	"net/http"
 	"net/http/httptest"
@@ -31,7 +32,7 @@ func TestGetFriendlyName(t *testing.T) {
 
 	defer testServer.Close()
 
-	friendly, err := GetFriendlyName(testServer.URL)
+	friendly, err := GetFriendlyName(context.Background(), testServer.URL)
 	if err != nil {
 		t.Fatalf("%s: Failed to call GetFriendlyName due to %s", testName, err.Error())
 	}

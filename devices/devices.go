@@ -1,6 +1,7 @@
 package devices
 
 import (
+	"context"
 	"fmt"
 	"sort"
 
@@ -30,7 +31,7 @@ func LoadSSDPservices(delay int) (map[string]string, error) {
 		// (stop,play,pause). If we need support other functionalities
 		// like volume control we need to use the RenderingControl service.
 		if srv.Type == "urn:schemas-upnp-org:service:AVTransport:1" {
-			friendlyName, err := soapcalls.GetFriendlyName(srv.Location)
+			friendlyName, err := soapcalls.GetFriendlyName(context.Background(), srv.Location)
 			if err != nil {
 				continue
 			}

@@ -1,6 +1,7 @@
 package soapcalls
 
 import (
+	"context"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -55,7 +56,7 @@ type DMRextracted struct {
 }
 
 // DMRextractor extracts the services URLs from the main DMR xml.
-func DMRextractor(dmrurl string) (*DMRextracted, error) {
+func DMRextractor(ctx context.Context, dmrurl string) (*DMRextracted, error) {
 	var root rootNode
 	ex := &DMRextracted{}
 
@@ -65,7 +66,7 @@ func DMRextractor(dmrurl string) (*DMRextracted, error) {
 	}
 
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", dmrurl, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", dmrurl, nil)
 	if err != nil {
 		return nil, fmt.Errorf("DMRextractor GET error: %w", err)
 	}

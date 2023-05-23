@@ -1,6 +1,7 @@
 package soapcalls
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -42,7 +43,7 @@ func TestDMRextractor(t *testing.T) {
 
 	defer testServer.Close()
 
-	_, err := DMRextractor(testServer.URL)
+	_, err := DMRextractor(context.Background(), testServer.URL)
 	if err != nil {
 		t.Fatalf("Failed to call DMRextractor due to %s", err.Error())
 	}

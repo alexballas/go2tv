@@ -4,6 +4,7 @@
 package gui
 
 import (
+	"context"
 	"errors"
 	"log"
 	"math"
@@ -382,7 +383,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
 		playpause.Enable()
-		t, err := soapcalls.DMRextractor(data[id].addr)
+		t, err := soapcalls.DMRextractor(context.Background(), data[id].addr)
 		check(s, err)
 		if err == nil {
 			s.selectedDevice = data[id]

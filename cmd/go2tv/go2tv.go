@@ -147,7 +147,7 @@ func run() error {
 		return err
 	}
 
-	tvdata, err := soapcalls.NewTVPayload(soapcalls.Options{
+	tvdata, err := soapcalls.NewTVPayload(&soapcalls.Options{
 		DMR:       flagRes.dmrURL,
 		Media:     absMediaFile,
 		Subs:      absSubtitlesFile,

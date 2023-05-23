@@ -147,7 +147,7 @@ func run() error {
 
 	scr := &dummyScreen{ctxCancel: cancel}
 
-	tvdata, err := soapcalls.NewTVPayload(soapcalls.Options{
+	tvdata, err := soapcalls.NewTVPayload(&soapcalls.Options{
 		DMR:       flagRes.dmrURL,
 		Media:     absMediaFile,
 		Subs:      absSubtitlesFile,
