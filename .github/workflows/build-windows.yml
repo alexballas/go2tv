@@ -21,9 +21,12 @@ jobs:
     - name: Get dependencies
       run: sudo apt update && sudo apt install gcc xorg-dev gcc-mingw-w64
 
+    - name: Install fyne
+      run: go install fyne.io/fyne/v2/cmd/fyne@latest
+
     - name: Package (Windows)
-      run: CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ GOOS=windows GOARCH=amd64 go build -ldflags " -H=windowsgui -s -w" -o go2tv.exe cmd/go2tv/go2tv.go
-    
+      run: cd cmd/go2tv && CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ fyne package --release --appID app.go2tv -os windows -icon  ../../assets/go2tv-icon.png && mv go2tv.exe ../../
+
     - uses: actions/upload-artifact@v2
       with:
         name: go2tv_${{ env.GO2TV_VERSION }}_windows_amd64
