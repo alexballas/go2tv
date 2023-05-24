@@ -21,7 +21,7 @@ jobs:
             sudo apt update
             sudo apt install -y xorg-dev
             sudo apt clean
-            wget -nv https://go.dev/dl/go1.19.linux-armv6l.tar.gz
+            wget -nv https://go.dev/dl/go1.20.4.linux-armv6l.tar.gz
             tar -xzf go1.19.linux-armv6l.tar.gz
             rm go1.19.linux-armv6l.tar.gz
             export GOROOT=/go

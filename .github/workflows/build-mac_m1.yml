@@ -34,7 +34,7 @@ jobs:
       run: colima start
 
     - name: Package (macOS)
-      run:  fyne-cross darwin -arch=arm64 -icon assets/go2tv-icon.png -app-id "com.alexballas.go2tv" ./cmd/go2tv/
+      run:  fyne-cross darwin -arch=arm64 -icon assets/go2tv-icon-desktop.png -app-id "com.alexballas.go2tv" ./cmd/go2tv/
 
     - name: Prepary app for packaging
       run:  mv fyne-cross/dist/darwin-arm64/go2tv.app .

@@ -164,6 +164,10 @@ type getPositionInfoResponse struct {
 }
 
 func (p *TVPayload) setAVTransportSoapCall() error {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
@@ -233,6 +237,10 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 }
 
 func (p *TVPayload) setNextAVTransportSoapCall(clear bool) error {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
@@ -300,6 +308,10 @@ func (p *TVPayload) setNextAVTransportSoapCall(clear bool) error {
 
 // PlayPauseStopSoapCall builds and sends the AVTransport actions for Play Pause and Stop.
 func (p *TVPayload) PlayPauseStopSoapCall(action string) error {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "AVTransportActionSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
@@ -385,6 +397,10 @@ func (p *TVPayload) PlayPauseStopSoapCall(action string) error {
 
 // SeekSoapCall builds and sends the AVTransport actions for Seek.
 func (p *TVPayload) SeekSoapCall(reltime string) error {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
@@ -463,6 +479,10 @@ func (p *TVPayload) SeekSoapCall(reltime string) error {
 // SubscribeSoapCall send a SUBSCRIBE request to the DMR device.
 // If we explicitly pass the UUID, then we refresh it instead.
 func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	delete(p.CurrentTimers, uuidInput)
 
 	parsedURLcontrol, err := url.Parse(p.EventURL)
@@ -585,6 +605,10 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 // UnsubscribeSoapCall sends an UNSUBSCRIBE request to the DMR device
 // and cleans up any stored states for the provided UUID.
 func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	p.DeleteMRstate(uuid)
 
 	parsedURLcontrol, err := url.Parse(p.EventURL)
@@ -641,6 +665,10 @@ func (p *TVPayload) refreshLoopUUIDAsyncSoapCall(uuid string) func() {
 
 // GetMuteSoapCall returns the mute status for our device
 func (p *TVPayload) GetMuteSoapCall() (string, error) {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "GetMuteSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
@@ -718,6 +746,10 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 
 // SetMuteSoapCall returns true if muted and false if not muted.
 func (p *TVPayload) SetMuteSoapCall(number string) error {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "SetMuteSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
@@ -785,6 +817,10 @@ func (p *TVPayload) SetMuteSoapCall(number string) error {
 
 // GetVolumeSoapCall returns tue volume level for our device.
 func (p *TVPayload) GetVolumeSoapCall() (int, error) {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "GetVolumeSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
@@ -873,6 +909,10 @@ func (p *TVPayload) GetVolumeSoapCall() (int, error) {
 
 // SetVolumeSoapCall sets the desired volume level.
 func (p *TVPayload) SetVolumeSoapCall(v string) error {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "SetVolumeSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
@@ -940,6 +980,10 @@ func (p *TVPayload) SetVolumeSoapCall(v string) error {
 
 // GetProtocolInfo requests our device's protocol info.
 func (p *TVPayload) GetProtocolInfo() error {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedConnectionManagerURL, err := url.Parse(p.ConnectionManagerURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "URL Parse").Err(err).Msg("")
@@ -1012,6 +1056,10 @@ func (p *TVPayload) GetProtocolInfo() error {
 func (p *TVPayload) Gapless() (string, error) {
 	if p == nil {
 		return "", errors.New("Gapless, nil tvdata")
+	}
+
+	if p.ctx == nil {
+		p.ctx = context.Background()
 	}
 
 	parsedURLtransport, err := url.Parse(p.ControlURL)
@@ -1091,6 +1139,10 @@ func (p *TVPayload) Gapless() (string, error) {
 func (p *TVPayload) GetTransportInfo() ([]string, error) {
 	if p == nil {
 		return nil, errors.New("GetTransportInfo, nil tvdata")
+	}
+
+	if p.ctx == nil {
+		p.ctx = context.Background()
 	}
 
 	parsedURLtransport, err := url.Parse(p.ControlURL)
@@ -1173,6 +1225,10 @@ func (p *TVPayload) GetTransportInfo() ([]string, error) {
 func (p *TVPayload) GetPositionInfo() ([]string, error) {
 	if p == nil {
 		return nil, errors.New("GetPositionInfo, nil tvdata")
+	}
+
+	if p.ctx == nil {
+		p.ctx = context.Background()
 	}
 
 	parsedURLtransport, err := url.Parse(p.ControlURL)
