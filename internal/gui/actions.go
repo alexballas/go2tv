@@ -163,7 +163,7 @@ func playAction(screen *NewScreen) {
 		screen.cancelEnablePlay()
 	}
 
-	ctx, cancelEnablePlay := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancelEnablePlay := context.WithTimeout(context.Background(), 3*time.Second)
 	screen.cancelEnablePlay = cancelEnablePlay
 
 	go func() {
