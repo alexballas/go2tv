@@ -184,7 +184,7 @@ func playAction(screen *NewScreen) {
 		case "PLAYING":
 			setPlayPauseView("Pause", screen)
 			screen.updateScreenState("Playing")
-		case "PAUSED":
+		case "PAUSED_PLAYBACK":
 			setPlayPauseView("Play", screen)
 			screen.updateScreenState("Paused")
 		}
@@ -438,6 +438,37 @@ out:
 }
 
 func pauseAction(screen *NewScreen) {
+	if screen.cancelEnablePlay != nil {
+		screen.cancelEnablePlay()
+	}
+
+	ctx, cancelEnablePlay := context.WithTimeout(context.Background(), 5*time.Second)
+	screen.cancelEnablePlay = cancelEnablePlay
+
+	go func() {
+		<-ctx.Done()
+
+		defer func() { screen.cancelEnablePlay = nil }()
+
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return
+		}
+
+		out, err := screen.tvdata.GetTransportInfo()
+		if err != nil {
+			return
+		}
+
+		switch out[0] {
+		case "PLAYING":
+			setPlayPauseView("Pause", screen)
+			screen.updateScreenState("Playing")
+		case "PAUSED_PLAYBACK":
+			setPlayPauseView("Play", screen)
+			screen.updateScreenState("Paused")
+		}
+	}()
+
 	err := screen.tvdata.SendtoTV("Pause")
 	check(screen, err)
 }
