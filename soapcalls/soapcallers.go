@@ -1456,6 +1456,13 @@ func parseProtocolInfo(b []byte, mt string) error {
 	}
 
 	protocols := strings.Split(respProtocolInfo.Body.GetProtocolInfoResponse.Sink, ",")
+
+	// We got no response from the device. Instead of just straight failing, we should
+	// just let the device play our media file and hope it works.
+	if len(protocols) == 0 {
+		return nil
+	}
+
 	for _, i := range protocols {
 		items := strings.Split(i, ":")
 		// Here we hardcode check the http-get protocol. We would need to change that
