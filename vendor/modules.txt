@@ -45,6 +45,11 @@ fyne.io/fyne/v2/widget
 fyne.io/systray
 fyne.io/systray/internal/generated/menu
 fyne.io/systray/internal/generated/notifier
+# github.com/alexballas/go-ssdp v0.0.3
+## explicit; go 1.19
+github.com/alexballas/go-ssdp
+github.com/alexballas/go-ssdp/internal/multicast
+github.com/alexballas/go-ssdp/internal/ssdplog
 # github.com/davecgh/go-spew v1.1.1
 ## explicit
 github.com/davecgh/go-spew/spew
@@ -168,9 +173,6 @@ github.com/hashicorp/go-retryablehttp
 # github.com/jsummers/gobmp v0.0.0-20151104160322-e2ba15ffa76e
 ## explicit
 github.com/jsummers/gobmp
-# github.com/koron/go-ssdp v0.0.3
-## explicit; go 1.17
-github.com/koron/go-ssdp
 # github.com/lucasb-eyer/go-colorful v1.2.0
 ## explicit; go 1.12
 github.com/lucasb-eyer/go-colorful
