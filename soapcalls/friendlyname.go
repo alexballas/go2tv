@@ -1,15 +1,16 @@
 package soapcalls
 
 import (
+	"context"
 	"encoding/xml"
 	"fmt"
 	"net/http"
 )
 
 // GetFriendlyName returns the friendly name value for a the specific DMR url.
-func GetFriendlyName(dmr string) (string, error) {
+func GetFriendlyName(ctx context.Context, dmr string) (string, error) {
 	client := &http.Client{}
-	req, err := http.NewRequest(http.MethodGet, dmr, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dmr, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create NewRequest for GetFriendlyName: %w", err)
 	}

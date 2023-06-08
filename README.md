@@ -1,6 +1,6 @@
 <br/>
 <p align="center">
-<img src="https://raw.githubusercontent.com/alexballas/go2tv/main/assets/go2tv-red.svg" width="225" alt="Go2TV logo">
+<img src="assets/go2tv-logo-color.svg" width="225" alt="Go2TV logo">
 </a>
 </p>
 <br/>
@@ -24,8 +24,8 @@ Cast your media files to UPnP/DLNA Media Renderers and Smart TVs.
 ---
 GUI mode
 -----
-![](https://i.imgur.com/ogbSCZF.png)
-![](https://i.imgur.com/ncBpyw4.png)
+![](https://i.imgur.com/Pw44BYD.png)
+![](https://i.imgur.com/JeUxGGd.png)
 
 CLI mode
 -----

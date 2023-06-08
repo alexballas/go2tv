@@ -1,33 +1,23 @@
-package ssdp
+package multicast
 
 import (
 	"net"
-	"sync"
 )
 
-// Interfaces specify target interfaces to multicast.  If no interfaces are
-// specified, all interfaces will be used.
-var Interfaces []net.Interface
+type InterfacesProviderFunc func() []net.Interface
 
-var ifLock sync.Mutex
-var ifList []net.Interface
+// InterfacesProvider specify a function to list all interfaces to multicast.
+// If no provider are given, all possible interfaces will be used.
+var InterfacesProvider InterfacesProviderFunc
 
 // interfaces gets list of net.Interface to multicast UDP packet.
 func interfaces() ([]net.Interface, error) {
-	ifLock.Lock()
-	defer ifLock.Unlock()
-	if len(Interfaces) > 0 {
-		return Interfaces, nil
+	if p := InterfacesProvider; p != nil {
+		if list := p(); len(list) > 0 {
+			return list, nil
+		}
 	}
-	if len(ifList) > 0 {
-		return ifList, nil
-	}
-	l, err := interfacesIPv4()
-	if err != nil {
-		return nil, err
-	}
-	ifList = l
-	return ifList, nil
+	return interfacesIPv4()
 }
 
 // interfacesIPv4 lists net.Interface on IPv4.
@@ -38,7 +28,7 @@ func interfacesIPv4() ([]net.Interface, error) {
 	}
 	list := make([]net.Interface, 0, len(iflist))
 	for _, ifi := range iflist {
-		if !hasLinkUp(&ifi) || !hasIPv4Address(&ifi) {
+		if !hasLinkUp(&ifi) || !hasMulticast(&ifi) || !hasIPv4Address(&ifi) {
 			continue
 		}
 		list = append(list, ifi)
@@ -49,6 +39,11 @@ func interfacesIPv4() ([]net.Interface, error) {
 // hasLinkUp checks an I/F have link-up or not.
 func hasLinkUp(ifi *net.Interface) bool {
 	return ifi.Flags&net.FlagUp != 0
+}
+
+// hasMulticast checks an I/F supports multicast or not.
+func hasMulticast(ifi *net.Interface) bool {
+	return ifi.Flags&net.FlagMulticast != 0
 }
 
 // hasIPv4Address checks an I/F have IPv4 address.

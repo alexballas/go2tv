@@ -1,11 +1,12 @@
 package devices
 
 import (
+	"context"
 	"fmt"
 	"sort"
 
+	"github.com/alexballas/go-ssdp"
 	"github.com/alexballas/go2tv/soapcalls"
-	"github.com/koron/go-ssdp"
 	"github.com/pkg/errors"
 )
 
@@ -30,7 +31,7 @@ func LoadSSDPservices(delay int) (map[string]string, error) {
 		// (stop,play,pause). If we need support other functionalities
 		// like volume control we need to use the RenderingControl service.
 		if srv.Type == "urn:schemas-upnp-org:service:AVTransport:1" {
-			friendlyName, err := soapcalls.GetFriendlyName(srv.Location)
+			friendlyName, err := soapcalls.GetFriendlyName(context.Background(), srv.Location)
 			if err != nil {
 				continue
 			}
@@ -73,7 +74,7 @@ func DevicePicker(devices map[string]string, n int) (string, error) {
 		return "", ErrDeviceNotAvailable
 	}
 
-	keys := make([]string, 0)
+	var keys []string
 	for k := range devices {
 		keys = append(keys, k)
 	}

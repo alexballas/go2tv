@@ -34,9 +34,8 @@ func (d *mainButtonsLayout) Layout(objects []fyne.CanvasObject, containerSize fy
 			size = fyne.NewSize(o.MinSize().Width, o.MinSize().Height*d.buttonHeight)
 		}
 		o.Resize(size)
-
-		pos.Y = 3
 		o.Move(pos)
+
 		pos = pos.Add(fyne.NewPos(size.Width+d.buttonPadding, 0))
 	}
 }

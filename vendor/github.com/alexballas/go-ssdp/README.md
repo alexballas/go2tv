@@ -1,8 +1,8 @@
 # SSDP library
 
-[![GoDoc](https://godoc.org/github.com/koron/go-ssdp?status.svg)](https://godoc.org/github.com/koron/go-ssdp)
-[![Actions/Go](https://github.com/koron/go-ssdp/workflows/Go/badge.svg)](https://github.com/koron/go-ssdp/actions?query=workflow%3AGo)
-[![Go Report Card](https://goreportcard.com/badge/github.com/koron/go-ssdp)](https://goreportcard.com/report/github.com/koron/go-ssdp)
+[![GoDoc](https://godoc.org/github.com/alexballas/go-ssdp?status.svg)](https://godoc.org/github.com/alexballas/go-ssdp)
+[![Actions/Go](https://github.com/alexballas/go-ssdp/workflows/Go/badge.svg)](https://github.com/alexballas/go-ssdp/actions?query=workflow%3AGo)
+[![Go Report Card](https://goreportcard.com/badge/github.com/alexballas/go-ssdp)](https://goreportcard.com/report/github.com/alexballas/go-ssdp)
 
 Based on <https://tools.ietf.org/html/draft-cai-ssdp-v1-03>.
 
@@ -14,7 +14,7 @@ examples.
 ### Respond to search
 
 ```go
-import "github.com/koron/go-ssdp"
+import "github.com/alexballas/go-ssdp"
 
 ad, err := ssdp.Advertise(
     "my:device",                        // send as "ST"
@@ -81,7 +81,7 @@ When you want to limitate interfaces, see below snippet.
 
 ```go
 import (
-    "github.com/koron/go-ssdp"
+    "github.com/alexballas/go-ssdp"
     "net"
 )
 

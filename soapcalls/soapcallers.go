@@ -2,6 +2,7 @@ package soapcalls
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -34,14 +35,15 @@ var (
 // TVPayload is the heart of Go2TV. We pass that type to the
 // webserver. We need to explicitly initialize it.
 type TVPayload struct {
-	mu                          sync.RWMutex
 	initLogOnce                 sync.Once
+	mu                          sync.RWMutex
 	Logging                     io.Writer
+	ctx                         context.Context
+	MediaRenderersStates        map[string]*States
 	CurrentTimers               map[string]*time.Timer
 	InitialMediaRenderersStates map[string]bool
-	MediaRenderersStates        map[string]*States
-	ControlURL                  string
 	EventURL                    string
+	ControlURL                  string
 	MediaURL                    string
 	MediaType                   string
 	MediaPath                   string
@@ -162,6 +164,10 @@ type getPositionInfoResponse struct {
 }
 
 func (p *TVPayload) setAVTransportSoapCall() error {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
@@ -179,7 +185,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 	retryClient.Logger = nil
 	client := retryClient.StandardClient()
 
-	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xml))
+	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xml))
 	if err != nil {
 		p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
 		return fmt.Errorf("setAVTransportSoapCall POST error: %w", err)
@@ -231,6 +237,10 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 }
 
 func (p *TVPayload) setNextAVTransportSoapCall(clear bool) error {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
@@ -245,7 +255,7 @@ func (p *TVPayload) setNextAVTransportSoapCall(clear bool) error {
 
 	client := &http.Client{}
 
-	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xml))
+	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xml))
 	if err != nil {
 		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
 		return fmt.Errorf("setNextAVTransportSoapCall POST error: %w", err)
@@ -298,6 +308,10 @@ func (p *TVPayload) setNextAVTransportSoapCall(clear bool) error {
 
 // PlayPauseStopSoapCall builds and sends the AVTransport actions for Play Pause and Stop.
 func (p *TVPayload) PlayPauseStopSoapCall(action string) error {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "AVTransportActionSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
@@ -330,7 +344,7 @@ func (p *TVPayload) PlayPauseStopSoapCall(action string) error {
 		client = retryClient.StandardClient()
 	}
 
-	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xml))
+	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xml))
 	if err != nil {
 		p.Log().Error().Str("Method", "AVTransportActionSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
 		return fmt.Errorf("AVTransportActionSoapCall POST error: %w", err)
@@ -383,6 +397,10 @@ func (p *TVPayload) PlayPauseStopSoapCall(action string) error {
 
 // SeekSoapCall builds and sends the AVTransport actions for Seek.
 func (p *TVPayload) SeekSoapCall(reltime string) error {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
@@ -407,7 +425,7 @@ func (p *TVPayload) SeekSoapCall(reltime string) error {
 		client = retryClient.StandardClient()
 	}
 
-	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xml))
+	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xml))
 	if err != nil {
 		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
 		return fmt.Errorf("SeekSoapCall POST error: %w", err)
@@ -461,6 +479,10 @@ func (p *TVPayload) SeekSoapCall(reltime string) error {
 // SubscribeSoapCall send a SUBSCRIBE request to the DMR device.
 // If we explicitly pass the UUID, then we refresh it instead.
 func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	delete(p.CurrentTimers, uuidInput)
 
 	parsedURLcontrol, err := url.Parse(p.EventURL)
@@ -481,7 +503,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 
 	client := retryClient.StandardClient()
 
-	req, err := http.NewRequest("SUBSCRIBE", parsedURLcontrol.String(), nil)
+	req, err := http.NewRequestWithContext(p.ctx, "SUBSCRIBE", parsedURLcontrol.String(), nil)
 	if err != nil {
 		p.Log().Error().Str("Method", "SubscribeSoapCall").Str("Action", "Prepare SUBSCRIBE").Err(err).Msg("")
 		return fmt.Errorf("SubscribeSoapCall SUBSCRIBE error: %w", err)
@@ -572,7 +594,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 
 	timeoutReply := "300"
 	if len(res.Header["Timeout"]) > 0 {
-		timeoutReply = strings.TrimLeft(res.Header["Timeout"][0], "Second-")
+		timeoutReply = strings.TrimPrefix(res.Header["Timeout"][0], "Second-")
 	}
 
 	p.RefreshLoopUUIDSoapCall(uuid, timeoutReply)
@@ -583,6 +605,10 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 // UnsubscribeSoapCall sends an UNSUBSCRIBE request to the DMR device
 // and cleans up any stored states for the provided UUID.
 func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	p.DeleteMRstate(uuid)
 
 	parsedURLcontrol, err := url.Parse(p.EventURL)
@@ -592,7 +618,7 @@ func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 
 	client := &http.Client{}
 
-	req, err := http.NewRequest("UNSUBSCRIBE", parsedURLcontrol.String(), nil)
+	req, err := http.NewRequestWithContext(p.ctx, "UNSUBSCRIBE", parsedURLcontrol.String(), nil)
 	if err != nil {
 		return fmt.Errorf("UnsubscribeSoapCall UNSUBSCRIBE error: %w", err)
 	}
@@ -639,6 +665,10 @@ func (p *TVPayload) refreshLoopUUIDAsyncSoapCall(uuid string) func() {
 
 // GetMuteSoapCall returns the mute status for our device
 func (p *TVPayload) GetMuteSoapCall() (string, error) {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "GetMuteSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
@@ -654,7 +684,7 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 	}
 
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
+	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "GetMuteSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
 		return "", fmt.Errorf("GetMuteSoapCall POST error: %w", err)
@@ -716,6 +746,10 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 
 // SetMuteSoapCall returns true if muted and false if not muted.
 func (p *TVPayload) SetMuteSoapCall(number string) error {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "SetMuteSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
@@ -731,7 +765,7 @@ func (p *TVPayload) SetMuteSoapCall(number string) error {
 	}
 
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
+	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "SetMuteSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
 		return fmt.Errorf("SetMuteSoapCall POST error: %w", err)
@@ -783,6 +817,10 @@ func (p *TVPayload) SetMuteSoapCall(number string) error {
 
 // GetVolumeSoapCall returns tue volume level for our device.
 func (p *TVPayload) GetVolumeSoapCall() (int, error) {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "GetVolumeSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
@@ -798,7 +836,7 @@ func (p *TVPayload) GetVolumeSoapCall() (int, error) {
 	}
 
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
+	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "GetVolumeSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
 		return 0, fmt.Errorf("GetVolumeSoapCall POST error: %w", err)
@@ -871,6 +909,10 @@ func (p *TVPayload) GetVolumeSoapCall() (int, error) {
 
 // SetVolumeSoapCall sets the desired volume level.
 func (p *TVPayload) SetVolumeSoapCall(v string) error {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedRenderingControlURL, err := url.Parse(p.RenderingControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "SetVolumeSoapCall").Str("Action", "URL Parse").Err(err).Msg("")
@@ -886,7 +928,7 @@ func (p *TVPayload) SetVolumeSoapCall(v string) error {
 	}
 
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
+	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "SetVolumeSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
 		return fmt.Errorf("SetVolumeSoapCall POST error: %w", err)
@@ -938,6 +980,10 @@ func (p *TVPayload) SetVolumeSoapCall(v string) error {
 
 // GetProtocolInfo requests our device's protocol info.
 func (p *TVPayload) GetProtocolInfo() error {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedConnectionManagerURL, err := url.Parse(p.ConnectionManagerURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "URL Parse").Err(err).Msg("")
@@ -953,7 +999,7 @@ func (p *TVPayload) GetProtocolInfo() error {
 	}
 
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", parsedConnectionManagerURL.String(), bytes.NewReader(xmlbuilder))
+	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedConnectionManagerURL.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "Prepare POST").Err(err).Msg("")
 		return fmt.Errorf("GetProtocolInfo POST error: %w", err)
@@ -1012,6 +1058,10 @@ func (p *TVPayload) Gapless() (string, error) {
 		return "", errors.New("Gapless, nil tvdata")
 	}
 
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "Gapless").Str("Action", "URL Parse").Err(err).Msg("")
@@ -1027,7 +1077,7 @@ func (p *TVPayload) Gapless() (string, error) {
 	}
 
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
+	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "Gapless").Str("Action", "Prepare POST").Err(err).Msg("")
 		return "", fmt.Errorf("Gapless POST error: %w", err)
@@ -1091,6 +1141,10 @@ func (p *TVPayload) GetTransportInfo() ([]string, error) {
 		return nil, errors.New("GetTransportInfo, nil tvdata")
 	}
 
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "GetTransportInfo").Str("Action", "URL Parse").Err(err).Msg("")
@@ -1106,7 +1160,7 @@ func (p *TVPayload) GetTransportInfo() ([]string, error) {
 	}
 
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
+	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "GetTransportInfo").Str("Action", "Prepare POST").Err(err).Msg("")
 		return nil, fmt.Errorf("GetTransportInfo POST error: %w", err)
@@ -1173,6 +1227,10 @@ func (p *TVPayload) GetPositionInfo() ([]string, error) {
 		return nil, errors.New("GetPositionInfo, nil tvdata")
 	}
 
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {
 		p.Log().Error().Str("Method", "GetPositionInfo").Str("Action", "URL Parse").Err(err).Msg("")
@@ -1188,7 +1246,7 @@ func (p *TVPayload) GetPositionInfo() ([]string, error) {
 	}
 
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
+	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "GetPositionInfo").Str("Action", "Prepare POST").Err(err).Msg("")
 		return nil, fmt.Errorf("GetPositionInfo POST error: %w", err)
@@ -1398,6 +1456,13 @@ func parseProtocolInfo(b []byte, mt string) error {
 	}
 
 	protocols := strings.Split(respProtocolInfo.Body.GetProtocolInfoResponse.Sink, ",")
+
+	// We got no response from the device. Instead of just straight failing, we should
+	// just let the device play our media file and hope it works.
+	if len(protocols) == 0 {
+		return nil
+	}
+
 	for _, i := range protocols {
 		items := strings.Split(i, ":")
 		// Here we hardcode check the http-get protocol. We would need to change that

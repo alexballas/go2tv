@@ -20,7 +20,7 @@ import (
 	"github.com/alexballas/go2tv/devices"
 	"github.com/alexballas/go2tv/httphandlers"
 	"github.com/alexballas/go2tv/soapcalls"
-	"github.com/alexballas/go2tv/utils"
+	"github.com/alexballas/go2tv/soapcalls/utils"
 )
 
 var (
@@ -147,7 +147,7 @@ func run() error {
 
 	scr := &dummyScreen{ctxCancel: cancel}
 
-	tvdata, err := soapcalls.NewTVPayload(soapcalls.Options{
+	tvdata, err := soapcalls.NewTVPayload(&soapcalls.Options{
 		DMR:       flagRes.dmrURL,
 		Media:     absMediaFile,
 		Subs:      absSubtitlesFile,
@@ -168,6 +168,7 @@ func run() error {
 	go func() {
 		s.StartServer(serverStarted, mediaFile, absSubtitlesFile, tvdata, scr)
 	}()
+
 	// Wait for HTTP server to properly initialize
 	if err := <-serverStarted; err != nil {
 		return err
@@ -209,7 +210,7 @@ func listFlagFunction() error {
 
 	// We loop through this map twice as we need to maintain
 	// the correct order.
-	keys := make([]string, 0)
+	var keys []string
 	for k := range deviceList {
 		keys = append(keys, k)
 	}

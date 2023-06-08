@@ -10,6 +10,7 @@ windows: clean
 install: build
 	mkdir -vp /usr/local/bin/
 	cp build/go2tv /usr/local/bin/
+	$(MAKE) clean
 
 uninstall:
 	rm -vf /usr/local/bin/go2tv

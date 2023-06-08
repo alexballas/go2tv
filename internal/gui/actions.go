@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -23,7 +24,7 @@ import (
 	"github.com/alexballas/go2tv/devices"
 	"github.com/alexballas/go2tv/httphandlers"
 	"github.com/alexballas/go2tv/soapcalls"
-	"github.com/alexballas/go2tv/utils"
+	"github.com/alexballas/go2tv/soapcalls/utils"
 	"github.com/pkg/errors"
 	"github.com/skratchdot/open-golang/open"
 )
@@ -162,7 +163,7 @@ func playAction(screen *NewScreen) {
 		screen.cancelEnablePlay()
 	}
 
-	ctx, cancelEnablePlay := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancelEnablePlay := context.WithTimeout(context.Background(), 3*time.Second)
 	screen.cancelEnablePlay = cancelEnablePlay
 
 	go func() {
@@ -183,7 +184,7 @@ func playAction(screen *NewScreen) {
 		case "PLAYING":
 			setPlayPauseView("Pause", screen)
 			screen.updateScreenState("Playing")
-		case "PAUSED":
+		case "PAUSED_PLAYBACK":
 			setPlayPauseView("Play", screen)
 			screen.updateScreenState("Paused")
 		}
@@ -392,12 +393,33 @@ out:
 				break out
 			}
 
-			if nextURI == "" && screen.NextMediaCheck.Checked {
-				screen.MediaText.Text, screen.mediafile = getNextMedia(screen)
-				screen.MediaText.Refresh()
+			if screen.NextMediaCheck.Checked {
+				// If we change the current folder of media files we need to ensure
+				// that the next song is going to be requeued correctly.
+				next, _ := getNextMedia(screen)
+				if path.Base(nextURI) == utils.ConvertFilename(next) {
+					continue
+				}
 
-				if !screen.CustomSubsCheck.Checked {
-					selectSubs(screen.mediafile, screen)
+				if nextURI == "" {
+					// No need to check for the error as this is something
+					// that we did in previous steps in our workflow
+					mPath, _ := url.Parse(screen.tvdata.MediaURL)
+					sPath, _ := url.Parse(screen.tvdata.SubtitlesURL)
+
+					// Make sure we clean up after ourselves and avoid
+					// leaving any dangling handlers. Given the nextURI is ""
+					// we know that the previously playing media entry was
+					// replaced by the one in the NextURI entry.
+					screen.httpserver.RemoveHandler(mPath.Path)
+					screen.httpserver.RemoveHandler(sPath.Path)
+
+					screen.MediaText.Text, screen.mediafile = getNextMedia(screen)
+					screen.MediaText.Refresh()
+
+					if !screen.CustomSubsCheck.Checked {
+						selectSubs(screen.mediafile, screen)
+					}
 				}
 
 				newTVPayload, err := queueNext(screen, false)
@@ -448,6 +470,7 @@ func skipNextAction(screen *NewScreen) {
 	}
 
 	stopAction(screen)
+
 	playAction(screen)
 }
 
@@ -510,14 +533,14 @@ func getDevices(delay int) ([]devType, error) {
 	}
 	// We loop through this map twice as we need to maintain
 	// the correct order.
-	keys := make([]string, 0)
+	var keys []string
 	for k := range deviceList {
 		keys = append(keys, k)
 	}
 
 	sort.Strings(keys)
 
-	guiDeviceList := make([]devType, 0)
+	var guiDeviceList []devType
 	for _, k := range keys {
 		guiDeviceList = append(guiDeviceList, devType{k, deviceList[k]})
 	}
@@ -595,15 +618,23 @@ func queueNext(screen *NewScreen, clear bool) (*soapcalls.TVPayload, error) {
 	}
 
 	var mediaFile interface{} = fpath
-	oldURL, _ := url.Parse(screen.tvdata.MediaURL)
+	oldMediaURL, err := url.Parse(screen.tvdata.MediaURL)
+	if err != nil {
+		return nil, err
+	}
+
+	oldSubsURL, err := url.Parse(screen.tvdata.SubtitlesURL)
+	if err != nil {
+		return nil, err
+	}
 
 	nextTvData := &soapcalls.TVPayload{
 		ControlURL:                  screen.controlURL,
 		EventURL:                    screen.eventlURL,
 		RenderingControlURL:         screen.renderingControlURL,
 		ConnectionManagerURL:        screen.connectionManagerURL,
-		MediaURL:                    "http://" + oldURL.Host + "/" + utils.ConvertFilename(fname),
-		SubtitlesURL:                "http://" + oldURL.Host + "/" + utils.ConvertFilename(spath),
+		MediaURL:                    "http://" + oldMediaURL.Host + "/" + utils.ConvertFilename(fname),
+		SubtitlesURL:                "http://" + oldSubsURL.Host + "/" + utils.ConvertFilename(spath),
 		CallbackURL:                 screen.tvdata.CallbackURL,
 		MediaType:                   mediaType,
 		MediaPath:                   screen.mediafile,
@@ -626,19 +657,8 @@ func queueNext(screen *NewScreen, clear bool) (*soapcalls.TVPayload, error) {
 		return nil, err
 	}
 
-	func() {
-		defer func() {
-			_ = recover()
-		}()
-		screen.httpserver.Mux.HandleFunc(mURL.Path, screen.httpserver.ServeMediaHandler(nextTvData, mediaFile))
-	}()
-
-	func() {
-		defer func() {
-			_ = recover()
-		}()
-		screen.httpserver.Mux.HandleFunc(sURL.Path, screen.httpserver.ServeMediaHandler(nil, spath))
-	}()
+	screen.httpserver.AddHandler(mURL.Path, nextTvData, mediaFile)
+	screen.httpserver.AddHandler(sURL.Path, nil, spath)
 
 	if err := nextTvData.SendtoTV("Queue"); err != nil {
 		return nil, err

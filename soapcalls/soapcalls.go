@@ -1,15 +1,17 @@
 package soapcalls
 
 import (
+	"context"
 	"io"
 	"net/url"
 	"time"
 
-	"github.com/alexballas/go2tv/utils"
+	"github.com/alexballas/go2tv/soapcalls/utils"
 )
 
 type Options struct {
 	Logging    io.Writer
+	ctx        context.Context
 	DMR        string
 	Media      string
 	Subs       string
@@ -19,8 +21,12 @@ type Options struct {
 	Seek       bool
 }
 
-func NewTVPayload(o Options) (*TVPayload, error) {
-	upnpServicesURLs, err := DMRextractor(o.DMR)
+func NewTVPayload(o *Options) (*TVPayload, error) {
+	if o.ctx == nil {
+		o.ctx = context.Background()
+	}
+
+	upnpServicesURLs, err := DMRextractor(o.ctx, o.DMR)
 	if err != nil {
 		return nil, err
 	}

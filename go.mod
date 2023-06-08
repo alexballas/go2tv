@@ -4,10 +4,10 @@ go 1.19
 
 require (
 	fyne.io/fyne/v2 v2.3.3
+	github.com/alexballas/go-ssdp v0.0.3
 	github.com/gdamore/tcell/v2 v2.6.0
 	github.com/h2non/filetype v1.1.3
 	github.com/hashicorp/go-retryablehttp v0.7.2
-	github.com/koron/go-ssdp v0.0.3
 	github.com/mattn/go-runewidth v0.0.14
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.29.0

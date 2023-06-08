@@ -22,7 +22,7 @@ jobs:
       run: go install fyne.io/fyne/v2/cmd/fyne@latest
       
     - name: Package (macOS)
-      run:  cd cmd/go2tv && fyne package --release -os darwin -icon  ../../assets/go2tv-icon.png  && mv go2tv.app ../../
+      run:  cd cmd/go2tv && fyne package --release -os darwin -icon  ../../assets/go2tv-icon-desktop.png  && mv go2tv.app ../../
 
     - uses: actions/upload-artifact@v2
       with:

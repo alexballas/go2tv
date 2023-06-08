@@ -4,6 +4,7 @@
 package gui
 
 import (
+	"context"
 	"errors"
 	"net/url"
 	"sort"
@@ -17,7 +18,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/alexballas/go2tv/devices"
 	"github.com/alexballas/go2tv/soapcalls"
-	"github.com/alexballas/go2tv/utils"
+	"github.com/alexballas/go2tv/soapcalls/utils"
 )
 
 func mainWindow(s *NewScreen) fyne.CanvasObject {
@@ -25,7 +26,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 	list := new(widget.List)
 
-	data := make([]devType, 0)
+	var data []devType
 
 	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
 		if k.Name == "Space" || k.Name == "P" {
@@ -141,7 +142,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
 		playpause.Enable()
-		t, err := soapcalls.DMRextractor(data[id].addr)
+		t, err := soapcalls.DMRextractor(context.Background(), data[id].addr)
 		check(w, err)
 		if err == nil {
 			s.selectedDevice = data[id]

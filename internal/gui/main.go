@@ -4,28 +4,33 @@
 package gui
 
 import (
+	"context"
 	"errors"
 	"math"
 	"net/url"
 	"os/exec"
 	"sort"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/alexballas/go2tv/devices"
 	"github.com/alexballas/go2tv/soapcalls"
-	"github.com/alexballas/go2tv/utils"
+	"github.com/alexballas/go2tv/soapcalls/utils"
 	"golang.org/x/time/rate"
 )
 
 type tappedSlider struct {
+	mu sync.Mutex
 	*widget.Slider
 	screen *NewScreen
+	end    string
 }
 
 func newTappableSlider(s *NewScreen) *tappedSlider {
@@ -42,6 +47,47 @@ func newTappableSlider(s *NewScreen) *tappedSlider {
 func (t *tappedSlider) Dragged(e *fyne.DragEvent) {
 	t.Slider.Dragged(e)
 	t.screen.sliderActive = true
+
+	if t.end == "" {
+		getSliderPos, err := t.screen.tvdata.GetPositionInfo()
+		if err != nil {
+			return
+		}
+
+		t.mu.Lock()
+		t.end = getSliderPos[0]
+		t.mu.Unlock()
+
+		// poor man's caching to reduce the amount of
+		// GetPositionInfo calls.
+		go func() {
+			time.Sleep(time.Second)
+			t.mu.Lock()
+			t.end = ""
+			t.mu.Unlock()
+		}()
+	}
+
+	total, err := utils.ClockTimeToSeconds(t.end)
+	if err != nil {
+		return
+	}
+
+	cur := (float64(total) * t.Slider.Value) / t.Slider.Max
+	roundedInt := int(math.Round(cur))
+
+	reltime, err := utils.SecondsToClockTime(roundedInt)
+	if err != nil {
+		return
+	}
+
+	end, err := utils.FormatClockTime(t.end)
+	if err != nil {
+		return
+	}
+
+	t.screen.EndPos.Set(end)
+	t.screen.CurrentPos.Set(reltime)
 }
 
 func (t *tappedSlider) DragEnd() {
@@ -50,7 +96,7 @@ func (t *tappedSlider) DragEnd() {
 	// should reset this back to false after the first iterration.
 	t.screen.sliderActive = true
 
-	if t.screen.State == "Playing" {
+	if t.screen.State == "Playing" || t.screen.State == "Paused" {
 		getPos, err := t.screen.tvdata.GetPositionInfo()
 		if err != nil {
 			return
@@ -68,6 +114,14 @@ func (t *tappedSlider) DragEnd() {
 		if err != nil {
 			return
 		}
+
+		end, err := utils.FormatClockTime(getPos[0])
+		if err != nil {
+			return
+		}
+
+		t.screen.CurrentPos.Set(reltime)
+		t.screen.EndPos.Set(end)
 
 		if err := t.screen.tvdata.SeekSoapCall(reltime); err != nil {
 			return
@@ -103,7 +157,7 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 
 	t.SetValue(float64(newpos))
 
-	if t.screen.State == "Playing" {
+	if t.screen.State == "Playing" || t.screen.State == "Paused" {
 		getPos, err := t.screen.tvdata.GetPositionInfo()
 		if err != nil {
 			return
@@ -122,6 +176,14 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 			return
 		}
 
+		end, err := utils.FormatClockTime(getPos[0])
+		if err != nil {
+			return
+		}
+
+		t.screen.CurrentPos.Set(reltime)
+		t.screen.EndPos.Set(end)
+
 		if err := t.screen.tvdata.SeekSoapCall(reltime); err != nil {
 			return
 		}
@@ -132,7 +194,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	w := s.Current
 	list := new(widget.List)
 
-	data := make([]devType, 0)
+	var data []devType
 
 	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
 		if !s.Hotkeys {
@@ -278,6 +340,9 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			o.(*fyne.Container).Objects[1].(*widget.Label).SetText(data[i].name)
 		})
 
+	curPos := binding.NewString()
+	endPos := binding.NewString()
+
 	s.PlayPause = playpause
 	s.Stop = stop
 	s.MuteUnmute = muteunmute
@@ -290,7 +355,13 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	s.VolumeDown = volumedown
 	s.NextMediaCheck = nextmedia
 	s.SlideBar = sliderBar
+	s.CurrentPos = curPos
+	s.EndPos = endPos
 
+	curPos.Set("00:00:00")
+	endPos.Set("00:00:00")
+
+	sliderArea := container.NewBorder(nil, nil, widget.NewLabelWithData(curPos), widget.NewLabelWithData(endPos), sliderBar)
 	actionbuttons := container.New(&mainButtonsLayout{buttonHeight: 1.0, buttonPadding: theme.Padding()},
 		playpause,
 		volumedown,
@@ -305,13 +376,13 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, mrightbuttons), mrightbuttons, mfiletext)
 	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
 	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
-	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, sliderBar, actionbuttons, container.NewPadded(devicelabel))
+	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, sliderArea, actionbuttons, container.NewPadded(devicelabel))
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
 
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
 		playpause.Enable()
-		t, err := soapcalls.DMRextractor(data[id].addr)
+		t, err := soapcalls.DMRextractor(context.Background(), data[id].addr)
 		check(s, err)
 		if err == nil {
 			s.selectedDevice = data[id]
@@ -402,6 +473,14 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	}
 
 	nextmedia.OnChanged = func(b bool) {
+		switch b {
+		case true:
+			medialoop.SetChecked(false)
+			medialoop.Disable()
+		case false:
+			medialoop.Enable()
+		}
+
 		go func() {
 			gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
 
@@ -416,9 +495,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 						}
 					}
 				}
-
-				medialoop.SetChecked(false)
-				medialoop.Disable()
 				return
 			}
 
@@ -428,8 +504,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 					stopAction(s)
 				}
 			}
-
-			medialoop.Enable()
 		}()
 	}
 
@@ -547,6 +621,8 @@ func sliderUpdate(s *NewScreen) {
 
 		if s.State == "Stopped" || s.State == "" {
 			s.SlideBar.Slider.SetValue(0)
+			s.CurrentPos.Set("00:00:00")
+			s.EndPos.Set("00:00:00")
 		}
 
 		if s.State == "Playing" {
@@ -568,6 +644,19 @@ func sliderUpdate(s *NewScreen) {
 			valueToSet := float64(current) * s.SlideBar.Max / float64(total)
 			if !math.IsNaN(valueToSet) {
 				s.SlideBar.SetValue(valueToSet)
+
+				end, err := utils.FormatClockTime(getPos[0])
+				if err != nil {
+					return
+				}
+
+				current, err := utils.FormatClockTime(getPos[1])
+				if err != nil {
+					return
+				}
+
+				s.CurrentPos.Set(current)
+				s.EndPos.Set(end)
 			}
 		}
 	}
