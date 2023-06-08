@@ -28,7 +28,6 @@ jobs:
       run: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
     - name: Install Docker and Colima
-
       run: brew install docker colima
 
     - name: Run Colima
