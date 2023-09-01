@@ -30,6 +30,9 @@ jobs:
     - name: Install Docker and Colima
       run: brew install docker colima
 
+    - name: Delete Colima
+      run: colima delete
+
     - name: Run Colima
       run: colima start
 
