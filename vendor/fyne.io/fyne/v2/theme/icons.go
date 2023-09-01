@@ -136,6 +136,11 @@ const (
 	// Since: 2.0
 	IconNameError fyne.ThemeIconName = "error"
 
+	// IconNameBrokenImage is the name of the theme lookup for broken-image icon.
+	//
+	// Since: 2.4
+	IconNameBrokenImage fyne.ThemeIconName = "broken-image"
+
 	// IconNameDocument is the name of theme lookup for document icon.
 	//
 	// Since: 2.0
@@ -462,10 +467,12 @@ var (
 		IconNameMenu:          NewThemedResource(menuIconRes),
 		IconNameMenuExpand:    NewThemedResource(menuexpandIconRes),
 
-		IconNameCheckButton:        NewThemedResource(checkboxblankIconRes),
-		IconNameCheckButtonChecked: NewThemedResource(checkboxIconRes),
+		IconNameCheckButton:        NewThemedResource(checkboxIconRes),
+		IconNameCheckButtonChecked: NewThemedResource(checkboxcheckedIconRes),
+		"iconNameCheckButtonFill":  NewThemedResource(checkboxfillIconRes),
 		IconNameRadioButton:        NewThemedResource(radiobuttonIconRes),
 		IconNameRadioButtonChecked: NewThemedResource(radiobuttoncheckedIconRes),
+		"iconNameRadioButtonFill":  NewThemedResource(radiobuttonfillIconRes),
 
 		IconNameContentAdd:    NewThemedResource(contentaddIconRes),
 		IconNameContentClear:  NewThemedResource(cancelIconRes),
@@ -488,10 +495,11 @@ var (
 		IconNameMoreHorizontal: NewThemedResource(morehorizontalIconRes),
 		IconNameMoreVertical:   NewThemedResource(moreverticalIconRes),
 
-		IconNameInfo:     NewThemedResource(infoIconRes),
-		IconNameQuestion: NewThemedResource(questionIconRes),
-		IconNameWarning:  NewThemedResource(warningIconRes),
-		IconNameError:    NewThemedResource(errorIconRes),
+		IconNameInfo:        NewThemedResource(infoIconRes),
+		IconNameQuestion:    NewThemedResource(questionIconRes),
+		IconNameWarning:     NewThemedResource(warningIconRes),
+		IconNameError:       NewThemedResource(errorIconRes),
+		IconNameBrokenImage: NewThemedResource(brokenimageIconRes),
 
 		IconNameMailAttachment: NewThemedResource(mailattachmentIconRes),
 		IconNameMailCompose:    NewThemedResource(mailcomposeIconRes),
@@ -577,10 +585,42 @@ type ThemedResource struct {
 	ColorName fyne.ThemeColorName
 }
 
+// NewColoredResource creates a resource that adapts to the current theme setting using
+// the color named in the constructor.
+//
+// Since: 2.4
+func NewColoredResource(src fyne.Resource, name fyne.ThemeColorName) *ThemedResource {
+	return &ThemedResource{
+		source:    src,
+		ColorName: name,
+	}
+}
+
+// NewSuccessThemedResource creates a resource that adapts to the current theme success color.
+//
+// Since: 2.4
+func NewSuccessThemedResource(src fyne.Resource) *ThemedResource {
+	return &ThemedResource{
+		source:    src,
+		ColorName: ColorNameSuccess,
+	}
+}
+
 // NewThemedResource creates a resource that adapts to the current theme setting.
+// By default this will match the foreground color, but it can be changed using the `ColorName` field.
 func NewThemedResource(src fyne.Resource) *ThemedResource {
 	return &ThemedResource{
 		source: src,
+	}
+}
+
+// NewWarningThemedResource creates a resource that adapts to the current theme warning color.
+//
+// Since: 2.4
+func NewWarningThemedResource(src fyne.Resource) *ThemedResource {
+	return &ThemedResource{
+		source:    src,
+		ColorName: ColorNameWarning,
 	}
 }
 
@@ -653,7 +693,7 @@ func NewErrorThemedResource(orig fyne.Resource) *ErrorThemedResource {
 
 // Name returns the underlying resource name (used for caching).
 func (res *ErrorThemedResource) Name() string {
-	return "error-" + res.source.Name()
+	return "error_" + res.source.Name()
 }
 
 // Content returns the underlying content of the resource adapted to the current background color.
@@ -716,7 +756,9 @@ func NewDisabledResource(res fyne.Resource) *DisabledResource {
 	}
 }
 
-// FyneLogo returns a resource containing the Fyne logo
+// FyneLogo returns a resource containing the Fyne logo.
+//
+// Deprecated: Applications should use their own icon in most cases.
 func FyneLogo() fyne.Resource {
 	return fynelogo
 }
@@ -879,6 +921,13 @@ func WarningIcon() fyne.Resource {
 // ErrorIcon returns a resource containing the standard dialog error icon for the current theme
 func ErrorIcon() fyne.Resource {
 	return safeIconLookup(IconNameError)
+}
+
+// BrokenImageIcon returns a resource containing an icon to specify a broken or missing image
+//
+// Since: 2.4
+func BrokenImageIcon() fyne.Resource {
+	return safeIconLookup(IconNameBrokenImage)
 }
 
 // FileIcon returns a resource containing the appropriate file icon for the current theme

@@ -91,6 +91,8 @@ func (f *debugWriter) Write(b []byte) (int, error) {
 // Start .
 func Start(ctx context.Context, s *NewScreen) {
 	w := s.Current
+	w.SetOnDropped(onDropFiles(s))
+
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Go2TV", container.NewPadded(mainWindow(s))),
 		container.NewTabItem("Settings", container.NewPadded(settingsWindow(s))),
@@ -125,6 +127,36 @@ func Start(ctx context.Context, s *NewScreen) {
 
 }
 
+func onDropFiles(screen *NewScreen) func(p fyne.Position, u []fyne.URI) {
+	return func(p fyne.Position, u []fyne.URI) {
+		var mfiles, sfiles []fyne.URI
+
+	out:
+		for _, f := range u {
+			if strings.HasSuffix(f.Name(), ".srt") {
+				sfiles = append(sfiles, f)
+				continue
+			}
+
+			for _, s := range screen.mediaFormats {
+				if strings.HasSuffix(f.Name(), s) {
+					mfiles = append(mfiles, f)
+					continue out
+				}
+			}
+		}
+
+		if len(sfiles) > 0 {
+			screen.CustomSubsCheck.SetChecked(true)
+			selectSubsFile(screen, sfiles[0])
+		}
+
+		if len(mfiles) > 0 {
+			selectMediaFile(screen, mfiles[0])
+		}
+	}
+}
+
 // EmitMsg Method to implement the screen interface
 func (p *NewScreen) EmitMsg(a string) {
 	switch a {
@@ -154,7 +186,7 @@ func (p *NewScreen) Fini() {
 		p.MediaText.Refresh()
 
 		if !p.CustomSubsCheck.Checked {
-			selectSubs(p.mediafile, p)
+			autoSelectNextSubs(p.mediafile, p)
 		}
 
 		playAction(p)
@@ -271,7 +303,7 @@ func getNextMedia(screen *NewScreen) (string, string) {
 	return resName, resPath
 }
 
-func selectSubs(v string, screen *NewScreen) {
+func autoSelectNextSubs(v string, screen *NewScreen) {
 	name, path := getNextPossibleSubs(v, screen)
 	screen.SubsText.Text = name
 	screen.subsfile = path

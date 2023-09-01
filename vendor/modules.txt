@@ -1,5 +1,5 @@
-# fyne.io/fyne/v2 v2.3.3 => github.com/alexballas/fyne/v2 v2.3.2-patches2
-## explicit; go 1.14
+# fyne.io/fyne/v2 v2.4.0
+## explicit; go 1.17
 fyne.io/fyne/v2
 fyne.io/fyne/v2/app
 fyne.io/fyne/v2/canvas
@@ -31,6 +31,7 @@ fyne.io/fyne/v2/internal/painter
 fyne.io/fyne/v2/internal/painter/gl
 fyne.io/fyne/v2/internal/painter/software
 fyne.io/fyne/v2/internal/repository
+fyne.io/fyne/v2/internal/scale
 fyne.io/fyne/v2/internal/svg
 fyne.io/fyne/v2/internal/test
 fyne.io/fyne/v2/internal/widget
@@ -40,7 +41,7 @@ fyne.io/fyne/v2/storage/repository
 fyne.io/fyne/v2/test
 fyne.io/fyne/v2/theme
 fyne.io/fyne/v2/widget
-# fyne.io/systray v1.10.1-0.20230312215936-7f71b037e260
+# fyne.io/systray v1.10.1-0.20230722100817-88df1e0ffa9a
 ## explicit; go 1.13
 fyne.io/systray
 fyne.io/systray/internal/generated/menu
@@ -130,7 +131,10 @@ github.com/go-gl/glfw/v3.3/glfw/glfw/deps/mingw
 github.com/go-gl/glfw/v3.3/glfw/glfw/deps/vs2008
 github.com/go-gl/glfw/v3.3/glfw/glfw/include/GLFW
 github.com/go-gl/glfw/v3.3/glfw/glfw/src
-# github.com/go-text/typesetting v0.0.0-20230326170714-a90f4704aff7
+# github.com/go-text/render v0.0.0-20230619120952-35bccb6164b8
+## explicit; go 1.17
+github.com/go-text/render
+# github.com/go-text/typesetting v0.0.0-20230616162802-9c17dd34aa4a
 ## explicit; go 1.17
 github.com/go-text/typesetting/di
 github.com/go-text/typesetting/font
@@ -150,11 +154,6 @@ github.com/go-text/typesetting/unicodedata
 github.com/godbus/dbus/v5
 github.com/godbus/dbus/v5/introspect
 github.com/godbus/dbus/v5/prop
-# github.com/goki/freetype v0.0.0-20220119013949-7a161fd3728c
-## explicit
-github.com/goki/freetype
-github.com/goki/freetype/raster
-github.com/goki/freetype/truetype
 # github.com/gopherjs/gopherjs v1.17.2
 ## explicit; go 1.17
 github.com/gopherjs/gopherjs/js
@@ -208,14 +207,14 @@ github.com/srwiley/oksvg
 # github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef
 ## explicit; go 1.17
 github.com/srwiley/rasterx
-# github.com/stretchr/testify v1.8.1
-## explicit; go 1.13
+# github.com/stretchr/testify v1.8.4
+## explicit; go 1.20
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/require
 # github.com/tevino/abool v1.2.0
 ## explicit; go 1.14
 github.com/tevino/abool
-# github.com/yuin/goldmark v1.5.4
+# github.com/yuin/goldmark v1.5.5
 ## explicit; go 1.18
 github.com/yuin/goldmark
 github.com/yuin/goldmark/ast
@@ -224,21 +223,20 @@ github.com/yuin/goldmark/renderer
 github.com/yuin/goldmark/renderer/html
 github.com/yuin/goldmark/text
 github.com/yuin/goldmark/util
-# golang.org/x/image v0.5.0
+# golang.org/x/image v0.11.0
 ## explicit; go 1.12
 golang.org/x/image/ccitt
 golang.org/x/image/colornames
 golang.org/x/image/draw
-golang.org/x/image/font
 golang.org/x/image/math/f64
 golang.org/x/image/math/fixed
 golang.org/x/image/tiff
 golang.org/x/image/tiff/lzw
 golang.org/x/image/vector
-# golang.org/x/mobile v0.0.0-20221110043201-43a038452099
+# golang.org/x/mobile v0.0.0-20230531173138-3c911d8e3eda
 ## explicit; go 1.17
 golang.org/x/mobile/exp/f32
-# golang.org/x/net v0.7.0
+# golang.org/x/net v0.14.0
 ## explicit; go 1.17
 golang.org/x/net/bpf
 golang.org/x/net/html
@@ -247,7 +245,7 @@ golang.org/x/net/html/charset
 golang.org/x/net/internal/iana
 golang.org/x/net/internal/socket
 golang.org/x/net/ipv4
-# golang.org/x/sys v0.5.0
+# golang.org/x/sys v0.11.0
 ## explicit; go 1.17
 golang.org/x/sys/execabs
 golang.org/x/sys/internal/unsafeheader
@@ -255,10 +253,10 @@ golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
-# golang.org/x/term v0.5.0
+# golang.org/x/term v0.11.0
 ## explicit; go 1.17
 golang.org/x/term
-# golang.org/x/text v0.7.0
+# golang.org/x/text v0.12.0
 ## explicit; go 1.17
 golang.org/x/text/encoding
 golang.org/x/text/encoding/charmap
@@ -286,4 +284,3 @@ gopkg.in/yaml.v3
 # honnef.co/go/js/dom v0.0.0-20221001195520-26252dedbe70
 ## explicit
 honnef.co/go/js/dom
-# fyne.io/fyne/v2 => github.com/alexballas/fyne/v2 v2.3.2-patches2

@@ -7,7 +7,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
-	"fyne.io/fyne/v2/internal"
+	"fyne.io/fyne/v2/internal/scale"
 	"fyne.io/fyne/v2/theme"
 )
 
@@ -109,6 +109,11 @@ type HyperlinkSegment struct {
 	Alignment fyne.TextAlign
 	Text      string
 	URL       *url.URL
+
+	// OnTapped overrides the default `fyne.OpenURL` call when the link is tapped
+	//
+	// Since: 2.4
+	OnTapped func()
 }
 
 // Inline returns true as hyperlinks are inside other elements.
@@ -125,6 +130,7 @@ func (h *HyperlinkSegment) Textual() string {
 func (h *HyperlinkSegment) Visual() fyne.CanvasObject {
 	link := NewHyperlink(h.Text, h.URL)
 	link.Alignment = h.Alignment
+	link.OnTapped = h.OnTapped
 	return &fyne.Container{Layout: &unpadTextWidgetLayout{}, Objects: []fyne.CanvasObject{link}}
 }
 
@@ -134,6 +140,7 @@ func (h *HyperlinkSegment) Update(o fyne.CanvasObject) {
 	link.Text = h.Text
 	link.URL = h.URL
 	link.Alignment = h.Alignment
+	link.OnTapped = h.OnTapped
 	link.Refresh()
 }
 
@@ -159,6 +166,10 @@ func (h *HyperlinkSegment) Unselect() {
 type ImageSegment struct {
 	Source fyne.URI
 	Title  string
+
+	// Alignment specifies the horizontal alignment of this image segment
+	// Since: 2.4
+	Alignment fyne.TextAlign
 }
 
 // Inline returns false as images in rich text are blocks.
@@ -173,7 +184,7 @@ func (i *ImageSegment) Textual() string {
 
 // Visual returns the image widget required to render this segment.
 func (i *ImageSegment) Visual() fyne.CanvasObject {
-	return newRichImage(i.Source)
+	return newRichImage(i.Source, i.Alignment)
 }
 
 // Update applies the current state of this image segment to an existing visual.
@@ -184,6 +195,7 @@ func (i *ImageSegment) Update(o fyne.CanvasObject) {
 	// one of the following will be used
 	img.img.File = newer.File
 	img.img.Resource = newer.Resource
+	img.setAlign(i.Alignment)
 
 	img.Refresh()
 }
@@ -226,16 +238,10 @@ func (l *ListSegment) Segments() []RichTextSegment {
 			txt = strconv.Itoa(i+1) + "."
 		}
 		bullet := &TextSegment{Text: txt + " ", Style: RichTextStyleStrong}
-		if para, ok := in.(*ParagraphSegment); ok {
-			seg := &ParagraphSegment{Texts: []RichTextSegment{bullet}}
-			seg.Texts = append(seg.Texts, para.Texts...)
-			out[i] = seg
-		} else {
-			out[i] = &ParagraphSegment{Texts: []RichTextSegment{
-				bullet,
-				in,
-			}}
-		}
+		out[i] = &ParagraphSegment{Texts: []RichTextSegment{
+			bullet,
+			in,
+		}}
 	}
 	return out
 }
@@ -315,10 +321,7 @@ func (p *ParagraphSegment) Unselect() {
 // SeparatorSegment includes a horizontal separator in a rich text widget.
 //
 // Since: 2.1
-type SeparatorSegment struct {
-	//lint:ignore U1000 This is required due to language design.
-	dummy uint8 // without this a pointer to SeparatorSegment will always be the same
-}
+type SeparatorSegment struct{}
 
 // Inline returns false as a separator should be full width.
 func (s *SeparatorSegment) Inline() bool {
@@ -451,20 +454,24 @@ func (t *TextSegment) size() float32 {
 
 type richImage struct {
 	BaseWidget
+	align  fyne.TextAlign
 	img    *canvas.Image
 	oldMin fyne.Size
+	layout *fyne.Container
+	min    fyne.Size
 }
 
-func newRichImage(u fyne.URI) *richImage {
+func newRichImage(u fyne.URI, align fyne.TextAlign) *richImage {
 	img := canvas.NewImageFromURI(u)
 	img.FillMode = canvas.ImageFillOriginal
-	i := &richImage{img: img}
+	i := &richImage{img: img, align: align}
 	i.ExtendBaseWidget(i)
 	return i
 }
 
 func (r *richImage) CreateRenderer() fyne.WidgetRenderer {
-	return NewSimpleRenderer(r.img)
+	r.layout = &fyne.Container{Layout: &richImageLayout{r}, Objects: []fyne.CanvasObject{r.img}}
+	return NewSimpleRenderer(r.layout)
 }
 
 func (r *richImage) MinSize() fyne.Size {
@@ -475,10 +482,40 @@ func (r *richImage) MinSize() fyne.Size {
 	}
 
 	// unscale the image so it is not varying based on canvas
-	w := internal.ScaleInt(c, orig.Width)
-	h := internal.ScaleInt(c, orig.Height)
+	w := scale.ToScreenCoordinate(c, orig.Width)
+	h := scale.ToScreenCoordinate(c, orig.Height)
 	// we return size / 2 as this assumes a HiDPI / 2x image scaling
-	return fyne.NewSize(float32(w)/2, float32(h)/2)
+	r.min = fyne.NewSize(float32(w)/2, float32(h)/2)
+	return r.min
+}
+
+func (r *richImage) setAlign(a fyne.TextAlign) {
+	if r.layout != nil {
+		r.layout.Refresh()
+	}
+	r.align = a
+}
+
+type richImageLayout struct {
+	r *richImage
+}
+
+func (r *richImageLayout) Layout(_ []fyne.CanvasObject, s fyne.Size) {
+	r.r.img.Resize(r.r.min)
+	gap := float32(0)
+
+	switch r.r.align {
+	case fyne.TextAlignCenter:
+		gap = (s.Width - r.r.min.Width) / 2
+	case fyne.TextAlignTrailing:
+		gap = s.Width - r.r.min.Width
+	}
+
+	r.r.img.Move(fyne.NewPos(gap, 0))
+}
+
+func (r *richImageLayout) MinSize(_ []fyne.CanvasObject) fyne.Size {
+	return r.r.min
 }
 
 type unpadTextWidgetLayout struct {

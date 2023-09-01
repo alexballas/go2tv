@@ -3,11 +3,139 @@
 This file lists the main changes with each version of the Fyne toolkit.
 More detailed release notes can be found on the [releases page](https://github.com/fyne-io/fyne/releases). 
 
+## 2.4.0 - 1 September 2023
+
+## Added
+
+* Rounded corners in rectangle (#1090)
+* Support for emoji in text
+* Layout debugging (with `-tags debug` build flag) (#3314)
+* GridWrap collection widget
+* Add table headers (#1658, #3594)
+* Add mobile back button handling (#2910)
+* Add option to disable UI animations (#1813)
+* Text truncation ellipsis (#1659)
+* Add support for binding tree data, include new `NewTreeWithData`
+* Add support for OpenType fonts (#3245)
+* Add `Window.SetOnDropped` to handle window-wide item drop on desktop
+* Add lists to the types supported by preferences API
+* Keyboard focus handling for all collection widgets
+* Add APIs for refreshing individual items in collections (#3826)
+* Tapping slider moves it to that position (#3650)
+* Add `OnChangeEnded` callback to `Slider` (#3652)
+* Added keyboard controls to `Slider`
+* Add `NewWarningThemedResource` and `NewSuccessThemedResource` along with `NewColoredResource` (#4040)
+* Custom hyperlink callback for rich text hyperlinks (#3335)
+* Added `dialog.NewCustomWithoutButtons`, with a `SetButtons` method (#2127, #2782)
+* Added `SetConfirmImportance` to `dialog.ConfirmDialog`.
+* Added `FormDialog.Submit()` to close and submit the dialog if validation passes
+* Rich Text image alignment (#3810)
+* Bring back `theme.HyperlinkColor` (#3867)
+* Added `Importance` field on `Label` to color the text
+* Navigating in entry quickly with ctrl key (#2462)
+* Support `.desktop` file metadata in `FyneApp.toml` for Linux and BSD
+* Support mobile simulator on FreeBSD
+* Add data binding boolean operators `Not`, `And` and `Or`
+* Added `Entry.Append`, `Select.SetOptions`, `Check.SetText`, `FormDialog.Submit`
+* Add `ShowPopUpAtRelativePosition` and `PopUp.ShowAtRelativePosition`
+* Add desktop support to get key modifiers with `CurrentKeyModifiers`
+* Add geometry helpers `NewSquareSize` and `NewSquareOffsetPos`
+* Add `--pprof` option to fyne build commands to enable profiling
+* Support compiling from Android (termux)
+
+## Changed
+
+* Go 1.17 or later is now required.
+* Theme updated for rounded corners on buttons and input widgets
+* `widget.ButtonImportance` is now `widget.Importance`
+* The `Max` container and layout have been renamed `Stack` for clarity
+* Refreshing an image will now happen in app-thread not render process, apps may wish to add async image load
+* Icons for macOS bundles are now padded and rounded, disable with "-use-raw-icon" (#3752)
+* Update Android target SDK to 33 for Play Store releases
+* Focus handling for List/Tree/Table are now at the parent widget not child elements
+* Accordion widget now fills available space - put it inside a `VBox` container for old behavior (#4126)
+* Deprecated theme.FyneLogo() for later removal (#3296)
+* Improve look of menu shortcuts (#2722)
+* iOS and macOS packages now default to using "XCWildcard" provisioning profile
+* Improving performance of lookup for theme data
+* Improved application startup time
+
+## Fixed
+
+* Rendering performance enhancements
+* `dialog.NewProgressInfinite` is deprecated, but dialog.NewCustom isn't equivalent
+* Mouse cursor desync with Split handle when dragging (#3791)
+* Minor graphic glitch with checkbox (#3792)
+* binding.String===>Quick refresh *b.val will appear with new data reset by a call to OnChange (#3774)
+* Fyne window becomes unresponsive when in background for a while (#2791)
+* Hangs on repeated calls to `Select.SetSelected` in table. (#3684)
+* `Select` has wrong height, padding and border (#4142)
+* `widget.ImageSegment` can't be aligned. (#3505)
+* Memory leak in font metrics cache (#4108)
+* Don't panic when loading preferences with wrong type (#4039)
+* Button with icon has wrong padding on right (#4124)
+* Preferences don't all save when written in `CloseIntercept` (#3170)
+* Text size does not update in Refresh for TextGrid
+* DocTab selection underline not updated when deleting an Item (#3905)
+* Single line Entry throws away selected text on submission (#4026)
+* Significantly improve performance of large `TextGrid` and `Tree` widgets
+* `List.ScrollToBottom` not scrolling to show the totality of the last Item (#3829)
+* Setting `Position1` of canvas.Circle higher than `Position2` causes panic. (#3949)
+* Enhance scroll wheel/touchpad scroll speed on desktop (#3492)
+* Possible build issue on Windows with app metadata
+* `Form` hint text has confusing padding to next widget (#4137)
+* `Entry` Placeholder Style Only Applied On Click (#4035)
+* Backspace and Delete key Do not Fire OnChanged Event (#4117)
+* Fix `ProgressBar` text having the wrong color sometimes
+* Window doesn't render when called for the first time from system tray and the last window was closed (#4163)
+* Possible race condition in preference change listeners
+* Various vulnerabilities resolved through updating dependencies 
+* Wrong background for color dialog (#4199)
+
+
+## 2.3.5 - 6 June 2023
+
+### Fixed
+
+* Panic with unsupported font (#3646)
+* Temporary manifest file not closed after building on Windows
+* Panic when using autogenerated quit menu and having unshown windows (#3870)
+* Using `canvas.ImageScaleFastest` not working on arm64 (#3891)
+* Disabled password Entry should also disable the ActionItem (#3908)
+* Disabled RadioGroup does not display status (#3882)
+* Negative TableCellID Row (#2857)
+* Make sure we have sufficient space for the bar as well if content is tiny (#3898)
+* Leak in image painter when replacing image.Image source regularly
+* Links in Markdown/Rich Text lists breaks formatting (#2911)
+* Crash when reducing window to taskbar with popup opened (#3877)
+* RichText vertical scroll will truncate long content with horizontal lines (#3929)
+* Custom metadata would not apply with `fyne release` command
+* Horizontal CheckGroup overlap when having long text (#3005)
+* Fix focused colour of coloured buttons (#3462)
+* Menu separator not visible with light theme (#3814)
+
+
+## 2.3.4 - 3 May 2023
+
+### Fixed
+
+* Memory leak when switching theme (#3640)
+* Systray MenuItem separators not rendered in macOS root menu (#3759)
+* Systray leaks window handles on Windows (#3760)
+* RadioGroup miscalculates label widths in horizontal mode (#3386)
+* Start of selection in entry is shifted when moving too fast (#3804)
+* Performance issue in widget.List (#3816)
+* Moving canvas items (e.g. Images) does not cause canvas repaint (#2205)
+* Minor graphic glitch with checkbox (#3792)
+* VBox and HBox using heap memory that was not required
+* Menu hover is slow on long menus
+
 ## 2.3.3 - 24 March 2023
 
 ### Fixed
 
 * Linux, Windows and BSD builds could fail if gles was missing
+
 
 ## 2.3.2 - 20 March 2023
 

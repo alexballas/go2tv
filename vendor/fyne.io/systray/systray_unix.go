@@ -60,12 +60,8 @@ func SetIcon(iconBytes []byte) {
 		return
 	}
 
-	dbusErr := props.Set("org.kde.StatusNotifierItem", "IconPixmap",
-		dbus.MakeVariant([]PX{convertToPixels(iconBytes)}))
-	if dbusErr != nil {
-		log.Printf("systray error: failed to set IconPixmap prop: %s\n", dbusErr)
-		return
-	}
+	props.SetMust("org.kde.StatusNotifierItem", "IconPixmap",
+		[]PX{convertToPixels(iconBytes)})
 	if conn == nil {
 		return
 	}
@@ -164,18 +160,18 @@ func quit() {
 
 func nativeStart() {
 	systrayReady()
-	conn, _ := dbus.ConnectSessionBus()
-	if conn == nil {
-		log.Printf("systray error: failed to connect to DBus")
+	conn, err := dbus.SessionBus()
+	if err != nil {
+		log.Printf("systray error: failed to connect to DBus: %v\n", err)
 		return
 	}
-	err := notifier.ExportStatusNotifierItem(conn, path, &notifier.UnimplementedStatusNotifierItem{})
+	err = notifier.ExportStatusNotifierItem(conn, path, &notifier.UnimplementedStatusNotifierItem{})
 	if err != nil {
-		log.Printf("systray error: failed to export status notifier item: %s\n", err)
+		log.Printf("systray error: failed to export status notifier item: %v\n", err)
 	}
 	err = menu.ExportDbusmenu(conn, menuPath, instance)
 	if err != nil {
-		log.Printf("systray error: failed to export status notifier item: %s\n", err)
+		log.Printf("systray error: failed to export status notifier menu: %v\n", err)
 		return
 	}
 
@@ -231,10 +227,55 @@ func nativeStart() {
 	instance.menuProps = menuProps
 	instance.lock.Unlock()
 
-	obj := conn.Object("org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher")
+	go stayRegistered()
+}
+
+func register() bool {
+	obj := instance.conn.Object("org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher")
 	call := obj.Call("org.kde.StatusNotifierWatcher.RegisterStatusNotifierItem", 0, path)
 	if call.Err != nil {
-		log.Printf("systray error: failed to register our icon with the notifier watcher (maybe no tray is running?): %s\n", call.Err)
+		log.Printf("systray error: failed to register: %v\n", call.Err)
+		return false
+	}
+
+	return true
+}
+
+func stayRegistered() {
+	register()
+
+	conn := instance.conn
+	if err := conn.AddMatchSignal(
+		dbus.WithMatchObjectPath("/org/freedesktop/DBus"),
+		dbus.WithMatchInterface("org.freedesktop.DBus"),
+		dbus.WithMatchSender("org.freedesktop.DBus"),
+		dbus.WithMatchMember("NameOwnerChanged"),
+		dbus.WithMatchArg(0, "org.kde.StatusNotifierWatcher"),
+	); err != nil {
+		log.Printf("systray error: failed to register signal matching: %v\n", err)
+		// If we can't monitor signals, there is no point in
+		// us being here. we're either registered or not (per
+		// above) and will roll the dice from here...
+		return
+	}
+
+	sc := make(chan *dbus.Signal, 10)
+	conn.Signal(sc)
+
+	for {
+		select {
+		case sig := <-sc:
+			if sig == nil {
+				return // We get a nil signal when closing the window.
+			}
+
+			// sig.Body has the args, which are [name old_owner new_owner]
+			if sig.Body[2] != "" {
+				register()
+			}
+		case <-quitChan:
+			return
+		}
 	}
 }
 
@@ -273,7 +314,7 @@ func (t *tray) createPropSpec() map[string]map[string]*prop.Prop {
 				Callback: nil,
 			},
 			"Id": {
-				Value:    "1",
+				Value:    t.title,
 				Writable: false,
 				Emit:     prop.EmitTrue,
 				Callback: nil,

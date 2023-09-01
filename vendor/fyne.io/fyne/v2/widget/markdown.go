@@ -199,12 +199,12 @@ func makeImage(n *ast.Image) *ImageSegment {
 	if err != nil {
 		u = storage.NewFileURI(dest)
 	}
-	return &ImageSegment{Source: u, Title: string(n.Title)}
+	return &ImageSegment{Source: u, Title: string(n.Title), Alignment: fyne.TextAlignCenter}
 }
 
 func makeLink(n *ast.Link) *HyperlinkSegment {
 	link, _ := url.Parse(string(n.Destination))
-	return &HyperlinkSegment{fyne.TextAlignLeading, "", link}
+	return &HyperlinkSegment{fyne.TextAlignLeading, "", link, nil}
 }
 
 func parseMarkdown(content string) []RichTextSegment {

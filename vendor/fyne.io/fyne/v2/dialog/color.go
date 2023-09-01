@@ -41,14 +41,11 @@ type ColorPickerDialog struct {
 //
 // Since: 1.4
 func NewColorPicker(title, message string, callback func(c color.Color), parent fyne.Window) *ColorPickerDialog {
-	p := &ColorPickerDialog{
+	return &ColorPickerDialog{
 		dialog:   newDialog(title, message, theme.ColorPaletteIcon(), nil /*cancel?*/, parent),
 		color:    theme.PrimaryColor(),
 		callback: callback,
 	}
-	p.dialog.layout = &dialogLayout{d: p.dialog}
-
-	return p
 }
 
 // ShowColorPicker creates and shows a color dialog.
@@ -137,10 +134,10 @@ func (p *ColorPickerDialog) updateUI() {
 				p.selectColor(p.color)
 			},
 		}
-		p.dialog.create(newButtonList(p.dialog.dismiss, confirm))
+		p.dialog.create(container.NewGridWithColumns(2, p.dialog.dismiss, confirm))
 	} else {
 		p.dialog.content = container.NewVBox(p.createSimplePickers()...)
-		p.dialog.create(newButtonList(p.dialog.dismiss))
+		p.dialog.create(container.NewGridWithColumns(1, p.dialog.dismiss))
 	}
 }
 
@@ -188,6 +185,12 @@ func newCheckeredBackground(radial bool) *canvas.Raster {
 		rect := f
 		f = func(x, y, w, h int) color.Color {
 			r, t := cmplx.Polar(complex(float64(x)-float64(w)/2, float64(y)-float64(h)/2))
+			limit := math.Min(float64(w), float64(h)) / 2.0
+			if r > limit {
+				// Out of bounds
+				return &color.NRGBA{A: 0}
+			}
+
 			x = int((t + math.Pi) / (2 * math.Pi) * checkeredNumberOfRings * checkeredBoxSize)
 			y = int(r)
 			return rect(x, y, 0, 0)

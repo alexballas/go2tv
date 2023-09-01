@@ -60,7 +60,7 @@ func (hl *Hyperlink) CreateRenderer() fyne.WidgetRenderer {
 	focus.StrokeColor = theme.FocusColor()
 	focus.StrokeWidth = 2
 	focus.Hide()
-	under := canvas.NewRectangle(theme.PrimaryColor())
+	under := canvas.NewRectangle(theme.HyperlinkColor())
 	under.Hide()
 	return &hyperlinkRenderer{hl: hl, objects: []fyne.CanvasObject{hl.provider, focus, under}, focus: focus, under: under}
 }
@@ -172,7 +172,7 @@ func (hl *Hyperlink) TypedRune(rune) {
 // TypedKey is a hook called by the input handling logic on key events if this object is focused.
 func (hl *Hyperlink) TypedKey(ev *fyne.KeyEvent) {
 	if ev.Name == fyne.KeySpace {
-		hl.openURL()
+		hl.Tapped(nil)
 	}
 }
 
@@ -190,7 +190,7 @@ func (hl *Hyperlink) syncSegments() {
 	hl.provider.Segments = []RichTextSegment{&TextSegment{
 		Style: RichTextStyle{
 			Alignment: hl.Alignment,
-			ColorName: theme.ColorNamePrimary,
+			ColorName: theme.ColorNameHyperlink,
 			Inline:    true,
 			TextStyle: hl.TextStyle,
 		},
@@ -231,6 +231,6 @@ func (r *hyperlinkRenderer) Refresh() {
 	r.hl.provider.Refresh()
 	r.focus.StrokeColor = theme.FocusColor()
 	r.focus.Hidden = !r.hl.focused
-	r.under.StrokeColor = theme.PrimaryColor()
+	r.under.StrokeColor = theme.HyperlinkColor()
 	r.under.Hidden = !r.hl.hovered
 }

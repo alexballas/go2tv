@@ -9,20 +9,17 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver/desktop"
-	"fyne.io/fyne/v2/internal"
 	"fyne.io/fyne/v2/internal/app"
 	"fyne.io/fyne/v2/internal/cache"
 	"fyne.io/fyne/v2/internal/driver"
 	"fyne.io/fyne/v2/internal/driver/common"
+	"fyne.io/fyne/v2/internal/scale"
 )
 
 const (
-	scrollAccelerateRate   = float64(5)
-	scrollAccelerateCutoff = float64(5)
-	scrollSpeed            = float32(10)
-	doubleClickDelay       = 300 // ms (maximum interval between clicks for double click detection)
-	dragMoveThreshold      = 2   // how far can we move before it is a drag
-	windowIconSize         = 256
+	doubleClickDelay  = 300 // ms (maximum interval between clicks for double click detection)
+	dragMoveThreshold = 2   // how far can we move before it is a drag
+	windowIconSize    = 256
 )
 
 func (w *window) Title() string {
@@ -49,7 +46,7 @@ func (w *window) minSizeOnScreen() (int, int) {
 
 // screenSize computes the actual output size of the given content size in screen pixels
 func (w *window) screenSize(canvasSize fyne.Size) (int, int) {
-	return internal.ScaleInt(w.canvas, canvasSize.Width), internal.ScaleInt(w.canvas, canvasSize.Height)
+	return scale.ToScreenCoordinate(w.canvas, canvasSize.Width), scale.ToScreenCoordinate(w.canvas, canvasSize.Height)
 }
 
 func (w *window) Resize(size fyne.Size) {
@@ -58,7 +55,7 @@ func (w *window) Resize(size fyne.Size) {
 	w.runOnMainWhenCreated(func() {
 		w.viewLock.Lock()
 
-		width, height := internal.ScaleInt(w.canvas, bigEnough.Width), internal.ScaleInt(w.canvas, bigEnough.Height)
+		width, height := scale.ToScreenCoordinate(w.canvas, bigEnough.Width), scale.ToScreenCoordinate(w.canvas, bigEnough.Height)
 		if w.fixedSize || !w.visible { // fixed size ignores future `resized` and if not visible we may not get the event
 			w.shouldWidth, w.shouldHeight = width, height
 			w.width, w.height = width, height
@@ -137,11 +134,11 @@ func (w *window) doShow() {
 		return
 	}
 
-	run.Lock()
+	run.L.Lock()
 	for !run.flag {
-		run.cond.Wait()
+		run.Wait()
 	}
-	run.Unlock()
+	run.L.Unlock()
 
 	w.createLock.Do(w.create)
 	if w.view() == nil {
@@ -173,6 +170,10 @@ func (w *window) doShow() {
 	// show top canvas element
 	if w.canvas.Content() != nil {
 		w.canvas.Content().Show()
+
+		runOnDraw(w, func() {
+			w.driver.repaintWindow(w)
+		})
 	}
 }
 
@@ -218,7 +219,7 @@ func (w *window) Close() {
 		})
 	})
 
-	w.canvas.WalkTrees(nil, func(node *common.RenderCacheNode) {
+	w.canvas.WalkTrees(nil, func(node *common.RenderCacheNode, _ fyne.Position) {
 		if wid, ok := node.Obj().(fyne.Widget); ok {
 			cache.DestroyRenderer(wid)
 		}
@@ -306,8 +307,8 @@ func (w *window) processMoved(x, y int) {
 func (w *window) processResized(width, height int) {
 	canvasSize := w.computeCanvasSize(width, height)
 	if !w.fullScreen {
-		w.width = internal.ScaleInt(w.canvas, canvasSize.Width)
-		w.height = internal.ScaleInt(w.canvas, canvasSize.Height)
+		w.width = scale.ToScreenCoordinate(w.canvas, canvasSize.Width)
+		w.height = scale.ToScreenCoordinate(w.canvas, canvasSize.Height)
 	}
 
 	if !w.visible { // don't redraw if hidden
@@ -353,7 +354,7 @@ func (w *window) findObjectAtPositionMatching(canvas *glCanvas, mouse fyne.Posit
 func (w *window) processMouseMoved(xpos float64, ypos float64) {
 	w.mouseLock.Lock()
 	previousPos := w.mousePos
-	w.mousePos = fyne.NewPos(internal.UnscaleInt(w.canvas, int(xpos)), internal.UnscaleInt(w.canvas, int(ypos)))
+	w.mousePos = fyne.NewPos(scale.ToFyneCoordinate(w.canvas, int(xpos)), scale.ToFyneCoordinate(w.canvas, int(ypos)))
 	mousePos := w.mousePos
 	mouseButton := w.mouseButton
 	mouseDragPos := w.mouseDragPos
@@ -410,10 +411,9 @@ func (w *window) processMouseMoved(xpos float64, ypos float64) {
 	isMouseOverDragged := w.objIsDragged(mouseOver)
 	w.mouseLock.RUnlock()
 	if obj != nil && !isObjDragged {
-		ev := new(desktop.MouseEvent)
+		ev := &desktop.MouseEvent{Button: mouseButton}
 		ev.AbsolutePosition = mousePos
 		ev.Position = pos
-		ev.Button = mouseButton
 
 		if hovered, ok := obj.(desktop.Hoverable); ok {
 			if hovered == mouseOver {
@@ -450,7 +450,7 @@ func (w *window) processMouseMoved(xpos float64, ypos float64) {
 	if mouseDragged != nil && mouseButton != desktop.MouseButtonSecondary {
 		if w.mouseButton > 0 {
 			draggedObjDelta := mouseDraggedObjStart.Subtract(mouseDragged.(fyne.CanvasObject).Position())
-			ev := new(fyne.DragEvent)
+			ev := &fyne.DragEvent{}
 			ev.AbsolutePosition = mousePos
 			ev.Position = mousePos.Subtract(mouseDraggedOffset).Add(draggedObjDelta)
 			ev.Dragged = fyne.NewDelta(mousePos.X-mouseDragPos.X, mousePos.Y-mouseDragPos.Y)
@@ -507,7 +507,7 @@ func (w *window) processMouseClicked(button desktop.MouseButton, action action, 
 	if mousePos.IsZero() { // window may not be focused (darwin mostly) and so position callbacks not happening
 		xpos, ypos := w.view().GetCursorPos()
 		w.mouseLock.Lock()
-		w.mousePos = fyne.NewPos(internal.UnscaleInt(w.canvas, int(xpos)), internal.UnscaleInt(w.canvas, int(ypos)))
+		w.mousePos = fyne.NewPos(scale.ToFyneCoordinate(w.canvas, int(xpos)), scale.ToFyneCoordinate(w.canvas, int(ypos)))
 		mousePos = w.mousePos
 		w.mouseLock.Unlock()
 	}
@@ -524,22 +524,37 @@ func (w *window) processMouseClicked(button desktop.MouseButton, action action, 
 
 		return false
 	})
-	ev := new(fyne.PointEvent)
-	ev.Position = pos
-	ev.AbsolutePosition = mousePos
+	ev := &fyne.PointEvent{
+		Position:         pos,
+		AbsolutePosition: mousePos,
+	}
 
 	coMouse := co
 	if wid, ok := co.(desktop.Mouseable); ok {
-		mev := new(desktop.MouseEvent)
+		mev := &desktop.MouseEvent{
+			Button:   button,
+			Modifier: modifiers,
+		}
 		mev.Position = ev.Position
 		mev.AbsolutePosition = mousePos
-		mev.Button = button
-		mev.Modifier = modifiers
 		w.mouseClickedHandleMouseable(mev, action, wid)
 	}
 
 	if wid, ok := co.(fyne.Focusable); !ok || wid != w.canvas.Focused() {
-		w.canvas.Unfocus()
+		ignore := false
+		_, _, _ = w.findObjectAtPositionMatching(w.canvas, mousePos, func(object fyne.CanvasObject) bool {
+			switch object.(type) {
+			case fyne.Focusable:
+				ignore = true
+				return true
+			}
+
+			return false
+		})
+
+		if !ignore { // if a parent item under the mouse has focus then ignore this tap unfocus
+			w.canvas.Unfocus()
+		}
 	}
 
 	w.mouseLock.Lock()
@@ -572,7 +587,7 @@ func (w *window) processMouseClicked(button desktop.MouseButton, action action, 
 	}
 
 	_, tap := co.(fyne.Tappable)
-	_, altTap := co.(fyne.SecondaryTappable)
+	secondary, altTap := co.(fyne.SecondaryTappable)
 	if tap || altTap {
 		if action == press {
 			w.mouseLock.Lock()
@@ -581,7 +596,7 @@ func (w *window) processMouseClicked(button desktop.MouseButton, action action, 
 		} else if action == release {
 			if co == mousePressed {
 				if button == desktop.MouseButtonSecondary && altTap {
-					w.QueueEvent(func() { co.(fyne.SecondaryTappable).TappedSecondary(ev) })
+					w.QueueEvent(func() { secondary.TappedSecondary(ev) })
 				}
 			}
 		}
@@ -910,9 +925,7 @@ func (w *window) RunWithContext(f func()) {
 }
 
 func (w *window) RescaleContext() {
-	runOnMain(func() {
-		w.rescaleOnMain()
-	})
+	runOnMain(w.rescaleOnMain)
 }
 
 func (w *window) Context() interface{} {

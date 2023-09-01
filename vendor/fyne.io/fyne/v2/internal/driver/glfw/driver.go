@@ -6,10 +6,8 @@ import (
 	"bytes"
 	"image"
 	"os"
-	"os/signal"
 	"runtime"
 	"sync"
-	"syscall"
 
 	"github.com/fyne-io/image/ico"
 
@@ -29,15 +27,13 @@ import (
 // influence of a garbage collector.
 var mainGoroutineID uint64
 
-var (
-	curWindow *window
-	isWayland = false
-)
+var curWindow *window
 
 // Declare conformity with Driver
 var _ fyne.Driver = (*gLDriver)(nil)
 
-var drawOnMainThread bool // A workaround on Apple M1, just use 1 thread until fixed upstream
+// A workaround on Apple M1/M2, just use 1 thread until fixed upstream.
+const drawOnMainThread bool = runtime.GOOS == "darwin" && runtime.GOARCH == "arm64"
 
 type gLDriver struct {
 	windowLock sync.RWMutex
@@ -47,6 +43,8 @@ type gLDriver struct {
 	drawDone   chan interface{}
 
 	animation *animation.Runner
+
+	currentKeyModifiers fyne.KeyModifier // desktop driver only
 
 	trayStart, trayStop func()     // shut down the system tray, if used
 	systrayMenu         *fyne.Menu // cache the menu set so we know when to refresh
@@ -150,12 +148,13 @@ func (d *gLDriver) windowList() []fyne.Window {
 func (d *gLDriver) initFailed(msg string, err error) {
 	logError(msg, err)
 
-	run.Lock()
-	if !run.flag {
-		run.Unlock()
+	run.L.Lock()
+	running := !run.flag
+	run.L.Unlock()
+
+	if running {
 		d.Quit()
 	} else {
-		run.Unlock()
 		os.Exit(1)
 	}
 }
@@ -165,28 +164,17 @@ func (d *gLDriver) Run() {
 		panic("Run() or ShowAndRun() must be called from main goroutine")
 	}
 
-	go catchTerm(d)
+	go d.catchTerm()
 	d.runGL()
 }
 
 // NewGLDriver sets up a new Driver instance implemented using the GLFW Go library and OpenGL bindings.
 func NewGLDriver() fyne.Driver {
-	d := new(gLDriver)
-	d.done = make(chan interface{})
-	d.drawDone = make(chan interface{})
-	d.animation = &animation.Runner{}
-
 	repository.Register("file", intRepo.NewFileRepository())
 
-	return d
-}
-
-func catchTerm(d *gLDriver) {
-	terminateSignals := make(chan os.Signal, 1)
-	signal.Notify(terminateSignals, syscall.SIGINT, syscall.SIGTERM)
-
-	for range terminateSignals {
-		d.Quit()
-		break
+	return &gLDriver{
+		done:      make(chan interface{}),
+		drawDone:  make(chan interface{}),
+		animation: &animation.Runner{},
 	}
 }
