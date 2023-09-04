@@ -3,7 +3,7 @@ on: [push]
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
 
@@ -18,23 +18,14 @@ jobs:
       with:
         go-version: "*"
 
+    - name: Get dependencies
+      run: sudo apt update && sudo apt install xorg-dev
+
     - name: Install fyne
       run: go install fyne.io/fyne/v2/cmd/fyne@latest
 
     - name: Install fyne-cross
       run: go install github.com/fyne-io/fyne-cross@latest
-
-    - name: Install Homebrew
-      run: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-    - name: Install Docker and Colima
-      run: brew install docker colima
-
-    - name: Delete Colima
-      run: colima delete
-
-    - name: Run Colima
-      run: colima start
 
     - name: Package (macOS)
       run:  fyne-cross darwin -arch=arm64 -icon assets/go2tv-icon-desktop.png -app-id "com.alexballas.go2tv" ./cmd/go2tv/

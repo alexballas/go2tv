@@ -133,13 +133,13 @@ func onDropFiles(screen *NewScreen) func(p fyne.Position, u []fyne.URI) {
 
 	out:
 		for _, f := range u {
-			if strings.HasSuffix(f.Name(), ".srt") {
+			if strings.HasSuffix(strings.ToUpper(f.Name()), ".SRT") {
 				sfiles = append(sfiles, f)
 				continue
 			}
 
 			for _, s := range screen.mediaFormats {
-				if strings.HasSuffix(f.Name(), s) {
+				if strings.HasSuffix(strings.ToUpper(f.Name()), strings.ToUpper(s)) {
 					mfiles = append(mfiles, f)
 					continue out
 				}
