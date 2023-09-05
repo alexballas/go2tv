@@ -30,6 +30,9 @@ jobs:
     - name: Install Docker
       run: brew install docker
 
+    - name: Check Brew version
+      run: brew -v
+
     - name: Run Colima
       run: colima start
 
