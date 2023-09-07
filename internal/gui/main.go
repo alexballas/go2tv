@@ -532,6 +532,25 @@ func refreshDevList(s *NewScreen, data *[]devType) {
 	for range refreshDevices.C {
 		datanew, _ := getDevices(2)
 
+	outer:
+		for _, old := range *data {
+			oldAddress, _ := url.Parse(old.addr)
+			for _, new := range datanew {
+				newAddress, _ := url.Parse(new.addr)
+				if newAddress.Host == oldAddress.Host {
+					continue outer
+				}
+			}
+
+			if utils.HostPortIsAlive(oldAddress.Host) {
+				datanew = append(datanew, old)
+			}
+
+			sort.Slice(datanew, func(i, j int) bool {
+				return (datanew)[i].name < (datanew)[j].name
+			})
+		}
+
 		// check to see if the new refresh includes
 		// one of the already selected devices
 		var includes bool
@@ -545,17 +564,9 @@ func refreshDevList(s *NewScreen, data *[]devType) {
 
 		*data = datanew
 
-		if !includes {
-			if utils.HostPortIsAlive(u.Host) {
-				*data = append(*data, s.selectedDevice)
-				sort.Slice(*data, func(i, j int) bool {
-					return (*data)[i].name < (*data)[j].name
-				})
-
-			} else {
-				s.controlURL = ""
-				s.DeviceList.UnselectAll()
-			}
+		if !includes && !utils.HostPortIsAlive(u.Host) {
+			s.controlURL = ""
+			s.DeviceList.UnselectAll()
 		}
 
 		var found bool
