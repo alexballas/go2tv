@@ -241,11 +241,16 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	})
 
 	go func() {
-		datanew, err := getDevices(1)
-		data = datanew
+		var err error
+		data, err = getDevices(1)
 		if err != nil {
 			data = nil
 		}
+
+		sort.Slice(data, func(i, j int) bool {
+			return (data)[i].name < (data)[j].name
+		})
+
 		list.Refresh()
 	}()
 
