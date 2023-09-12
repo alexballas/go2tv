@@ -35,7 +35,7 @@ type NewScreen struct {
 	cancelEnablePlay     context.CancelFunc
 	MediaText            *widget.Entry
 	SubsText             *widget.Entry
-	DeviceList           *widget.List
+	DeviceList           *deviceList
 	httpserver           *httphandlers.HTTPserver
 	PlayPause            *widget.Button
 	mediafile            fyne.URI

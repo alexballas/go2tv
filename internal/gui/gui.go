@@ -40,7 +40,7 @@ type NewScreen struct {
 	CustomSubsCheck      *widget.Check
 	PlayPause            *widget.Button
 	Stop                 *widget.Button
-	DeviceList           *widget.List
+	DeviceList           *deviceList
 	httpserver           *httphandlers.HTTPserver
 	MediaText            *widget.Entry
 	ExternalMediaURL     *widget.Check

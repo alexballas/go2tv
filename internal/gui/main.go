@@ -33,6 +33,32 @@ type tappedSlider struct {
 	end    string
 }
 
+type deviceList struct {
+	widget.List
+}
+
+func (c *deviceList) FocusGained() {}
+
+func newDeviceList(dd *[]devType) *deviceList {
+	list := &deviceList{}
+
+	list.Length = func() int {
+		return len(*dd)
+	}
+
+	list.CreateItem = func() fyne.CanvasObject {
+		intListCont := container.NewHBox(widget.NewIcon(theme.NavigateNextIcon()), widget.NewLabel(""))
+		return intListCont
+	}
+
+	list.UpdateItem = func(i widget.ListItemID, o fyne.CanvasObject) {
+		o.(*fyne.Container).Objects[1].(*widget.Label).SetText((*dd)[i].name)
+	}
+
+	list.ExtendBaseWidget(list)
+	return list
+}
+
 func newTappableSlider(s *NewScreen) *tappedSlider {
 	slider := &tappedSlider{
 		Slider: &widget.Slider{
@@ -172,9 +198,8 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 
 func mainWindow(s *NewScreen) fyne.CanvasObject {
 	w := s.Current
-	list := new(widget.List)
-
 	var data []devType
+	list := newDeviceList(&data)
 
 	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
 		if !s.Hotkeys {
@@ -311,19 +336,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	mediafilelabel := canvas.NewText("File:", nil)
 	subsfilelabel := canvas.NewText("Subtitles:", nil)
 	devicelabel := canvas.NewText("Select Device:", nil)
-
-	var intListCont fyne.CanvasObject
-	list = widget.NewList(
-		func() int {
-			return len(data)
-		},
-		func() fyne.CanvasObject {
-			intListCont = container.NewHBox(widget.NewIcon(theme.NavigateNextIcon()), widget.NewLabel(""))
-			return intListCont
-		},
-		func(i widget.ListItemID, o fyne.CanvasObject) {
-			o.(*fyne.Container).Objects[1].(*widget.Label).SetText(data[i].name)
-		})
 
 	curPos := binding.NewString()
 	endPos := binding.NewString()

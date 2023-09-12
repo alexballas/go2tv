@@ -22,12 +22,36 @@ import (
 	"github.com/alexballas/go2tv/soapcalls/utils"
 )
 
+type deviceList struct {
+	widget.List
+}
+
+func (c *deviceList) FocusGained() {}
+
+func newDeviceList(dd *[]devType) *deviceList {
+	list := &deviceList{}
+
+	list.Length = func() int {
+		return len(*dd)
+	}
+
+	list.CreateItem = func() fyne.CanvasObject {
+		intListCont := container.NewHBox(widget.NewIcon(theme.NavigateNextIcon()), widget.NewLabel(""))
+		return intListCont
+	}
+
+	list.UpdateItem = func(i widget.ListItemID, o fyne.CanvasObject) {
+		o.(*fyne.Container).Objects[1].(*widget.Label).SetText((*dd)[i].name)
+	}
+
+	list.ExtendBaseWidget(list)
+	return list
+}
+
 func mainWindow(s *NewScreen) fyne.CanvasObject {
 	w := s.Current
-
-	list := new(widget.List)
-
 	var data []devType
+	list := newDeviceList(&data)
 
 	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
 		if k.Name == mobile.KeyBack {
@@ -114,17 +138,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	mediafilelabel := canvas.NewText("File:", nil)
 	subsfilelabel := canvas.NewText("Subtitles:", nil)
 	devicelabel := canvas.NewText("Select Device:", nil)
-
-	list = widget.NewList(
-		func() int {
-			return len(data)
-		},
-		func() fyne.CanvasObject {
-			return container.NewHBox(widget.NewIcon(theme.NavigateNextIcon()), widget.NewLabel("Template Object"))
-		},
-		func(i widget.ListItemID, o fyne.CanvasObject) {
-			o.(*fyne.Container).Objects[1].(*widget.Label).SetText(data[i].name)
-		})
 
 	s.PlayPause = playpause
 	s.Stop = stop
