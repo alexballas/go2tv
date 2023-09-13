@@ -218,7 +218,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		}
 
 		if k.Name == "Space" || k.Name == "P" {
-
 			currentState := s.getScreenState()
 			switch currentState {
 			case "Playing":
