@@ -13,7 +13,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/driver/mobile"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -52,28 +51,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	w := s.Current
 	var data []devType
 	list := newDeviceList(&data)
-
-	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
-		if k.Name == mobile.KeyBack {
-			fyne.CurrentApp().Driver().(mobile.Driver).GoBack()
-		}
-
-		if k.Name == "Space" || k.Name == "P" {
-
-			currentState := s.getScreenState()
-
-			switch currentState {
-			case "Playing":
-				go pauseAction(s)
-			case "Paused":
-				go playAction(s)
-			}
-		}
-
-		if k.Name == "S" {
-			go stopAction(s)
-		}
-	})
 
 	go func() {
 		var err error
