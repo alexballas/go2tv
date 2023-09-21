@@ -110,8 +110,13 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 
 	})
 
-	gaplessText := widget.NewLabel("Gapless Playback*")
+	gaplessText := widget.NewLabel("Gapless Playback")
 	gaplessdropdown := widget.NewSelect([]string{"Enabled", "Disabled"}, func(ss string) {
+		if ss == "Enabled" && fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled") == "Disabled" {
+			dialog.ShowInformation("Gapless Playback", `Not all devices support gapless playback.
+If 'Auto-Play Next File' is not working correctly, please disable it.`, w)
+		}
+
 		fyne.CurrentApp().Preferences().SetString("Gapless", ss)
 		if s.NextMediaCheck.Checked {
 			switch ss {
@@ -141,11 +146,7 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 
 	dropdown.Refresh()
 
-	gaplessTextNote := widget.NewLabel("*Not all devices support gapless playback. If 'Auto-Play Next File' is not working correctly, please disable gapless playback.")
-	formlayout := container.New(layout.NewFormLayout(), themeText, dropdown, gaplessText, gaplessdropdown, debugText, debugExport)
-	settings := container.NewVBox(formlayout, layout.NewSpacer(), gaplessTextNote)
-
-	return settings
+	return container.New(layout.NewFormLayout(), themeText, dropdown, gaplessText, gaplessdropdown, debugText, debugExport)
 }
 
 func saveDebugLogs(f fyne.URIWriteCloser, s *NewScreen) {
