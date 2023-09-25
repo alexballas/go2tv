@@ -27,7 +27,6 @@ type States struct {
 }
 
 var (
-	log                   zerolog.Logger
 	ErrNoMatchingFileType = errors.New("no matching file type")
 	ErrZombieCallbacks    = errors.New("zombie callbacks, we should ignore those")
 )
@@ -37,7 +36,8 @@ var (
 type TVPayload struct {
 	initLogOnce                 sync.Once
 	mu                          sync.RWMutex
-	Logging                     io.Writer
+	LogOutput                   io.Writer
+	Logger                      zerolog.Logger
 	ctx                         context.Context
 	MediaRenderersStates        map[string]*States
 	CurrentTimers               map[string]*time.Timer
@@ -1426,15 +1426,13 @@ func (p *TVPayload) GetProcessStop(uuid string) (bool, error) {
 }
 
 func (p *TVPayload) Log() *zerolog.Logger {
-	if p.Logging != nil {
+	if p.LogOutput != nil {
 		p.initLogOnce.Do(func() {
-			log = zerolog.New(p.Logging).With().Timestamp().Logger()
+			p.Logger = zerolog.New(p.LogOutput).With().Timestamp().Logger()
 		})
-	} else {
-		return &zerolog.Logger{}
 	}
 
-	return &log
+	return &p.Logger
 }
 
 func parseProtocolInfo(b []byte, mt string) error {

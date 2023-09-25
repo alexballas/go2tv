@@ -334,7 +334,7 @@ func playAction(screen *NewScreen) {
 		InitialMediaRenderersStates: make(map[string]bool),
 		Transcode:                   screen.Transcode,
 		Seekable:                    isSeek,
-		Logging:                     screen.Debug,
+		LogOutput:                   screen.Debug,
 	}
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)
@@ -654,7 +654,7 @@ func queueNext(screen *NewScreen, clear bool) (*soapcalls.TVPayload, error) {
 		InitialMediaRenderersStates: make(map[string]bool),
 		Transcode:                   screen.Transcode,
 		Seekable:                    isSeek,
-		Logging:                     screen.Debug,
+		LogOutput:                   screen.Debug,
 	}
 
 	//screen.httpNexterver.StartServer(serverStarted, mediaFile, spath, nextTvData, screen)
