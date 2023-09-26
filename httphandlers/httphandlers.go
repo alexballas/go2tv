@@ -26,11 +26,11 @@ type HTTPserver struct {
 	// We only need to run one ffmpeg
 	// command at a time, per server instance
 	ffmpeg   *exec.Cmd
-	mu       sync.Mutex
 	handlers map[string]struct {
 		payload *soapcalls.TVPayload
 		media   interface{}
 	}
+	mu sync.Mutex
 }
 
 // Screen interface is used to push message back to the user

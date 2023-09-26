@@ -27,10 +27,10 @@ import (
 )
 
 type tappedSlider struct {
-	mu sync.Mutex
 	*widget.Slider
 	screen *NewScreen
 	end    string
+	mu     sync.Mutex
 }
 
 type deviceList struct {

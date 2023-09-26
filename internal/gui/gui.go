@@ -25,46 +25,46 @@ import (
 
 // NewScreen .
 type NewScreen struct {
-	muError              sync.RWMutex
-	mu                   sync.RWMutex
-	serverStopCTX        context.Context
-	Current              fyne.Window
-	VolumeDown           *widget.Button
-	SlideBar             *tappedSlider
-	Debug                *debugWriter
 	CurrentPos           binding.String
 	EndPos               binding.String
+	serverStopCTX        context.Context
+	Current              fyne.Window
+	cancelEnablePlay     context.CancelFunc
+	PlayPause            *widget.Button
+	Debug                *debugWriter
+	VolumeUp             *widget.Button
+	tvdata               *soapcalls.TVPayload
 	tabs                 *container.AppTabs
 	CheckVersion         *widget.Button
 	SubsText             *widget.Entry
 	CustomSubsCheck      *widget.Check
-	PlayPause            *widget.Button
+	NextMediaCheck       *widget.Check
 	Stop                 *widget.Button
 	DeviceList           *deviceList
 	httpserver           *httphandlers.HTTPserver
 	MediaText            *widget.Entry
 	ExternalMediaURL     *widget.Check
 	GaplessMediaWatcher  func(context.Context, *NewScreen, *soapcalls.TVPayload)
-	cancelEnablePlay     context.CancelFunc
+	SlideBar             *tappedSlider
 	MuteUnmute           *widget.Button
-	VolumeUp             *widget.Button
-	tvdata               *soapcalls.TVPayload
-	NextMediaCheck       *widget.Check
+	VolumeDown           *widget.Button
 	selectedDevice       devType
+	State                string
+	mediafile            string
 	version              string
 	eventlURL            string
 	subsfile             string
 	controlURL           string
 	renderingControlURL  string
 	connectionManagerURL string
-	State                string
-	mediafile            string
 	currentmfolder       string
 	mediaFormats         []string
+	muError              sync.RWMutex
+	mu                   sync.RWMutex
+	Medialoop            bool
 	sliderActive         bool
 	Transcode            bool
 	ErrorVisible         bool
-	Medialoop            bool
 	Hotkeys              bool
 }
 
