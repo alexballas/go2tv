@@ -305,7 +305,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	skipNext := widget.NewButtonWithIcon("", theme.MediaSkipNextIcon(), func() {
 		go skipNextAction(s)
 	})
-
 	sliderBar := newTappableSlider(s)
 
 	// previewmedia spawns external applications.
@@ -321,7 +320,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		go previewmedia(s)
 	})
 
-	sfilecheck := widget.NewCheck("Custom Subtitles", func(b bool) {})
+	sfilecheck := widget.NewCheck("Manual Subtitles", func(b bool) {})
 	externalmedia := widget.NewCheck("Media from URL", func(b bool) {})
 	medialoop := widget.NewCheck("Loop Selected", func(b bool) {})
 	nextmedia := widget.NewCheck("Auto-Play Next File", func(b bool) {})
