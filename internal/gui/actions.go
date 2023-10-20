@@ -471,6 +471,11 @@ func skipNextAction(screen *NewScreen) {
 		return
 	}
 
+	if screen.mediafile == "" {
+		check(screen, errors.New("please select a media file"))
+		return
+	}
+
 	name, path := getNextMedia(screen)
 	screen.MediaText.Text = name
 	screen.mediafile = path

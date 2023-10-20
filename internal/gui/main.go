@@ -417,6 +417,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			nextmedia.Disable()
 			mfile.Disable()
 			previewmedia.Disable()
+			skipNext.Disable()
 
 			// keep old values
 			mediafileOld = s.mediafile
@@ -446,6 +447,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 		mfile.Enable()
 		previewmedia.Enable()
+		skipNext.Enable()
 		mediafilelabel.Text = "File:"
 		s.MediaText.SetPlaceHolder("")
 		s.MediaText.Text = mediafileOldText
