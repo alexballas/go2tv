@@ -1,11 +1,13 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -49,7 +51,7 @@ CHECK:
 	numberOfchecks++
 	conn, err := net.Listen("tcp", net.JoinHostPort(ip, strconv.Itoa(port)))
 	if err != nil {
-		if strings.Contains(err.Error(), "address already in use") {
+		if errors.Is(err, syscall.EADDRINUSE) {
 			if numberOfchecks == 1000 {
 				return "", fmt.Errorf("port pick error. Checked 1000 ports: %w", err)
 			}
