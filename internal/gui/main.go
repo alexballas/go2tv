@@ -286,7 +286,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		go volumeAction(s, true)
 	})
 
-	muteunmute := widget.NewButtonWithIcon("", theme.VolumeMuteIcon(), func() {
+	muteunmute := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() {
 		go muteAction(s)
 	})
 

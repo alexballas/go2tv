@@ -345,10 +345,10 @@ func setPlayPauseView(s string, screen *NewScreen) {
 func setMuteUnmuteView(s string, screen *NewScreen) {
 	switch s {
 	case "Mute":
-		screen.MuteUnmute.Icon = theme.VolumeMuteIcon()
+		screen.MuteUnmute.Icon = theme.VolumeUpIcon()
 		screen.MuteUnmute.Refresh()
 	case "Unmute":
-		screen.MuteUnmute.Icon = theme.VolumeUpIcon()
+		screen.MuteUnmute.Icon = theme.VolumeMuteIcon()
 		screen.MuteUnmute.Refresh()
 	}
 }
