@@ -6,6 +6,7 @@ package gui
 import (
 	"context"
 	"fmt"
+	dialog2 "github.com/sqweek/dialog"
 	"io"
 	"net/url"
 	"os"
@@ -18,8 +19,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
-	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"github.com/alexballas/go2tv/devices"
 	"github.com/alexballas/go2tv/httphandlers"
@@ -78,80 +77,42 @@ func unmuteAction(screen *NewScreen) {
 }
 
 func mediaAction(screen *NewScreen) {
-	w := screen.Current
-	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-		check(screen, err)
+	var exts []string
+	for _, ext := range screen.mediaFormats {
+		exts = append(exts, ext[1:])
+	}
+	mfile, err := dialog2.File().Filter("Media files", exts...).Load()
+	check(screen, err)
 
-		if reader == nil {
-			return
-		}
-		defer reader.Close()
+	absMediaFile, err := filepath.Abs(mfile)
+	check(screen, err)
 
-		mfile := reader.URI().Path()
-		absMediaFile, err := filepath.Abs(mfile)
-		check(screen, err)
+	screen.MediaText.Text = filepath.Base(mfile)
+	screen.mediafile = absMediaFile
 
-		screen.MediaText.Text = filepath.Base(mfile)
-		screen.mediafile = absMediaFile
-
-		if !screen.CustomSubsCheck.Checked {
-			selectSubs(absMediaFile, screen)
-		}
-
-		// Remember the last file location.
-		screen.currentmfolder = filepath.Dir(absMediaFile)
-
-		screen.MediaText.Refresh()
-	}, w)
-
-	fd.SetFilter(storage.NewExtensionFileFilter(screen.mediaFormats))
-
-	if screen.currentmfolder != "" {
-		mfileURI := storage.NewFileURI(screen.currentmfolder)
-		mfileLister, err := storage.ListerForURI(mfileURI)
-		check(screen, err)
-		fd.SetLocation(mfileLister)
+	if !screen.CustomSubsCheck.Checked {
+		selectSubs(absMediaFile, screen)
 	}
 
-	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
-	fd.Show()
+	// Remember the last file location.
+	screen.currentmfolder = filepath.Dir(absMediaFile)
+
+	screen.MediaText.Refresh()
 }
 
 func subsAction(screen *NewScreen) {
-	w := screen.Current
-	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-		check(screen, err)
+	sfile, err := dialog2.File().Filter("Subtitle files", "srt").Load()
+	check(screen, err)
 
-		if reader == nil {
-			return
-		}
-		defer reader.Close()
-
-		sfile := reader.URI().Path()
-		absSubtitlesFile, err := filepath.Abs(sfile)
-		check(screen, err)
-		if err != nil {
-			return
-		}
-
-		screen.SubsText.Text = filepath.Base(sfile)
-		screen.subsfile = absSubtitlesFile
-		screen.SubsText.Refresh()
-	}, w)
-	fd.SetFilter(storage.NewExtensionFileFilter([]string{".srt"}))
-
-	if screen.currentmfolder != "" {
-		mfileURI := storage.NewFileURI(screen.currentmfolder)
-		mfileLister, err := storage.ListerForURI(mfileURI)
-		check(screen, err)
-		if err != nil {
-			return
-		}
-		fd.SetLocation(mfileLister)
+	absSubtitlesFile, err := filepath.Abs(sfile)
+	check(screen, err)
+	if err != nil {
+		return
 	}
-	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
 
-	fd.Show()
+	screen.SubsText.Text = filepath.Base(sfile)
+	screen.subsfile = absSubtitlesFile
+	screen.SubsText.Refresh()
 }
 
 func playAction(screen *NewScreen) {
