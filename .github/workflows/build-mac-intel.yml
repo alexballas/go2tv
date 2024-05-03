@@ -1,4 +1,4 @@
-name: Build for MacOS Apple Silicon
+name: Build for MacOS Intel
 on: [push]
 
 jobs:
