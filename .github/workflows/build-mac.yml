@@ -1,4 +1,4 @@
-name: Build for MacOS
+name: Build for MacOS Apple Silicon
 on: [push]
 
 jobs:
@@ -13,20 +13,20 @@ jobs:
     - name: Set env
       run: if grep -Fxq "devel" cmd/go2tv/version.txt;then echo "GO2TV_VERSION=$(cat cmd/go2tv/version.txt)";else echo "GO2TV_VERSION=v$(cat cmd/go2tv/version.txt)";fi  >> $GITHUB_ENV
 
-    - uses: WillAbides/setup-go-faster@v1.11.0
+    - uses: WillAbides/setup-go-faster@v1.14.0
       id: setup-go-faster
       with:
         go-version: "*"
 
     - name: Install fyne
       run: go install fyne.io/fyne/v2/cmd/fyne@latest
-      
+
     - name: Package (macOS)
-      run:  cd cmd/go2tv && fyne package --release -os darwin -icon  ../../assets/go2tv-icon-desktop.png  && mv go2tv.app ../../
+      run:  cd cmd/go2tv && GOARCH=arm64 fyne package --release -os darwin -icon  ../../assets/go2tv-icon-desktop.png  && mv go2tv.app ../../
 
     - uses: actions/upload-artifact@v2
       with:
-        name: go2tv_${{ env.GO2TV_VERSION }}_macOS_amd64
+        name: go2tv_${{ env.GO2TV_VERSION }}_macOS_arm64
         path: |
           LICENSE
           README.md
