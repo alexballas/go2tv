@@ -81,13 +81,12 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 	themeText := widget.NewLabel("Theme")
 	dropdown := widget.NewSelect([]string{"Light", "Dark"}, parseTheme)
 	themeName := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "GrabVariant")
-
 	switch themeName {
 	case "Light":
 		dropdown.PlaceHolder = "Light"
 	case "Dark":
 		dropdown.PlaceHolder = "Dark"
-	case "GrabVariant":
+	case "GrabVariant", "Default":
 		fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"GrabVariant"})
 
 		// Wait for SystemVariant to get the correct variant from the command above
