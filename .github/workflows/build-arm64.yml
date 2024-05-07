@@ -1,4 +1,4 @@
-name: Build for ARMv6 (32-bit)
+name: Build for ARMv8 (64-bit)
 on: [push]
 
 jobs:
@@ -16,22 +16,22 @@ jobs:
         copy_repository_path: /go2tv_dir
         copy_artifact_path: go2tv
         image_additional_mb: 800
-        base_image: raspios_lite:latest
+        base_image: raspios_lite_arm64:latest
         commands: |
             cd /
             sudo apt update
             sudo apt install -y xorg-dev
             sudo apt clean
-            wget -nv https://go.dev/dl/go1.20.4.linux-armv6l.tar.gz
-            tar -xzf go1.20.4.linux-armv6l.tar.gz
-            rm go1.20.4.linux-armv6l.tar.gz
+            wget -nv https://go.dev/dl/go1.20.4.linux-arm64.tar.gz
+            tar -xzf go1.20.4.linux-arm64.tar.gz
+            rm go1.20.4.linux-arm64.tar.gz
             export GOROOT=/go
             cd /go2tv_dir
             /go/bin/go build -ldflags "-s -w" -o go2tv cmd/go2tv/go2tv.go
 
     - uses: actions/upload-artifact@v2
       with:
-        name: go2tv_${{ env.GO2TV_VERSION }}_linux_arm
+        name: go2tv_${{ env.GO2TV_VERSION }}_linux_arm64
         path: |
           LICENSE
           README.md
