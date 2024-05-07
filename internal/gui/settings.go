@@ -5,6 +5,7 @@ package gui
 
 import (
 	"image/color"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -20,9 +21,16 @@ type go2tvTheme struct {
 }
 
 var _ fyne.Theme = go2tvTheme{}
+var SystemVariant fyne.ThemeVariant = 999
+var once sync.Once
 
 func (m go2tvTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
 	switch m.Theme {
+	case "GrabVariant":
+		once.Do(func() {
+			SystemVariant = variant
+		})
+
 	case "Dark":
 		variant = theme.VariantDark
 		switch name {
@@ -71,15 +79,29 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 	w := s.Current
 
 	themeText := widget.NewLabel("Theme")
-	dropdown := widget.NewSelect([]string{"Light", "Dark", "Default"}, parseTheme(s))
-	theme := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "Default")
-	switch theme {
+	dropdown := widget.NewSelect([]string{"Light", "Dark"}, parseTheme)
+	themeName := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "GrabVariant")
+	switch themeName {
 	case "Light":
 		dropdown.PlaceHolder = "Light"
 	case "Dark":
 		dropdown.PlaceHolder = "Dark"
-	case "Default":
-		dropdown.PlaceHolder = "Default"
+	case "GrabVariant", "Default":
+		fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"GrabVariant"})
+
+		// Wait for SystemVariant to get the correct variant from the command above
+		for SystemVariant == 999 {
+			time.Sleep(time.Millisecond)
+		}
+
+		switch SystemVariant {
+		case theme.VariantDark:
+			dropdown.PlaceHolder = "Dark"
+			parseTheme("Dark")
+		case theme.VariantLight:
+			dropdown.PlaceHolder = "Light"
+			parseTheme("Light")
+		}
 	}
 
 	debugText := widget.NewLabel("Debug")
@@ -110,8 +132,13 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 
 	})
 
-	gaplessText := widget.NewLabel("Gapless Playback*")
+	gaplessText := widget.NewLabel("Gapless Playback")
 	gaplessdropdown := widget.NewSelect([]string{"Enabled", "Disabled"}, func(ss string) {
+		if ss == "Enabled" && fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled") == "Disabled" {
+			dialog.ShowInformation("Gapless Playback", `Not all devices support gapless playback.
+If 'Auto-Play Next File' is not working correctly, please disable it.`, w)
+		}
+
 		fyne.CurrentApp().Preferences().SetString("Gapless", ss)
 		if s.NextMediaCheck.Checked {
 			switch ss {
@@ -141,11 +168,7 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 
 	dropdown.Refresh()
 
-	gaplessTextNote := widget.NewLabel("*Not all devices support gapless playback. If 'Auto-Play Next File' is not working correctly, please disable gapless playback.")
-	formlayout := container.New(layout.NewFormLayout(), themeText, dropdown, gaplessText, gaplessdropdown, debugText, debugExport)
-	settings := container.NewVBox(formlayout, layout.NewSpacer(), gaplessTextNote)
-
-	return settings
+	return container.New(layout.NewFormLayout(), themeText, dropdown, gaplessText, gaplessdropdown, debugText, debugExport)
 }
 
 func saveDebugLogs(f fyne.URIWriteCloser, s *NewScreen) {
@@ -163,21 +186,16 @@ func saveDebugLogs(f fyne.URIWriteCloser, s *NewScreen) {
 	dialog.ShowInformation("Debug", "Saved to... "+f.URI().String(), w)
 }
 
-func parseTheme(s *NewScreen) func(string) {
-	return func(t string) {
-		go func() {
-			time.Sleep(10 * time.Millisecond)
-			switch t {
-			case "Light":
-				fyne.CurrentApp().Preferences().SetString("Theme", "Light")
-				fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Light"})
-			case "Dark":
-				fyne.CurrentApp().Preferences().SetString("Theme", "Dark")
-				fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Dark"})
-			case "Default":
-				fyne.CurrentApp().Preferences().SetString("Theme", "Default")
-				fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Default"})
-			}
-		}()
-	}
+func parseTheme(t string) {
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		switch t {
+		case "Light":
+			fyne.CurrentApp().Preferences().SetString("Theme", "Light")
+			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Light"})
+		case "Dark":
+			fyne.CurrentApp().Preferences().SetString("Theme", "Dark")
+			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Dark"})
+		}
+	}()
 }

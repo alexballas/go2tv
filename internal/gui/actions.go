@@ -77,6 +77,40 @@ func unmuteAction(screen *NewScreen) {
 	setMuteUnmuteView("Mute", screen)
 }
 
+func selectMediaFile(screen *NewScreen, f fyne.URI) {
+	mfile := f.Path()
+	absMediaFile, err := filepath.Abs(mfile)
+	check(screen, err)
+	if err != nil {
+		return
+	}
+
+	screen.MediaText.Text = filepath.Base(mfile)
+	screen.mediafile = absMediaFile
+
+	if !screen.CustomSubsCheck.Checked {
+		autoSelectNextSubs(absMediaFile, screen)
+	}
+
+	// Remember the last file location.
+	screen.currentmfolder = filepath.Dir(absMediaFile)
+
+	screen.MediaText.Refresh()
+}
+
+func selectSubsFile(screen *NewScreen, f fyne.URI) {
+	sfile := f.Path()
+	absSubtitlesFile, err := filepath.Abs(sfile)
+	check(screen, err)
+	if err != nil {
+		return
+	}
+
+	screen.SubsText.Text = filepath.Base(sfile)
+	screen.subsfile = absSubtitlesFile
+	screen.SubsText.Refresh()
+}
+
 func mediaAction(screen *NewScreen) {
 	w := screen.Current
 	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
@@ -87,21 +121,7 @@ func mediaAction(screen *NewScreen) {
 		}
 		defer reader.Close()
 
-		mfile := reader.URI().Path()
-		absMediaFile, err := filepath.Abs(mfile)
-		check(screen, err)
-
-		screen.MediaText.Text = filepath.Base(mfile)
-		screen.mediafile = absMediaFile
-
-		if !screen.CustomSubsCheck.Checked {
-			selectSubs(absMediaFile, screen)
-		}
-
-		// Remember the last file location.
-		screen.currentmfolder = filepath.Dir(absMediaFile)
-
-		screen.MediaText.Refresh()
+		selectMediaFile(screen, reader.URI())
 	}, w)
 
 	fd.SetFilter(storage.NewExtensionFileFilter(screen.mediaFormats))
@@ -127,16 +147,7 @@ func subsAction(screen *NewScreen) {
 		}
 		defer reader.Close()
 
-		sfile := reader.URI().Path()
-		absSubtitlesFile, err := filepath.Abs(sfile)
-		check(screen, err)
-		if err != nil {
-			return
-		}
-
-		screen.SubsText.Text = filepath.Base(sfile)
-		screen.subsfile = absSubtitlesFile
-		screen.SubsText.Refresh()
+		selectSubsFile(screen, reader.URI())
 	}, w)
 	fd.SetFilter(storage.NewExtensionFileFilter([]string{".srt"}))
 
@@ -323,7 +334,7 @@ func playAction(screen *NewScreen) {
 		InitialMediaRenderersStates: make(map[string]bool),
 		Transcode:                   screen.Transcode,
 		Seekable:                    isSeek,
-		Logging:                     screen.Debug,
+		LogOutput:                   screen.Debug,
 	}
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)
@@ -418,7 +429,7 @@ out:
 					screen.MediaText.Refresh()
 
 					if !screen.CustomSubsCheck.Checked {
-						selectSubs(screen.mediafile, screen)
+						autoSelectNextSubs(screen.mediafile, screen)
 					}
 				}
 
@@ -460,13 +471,18 @@ func skipNextAction(screen *NewScreen) {
 		return
 	}
 
+	if screen.mediafile == "" {
+		check(screen, errors.New("please select a media file"))
+		return
+	}
+
 	name, path := getNextMedia(screen)
 	screen.MediaText.Text = name
 	screen.mediafile = path
 	screen.MediaText.Refresh()
 
 	if !screen.CustomSubsCheck.Checked {
-		selectSubs(screen.mediafile, screen)
+		autoSelectNextSubs(screen.mediafile, screen)
 	}
 
 	stopAction(screen)
@@ -643,7 +659,7 @@ func queueNext(screen *NewScreen, clear bool) (*soapcalls.TVPayload, error) {
 		InitialMediaRenderersStates: make(map[string]bool),
 		Transcode:                   screen.Transcode,
 		Seekable:                    isSeek,
-		Logging:                     screen.Debug,
+		LogOutput:                   screen.Debug,
 	}
 
 	//screen.httpNexterver.StartServer(serverStarted, mediaFile, spath, nextTvData, screen)

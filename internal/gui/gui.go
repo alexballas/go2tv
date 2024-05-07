@@ -25,46 +25,46 @@ import (
 
 // NewScreen .
 type NewScreen struct {
-	muError              sync.RWMutex
-	mu                   sync.RWMutex
-	serverStopCTX        context.Context
-	Current              fyne.Window
-	VolumeDown           *widget.Button
-	SlideBar             *tappedSlider
-	Debug                *debugWriter
 	CurrentPos           binding.String
 	EndPos               binding.String
+	serverStopCTX        context.Context
+	Current              fyne.Window
+	cancelEnablePlay     context.CancelFunc
+	PlayPause            *widget.Button
+	Debug                *debugWriter
+	VolumeUp             *widget.Button
+	tvdata               *soapcalls.TVPayload
 	tabs                 *container.AppTabs
 	CheckVersion         *widget.Button
 	SubsText             *widget.Entry
 	CustomSubsCheck      *widget.Check
-	PlayPause            *widget.Button
+	NextMediaCheck       *widget.Check
 	Stop                 *widget.Button
-	DeviceList           *widget.List
+	DeviceList           *deviceList
 	httpserver           *httphandlers.HTTPserver
 	MediaText            *widget.Entry
 	ExternalMediaURL     *widget.Check
 	GaplessMediaWatcher  func(context.Context, *NewScreen, *soapcalls.TVPayload)
-	cancelEnablePlay     context.CancelFunc
+	SlideBar             *tappedSlider
 	MuteUnmute           *widget.Button
-	VolumeUp             *widget.Button
-	tvdata               *soapcalls.TVPayload
-	NextMediaCheck       *widget.Check
+	VolumeDown           *widget.Button
 	selectedDevice       devType
+	State                string
+	mediafile            string
 	version              string
 	eventlURL            string
 	subsfile             string
 	controlURL           string
 	renderingControlURL  string
 	connectionManagerURL string
-	State                string
-	mediafile            string
 	currentmfolder       string
 	mediaFormats         []string
+	muError              sync.RWMutex
+	mu                   sync.RWMutex
+	Medialoop            bool
 	sliderActive         bool
 	Transcode            bool
 	ErrorVisible         bool
-	Medialoop            bool
 	Hotkeys              bool
 }
 
@@ -91,6 +91,8 @@ func (f *debugWriter) Write(b []byte) (int, error) {
 // Start .
 func Start(ctx context.Context, s *NewScreen) {
 	w := s.Current
+	w.SetOnDropped(onDropFiles(s))
+
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Go2TV", container.NewPadded(mainWindow(s))),
 		container.NewTabItem("Settings", container.NewPadded(settingsWindow(s))),
@@ -125,6 +127,36 @@ func Start(ctx context.Context, s *NewScreen) {
 
 }
 
+func onDropFiles(screen *NewScreen) func(p fyne.Position, u []fyne.URI) {
+	return func(p fyne.Position, u []fyne.URI) {
+		var mfiles, sfiles []fyne.URI
+
+	out:
+		for _, f := range u {
+			if strings.HasSuffix(strings.ToUpper(f.Name()), ".SRT") {
+				sfiles = append(sfiles, f)
+				continue
+			}
+
+			for _, s := range screen.mediaFormats {
+				if strings.HasSuffix(strings.ToUpper(f.Name()), strings.ToUpper(s)) {
+					mfiles = append(mfiles, f)
+					continue out
+				}
+			}
+		}
+
+		if len(sfiles) > 0 {
+			screen.CustomSubsCheck.SetChecked(true)
+			selectSubsFile(screen, sfiles[0])
+		}
+
+		if len(mfiles) > 0 {
+			selectMediaFile(screen, mfiles[0])
+		}
+	}
+}
+
 // EmitMsg Method to implement the screen interface
 func (p *NewScreen) EmitMsg(a string) {
 	switch a {
@@ -154,7 +186,7 @@ func (p *NewScreen) Fini() {
 		p.MediaText.Refresh()
 
 		if !p.CustomSubsCheck.Checked {
-			selectSubs(p.mediafile, p)
+			autoSelectNextSubs(p.mediafile, p)
 		}
 
 		playAction(p)
@@ -271,7 +303,7 @@ func getNextMedia(screen *NewScreen) (string, string) {
 	return resName, resPath
 }
 
-func selectSubs(v string, screen *NewScreen) {
+func autoSelectNextSubs(v string, screen *NewScreen) {
 	name, path := getNextPossibleSubs(v, screen)
 	screen.SubsText.Text = name
 	screen.subsfile = path
@@ -313,10 +345,10 @@ func setPlayPauseView(s string, screen *NewScreen) {
 func setMuteUnmuteView(s string, screen *NewScreen) {
 	switch s {
 	case "Mute":
-		screen.MuteUnmute.Icon = theme.VolumeMuteIcon()
+		screen.MuteUnmute.Icon = theme.VolumeUpIcon()
 		screen.MuteUnmute.Refresh()
 	case "Unmute":
-		screen.MuteUnmute.Icon = theme.VolumeUpIcon()
+		screen.MuteUnmute.Icon = theme.VolumeMuteIcon()
 		screen.MuteUnmute.Refresh()
 	}
 }

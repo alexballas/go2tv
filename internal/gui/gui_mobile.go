@@ -35,7 +35,7 @@ type NewScreen struct {
 	cancelEnablePlay     context.CancelFunc
 	MediaText            *widget.Entry
 	SubsText             *widget.Entry
-	DeviceList           *widget.List
+	DeviceList           *deviceList
 	httpserver           *httphandlers.HTTPserver
 	PlayPause            *widget.Button
 	mediafile            fyne.URI
@@ -178,10 +178,10 @@ func setPlayPauseView(s string, screen *NewScreen) {
 func setMuteUnmuteView(s string, screen *NewScreen) {
 	switch s {
 	case "Mute":
-		screen.MuteUnmute.Icon = theme.VolumeMuteIcon()
+		screen.MuteUnmute.Icon = theme.VolumeUpIcon()
 		screen.MuteUnmute.Refresh()
 	case "Unmute":
-		screen.MuteUnmute.Icon = theme.VolumeUpIcon()
+		screen.MuteUnmute.Icon = theme.VolumeMuteIcon()
 		screen.MuteUnmute.Refresh()
 	}
 }

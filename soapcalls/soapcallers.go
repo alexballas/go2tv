@@ -27,7 +27,6 @@ type States struct {
 }
 
 var (
-	log                   zerolog.Logger
 	ErrNoMatchingFileType = errors.New("no matching file type")
 	ErrZombieCallbacks    = errors.New("zombie callbacks, we should ignore those")
 )
@@ -35,13 +34,12 @@ var (
 // TVPayload is the heart of Go2TV. We pass that type to the
 // webserver. We need to explicitly initialize it.
 type TVPayload struct {
-	initLogOnce                 sync.Once
-	mu                          sync.RWMutex
-	Logging                     io.Writer
+	Logger                      zerolog.Logger
+	LogOutput                   io.Writer
 	ctx                         context.Context
-	MediaRenderersStates        map[string]*States
 	CurrentTimers               map[string]*time.Timer
 	InitialMediaRenderersStates map[string]bool
+	MediaRenderersStates        map[string]*States
 	EventURL                    string
 	ControlURL                  string
 	MediaURL                    string
@@ -51,6 +49,8 @@ type TVPayload struct {
 	CallbackURL                 string
 	ConnectionManagerURL        string
 	RenderingControlURL         string
+	mu                          sync.RWMutex
+	initLogOnce                 sync.Once
 	Transcode                   bool
 	Seekable                    bool
 }
@@ -1426,15 +1426,13 @@ func (p *TVPayload) GetProcessStop(uuid string) (bool, error) {
 }
 
 func (p *TVPayload) Log() *zerolog.Logger {
-	if p.Logging != nil {
+	if p.LogOutput != nil {
 		p.initLogOnce.Do(func() {
-			log = zerolog.New(p.Logging).With().Timestamp().Logger()
+			p.Logger = zerolog.New(p.LogOutput).With().Timestamp().Logger()
 		})
-	} else {
-		return &zerolog.Logger{}
 	}
 
-	return &log
+	return &p.Logger
 }
 
 func parseProtocolInfo(b []byte, mt string) error {

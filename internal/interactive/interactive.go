@@ -11,18 +11,17 @@ import (
 
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/gdamore/tcell/v2"
-	"github.com/gdamore/tcell/v2/encoding"
 	"github.com/mattn/go-runewidth"
 )
 
 // NewScreen .
 type NewScreen struct {
-	mu          sync.RWMutex
 	Current     tcell.Screen
 	TV          *soapcalls.TVPayload
 	exitCTXfunc context.CancelFunc
 	mediaTitle  string
 	lastAction  string
+	mu          sync.RWMutex
 }
 
 var flipflop bool = true
@@ -112,7 +111,6 @@ func (p *NewScreen) InterInit(tv *soapcalls.TVPayload, c chan error) {
 
 	p.mu.Unlock()
 
-	encoding.Register()
 	s := p.Current
 	if err := s.Init(); err != nil {
 		c <- fmt.Errorf("interactive screen error: %w", err)

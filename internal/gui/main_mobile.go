@@ -21,37 +21,48 @@ import (
 	"github.com/alexballas/go2tv/soapcalls/utils"
 )
 
+type deviceList struct {
+	widget.List
+}
+
+func (c *deviceList) FocusGained() {}
+
+func newDeviceList(dd *[]devType) *deviceList {
+	list := &deviceList{}
+
+	list.Length = func() int {
+		return len(*dd)
+	}
+
+	list.CreateItem = func() fyne.CanvasObject {
+		intListCont := container.NewHBox(widget.NewIcon(theme.NavigateNextIcon()), widget.NewLabel(""))
+		return intListCont
+	}
+
+	list.UpdateItem = func(i widget.ListItemID, o fyne.CanvasObject) {
+		o.(*fyne.Container).Objects[1].(*widget.Label).SetText((*dd)[i].name)
+	}
+
+	list.ExtendBaseWidget(list)
+	return list
+}
+
 func mainWindow(s *NewScreen) fyne.CanvasObject {
 	w := s.Current
-
-	list := new(widget.List)
-
 	var data []devType
-
-	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
-		if k.Name == "Space" || k.Name == "P" {
-
-			currentState := s.getScreenState()
-
-			switch currentState {
-			case "Playing":
-				go pauseAction(s)
-			case "Paused":
-				go playAction(s)
-			}
-		}
-
-		if k.Name == "S" {
-			go stopAction(s)
-		}
-	})
+	list := newDeviceList(&data)
 
 	go func() {
-		datanew, err := getDevices(1)
-		data = datanew
+		var err error
+		data, err = getDevices(1)
 		if err != nil {
 			data = nil
 		}
+
+		sort.Slice(data, func(i, j int) bool {
+			return (data)[i].name < (data)[j].name
+		})
+
 		list.Refresh()
 	}()
 
@@ -82,7 +93,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		go volumeAction(s, true)
 	})
 
-	muteunmute := widget.NewButtonWithIcon("", theme.VolumeMuteIcon(), func() {
+	muteunmute := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() {
 		go muteAction(s)
 	})
 
@@ -104,17 +115,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	mediafilelabel := canvas.NewText("File:", nil)
 	subsfilelabel := canvas.NewText("Subtitles:", nil)
 	devicelabel := canvas.NewText("Select Device:", nil)
-
-	list = widget.NewList(
-		func() int {
-			return len(data)
-		},
-		func() fyne.CanvasObject {
-			return container.NewHBox(widget.NewIcon(theme.NavigateNextIcon()), widget.NewLabel("Template Object"))
-		},
-		func(i widget.ListItemID, o fyne.CanvasObject) {
-			o.(*fyne.Container).Objects[1].(*widget.Label).SetText(data[i].name)
-		})
 
 	s.PlayPause = playpause
 	s.Stop = stop
@@ -217,6 +217,25 @@ func refreshDevList(s *NewScreen, data *[]devType) {
 	for range refreshDevices.C {
 		datanew, _ := getDevices(2)
 
+	outer:
+		for _, old := range *data {
+			oldAddress, _ := url.Parse(old.addr)
+			for _, new := range datanew {
+				newAddress, _ := url.Parse(new.addr)
+				if newAddress.Host == oldAddress.Host {
+					continue outer
+				}
+			}
+
+			if utils.HostPortIsAlive(oldAddress.Host) {
+				datanew = append(datanew, old)
+			}
+
+			sort.Slice(datanew, func(i, j int) bool {
+				return (datanew)[i].name < (datanew)[j].name
+			})
+		}
+
 		// check to see if the new refresh includes
 		// one of the already selected devices
 		var includes bool
@@ -230,17 +249,9 @@ func refreshDevList(s *NewScreen, data *[]devType) {
 
 		*data = datanew
 
-		if !includes {
-			if utils.HostPortIsAlive(u.Host) {
-				*data = append(*data, s.selectedDevice)
-				sort.Slice(*data, func(i, j int) bool {
-					return (*data)[i].name < (*data)[j].name
-				})
-
-			} else {
-				s.controlURL = ""
-				s.DeviceList.UnselectAll()
-			}
+		if !includes && !utils.HostPortIsAlive(u.Host) {
+			s.controlURL = ""
+			s.DeviceList.UnselectAll()
 		}
 
 		var found bool

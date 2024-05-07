@@ -26,11 +26,11 @@ type HTTPserver struct {
 	// We only need to run one ffmpeg
 	// command at a time, per server instance
 	ffmpeg   *exec.Cmd
-	mu       sync.Mutex
 	handlers map[string]struct {
 		payload *soapcalls.TVPayload
 		media   interface{}
 	}
+	mu sync.Mutex
 }
 
 // Screen interface is used to push message back to the user
@@ -256,7 +256,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 	case []byte:
 		serveContentBytes(w, r, mediaType, f)
 	case io.ReadCloser:
-		serveContentReadClose(w, r, mediaType, transcode, false, f, ff)
+		serveContentReadClose(w, r, mediaType, transcode, f, ff)
 	default:
 		http.NotFound(w, r)
 		return
@@ -279,7 +279,7 @@ func serveContentBytes(w http.ResponseWriter, r *http.Request, mediaType string,
 	http.ServeContent(w, r, name, time.Now(), bReader)
 }
 
-func serveContentReadClose(w http.ResponseWriter, r *http.Request, mediaType string, transcode, seek bool, f io.ReadCloser, ff *exec.Cmd) {
+func serveContentReadClose(w http.ResponseWriter, r *http.Request, mediaType string, transcode bool, f io.ReadCloser, ff *exec.Cmd) {
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
 		contentFeatures, err := utils.BuildContentFeatures(mediaType, "00", transcode)
 		if err != nil {

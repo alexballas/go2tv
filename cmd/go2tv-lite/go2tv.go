@@ -63,8 +63,7 @@ func main() {
 }
 
 func run() error {
-	var absMediaFile string
-	var mediaType string
+	var absMediaFile, mediaType string
 	var mediaFile interface{}
 	var isSeek bool
 	var s *httphandlers.HTTPserver
@@ -154,7 +153,7 @@ func run() error {
 		Mtype:     mediaType,
 		Transcode: *transcodePtr,
 		Seek:      isSeek,
-		Logging:   nil,
+		LogOutput: nil,
 	})
 	if err != nil {
 		return err

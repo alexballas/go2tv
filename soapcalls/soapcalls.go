@@ -10,7 +10,7 @@ import (
 )
 
 type Options struct {
-	Logging    io.Writer
+	LogOutput  io.Writer
 	ctx        context.Context
 	DMR        string
 	Media      string
@@ -56,7 +56,7 @@ func NewTVPayload(o *Options) (*TVPayload, error) {
 		InitialMediaRenderersStates: make(map[string]bool),
 		Transcode:                   o.Transcode,
 		Seekable:                    o.Seek,
-		Logging:                     o.Logging,
+		LogOutput:                   o.LogOutput,
 	}, nil
 }
 

@@ -27,10 +27,36 @@ import (
 )
 
 type tappedSlider struct {
-	mu sync.Mutex
 	*widget.Slider
 	screen *NewScreen
 	end    string
+	mu     sync.Mutex
+}
+
+type deviceList struct {
+	widget.List
+}
+
+func (c *deviceList) FocusGained() {}
+
+func newDeviceList(dd *[]devType) *deviceList {
+	list := &deviceList{}
+
+	list.Length = func() int {
+		return len(*dd)
+	}
+
+	list.CreateItem = func() fyne.CanvasObject {
+		intListCont := container.NewHBox(widget.NewIcon(theme.NavigateNextIcon()), widget.NewLabel(""))
+		return intListCont
+	}
+
+	list.UpdateItem = func(i widget.ListItemID, o fyne.CanvasObject) {
+		o.(*fyne.Container).Objects[1].(*widget.Label).SetText((*dd)[i].name)
+	}
+
+	list.ExtendBaseWidget(list)
+	return list
 }
 
 func newTappableSlider(s *NewScreen) *tappedSlider {
@@ -135,27 +161,7 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 	// should reset this back to false after the first iterration.
 	t.screen.sliderActive = true
 
-	// To remove this part when a new fyne version introduces t.Slider.Tapped(p)
-	gaussian := func(x float64, mu float64, sigma float64) float64 {
-		return math.Exp(-math.Pow(x-mu, 2) / (2 * math.Pow(sigma, 2)))
-	}
-
-	newpos := (p.Position.X / t.Size().Width) * float32(t.Max)
-	padding := theme.Padding() + theme.InnerPadding()
-	correction := (1 - gaussian(float64(newpos), 50, 20)) * float64(padding)
-
-	switch {
-	case newpos > 50:
-		newpos = ((p.Position.X + float32(math.Ceil(correction))) / t.Size().Width) * float32(t.Max)
-	case newpos < 50:
-		newpos = ((p.Position.X - float32(math.Ceil(correction))) / t.Size().Width) * float32(t.Max)
-	}
-
-	if math.IsNaN(float64(newpos)) {
-		return
-	}
-
-	t.SetValue(float64(newpos))
+	t.Slider.Tapped(p)
 
 	if t.screen.State == "Playing" || t.screen.State == "Paused" {
 		getPos, err := t.screen.tvdata.GetPositionInfo()
@@ -192,9 +198,8 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 
 func mainWindow(s *NewScreen) fyne.CanvasObject {
 	w := s.Current
-	list := new(widget.List)
-
 	var data []devType
+	list := newDeviceList(&data)
 
 	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
 		if !s.Hotkeys {
@@ -213,7 +218,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		}
 
 		if k.Name == "Space" || k.Name == "P" {
-
 			currentState := s.getScreenState()
 			switch currentState {
 			case "Playing":
@@ -241,11 +245,16 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	})
 
 	go func() {
-		datanew, err := getDevices(1)
-		data = datanew
+		var err error
+		data, err = getDevices(1)
 		if err != nil {
 			data = nil
 		}
+
+		sort.Slice(data, func(i, j int) bool {
+			return (data)[i].name < (data)[j].name
+		})
+
 		list.Refresh()
 	}()
 
@@ -277,7 +286,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		go volumeAction(s, true)
 	})
 
-	muteunmute := widget.NewButtonWithIcon("", theme.VolumeMuteIcon(), func() {
+	muteunmute := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() {
 		go muteAction(s)
 	})
 
@@ -296,7 +305,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	skipNext := widget.NewButtonWithIcon("", theme.MediaSkipNextIcon(), func() {
 		go skipNextAction(s)
 	})
-
 	sliderBar := newTappableSlider(s)
 
 	// previewmedia spawns external applications.
@@ -312,7 +320,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		go previewmedia(s)
 	})
 
-	sfilecheck := widget.NewCheck("Custom Subtitles", func(b bool) {})
+	sfilecheck := widget.NewCheck("Manual Subtitles", func(b bool) {})
 	externalmedia := widget.NewCheck("Media from URL", func(b bool) {})
 	medialoop := widget.NewCheck("Loop Selected", func(b bool) {})
 	nextmedia := widget.NewCheck("Auto-Play Next File", func(b bool) {})
@@ -326,19 +334,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	mediafilelabel := canvas.NewText("File:", nil)
 	subsfilelabel := canvas.NewText("Subtitles:", nil)
 	devicelabel := canvas.NewText("Select Device:", nil)
-
-	var intListCont fyne.CanvasObject
-	list = widget.NewList(
-		func() int {
-			return len(data)
-		},
-		func() fyne.CanvasObject {
-			intListCont = container.NewHBox(widget.NewIcon(theme.NavigateNextIcon()), widget.NewLabel(""))
-			return intListCont
-		},
-		func(i widget.ListItemID, o fyne.CanvasObject) {
-			o.(*fyne.Container).Objects[1].(*widget.Label).SetText(data[i].name)
-		})
 
 	curPos := binding.NewString()
 	endPos := binding.NewString()
@@ -422,6 +417,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			nextmedia.Disable()
 			mfile.Disable()
 			previewmedia.Disable()
+			skipNext.Disable()
 
 			// keep old values
 			mediafileOld = s.mediafile
@@ -451,6 +447,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 		mfile.Enable()
 		previewmedia.Enable()
+		skipNext.Enable()
 		mediafilelabel.Text = "File:"
 		s.MediaText.SetPlaceHolder("")
 		s.MediaText.Text = mediafileOldText
@@ -532,6 +529,25 @@ func refreshDevList(s *NewScreen, data *[]devType) {
 	for range refreshDevices.C {
 		datanew, _ := getDevices(2)
 
+	outer:
+		for _, old := range *data {
+			oldAddress, _ := url.Parse(old.addr)
+			for _, new := range datanew {
+				newAddress, _ := url.Parse(new.addr)
+				if newAddress.Host == oldAddress.Host {
+					continue outer
+				}
+			}
+
+			if utils.HostPortIsAlive(oldAddress.Host) {
+				datanew = append(datanew, old)
+			}
+
+			sort.Slice(datanew, func(i, j int) bool {
+				return (datanew)[i].name < (datanew)[j].name
+			})
+		}
+
 		// check to see if the new refresh includes
 		// one of the already selected devices
 		var includes bool
@@ -545,17 +561,9 @@ func refreshDevList(s *NewScreen, data *[]devType) {
 
 		*data = datanew
 
-		if !includes {
-			if utils.HostPortIsAlive(u.Host) {
-				*data = append(*data, s.selectedDevice)
-				sort.Slice(*data, func(i, j int) bool {
-					return (*data)[i].name < (*data)[j].name
-				})
-
-			} else {
-				s.controlURL = ""
-				s.DeviceList.UnselectAll()
-			}
+		if !includes && !utils.HostPortIsAlive(u.Host) {
+			s.controlURL = ""
+			s.DeviceList.UnselectAll()
 		}
 
 		var found bool

@@ -55,8 +55,7 @@ func main() {
 }
 
 func run() error {
-	var absMediaFile string
-	var mediaType string
+	var absMediaFile, mediaType string
 	var mediaFile interface{}
 	var isSeek bool
 

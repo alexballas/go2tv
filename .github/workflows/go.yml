@@ -8,7 +8,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - uses: WillAbides/setup-go-faster@v1.7.0
+    - uses: WillAbides/setup-go-faster@v1.11.0
       id: setup-go-faster
       with:
         go-version: "*"

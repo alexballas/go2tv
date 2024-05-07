@@ -1,11 +1,13 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -44,23 +46,25 @@ func URLtoListenIPandPort(u string) (string, error) {
 }
 
 func checkAndPickPort(ip string, port int) (string, error) {
-	var numberOfchecks int
-CHECK:
-	numberOfchecks++
-	conn, err := net.Listen("tcp", net.JoinHostPort(ip, strconv.Itoa(port)))
-	if err != nil {
-		if strings.Contains(err.Error(), "address already in use") {
-			if numberOfchecks == 1000 {
-				return "", fmt.Errorf("port pick error. Checked 1000 ports: %w", err)
+	const maxAttempts = 1000
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		conn, err := net.Listen("tcp", net.JoinHostPort(ip, strconv.Itoa(port)))
+		if err != nil {
+			if errors.Is(err, syscall.EADDRINUSE) {
+				if attempt == maxAttempts {
+					break
+				}
+				port++
+				continue
 			}
-			port++
-			goto CHECK
-		}
 
-		return "", fmt.Errorf("port pick error: %w", err)
+			return "", fmt.Errorf("port pick error: %w", err)
+		}
+		conn.Close()
+		return strconv.Itoa(port), nil
 	}
-	conn.Close()
-	return strconv.Itoa(port), nil
+
+	return "", fmt.Errorf("port pick error. Exceeded maximum attempts")
 }
 
 // HostPortIsAlive - We use this function to periodically
