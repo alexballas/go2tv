@@ -124,6 +124,8 @@ func DMRextractor(ctx context.Context, dmrurl string) (*DMRextracted, error) {
 
 		if service.ID == "urn:upnp-org:serviceId:ConnectionManager" {
 			ex.ConnectionManagerURL = parsedURL.Scheme + "://" + parsedURL.Host + service.ControlURL
+
+			_, err = url.ParseRequestURI(ex.ConnectionManagerURL)
 			if err != nil {
 				return nil, fmt.Errorf("DMRextractor invalid ConnectionManagerURL: %w", err)
 			}

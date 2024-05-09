@@ -60,7 +60,7 @@ func NewTVPayload(o *Options) (*TVPayload, error) {
 	}, nil
 }
 
-func (tv *TVPayload) ListenAddress() string {
-	url, _ := url.Parse(tv.MediaURL)
-	return url.Host
+func (p *TVPayload) ListenAddress() string {
+	mediaUrl, _ := url.Parse(p.MediaURL)
+	return mediaUrl.Host
 }

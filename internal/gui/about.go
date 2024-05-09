@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	fyne "fyne.io/fyne/v2"
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
@@ -90,7 +90,7 @@ func checkVersion(s *NewScreen) {
 	}
 
 	client := &http.Client{
-		Timeout: time.Duration(3 * time.Second),
+		Timeout: 3 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return errRedirectChecker
 		},
@@ -105,12 +105,12 @@ func checkVersion(s *NewScreen) {
 	defer response.Body.Close()
 
 	if errors.Is(err, errRedirectChecker) {
-		url, err := response.Location()
+		responceUrl, err := response.Location()
 		if err != nil {
 			dialog.ShowError(errVersionGet, s.Current)
 			return
 		}
-		str := strings.Trim(filepath.Base(url.Path), "v")
+		str := strings.Trim(filepath.Base(responceUrl.Path), "v")
 		str = strings.ReplaceAll(str, ".", "")
 		chversion, err := strconv.Atoi(str)
 		if err != nil {
@@ -120,7 +120,7 @@ func checkVersion(s *NewScreen) {
 
 		switch {
 		case chversion > currversion:
-			dialog.ShowInformation("Version checker", "New version: "+strings.Trim(filepath.Base(url.Path), "v"), s.Current)
+			dialog.ShowInformation("Version checker", "New version: "+strings.Trim(filepath.Base(responceUrl.Path), "v"), s.Current)
 			return
 		default:
 			dialog.ShowInformation("Version checker", "No new version", s.Current)

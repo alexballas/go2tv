@@ -35,7 +35,7 @@ func muteAction(screen *NewScreen) {
 		return
 	}
 
-	if screen.MuteUnmute.Icon == theme.VolumeUpIcon() {
+	if screen.MuteUnmute.Icon == theme.VolumeMuteIcon() {
 		unmuteAction(screen)
 		return
 	}
@@ -476,9 +476,9 @@ func skipNextAction(screen *NewScreen) {
 		return
 	}
 
-	name, path := getNextMedia(screen)
+	name, nextMediaPath := getNextMedia(screen)
 	screen.MediaText.Text = name
-	screen.mediafile = path
+	screen.mediafile = nextMediaPath
 	screen.MediaText.Refresh()
 
 	if !screen.CustomSubsCheck.Checked {
@@ -614,7 +614,7 @@ func queueNext(screen *NewScreen, clear bool) (*soapcalls.TVPayload, error) {
 	}
 
 	fname, fpath := getNextMedia(screen)
-	_, spath := getNextPossibleSubs(fname, screen)
+	_, spath := getNextPossibleSubs(fname)
 
 	var mediaType string
 	var isSeek bool

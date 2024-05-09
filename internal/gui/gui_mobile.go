@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	fyne "fyne.io/fyne/v2"
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
@@ -123,7 +123,7 @@ func (p *NewScreen) Fini() {
 // InitFyneNewScreen .
 func InitFyneNewScreen(v string) *NewScreen {
 	go2tv := app.NewWithID("com.alexballas.go2tv")
-	go2tv.Settings().SetTheme(theme.DarkTheme())
+	go2tv.Settings().SetTheme(go2tvTheme{"Dark"})
 
 	w := go2tv.NewWindow("Go2TV")
 
