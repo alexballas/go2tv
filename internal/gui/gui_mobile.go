@@ -123,7 +123,7 @@ func (p *NewScreen) Fini() {
 // InitFyneNewScreen .
 func InitFyneNewScreen(v string) *NewScreen {
 	go2tv := app.NewWithID("com.alexballas.go2tv")
-	go2tv.Settings().SetTheme(theme.DarkTheme())
+	go2tv.Settings().SetTheme(go2tvTheme{"Dark"})
 
 	w := go2tv.NewWindow("Go2TV")
 
