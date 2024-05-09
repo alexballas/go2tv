@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	fyne "fyne.io/fyne/v2"
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
@@ -101,8 +101,8 @@ func Start(ctx context.Context, s *NewScreen) {
 
 	s.Hotkeys = true
 	tabs.OnSelected = func(t *container.TabItem) {
-		theme := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "Default")
-		fyne.CurrentApp().Settings().SetTheme(go2tvTheme{theme})
+		currentTheme := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "Default")
+		fyne.CurrentApp().Settings().SetTheme(go2tvTheme{currentTheme})
 
 		if t.Text == "Go2TV" {
 			s.Hotkeys = true
@@ -201,13 +201,10 @@ func (p *NewScreen) Fini() {
 func InitFyneNewScreen(v string) *NewScreen {
 	go2tv := app.NewWithID("com.alexballas.go2tv")
 	w := go2tv.NewWindow("Go2TV")
-	currentdir, err := os.Getwd()
+	currentDir, err := os.Getwd()
 	if err != nil {
-		currentdir = ""
+		currentDir = ""
 	}
-
-	theme := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "Default")
-	fyne.CurrentApp().Settings().SetTheme(go2tvTheme{theme})
 
 	dw := &debugWriter{
 		ring: ring.New(1000),
@@ -215,7 +212,7 @@ func InitFyneNewScreen(v string) *NewScreen {
 
 	return &NewScreen{
 		Current:        w,
-		currentmfolder: currentdir,
+		currentmfolder: currentDir,
 		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".m4a", ".jpg", ".jpeg", ".png"},
 		version:        v,
 		Debug:          dw,
@@ -304,13 +301,13 @@ func getNextMedia(screen *NewScreen) (string, string) {
 }
 
 func autoSelectNextSubs(v string, screen *NewScreen) {
-	name, path := getNextPossibleSubs(v, screen)
+	name, path := getNextPossibleSubs(v)
 	screen.SubsText.Text = name
 	screen.subsfile = path
 	screen.SubsText.Refresh()
 }
 
-func getNextPossibleSubs(v string, screen *NewScreen) (string, string) {
+func getNextPossibleSubs(v string) (string, string) {
 	var name, path string
 
 	possibleSub := v[0:len(v)-

@@ -30,7 +30,7 @@ func muteAction(screen *NewScreen) {
 		return
 	}
 
-	if screen.MuteUnmute.Icon == theme.VolumeUpIcon() {
+	if screen.MuteUnmute.Icon == theme.VolumeDownIcon() {
 		unmuteAction(screen)
 		return
 	}

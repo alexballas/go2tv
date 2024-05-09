@@ -20,15 +20,21 @@ type go2tvTheme struct {
 	Theme string
 }
 
-var _ fyne.Theme = go2tvTheme{}
-var SystemVariant fyne.ThemeVariant = 999
-var once sync.Once
+var (
+	_                         fyne.Theme        = go2tvTheme{}
+	SystemVariant             fyne.ThemeVariant = 999
+	signalSystemVariantChange                   = make(chan struct{})
+	once                      sync.Once
+)
 
 func (m go2tvTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
 	switch m.Theme {
 	case "GrabVariant":
 		once.Do(func() {
 			SystemVariant = variant
+			go func() {
+				signalSystemVariantChange <- struct{}{}
+			}()
 		})
 
 	case "Dark":
@@ -84,15 +90,15 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 	switch themeName {
 	case "Light":
 		dropdown.PlaceHolder = "Light"
+		parseTheme("Light")
 	case "Dark":
 		dropdown.PlaceHolder = "Dark"
+		parseTheme("Dark")
 	case "GrabVariant", "Default":
 		fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"GrabVariant"})
 
-		// Wait for SystemVariant to get the correct variant from the command above
-		for SystemVariant == 999 {
-			time.Sleep(time.Millisecond)
-		}
+		// Wait for the SystemVariant variable to change
+		<-signalSystemVariantChange
 
 		switch SystemVariant {
 		case theme.VariantDark:

@@ -55,10 +55,8 @@ func main() {
 			os.Exit(0)
 		}
 
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
-			os.Exit(1)
-		}
+		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
+		os.Exit(1)
 	}
 }
 

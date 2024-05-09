@@ -174,7 +174,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 		return fmt.Errorf("setAVTransportSoapCall parse error: %w", err)
 	}
 
-	xml, err := setAVTransportSoapBuild(p)
+	xmlData, err := setAVTransportSoapBuild(p)
 	if err != nil {
 		p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "setAVTransportSoapBuild").Err(err).Msg("")
 		return fmt.Errorf("setAVTransportSoapCall soap build error: %w", err)
@@ -185,7 +185,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 	retryClient.Logger = nil
 	client := retryClient.StandardClient()
 
-	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xml))
+	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlData))
 	if err != nil {
 		p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
 		return fmt.Errorf("setAVTransportSoapCall POST error: %w", err)
@@ -207,7 +207,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 	p.Log().Debug().
 		Str("Method", "setAVTransportSoapCall").Str("Action", "Request").
 		RawJSON("Headers", headerBytesReq).
-		Msg(string(xml))
+		Msg(string(xmlData))
 
 	res, err := client.Do(req)
 	if err != nil {
@@ -247,7 +247,7 @@ func (p *TVPayload) setNextAVTransportSoapCall(clear bool) error {
 		return fmt.Errorf("setNextAVTransportSoapCall parse error: %w", err)
 	}
 
-	xml, err := setNextAVTransportSoapBuild(p, clear)
+	xmlData, err := setNextAVTransportSoapBuild(p, clear)
 	if err != nil {
 		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "setNextAVTransportSoapBuild").Err(err).Msg("")
 		return fmt.Errorf("setNextAVTransportSoapCall soap build error: %w", err)
@@ -255,7 +255,7 @@ func (p *TVPayload) setNextAVTransportSoapCall(clear bool) error {
 
 	client := &http.Client{}
 
-	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xml))
+	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlData))
 	if err != nil {
 		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
 		return fmt.Errorf("setNextAVTransportSoapCall POST error: %w", err)
@@ -277,7 +277,7 @@ func (p *TVPayload) setNextAVTransportSoapCall(clear bool) error {
 	p.Log().Debug().
 		Str("Method", "setNextAVTransportSoapCall").Str("Action", "Request").
 		RawJSON("Headers", headerBytesReq).
-		Msg(string(xml))
+		Msg(string(xmlData))
 
 	res, err := client.Do(req)
 	if err != nil {
@@ -318,17 +318,17 @@ func (p *TVPayload) PlayPauseStopSoapCall(action string) error {
 		return fmt.Errorf("AVTransportActionSoapCall parse error: %w", err)
 	}
 
-	var xml []byte
+	var xmlData []byte
 	retry := false
 
 	switch action {
 	case "Play":
-		xml, err = playSoapBuild()
+		xmlData, err = playSoapBuild()
 	case "Stop":
-		xml, err = stopSoapBuild()
+		xmlData, err = stopSoapBuild()
 		retry = true
 	case "Pause":
-		xml, err = pauseSoapBuild()
+		xmlData, err = pauseSoapBuild()
 	}
 	if err != nil {
 		p.Log().Error().Str("Method", "AVTransportActionSoapCall").Str("Action", "Action Error").Err(err).Msg("")
@@ -344,7 +344,7 @@ func (p *TVPayload) PlayPauseStopSoapCall(action string) error {
 		client = retryClient.StandardClient()
 	}
 
-	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xml))
+	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlData))
 	if err != nil {
 		p.Log().Error().Str("Method", "AVTransportActionSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
 		return fmt.Errorf("AVTransportActionSoapCall POST error: %w", err)
@@ -366,7 +366,7 @@ func (p *TVPayload) PlayPauseStopSoapCall(action string) error {
 	p.Log().Debug().
 		Str("Method", "AVTransportActionSoapCall").Str("Action", action+" Request").
 		RawJSON("Headers", headerBytesReq).
-		Msg(string(xml))
+		Msg(string(xmlData))
 
 	res, err := client.Do(req)
 	if err != nil {
@@ -407,10 +407,9 @@ func (p *TVPayload) SeekSoapCall(reltime string) error {
 		return fmt.Errorf("SeekSoapCall parse error: %w", err)
 	}
 
-	var xml []byte
-	retry := false
+	var xmlData []byte
 
-	xml, err = seekSoapBuild(reltime)
+	xmlData, err = seekSoapBuild(reltime)
 	if err != nil {
 		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "Action Error").Err(err).Msg("")
 		return fmt.Errorf("SeekSoapCall action error: %w", err)
@@ -418,14 +417,14 @@ func (p *TVPayload) SeekSoapCall(reltime string) error {
 
 	client := &http.Client{}
 
-	if retry {
-		retryClient := retryablehttp.NewClient()
-		retryClient.RetryMax = 3
-		retryClient.Logger = nil
-		client = retryClient.StandardClient()
-	}
+	//if retry {
+	//	retryClient := retryablehttp.NewClient()
+	//	retryClient.RetryMax = 3
+	//	retryClient.Logger = nil
+	//	client = retryClient.StandardClient()
+	//}
 
-	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xml))
+	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlData))
 	if err != nil {
 		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
 		return fmt.Errorf("SeekSoapCall POST error: %w", err)
@@ -447,7 +446,7 @@ func (p *TVPayload) SeekSoapCall(reltime string) error {
 	p.Log().Debug().
 		Str("Method", "SeekSoapCall").Str("Action", "Seek Request").
 		RawJSON("Headers", headerBytesReq).
-		Msg(string(xml))
+		Msg(string(xmlData))
 
 	res, err := client.Do(req)
 	if err != nil {
