@@ -7,7 +7,7 @@ require (
 	github.com/alexballas/go-ssdp v0.0.3
 	github.com/gdamore/tcell/v2 v2.7.4
 	github.com/h2non/filetype v1.1.3
-	github.com/hashicorp/go-retryablehttp v0.7.5
+	github.com/hashicorp/go-retryablehttp v0.7.7
 	github.com/mattn/go-runewidth v0.0.15
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.32.0
@@ -45,7 +45,7 @@ require (
 	golang.org/x/image v0.15.0 // indirect
 	golang.org/x/mobile v0.0.0-20240404231514-09dbf07665ed // indirect
 	golang.org/x/net v0.24.0 // indirect
-	golang.org/x/sys v0.19.0 // indirect
+	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/term v0.19.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
