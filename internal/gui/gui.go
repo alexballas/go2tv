@@ -101,9 +101,6 @@ func Start(ctx context.Context, s *NewScreen) {
 
 	s.Hotkeys = true
 	tabs.OnSelected = func(t *container.TabItem) {
-		currentTheme := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "Default")
-		fyne.CurrentApp().Settings().SetTheme(go2tvTheme{currentTheme})
-
 		if t.Text == "Go2TV" {
 			s.Hotkeys = true
 			return

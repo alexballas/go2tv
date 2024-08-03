@@ -70,12 +70,12 @@ func TestServeContent(t *testing.T) {
 				t.Fatalf("%s: got: %s.", tc.name, w.Result().Status)
 			}
 
-			_, exists := w.Result().Header["transferMode.dlna.org"]
+			_, exists := w.Result().Header["transferMode.dlna.org"] //nolint:staticcheck
 			if !exists {
 				t.Fatalf("%s: transferMode.dlna.org header does not exist", tc.name)
 			}
 
-			cf, exists := w.Result().Header["contentFeatures.dlna.org"]
+			cf, exists := w.Result().Header["contentFeatures.dlna.org"] //nolint:staticcheck
 			if !exists {
 				t.Fatalf("%s: contentFeatures.dlna.org header does not exist", tc.name)
 			}

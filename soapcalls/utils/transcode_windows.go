@@ -39,6 +39,7 @@ func ServeTranscodedStream(w io.Writer, input interface{}, ff *exec.Cmd) error {
 		"-acodec", "aac",
 		"-ac", "2",
 		"-vf", "format=yuv420p",
+		"-preset", "ultrafast",
 		"-movflags", "+faststart",
 		"-f", "flv",
 		"pipe:1",

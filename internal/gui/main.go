@@ -156,9 +156,8 @@ func (t *tappedSlider) DragEnd() {
 }
 
 func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
-	// This is a way to making the slider due to the tapped
-	// action racing the auto-refresh action. The auto-refresh action
-	// should reset this back to false after the first iterration.
+	// The auto-refresh action should reset this back to false
+	// after the first iterration.
 	t.screen.sliderActive = true
 
 	t.Slider.Tapped(p)
