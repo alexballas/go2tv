@@ -85,6 +85,9 @@ func selectMediaFile(screen *NewScreen, f fyne.URI) {
 		return
 	}
 
+	screen.SelectInternalSubs.ClearSelected()
+	screen.ExternalMediaURL.SetChecked(false)
+
 	screen.MediaText.Text = filepath.Base(mfile)
 	screen.mediafile = absMediaFile
 
@@ -96,6 +99,20 @@ func selectMediaFile(screen *NewScreen, f fyne.URI) {
 	screen.currentmfolder = filepath.Dir(absMediaFile)
 
 	screen.MediaText.Refresh()
+
+	subs, err := utils.GetSubs(absMediaFile)
+	if err != nil {
+		screen.SelectInternalSubs.Options = []string{}
+		screen.SelectInternalSubs.PlaceHolder = "No Embedded Subs"
+		screen.SelectInternalSubs.ClearSelected()
+		screen.SelectInternalSubs.Disable()
+		return
+	}
+
+	screen.SelectInternalSubs.Options = subs
+	screen.SelectInternalSubs.PlaceHolder = "Embedded Subs"
+
+	screen.SelectInternalSubs.Enable()
 }
 
 func selectSubsFile(screen *NewScreen, f fyne.URI) {
@@ -105,6 +122,8 @@ func selectSubsFile(screen *NewScreen, f fyne.URI) {
 	if err != nil {
 		return
 	}
+
+	screen.SelectInternalSubs.ClearSelected()
 
 	screen.SubsText.Text = filepath.Base(sfile)
 	screen.subsfile = absSubtitlesFile
@@ -463,6 +482,7 @@ func clearsubsAction(screen *NewScreen) {
 	screen.SubsText.Text = ""
 	screen.subsfile = ""
 	screen.SubsText.Refresh()
+	screen.SelectInternalSubs.ClearSelected()
 }
 
 func skipNextAction(screen *NewScreen) {

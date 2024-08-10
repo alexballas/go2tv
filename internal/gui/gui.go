@@ -25,6 +25,7 @@ import (
 
 // NewScreen .
 type NewScreen struct {
+	SelectInternalSubs   *widget.Select
 	CurrentPos           binding.String
 	EndPos               binding.String
 	serverStopCTX        context.Context

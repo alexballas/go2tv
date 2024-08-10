@@ -200,20 +200,20 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	var data []devType
 	list := newDeviceList(&data)
 
+	fynePE := &fyne.PointEvent{
+		AbsolutePosition: fyne.Position{
+			X: 10,
+			Y: 30,
+		},
+		Position: fyne.Position{
+			X: 10,
+			Y: 30,
+		},
+	}
+
 	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
 		if !s.Hotkeys {
 			return
-		}
-
-		fynePE := &fyne.PointEvent{
-			AbsolutePosition: fyne.Position{
-				X: 10,
-				Y: 30,
-			},
-			Position: fyne.Position{
-				X: 10,
-				Y: 30,
-			},
 		}
 
 		if k.Name == "Space" || k.Name == "P" {
@@ -334,6 +334,21 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	subsfilelabel := canvas.NewText("Subtitles:", nil)
 	devicelabel := canvas.NewText("Select Device:", nil)
 
+	selectInternalSubs := widget.NewSelect([]string{}, func(item string) {
+		if item == "" {
+			return
+		}
+		s.SubsText.Text = ""
+		s.subsfile = ""
+		s.SubsText.Refresh()
+		sfilecheck.Checked = false
+		sfilecheck.Refresh()
+		sfile.Disable()
+	})
+
+	selectInternalSubs.PlaceHolder = "No Embedded Subs"
+	selectInternalSubs.Disable()
+
 	curPos := binding.NewString()
 	endPos := binding.NewString()
 
@@ -351,6 +366,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	s.SlideBar = sliderBar
 	s.CurrentPos = curPos
 	s.EndPos = endPos
+	s.SelectInternalSubs = selectInternalSubs
 
 	curPos.Set("00:00:00")
 	endPos.Set("00:00:00")
@@ -363,12 +379,13 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		volumeup,
 		stop)
 
-	mrightbuttons := container.NewHBox(skipNext, previewmedia, clearmedia)
+	mrightwidgets := container.NewHBox(skipNext, previewmedia, clearmedia)
+	srightwidgets := container.NewHBox(selectInternalSubs, clearsubs)
 
 	checklists := container.NewHBox(externalmedia, sfilecheck, medialoop, nextmedia, transcode)
 	mediasubsbuttons := container.New(layout.NewGridLayout(2), mfile, sfile)
-	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, mrightbuttons), mrightbuttons, mfiletext)
-	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
+	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, mrightwidgets), mrightwidgets, mfiletext)
+	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, srightwidgets), srightwidgets, sfiletext)
 	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
 	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, sliderArea, actionbuttons, container.NewPadded(devicelabel))
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
@@ -433,6 +450,10 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			// to indicate that we're expecting a URL
 			s.MediaText.SetPlaceHolder("Enter URL here")
 			s.MediaText.Enable()
+
+			s.SelectInternalSubs.PlaceHolder = "No Embedded Subs"
+			s.SelectInternalSubs.ClearSelected()
+			s.SelectInternalSubs.Disable()
 			return
 		}
 
@@ -453,6 +474,21 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		s.mediafile = mediafileOld
 		mediafilelabel.Refresh()
 		s.MediaText.Disable()
+
+		if mediafileOld != "" {
+			subs, err := utils.GetSubs(mediafileOld)
+			if err != nil {
+				s.SelectInternalSubs.Options = []string{}
+				s.SelectInternalSubs.PlaceHolder = "No Embedded Subs"
+				s.SelectInternalSubs.ClearSelected()
+				s.SelectInternalSubs.Disable()
+				return
+			}
+
+			s.SelectInternalSubs.PlaceHolder = "Embedded Subs"
+			s.SelectInternalSubs.Options = subs
+			s.SelectInternalSubs.Enable()
+		}
 	}
 
 	medialoop.OnChanged = func(b bool) {
