@@ -338,6 +338,20 @@ func playAction(screen *NewScreen) {
 		}
 	}
 
+	if screen.SelectInternalSubs.Selected != "" {
+		for n, opt := range screen.SelectInternalSubs.Options {
+			if opt == screen.SelectInternalSubs.Selected {
+				tempSubsPath, err := utils.ExtractSub(n, screen.mediafile)
+				if err != nil {
+					break
+				}
+
+				screen.tempFiles = append(screen.tempFiles, tempSubsPath)
+				screen.subsfile = tempSubsPath
+			}
+		}
+	}
+
 	screen.tvdata = &soapcalls.TVPayload{
 		ControlURL:                  screen.controlURL,
 		EventURL:                    screen.eventlURL,
@@ -479,10 +493,10 @@ func clearmediaAction(screen *NewScreen) {
 }
 
 func clearsubsAction(screen *NewScreen) {
+	screen.SelectInternalSubs.ClearSelected()
 	screen.SubsText.Text = ""
 	screen.subsfile = ""
 	screen.SubsText.Refresh()
-	screen.SelectInternalSubs.ClearSelected()
 }
 
 func skipNextAction(screen *NewScreen) {

@@ -25,6 +25,7 @@ import (
 
 // NewScreen .
 type NewScreen struct {
+	tempFiles            []string
 	SelectInternalSubs   *widget.Select
 	CurrentPos           binding.String
 	EndPos               binding.String
@@ -91,6 +92,16 @@ func (f *debugWriter) Write(b []byte) (int, error) {
 
 // Start .
 func Start(ctx context.Context, s *NewScreen) {
+	if s.tempFiles == nil {
+		s.tempFiles = make([]string, 0)
+	}
+
+	defer func() {
+		for _, file := range s.tempFiles {
+			os.Remove(file)
+		}
+	}()
+
 	w := s.Current
 	w.SetOnDropped(onDropFiles(s))
 
