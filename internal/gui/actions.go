@@ -341,7 +341,11 @@ func playAction(screen *NewScreen) {
 	if screen.SelectInternalSubs.Selected != "" {
 		for n, opt := range screen.SelectInternalSubs.Options {
 			if opt == screen.SelectInternalSubs.Selected {
+				screen.PlayPause.Text = "Extracting Subtitles"
+				screen.PlayPause.Refresh()
 				tempSubsPath, err := utils.ExtractSub(n, screen.mediafile)
+				screen.PlayPause.Text = "Play"
+				screen.PlayPause.Refresh()
 				if err != nil {
 					break
 				}
