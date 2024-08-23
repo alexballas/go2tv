@@ -57,8 +57,11 @@ func GetSubs(f string) ([]string, error) {
 	}
 
 	out := make([]string, 0)
+
+	var subcounter int
 	for _, s := range info.Streams {
 		if s.CodecType == "subtitle" {
+			subcounter++
 			tag := &tags{}
 			if err := mapstructure.Decode(s.Tags, tag); err != nil {
 				fmt.Println(err)
@@ -68,6 +71,10 @@ func GetSubs(f string) ([]string, error) {
 			subName := tag.Title
 			if tag.Title == "" {
 				subName = tag.Language
+			}
+
+			if subName == "" {
+				subName = strconv.Itoa(subcounter)
 			}
 
 			out = append(out, subName)
