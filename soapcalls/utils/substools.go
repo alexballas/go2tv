@@ -3,6 +3,7 @@ package utils
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -21,7 +22,8 @@ type streams struct {
 }
 
 type tags struct {
-	Title string `mapstructure:"title"`
+	Title    string `mapstructure:"title"`
+	Language string `mapstructure:"language"`
 }
 
 var ErrNoSubs = errors.New("no subs")
@@ -29,6 +31,7 @@ var ErrNoSubs = errors.New("no subs")
 func GetSubs(f string) ([]string, error) {
 	_, err := os.Stat(f)
 	if err != nil {
+		fmt.Println(err)
 		return nil, err
 	}
 
@@ -42,12 +45,14 @@ func GetSubs(f string) ([]string, error) {
 
 	output, err := cmd.Output()
 	if err != nil {
+		fmt.Println(err)
 		return nil, err
 	}
 
 	var info ffprobeInfoforSubs
 
 	if err := json.Unmarshal(output, &info); err != nil {
+		fmt.Println(err)
 		return nil, err
 	}
 
@@ -56,14 +61,21 @@ func GetSubs(f string) ([]string, error) {
 		if s.CodecType == "subtitle" {
 			tag := &tags{}
 			if err := mapstructure.Decode(s.Tags, tag); err != nil {
+				fmt.Println(err)
 				return nil, err
 			}
 
-			out = append(out, tag.Title)
+			subName := tag.Title
+			if tag.Title == "" {
+				subName = tag.Language
+			}
+
+			out = append(out, subName)
 		}
 	}
 
 	if len(out) == 0 {
+		fmt.Println(ErrNoSubs)
 		return nil, ErrNoSubs
 	}
 
