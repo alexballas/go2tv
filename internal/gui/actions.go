@@ -101,6 +101,7 @@ func selectMediaFile(screen *NewScreen, f fyne.URI) {
 	screen.MediaText.Refresh()
 
 	subs, err := utils.GetSubs(absMediaFile)
+	check(screen, err)
 	if err != nil {
 		screen.SelectInternalSubs.Options = []string{}
 		screen.SelectInternalSubs.PlaceHolder = "No Embedded Subs"
