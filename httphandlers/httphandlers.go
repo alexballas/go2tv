@@ -252,11 +252,11 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 
 	switch f := mf.(type) {
 	case osFileType:
-		serveContentCustomType(w, r, mediaType, transcode, seek, f, ff)
+		serveContentCustomType(w, r, tv, mediaType, transcode, seek, f, ff)
 	case []byte:
 		serveContentBytes(w, r, mediaType, f)
 	case io.ReadCloser:
-		serveContentReadClose(w, r, mediaType, transcode, f, ff)
+		serveContentReadClose(w, r, tv, mediaType, transcode, f, ff)
 	default:
 		http.NotFound(w, r)
 		return
@@ -279,7 +279,7 @@ func serveContentBytes(w http.ResponseWriter, r *http.Request, mediaType string,
 	http.ServeContent(w, r, name, time.Now(), bReader)
 }
 
-func serveContentReadClose(w http.ResponseWriter, r *http.Request, mediaType string, transcode bool, f io.ReadCloser, ff *exec.Cmd) {
+func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, mediaType string, transcode bool, f io.ReadCloser, ff *exec.Cmd) {
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
 		contentFeatures, err := utils.BuildContentFeatures(mediaType, "00", transcode)
 		if err != nil {
@@ -293,7 +293,7 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, mediaType str
 	// Since we're dealing with an io.Reader we can't
 	// allow any HEAD requests that some DMRs trigger.
 	if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "video") {
-		_ = utils.ServeTranscodedStream(w, f, ff)
+		_ = utils.ServeTranscodedStream(w, f, ff, tv.FFmpegPath)
 		return
 	}
 
@@ -305,7 +305,7 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, mediaType str
 	}
 }
 
-func serveContentCustomType(w http.ResponseWriter, r *http.Request, mediaType string, transcode, seek bool, f osFileType, ff *exec.Cmd) {
+func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, mediaType string, transcode, seek bool, f osFileType, ff *exec.Cmd) {
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
 		seekflag := "00"
 		if seek {
@@ -330,7 +330,7 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, mediaType st
 		if f.path != "" {
 			input = f.path
 		}
-		_ = utils.ServeTranscodedStream(w, input, ff)
+		_ = utils.ServeTranscodedStream(w, input, ff, tv.FFmpegPath)
 		return
 	}
 

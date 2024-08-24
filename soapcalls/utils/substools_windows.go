@@ -1,6 +1,3 @@
-//go:build !windows
-// +build !windows
-
 package utils
 
 import (
@@ -10,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"syscall"
 
 	"github.com/mitchellh/mapstructure"
 )
@@ -37,8 +35,6 @@ func GetSubs(ffmpeg string, f string) ([]string, error) {
 		return nil, err
 	}
 
-	// We assume the ffprobe path based on the ffmpeg one.
-	// So we need to ensure that the ffmpeg one exists.
 	if err := CheckFFmpeg(ffmpeg); err != nil {
 		return nil, err
 	}
@@ -50,6 +46,7 @@ func GetSubs(ffmpeg string, f string) ([]string, error) {
 		"-of", "json",
 		f,
 	)
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000}
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -111,6 +108,7 @@ func ExtractSub(ffmpeg string, n int, f string) (string, error) {
 		"-map", "0:s:"+strconv.Itoa(n),
 		tempSub.Name(),
 	)
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000}
 
 	_, err = cmd.Output()
 	if err != nil {

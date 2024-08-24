@@ -100,8 +100,7 @@ func selectMediaFile(screen *NewScreen, f fyne.URI) {
 
 	screen.MediaText.Refresh()
 
-	subs, err := utils.GetSubs(absMediaFile)
-	check(screen, err)
+	subs, err := utils.GetSubs(screen.ffmpegPath, absMediaFile)
 	if err != nil {
 		screen.SelectInternalSubs.Options = []string{}
 		screen.SelectInternalSubs.PlaceHolder = "No Embedded Subs"
@@ -344,7 +343,7 @@ func playAction(screen *NewScreen) {
 			if opt == screen.SelectInternalSubs.Selected {
 				screen.PlayPause.Text = "Extracting Subtitles"
 				screen.PlayPause.Refresh()
-				tempSubsPath, err := utils.ExtractSub(n, screen.mediafile)
+				tempSubsPath, err := utils.ExtractSub(screen.ffmpegPath, n, screen.mediafile)
 				screen.PlayPause.Text = "Play"
 				screen.PlayPause.Refresh()
 				if err != nil {
@@ -373,6 +372,7 @@ func playAction(screen *NewScreen) {
 		Transcode:                   screen.Transcode,
 		Seekable:                    isSeek,
 		LogOutput:                   screen.Debug,
+		FFmpegPath:                  screen.ffmpegPath,
 	}
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)

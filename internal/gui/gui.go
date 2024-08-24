@@ -21,6 +21,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/alexballas/go2tv/httphandlers"
 	"github.com/alexballas/go2tv/soapcalls"
+	"github.com/alexballas/go2tv/soapcalls/utils"
 )
 
 // NewScreen .
@@ -41,6 +42,7 @@ type NewScreen struct {
 	SubsText             *widget.Entry
 	CustomSubsCheck      *widget.Check
 	NextMediaCheck       *widget.Check
+	TranscodeCheckBox    *widget.Check
 	Stop                 *widget.Button
 	DeviceList           *deviceList
 	httpserver           *httphandlers.HTTPserver
@@ -60,6 +62,7 @@ type NewScreen struct {
 	renderingControlURL  string
 	connectionManagerURL string
 	currentmfolder       string
+	ffmpegPath           string
 	mediaFormats         []string
 	muError              sync.RWMutex
 	mu                   sync.RWMutex
@@ -113,11 +116,20 @@ func Start(ctx context.Context, s *NewScreen) {
 
 	s.Hotkeys = true
 	tabs.OnSelected = func(t *container.TabItem) {
+		s.TranscodeCheckBox.Enable()
+		if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
+			s.TranscodeCheckBox.Disable()
+		}
+
 		if t.Text == "Go2TV" {
 			s.Hotkeys = true
 			return
 		}
 		s.Hotkeys = false
+	}
+
+	if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
+		s.TranscodeCheckBox.Disable()
 	}
 
 	s.tabs = tabs

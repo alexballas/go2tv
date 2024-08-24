@@ -4,6 +4,7 @@
 package gui
 
 import (
+	"runtime"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -41,6 +42,35 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 			dropdown.PlaceHolder = "Light"
 			parseTheme("Light")
 		}
+	}
+
+	ffmpegText := widget.NewLabel("ffmpeg Path")
+	ffmpegTextEntry := widget.NewEntry()
+
+	ffmpegTextEntry.Text = func() string {
+		if fyne.CurrentApp().Preferences().String("ffmpeg") != "" {
+			return fyne.CurrentApp().Preferences().String("ffmpeg")
+		}
+
+		os := runtime.GOOS
+		switch os {
+		case "windows":
+			return "ffmpeg"
+		case "linux":
+			return "ffmpeg"
+		case "darwin":
+			return "/opt/homebrew/bin/ffmpeg"
+		default:
+			return "ffmpeg"
+		}
+
+	}()
+	ffmpegTextEntry.Refresh()
+	s.ffmpegPath = ffmpegTextEntry.Text
+
+	ffmpegTextEntry.OnChanged = func(update string) {
+		s.ffmpegPath = update
+		fyne.CurrentApp().Preferences().SetString("ffmpeg", update)
 	}
 
 	debugText := widget.NewLabel("Debug")
@@ -107,7 +137,7 @@ If 'Auto-Play Next File' is not working correctly, please disable it.`, w)
 
 	dropdown.Refresh()
 
-	return container.New(layout.NewFormLayout(), themeText, dropdown, gaplessText, gaplessdropdown, debugText, debugExport)
+	return container.New(layout.NewFormLayout(), themeText, dropdown, gaplessText, gaplessdropdown, ffmpegText, ffmpegTextEntry, debugText, debugExport)
 }
 
 func saveDebugLogs(f fyne.URIWriteCloser, s *NewScreen) {

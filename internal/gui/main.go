@@ -8,7 +8,6 @@ import (
 	"errors"
 	"math"
 	"net/url"
-	"os/exec"
 	"sort"
 	"sync"
 	"time"
@@ -325,11 +324,6 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	nextmedia := widget.NewCheck("Auto-Play Next File", func(b bool) {})
 	transcode := widget.NewCheck("Transcode", func(b bool) {})
 
-	_, err := exec.LookPath("ffmpeg")
-	if err != nil {
-		transcode.Disable()
-	}
-
 	mediafilelabel := canvas.NewText("File:", nil)
 	subsfilelabel := canvas.NewText("Subtitles:", nil)
 	devicelabel := canvas.NewText("Select Device:", nil)
@@ -367,6 +361,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	s.CurrentPos = curPos
 	s.EndPos = endPos
 	s.SelectInternalSubs = selectInternalSubs
+	s.TranscodeCheckBox = transcode
 
 	curPos.Set("00:00:00")
 	endPos.Set("00:00:00")
@@ -476,7 +471,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		s.MediaText.Disable()
 
 		if mediafileOld != "" {
-			subs, err := utils.GetSubs(mediafileOld)
+			subs, err := utils.GetSubs(s.ffmpegPath, mediafileOld)
 			if err != nil {
 				s.SelectInternalSubs.Options = []string{}
 				s.SelectInternalSubs.PlaceHolder = "No Embedded Subs"
@@ -531,7 +526,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			}
 
 			if s.tvdata != nil && s.tvdata.CallbackURL != "" {
-				_, err = queueNext(s, true)
+				_, err := queueNext(s, true)
 				if err != nil {
 					stopAction(s)
 				}

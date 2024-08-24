@@ -369,7 +369,7 @@ func setAVTransportSoapBuild(tvdata *TVPayload) ([]byte, error) {
 
 	var didl didLLiteItem
 	resNodeData := []resNode{}
-	duration, _ := utils.DurationForMedia(tvdata.MediaPath)
+	duration, _ := utils.DurationForMedia(tvdata.FFmpegPath, tvdata.MediaPath)
 
 	switch duration {
 	case "":
@@ -512,7 +512,7 @@ func setNextAVTransportSoapBuild(tvdata *TVPayload, clear bool) ([]byte, error) 
 
 	var didl didLLiteItem
 	resNodeData := []resNode{}
-	duration, _ := utils.DurationForMedia(tvdata.MediaPath)
+	duration, _ := utils.DurationForMedia(tvdata.FFmpegPath, tvdata.MediaPath)
 
 	switch duration {
 	case "":
