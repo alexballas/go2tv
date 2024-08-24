@@ -55,7 +55,7 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 		os := runtime.GOOS
 		switch os {
 		case "windows":
-			return "ffmpeg"
+			return `C:\ffmpeg\bin\ffmpeg`
 		case "linux":
 			return "ffmpeg"
 		case "darwin":
