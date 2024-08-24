@@ -17,6 +17,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/alexballas/go2tv/httphandlers"
@@ -66,6 +67,7 @@ type NewScreen struct {
 	mediaFormats         []string
 	muError              sync.RWMutex
 	mu                   sync.RWMutex
+	ffmpegPathChanged    bool
 	Medialoop            bool
 	sliderActive         bool
 	Transcode            bool
@@ -126,6 +128,14 @@ func Start(ctx context.Context, s *NewScreen) {
 			s.SelectInternalSubs.Disable()
 		}
 
+		if s.ffmpegPathChanged {
+			furi, err := storage.ParseURI("file://" + s.mediafile)
+			if err == nil {
+				go selectMediaFile(s, furi)
+			}
+			s.ffmpegPathChanged = false
+		}
+
 		if t.Text == "Go2TV" {
 			s.Hotkeys = true
 			return
@@ -133,6 +143,7 @@ func Start(ctx context.Context, s *NewScreen) {
 		s.Hotkeys = false
 	}
 
+	s.ffmpegPathChanged = false
 	if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
 		s.TranscodeCheckBox.Disable()
 	}

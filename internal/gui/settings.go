@@ -71,6 +71,7 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 	ffmpegTextEntry.OnChanged = func(update string) {
 		s.ffmpegPath = update
 		fyne.CurrentApp().Preferences().SetString("ffmpeg", update)
+		s.ffmpegPathChanged = true
 	}
 
 	debugText := widget.NewLabel("Debug")
