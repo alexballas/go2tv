@@ -118,7 +118,12 @@ func Start(ctx context.Context, s *NewScreen) {
 	tabs.OnSelected = func(t *container.TabItem) {
 		s.TranscodeCheckBox.Enable()
 		if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
+			s.TranscodeCheckBox.SetChecked(false)
 			s.TranscodeCheckBox.Disable()
+			s.SelectInternalSubs.Options = []string{}
+			s.SelectInternalSubs.PlaceHolder = "No Embedded Subs"
+			s.SelectInternalSubs.ClearSelected()
+			s.SelectInternalSubs.Disable()
 		}
 
 		if t.Text == "Go2TV" {
