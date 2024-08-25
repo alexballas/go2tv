@@ -495,6 +495,10 @@ func clearmediaAction(screen *NewScreen) {
 	screen.MediaText.Text = ""
 	screen.mediafile = ""
 	screen.MediaText.Refresh()
+	screen.SelectInternalSubs.Options = []string{}
+	screen.SelectInternalSubs.PlaceHolder = "No Embedded Subs"
+	screen.SelectInternalSubs.ClearSelected()
+	screen.SelectInternalSubs.Disable()
 }
 
 func clearsubsAction(screen *NewScreen) {
