@@ -15,6 +15,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -46,13 +47,13 @@ MIT
 			seg.Alignment = fyne.TextAlignCenter
 		}
 	}
-	githubbutton := widget.NewButton("Github page", func() {
+	githubbutton := widget.NewButton(lang.L("Github page"), func() {
 		go func() {
 			u, _ := url.Parse("https://github.com/alexballas/go2tv")
 			_ = fyne.CurrentApp().OpenURL(u)
 		}()
 	})
-	checkversion := widget.NewButton("Check version", func() {
+	checkversion := widget.NewButton(lang.L("Check version"), func() {
 		go checkVersion(s)
 	})
 

@@ -6,6 +6,7 @@ package gui
 import (
 	"container/ring"
 	"context"
+	"embed"
 	"errors"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -95,6 +97,9 @@ func (f *debugWriter) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
+//go:embed translations
+var translations embed.FS
+
 // Start .
 func Start(ctx context.Context, s *NewScreen) {
 	if s.tempFiles == nil {
@@ -112,8 +117,8 @@ func Start(ctx context.Context, s *NewScreen) {
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Go2TV", container.NewPadded(mainWindow(s))),
-		container.NewTabItem("Settings", container.NewPadded(settingsWindow(s))),
-		container.NewTabItem("About", aboutWindow(s)),
+		container.NewTabItem(lang.L("Settings"), container.NewPadded(settingsWindow(s))),
+		container.NewTabItem(lang.L("About"), aboutWindow(s)),
 	)
 
 	s.Hotkeys = true
@@ -123,7 +128,7 @@ func Start(ctx context.Context, s *NewScreen) {
 			s.TranscodeCheckBox.SetChecked(false)
 			s.TranscodeCheckBox.Disable()
 			s.SelectInternalSubs.Options = []string{}
-			s.SelectInternalSubs.PlaceHolder = "No Embedded Subs"
+			s.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
 			s.SelectInternalSubs.ClearSelected()
 			s.SelectInternalSubs.Disable()
 		}
@@ -236,6 +241,8 @@ func (p *NewScreen) Fini() {
 
 // InitFyneNewScreen .
 func InitFyneNewScreen(v string) *NewScreen {
+	lang.AddTranslationsFS(translations, "translations")
+
 	go2tv := app.NewWithID("com.alexballas.go2tv")
 	w := go2tv.NewWindow("Go2TV")
 	currentDir, err := os.Getwd()
@@ -366,11 +373,11 @@ func setPlayPauseView(s string, screen *NewScreen) {
 	screen.PlayPause.Enable()
 	switch s {
 	case "Play":
-		screen.PlayPause.Text = "Play"
+		screen.PlayPause.Text = lang.L("Play")
 		screen.PlayPause.Icon = theme.MediaPlayIcon()
 		screen.PlayPause.Refresh()
 	case "Pause":
-		screen.PlayPause.Text = "Pause"
+		screen.PlayPause.Text = lang.L("Pause")
 		screen.PlayPause.Icon = theme.MediaPauseIcon()
 		screen.PlayPause.Refresh()
 	}

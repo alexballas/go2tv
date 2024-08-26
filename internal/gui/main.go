@@ -16,6 +16,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -259,24 +260,24 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	mfiletext := widget.NewEntry()
 	sfiletext := widget.NewEntry()
 
-	mfile := widget.NewButton("Select Media File", func() {
+	mfile := widget.NewButton(lang.L("Select Media File"), func() {
 		go mediaAction(s)
 	})
 
 	mfiletext.Disable()
 
-	sfile := widget.NewButton("Select Subtitles File", func() {
+	sfile := widget.NewButton(lang.L("Select Subtitles File"), func() {
 		go subsAction(s)
 	})
 
 	sfile.Disable()
 	sfiletext.Disable()
 
-	playpause := widget.NewButtonWithIcon("Play", theme.MediaPlayIcon(), func() {
+	playpause := widget.NewButtonWithIcon(lang.L("Play"), theme.MediaPlayIcon(), func() {
 		go playAction(s)
 	})
 
-	stop := widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
+	stop := widget.NewButtonWithIcon(lang.L("Stop"), theme.MediaStopIcon(), func() {
 		go stopAction(s)
 	})
 
@@ -318,15 +319,15 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		go previewmedia(s)
 	})
 
-	sfilecheck := widget.NewCheck("Manual Subtitles", func(b bool) {})
-	externalmedia := widget.NewCheck("Media from URL", func(b bool) {})
-	medialoop := widget.NewCheck("Loop Selected", func(b bool) {})
-	nextmedia := widget.NewCheck("Auto-Play Next File", func(b bool) {})
-	transcode := widget.NewCheck("Transcode", func(b bool) {})
+	sfilecheck := widget.NewCheck(lang.L("Manual Subtitles"), func(b bool) {})
+	externalmedia := widget.NewCheck(lang.L("Media from URL"), func(b bool) {})
+	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
+	nextmedia := widget.NewCheck(lang.L("Auto-Play Next File"), func(b bool) {})
+	transcode := widget.NewCheck(lang.L("Transcode"), func(b bool) {})
 
-	mediafilelabel := canvas.NewText("File:", nil)
-	subsfilelabel := canvas.NewText("Subtitles:", nil)
-	devicelabel := canvas.NewText("Select Device:", nil)
+	mediafilelabel := canvas.NewText(lang.L("File")+":", nil)
+	subsfilelabel := canvas.NewText(lang.L("Subtitles")+":", nil)
+	devicelabel := canvas.NewText(lang.L("Select Device")+":", nil)
 
 	selectInternalSubs := widget.NewSelect([]string{}, func(item string) {
 		if item == "" {
@@ -340,7 +341,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		sfile.Disable()
 	})
 
-	selectInternalSubs.PlaceHolder = "No Embedded Subs"
+	selectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
 	selectInternalSubs.Disable()
 
 	curPos := binding.NewString()
@@ -435,7 +436,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			mediafileOldText = s.MediaText.Text
 
 			// rename the label
-			mediafilelabel.Text = "URL:"
+			mediafilelabel.Text = lang.L("URL") + ":"
 			mediafilelabel.Refresh()
 
 			// Clear the Media Text Area
@@ -446,7 +447,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			s.MediaText.SetPlaceHolder("Enter URL here")
 			s.MediaText.Enable()
 
-			s.SelectInternalSubs.PlaceHolder = "No Embedded Subs"
+			s.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
 			s.SelectInternalSubs.ClearSelected()
 			s.SelectInternalSubs.Disable()
 			return
@@ -474,13 +475,13 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			subs, err := utils.GetSubs(s.ffmpegPath, mediafileOld)
 			if err != nil {
 				s.SelectInternalSubs.Options = []string{}
-				s.SelectInternalSubs.PlaceHolder = "No Embedded Subs"
+				s.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
 				s.SelectInternalSubs.ClearSelected()
 				s.SelectInternalSubs.Disable()
 				return
 			}
 
-			s.SelectInternalSubs.PlaceHolder = "Embedded Subs"
+			s.SelectInternalSubs.PlaceHolder = lang.L("Embedded Subs")
 			s.SelectInternalSubs.Options = subs
 			s.SelectInternalSubs.Enable()
 		}

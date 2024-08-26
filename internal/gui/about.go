@@ -16,6 +16,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -23,17 +24,17 @@ func aboutWindow(s *NewScreen) fyne.CanvasObject {
 	sr := fyne.NewStaticResource("Go2TV Icon", go2tvSmallIcon)
 	go2tvImage := canvas.NewImageFromResource(sr)
 	richhead := widget.NewRichTextFromMarkdown(`
-Cast your media files to UPnP/DLNA Media Renderers and Smart TVs
+` + lang.L("Cast your media files to UPnP/DLNA Media Renderers and Smart TVs") + `
 
 ---
 
-## Author
+## ` + lang.L("Author") + `
 Alex Ballas - alex@ballas.org
 
-## License
+## ` + lang.L("License") + `
 MIT
 
-## Version
+## ` + lang.L("Version") + `
 
 ` + s.version)
 
@@ -45,13 +46,13 @@ MIT
 			seg.Alignment = fyne.TextAlignCenter
 		}
 	}
-	githubbutton := widget.NewButton("Github page", func() {
+	githubbutton := widget.NewButton(lang.L("Github page"), func() {
 		go func() {
 			u, _ := url.Parse("https://github.com/alexballas/go2tv")
 			_ = fyne.CurrentApp().OpenURL(u)
 		}()
 	})
-	checkversion := widget.NewButton("Check version", func() {
+	checkversion := widget.NewButton(lang.L("Check version"), func() {
 		go checkVersion(s)
 	})
 

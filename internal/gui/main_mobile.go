@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -69,19 +70,19 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	mfiletext := widget.NewEntry()
 	sfiletext := widget.NewEntry()
 
-	mfile := widget.NewButton("Select Media File", func() {
+	mfile := widget.NewButton(lang.L("Select Media File"), func() {
 		go mediaAction(s)
 	})
 
 	mfiletext.Disable()
 
-	sfile := widget.NewButton("Select Subtitles File", func() {
+	sfile := widget.NewButton(lang.L("Select Subtitles File"), func() {
 		go subsAction(s)
 	})
 
 	sfiletext.Disable()
 
-	playpause := widget.NewButtonWithIcon("Play", theme.MediaPlayIcon(), func() {
+	playpause := widget.NewButtonWithIcon(lang.L("Play"), theme.MediaPlayIcon(), func() {
 		go playAction(s)
 	})
 
@@ -109,12 +110,12 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		go clearsubsAction(s)
 	})
 
-	externalmedia := widget.NewCheck("Media from URL", func(b bool) {})
-	medialoop := widget.NewCheck("Loop Selected", func(b bool) {})
+	externalmedia := widget.NewCheck(lang.L("Media from URL"), func(b bool) {})
+	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
 
-	mediafilelabel := canvas.NewText("File:", nil)
-	subsfilelabel := canvas.NewText("Subtitles:", nil)
-	devicelabel := canvas.NewText("Select Device:", nil)
+	mediafilelabel := canvas.NewText(lang.L("File")+":", nil)
+	subsfilelabel := canvas.NewText(lang.L("Subtitles")+":", nil)
+	devicelabel := canvas.NewText(lang.L("Select Device")+":", nil)
 
 	s.PlayPause = playpause
 	s.Stop = stop
@@ -164,7 +165,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			mfile.Disable()
 
 			// rename the label
-			mediafilelabel.Text = "URL:"
+			mediafilelabel.Text = lang.L("URL") + ":"
 			mediafilelabel.Refresh()
 
 			// keep old values
@@ -176,7 +177,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 			// Set some Media text defaults
 			// to indicate that we're expecting a URL
-			mfiletext.SetPlaceHolder("Enter URL here")
+			mfiletext.SetPlaceHolder(lang.L("Enter URL here"))
 			mfiletext.Enable()
 			return
 		}

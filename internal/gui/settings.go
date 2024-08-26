@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -18,7 +19,7 @@ import (
 func settingsWindow(s *NewScreen) fyne.CanvasObject {
 	w := s.Current
 
-	themeText := widget.NewLabel("Theme")
+	themeText := widget.NewLabel(lang.L("Theme"))
 	dropdown := widget.NewSelect([]string{"Light", "Dark"}, parseTheme)
 	themeName := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "GrabVariant")
 	switch themeName {
@@ -44,7 +45,7 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 		}
 	}
 
-	ffmpegText := widget.NewLabel("ffmpeg Path")
+	ffmpegText := widget.NewLabel("ffmpeg " + lang.L("Path"))
 	ffmpegTextEntry := widget.NewEntry()
 
 	ffmpegTextEntry.Text = func() string {
@@ -74,8 +75,8 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 		s.ffmpegPathChanged = true
 	}
 
-	debugText := widget.NewLabel("Debug")
-	debugExport := widget.NewButton("Export Debug Logs", func() {
+	debugText := widget.NewLabel(lang.L("Debug"))
+	debugExport := widget.NewButton(lang.L("Export Debug Logs"), func() {
 		var itemInRing bool
 		s.Debug.ring.Do(func(p interface{}) {
 			if p != nil {
@@ -84,7 +85,7 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 		})
 
 		if !itemInRing {
-			dialog.ShowInformation("Debug", "Debug logs are empty", w)
+			dialog.ShowInformation(lang.L("Debug"), lang.L("Debug logs are empty"), w)
 			return
 		}
 
@@ -102,11 +103,11 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 
 	})
 
-	gaplessText := widget.NewLabel("Gapless Playback")
+	gaplessText := widget.NewLabel(lang.L("Gapless Playback"))
 	gaplessdropdown := widget.NewSelect([]string{"Enabled", "Disabled"}, func(ss string) {
 		if ss == "Enabled" && fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled") == "Disabled" {
-			dialog.ShowInformation("Gapless Playback", `Not all devices support gapless playback.
-If 'Auto-Play Next File' is not working correctly, please disable it.`, w)
+			dialog.ShowInformation(lang.L("Gapless Playback"), lang.L(`Not all devices support gapless playback.
+If 'Auto-Play Next File' is not working correctly, please disable it.`), w)
 		}
 
 		fyne.CurrentApp().Preferences().SetString("Gapless", ss)

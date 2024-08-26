@@ -19,6 +19,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"github.com/alexballas/go2tv/devices"
@@ -103,14 +104,14 @@ func selectMediaFile(screen *NewScreen, f fyne.URI) {
 	subs, err := utils.GetSubs(screen.ffmpegPath, absMediaFile)
 	if err != nil {
 		screen.SelectInternalSubs.Options = []string{}
-		screen.SelectInternalSubs.PlaceHolder = "No Embedded Subs"
+		screen.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
 		screen.SelectInternalSubs.ClearSelected()
 		screen.SelectInternalSubs.Disable()
 		return
 	}
 
 	screen.SelectInternalSubs.Options = subs
-	screen.SelectInternalSubs.PlaceHolder = "Embedded Subs"
+	screen.SelectInternalSubs.PlaceHolder = lang.L("Embedded Subs")
 
 	screen.SelectInternalSubs.Enable()
 }
@@ -341,10 +342,10 @@ func playAction(screen *NewScreen) {
 	if screen.SelectInternalSubs.Selected != "" {
 		for n, opt := range screen.SelectInternalSubs.Options {
 			if opt == screen.SelectInternalSubs.Selected {
-				screen.PlayPause.Text = "Extracting Subtitles"
+				screen.PlayPause.Text = lang.L("Extracting Subtitles")
 				screen.PlayPause.Refresh()
 				tempSubsPath, err := utils.ExtractSub(screen.ffmpegPath, n, screen.mediafile)
-				screen.PlayPause.Text = "Play"
+				screen.PlayPause.Text = lang.L("Play")
 				screen.PlayPause.Refresh()
 				if err != nil {
 					break
@@ -496,7 +497,7 @@ func clearmediaAction(screen *NewScreen) {
 	screen.mediafile = ""
 	screen.MediaText.Refresh()
 	screen.SelectInternalSubs.Options = []string{}
-	screen.SelectInternalSubs.PlaceHolder = "No Embedded Subs"
+	screen.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
 	screen.SelectInternalSubs.ClearSelected()
 	screen.SelectInternalSubs.Disable()
 }
