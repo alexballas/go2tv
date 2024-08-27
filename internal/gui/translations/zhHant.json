@@ -48,6 +48,7 @@
     "could not get the volume levels": "无法获取音量级别",
     "could not send volume action": "无法发送音量操作",
     "please select a media file or enter a media URL": "请选择一个媒体文件或输入一个媒体网址",
+    "please select a media file": "请选择一个媒体文件",
     "Save": "保存",
     "Enter filename": "输入文件名"
 }

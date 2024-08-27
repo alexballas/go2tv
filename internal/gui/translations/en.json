@@ -48,6 +48,7 @@
     "could not get the volume levels": "could not get the volume levels",
     "could not send volume action": "could not send volume action",
     "please select a media file or enter a media URL": "please select a media file or enter a media URL",
+    "please select a media file": "please select a media file",
     "Save": "Save",
     "Enter filename": "Enter filename"
 }
