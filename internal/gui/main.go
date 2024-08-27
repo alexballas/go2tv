@@ -444,7 +444,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 			// Set some Media text defaults
 			// to indicate that we're expecting a URL
-			s.MediaText.SetPlaceHolder("Enter URL here")
+			s.MediaText.SetPlaceHolder(lang.L("Enter URL here"))
 			s.MediaText.Enable()
 
 			s.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")

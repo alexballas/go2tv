@@ -20,15 +20,15 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 	w := s.Current
 
 	themeText := widget.NewLabel(lang.L("Theme"))
-	dropdown := widget.NewSelect([]string{"Light", "Dark"}, parseTheme)
+	dropdown := widget.NewSelect([]string{lang.L("Light"), lang.L("Dark")}, parseTheme)
 	themeName := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "GrabVariant")
 	switch themeName {
 	case "Light":
-		dropdown.PlaceHolder = "Light"
-		parseTheme("Light")
+		dropdown.PlaceHolder = lang.L("Light")
+		parseTheme(lang.L("Light"))
 	case "Dark":
-		dropdown.PlaceHolder = "Dark"
-		parseTheme("Dark")
+		dropdown.PlaceHolder = lang.L("Dark")
+		parseTheme(lang.L("Dark"))
 	case "GrabVariant", "Default":
 		fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"GrabVariant"})
 
@@ -37,11 +37,11 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 
 		switch SystemVariant {
 		case theme.VariantDark:
-			dropdown.PlaceHolder = "Dark"
-			parseTheme("Dark")
+			dropdown.PlaceHolder = lang.L("Dark")
+			parseTheme(lang.L("Dark"))
 		case theme.VariantLight:
-			dropdown.PlaceHolder = "Light"
-			parseTheme("Light")
+			dropdown.PlaceHolder = lang.L("Light")
+			parseTheme(lang.L("Light"))
 		}
 	}
 
@@ -106,8 +106,7 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 	gaplessText := widget.NewLabel(lang.L("Gapless Playback"))
 	gaplessdropdown := widget.NewSelect([]string{"Enabled", "Disabled"}, func(ss string) {
 		if ss == "Enabled" && fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled") == "Disabled" {
-			dialog.ShowInformation(lang.L("Gapless Playback"), lang.L(`Not all devices support gapless playback.
-If 'Auto-Play Next File' is not working correctly, please disable it.`), w)
+			dialog.ShowInformation(lang.L("Gapless Playback"), lang.L(`Not all devices support gapless playback. If 'Auto-Play Next File' is not working correctly, please disable it.`), w)
 		}
 
 		fyne.CurrentApp().Preferences().SetString("Gapless", ss)
@@ -161,10 +160,10 @@ func parseTheme(t string) {
 	go func() {
 		time.Sleep(10 * time.Millisecond)
 		switch t {
-		case "Light":
+		case lang.L("Light"):
 			fyne.CurrentApp().Preferences().SetString("Theme", "Light")
 			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Light"})
-		case "Dark":
+		case lang.L("Dark"):
 			fyne.CurrentApp().Preferences().SetString("Theme", "Dark")
 			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Dark"})
 		}

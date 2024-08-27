@@ -66,8 +66,8 @@ func checkVersion(s *NewScreen) {
 	s.CheckVersion.Disable()
 	defer s.CheckVersion.Enable()
 	errRedirectChecker := errors.New("redirect")
-	errVersioncomp := errors.New("failed to get version info\non develop or non-compiled version")
-	errVersionGet := errors.New("failed to get version info\ncheck your internet connection")
+	errVersioncomp := errors.New(lang.L("failed to get version info") + "\n" + lang.L("you're using a development or a non-compiled version"))
+	errVersionGet := errors.New(lang.L("failed to get version info") + "\n" + lang.L("check your internet connection"))
 
 	str := strings.ReplaceAll(s.version, ".", "")
 	str = strings.TrimSpace(str)
@@ -113,10 +113,10 @@ func checkVersion(s *NewScreen) {
 
 		switch {
 		case chversion > currversion:
-			dialog.ShowInformation("Version checker", "New version: "+strings.Trim(filepath.Base(url.Path), "v"), s.Current)
+			dialog.ShowInformation(lang.L("Version checker"), lang.L("New version")+": "+strings.Trim(filepath.Base(url.Path), "v"), s.Current)
 			return
 		default:
-			dialog.ShowInformation("Version checker", "No new version", s.Current)
+			dialog.ShowInformation(lang.L("Version checker"), lang.L("No new version"), s.Current)
 			return
 		}
 	}

@@ -32,7 +32,7 @@ import (
 
 func muteAction(screen *NewScreen) {
 	if screen.renderingControlURL == "" {
-		check(screen, errors.New("please select a device"))
+		check(screen, errors.New(lang.L("please select a device")))
 		return
 	}
 
@@ -49,7 +49,7 @@ func muteAction(screen *NewScreen) {
 	}
 
 	if err := screen.tvdata.SetMuteSoapCall("1"); err != nil {
-		check(screen, errors.New("could not send mute action"))
+		check(screen, errors.New(lang.L("could not send mute action")))
 		return
 	}
 
@@ -58,7 +58,7 @@ func muteAction(screen *NewScreen) {
 
 func unmuteAction(screen *NewScreen) {
 	if screen.renderingControlURL == "" {
-		check(screen, errors.New("please select a device"))
+		check(screen, errors.New(lang.L("please select a device")))
 		return
 	}
 
@@ -71,7 +71,7 @@ func unmuteAction(screen *NewScreen) {
 
 	// isMuted, _ := screen.tvdata.GetMuteSoapCall()
 	if err := screen.tvdata.SetMuteSoapCall("0"); err != nil {
-		check(screen, errors.New("could not send mute action"))
+		check(screen, errors.New(lang.L("could not send mute action")))
 		return
 	}
 
@@ -245,13 +245,13 @@ func playAction(screen *NewScreen) {
 	}
 
 	if screen.mediafile == "" && screen.MediaText.Text == "" {
-		check(screen, errors.New("please select a media file or enter a media URL"))
+		check(screen, errors.New(lang.L("please select a media file or enter a media URL")))
 		startAfreshPlayButton(screen)
 		return
 	}
 
 	if screen.controlURL == "" {
-		check(screen, errors.New("please select a device"))
+		check(screen, errors.New(lang.L("please select a device")))
 		startAfreshPlayButton(screen)
 		return
 	}
@@ -511,12 +511,12 @@ func clearsubsAction(screen *NewScreen) {
 
 func skipNextAction(screen *NewScreen) {
 	if screen.controlURL == "" {
-		check(screen, errors.New("please select a device"))
+		check(screen, errors.New(lang.L("please select a device")))
 		return
 	}
 
 	if screen.mediafile == "" {
-		check(screen, errors.New("please select a media file"))
+		check(screen, errors.New(lang.L("please select a media file")))
 		return
 	}
 
@@ -536,7 +536,7 @@ func skipNextAction(screen *NewScreen) {
 
 func previewmedia(screen *NewScreen) {
 	if screen.mediafile == "" {
-		check(screen, errors.New("please select a media file"))
+		check(screen, errors.New(lang.L("please select a media file")))
 		return
 	}
 
@@ -610,7 +610,7 @@ func getDevices(delay int) ([]devType, error) {
 
 func volumeAction(screen *NewScreen, up bool) {
 	if screen.renderingControlURL == "" {
-		check(screen, errors.New("please select a device"))
+		check(screen, errors.New(lang.L("please select a device")))
 		return
 	}
 
@@ -623,7 +623,7 @@ func volumeAction(screen *NewScreen, up bool) {
 
 	currentVolume, err := screen.tvdata.GetVolumeSoapCall()
 	if err != nil {
-		check(screen, errors.New("could not get the volume levels"))
+		check(screen, errors.New(lang.L("could not get the volume levels")))
 		return
 	}
 
@@ -640,7 +640,7 @@ func volumeAction(screen *NewScreen, up bool) {
 	stringVolume := strconv.Itoa(setVolume)
 
 	if err := screen.tvdata.SetVolumeSoapCall(stringVolume); err != nil {
-		check(screen, errors.New("could not send volume action"))
+		check(screen, errors.New(lang.L("could not send volume action")))
 	}
 }
 
