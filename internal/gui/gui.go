@@ -8,7 +8,6 @@ import (
 	"context"
 	"embed"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -251,7 +250,6 @@ func InitFyneNewScreen(version string) *NewScreen {
 	switch go2tv.Preferences().String("Language") {
 	case "简体中文":
 		os.Setenv("LANG", "zh_CN.UTF-8")
-		fmt.Println("?")
 	case "English":
 		os.Setenv("LANG", "en_US.UTF-8")
 	}
