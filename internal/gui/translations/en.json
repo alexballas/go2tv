@@ -50,5 +50,8 @@
     "please select a media file or enter a media URL": "please select a media file or enter a media URL",
     "please select a media file": "please select a media file",
     "Save": "Save",
-    "Enter filename": "Enter filename"
+    "Enter filename": "Enter filename",
+    "Update Language Preferences": "Update Language Preferences",
+    "Please restart the application for the changes to take effect.": "Please restart the application for the changes to take effect.",
+    "Language": "Language"
 }

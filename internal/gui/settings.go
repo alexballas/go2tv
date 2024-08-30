@@ -20,14 +20,20 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 	w := s.Current
 
 	themeText := widget.NewLabel(lang.L("Theme"))
-	dropdown := widget.NewSelect([]string{lang.L("Light"), lang.L("Dark")}, parseTheme)
+	dropdownTheme := widget.NewSelect([]string{lang.L("Light"), lang.L("Dark")}, parseTheme)
+
+	languageText := widget.NewLabel(lang.L("Language"))
+	dropdownLanguage := widget.NewSelect([]string{"System Default", "English", "简体中文"}, parseLanguage(s))
+	selectedLanguage := fyne.CurrentApp().Preferences().StringWithFallback("Language", "System Default")
+	dropdownLanguage.PlaceHolder = selectedLanguage
+
 	themeName := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "GrabVariant")
 	switch themeName {
 	case "Light":
-		dropdown.PlaceHolder = lang.L("Light")
+		dropdownTheme.PlaceHolder = lang.L("Light")
 		parseTheme(lang.L("Light"))
 	case "Dark":
-		dropdown.PlaceHolder = lang.L("Dark")
+		dropdownTheme.PlaceHolder = lang.L("Dark")
 		parseTheme(lang.L("Dark"))
 	case "GrabVariant", "Default":
 		fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"GrabVariant"})
@@ -37,10 +43,10 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 
 		switch SystemVariant {
 		case theme.VariantDark:
-			dropdown.PlaceHolder = lang.L("Dark")
+			dropdownTheme.PlaceHolder = lang.L("Dark")
 			parseTheme(lang.L("Dark"))
 		case theme.VariantLight:
-			dropdown.PlaceHolder = lang.L("Light")
+			dropdownTheme.PlaceHolder = lang.L("Light")
 			parseTheme(lang.L("Light"))
 		}
 	}
@@ -136,9 +142,9 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 	gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
 	gaplessdropdown.SetSelected(gaplessOption)
 
-	dropdown.Refresh()
+	dropdownTheme.Refresh()
 
-	return container.New(layout.NewFormLayout(), themeText, dropdown, gaplessText, gaplessdropdown, ffmpegText, ffmpegTextEntry, debugText, debugExport)
+	return container.New(layout.NewFormLayout(), themeText, dropdownTheme, languageText, dropdownLanguage, gaplessText, gaplessdropdown, ffmpegText, ffmpegTextEntry, debugText, debugExport)
 }
 
 func saveDebugLogs(f fyne.URIWriteCloser, s *NewScreen) {
@@ -168,4 +174,23 @@ func parseTheme(t string) {
 			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Dark"})
 		}
 	}()
+}
+
+func parseLanguage(s *NewScreen) func(string) {
+	w := s.Current
+	return func(t string) {
+		if t != fyne.CurrentApp().Preferences().StringWithFallback("Language", "System Default") {
+			dialog.ShowInformation(lang.L("Update Language Preferences"), lang.L(`Please restart the application for the changes to take effect.`), w)
+		}
+		go func() {
+			switch t {
+			case "English":
+				fyne.CurrentApp().Preferences().SetString("Language", "English")
+			case "简体中文":
+				fyne.CurrentApp().Preferences().SetString("Language", "简体中文")
+			default:
+				fyne.CurrentApp().Preferences().SetString("Language", "System Default")
+			}
+		}()
+	}
 }

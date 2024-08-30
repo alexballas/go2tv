@@ -8,6 +8,7 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,6 +103,10 @@ var translations embed.FS
 
 // Start .
 func Start(ctx context.Context, s *NewScreen) {
+	if s == nil {
+		return
+	}
+
 	if s.tempFiles == nil {
 		s.tempFiles = make([]string, 0)
 	}
@@ -240,10 +245,18 @@ func (p *NewScreen) Fini() {
 }
 
 // InitFyneNewScreen .
-func InitFyneNewScreen(v string) *NewScreen {
+func InitFyneNewScreen(version string) *NewScreen {
+	go2tv := app.NewWithID("com.alexballas.go2tv")
+
+	switch go2tv.Preferences().String("Language") {
+	case "简体中文":
+		os.Setenv("LANG", "zh_CN.UTF-8")
+		fmt.Println("?")
+	case "English":
+		os.Setenv("LANG", "en_US.UTF-8")
+	}
 	lang.AddTranslationsFS(translations, "translations")
 
-	go2tv := app.NewWithID("com.alexballas.go2tv")
 	w := go2tv.NewWindow("Go2TV")
 	currentDir, err := os.Getwd()
 	if err != nil {
@@ -258,7 +271,7 @@ func InitFyneNewScreen(v string) *NewScreen {
 		Current:        w,
 		currentmfolder: currentDir,
 		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".m4a", ".jpg", ".jpeg", ".png"},
-		version:        v,
+		version:        version,
 		Debug:          dw,
 	}
 }
