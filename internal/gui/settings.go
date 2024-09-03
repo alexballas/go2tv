@@ -23,7 +23,7 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 	dropdownTheme := widget.NewSelect([]string{lang.L("Light"), lang.L("Dark")}, parseTheme)
 
 	languageText := widget.NewLabel(lang.L("Language"))
-	dropdownLanguage := widget.NewSelect([]string{"System Default", "English", "简体中文"}, parseLanguage(s))
+	dropdownLanguage := widget.NewSelect([]string{"System Default", "English", "中文(简体)"}, parseLanguage(s))
 	selectedLanguage := fyne.CurrentApp().Preferences().StringWithFallback("Language", "System Default")
 	dropdownLanguage.PlaceHolder = selectedLanguage
 
