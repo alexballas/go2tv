@@ -159,7 +159,7 @@ func saveDebugLogs(f fyne.URIWriteCloser, s *NewScreen) {
 			}
 		}
 	})
-	dialog.ShowInformation("Debug", "Saved to... "+f.URI().String(), w)
+	dialog.ShowInformation(lang.L("Debug"), lang.L("Saved to")+"... "+f.URI().String(), w)
 }
 
 func parseTheme(t string) {
