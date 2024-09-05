@@ -8,7 +8,6 @@ import (
 	"errors"
 	"math"
 	"net/url"
-	"os/exec"
 	"sort"
 	"sync"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -156,9 +156,8 @@ func (t *tappedSlider) DragEnd() {
 }
 
 func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
-	// This is a way to making the slider due to the tapped
-	// action racing the auto-refresh action. The auto-refresh action
-	// should reset this back to false after the first iterration.
+	// The auto-refresh action should reset this back to false
+	// after the first iterration.
 	t.screen.sliderActive = true
 
 	t.Slider.Tapped(p)
@@ -201,20 +200,20 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	var data []devType
 	list := newDeviceList(&data)
 
+	fynePE := &fyne.PointEvent{
+		AbsolutePosition: fyne.Position{
+			X: 10,
+			Y: 30,
+		},
+		Position: fyne.Position{
+			X: 10,
+			Y: 30,
+		},
+	}
+
 	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
 		if !s.Hotkeys {
 			return
-		}
-
-		fynePE := &fyne.PointEvent{
-			AbsolutePosition: fyne.Position{
-				X: 10,
-				Y: 30,
-			},
-			Position: fyne.Position{
-				X: 10,
-				Y: 30,
-			},
 		}
 
 		if k.Name == "Space" || k.Name == "P" {
@@ -261,24 +260,24 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	mfiletext := widget.NewEntry()
 	sfiletext := widget.NewEntry()
 
-	mfile := widget.NewButton("Select Media File", func() {
+	mfile := widget.NewButton(lang.L("Select Media File"), func() {
 		go mediaAction(s)
 	})
 
 	mfiletext.Disable()
 
-	sfile := widget.NewButton("Select Subtitles File", func() {
+	sfile := widget.NewButton(lang.L("Select Subtitles File"), func() {
 		go subsAction(s)
 	})
 
 	sfile.Disable()
 	sfiletext.Disable()
 
-	playpause := widget.NewButtonWithIcon("Play", theme.MediaPlayIcon(), func() {
+	playpause := widget.NewButtonWithIcon(lang.L("Play"), theme.MediaPlayIcon(), func() {
 		go playAction(s)
 	})
 
-	stop := widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
+	stop := widget.NewButtonWithIcon(lang.L("Stop"), theme.MediaStopIcon(), func() {
 		go stopAction(s)
 	})
 
@@ -320,20 +319,30 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		go previewmedia(s)
 	})
 
-	sfilecheck := widget.NewCheck("Manual Subtitles", func(b bool) {})
-	externalmedia := widget.NewCheck("Media from URL", func(b bool) {})
-	medialoop := widget.NewCheck("Loop Selected", func(b bool) {})
-	nextmedia := widget.NewCheck("Auto-Play Next File", func(b bool) {})
-	transcode := widget.NewCheck("Transcode", func(b bool) {})
+	sfilecheck := widget.NewCheck(lang.L("Manual Subtitles"), func(b bool) {})
+	externalmedia := widget.NewCheck(lang.L("Media from URL"), func(b bool) {})
+	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
+	nextmedia := widget.NewCheck(lang.L("Auto-Play Next File"), func(b bool) {})
+	transcode := widget.NewCheck(lang.L("Transcode"), func(b bool) {})
 
-	_, err := exec.LookPath("ffmpeg")
-	if err != nil {
-		transcode.Disable()
-	}
+	mediafilelabel := canvas.NewText(lang.L("File")+":", nil)
+	subsfilelabel := canvas.NewText(lang.L("Subtitles")+":", nil)
+	devicelabel := canvas.NewText(lang.L("Select Device")+":", nil)
 
-	mediafilelabel := canvas.NewText("File:", nil)
-	subsfilelabel := canvas.NewText("Subtitles:", nil)
-	devicelabel := canvas.NewText("Select Device:", nil)
+	selectInternalSubs := widget.NewSelect([]string{}, func(item string) {
+		if item == "" {
+			return
+		}
+		s.SubsText.Text = ""
+		s.subsfile = ""
+		s.SubsText.Refresh()
+		sfilecheck.Checked = false
+		sfilecheck.Refresh()
+		sfile.Disable()
+	})
+
+	selectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
+	selectInternalSubs.Disable()
 
 	curPos := binding.NewString()
 	endPos := binding.NewString()
@@ -352,6 +361,8 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	s.SlideBar = sliderBar
 	s.CurrentPos = curPos
 	s.EndPos = endPos
+	s.SelectInternalSubs = selectInternalSubs
+	s.TranscodeCheckBox = transcode
 
 	curPos.Set("00:00:00")
 	endPos.Set("00:00:00")
@@ -364,12 +375,13 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		volumeup,
 		stop)
 
-	mrightbuttons := container.NewHBox(skipNext, previewmedia, clearmedia)
+	mrightwidgets := container.NewHBox(skipNext, previewmedia, clearmedia)
+	srightwidgets := container.NewHBox(selectInternalSubs, clearsubs)
 
 	checklists := container.NewHBox(externalmedia, sfilecheck, medialoop, nextmedia, transcode)
 	mediasubsbuttons := container.New(layout.NewGridLayout(2), mfile, sfile)
-	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, mrightbuttons), mrightbuttons, mfiletext)
-	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
+	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, mrightwidgets), mrightwidgets, mfiletext)
+	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, srightwidgets), srightwidgets, sfiletext)
 	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
 	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, sliderArea, actionbuttons, container.NewPadded(devicelabel))
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
@@ -424,7 +436,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			mediafileOldText = s.MediaText.Text
 
 			// rename the label
-			mediafilelabel.Text = "URL:"
+			mediafilelabel.Text = lang.L("URL") + ":"
 			mediafilelabel.Refresh()
 
 			// Clear the Media Text Area
@@ -432,8 +444,12 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 
 			// Set some Media text defaults
 			// to indicate that we're expecting a URL
-			s.MediaText.SetPlaceHolder("Enter URL here")
+			s.MediaText.SetPlaceHolder(lang.L("Enter URL here"))
 			s.MediaText.Enable()
+
+			s.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
+			s.SelectInternalSubs.ClearSelected()
+			s.SelectInternalSubs.Disable()
 			return
 		}
 
@@ -448,12 +464,27 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 		mfile.Enable()
 		previewmedia.Enable()
 		skipNext.Enable()
-		mediafilelabel.Text = "File:"
+		mediafilelabel.Text = lang.L("File") + ":"
 		s.MediaText.SetPlaceHolder("")
 		s.MediaText.Text = mediafileOldText
 		s.mediafile = mediafileOld
 		mediafilelabel.Refresh()
 		s.MediaText.Disable()
+
+		if mediafileOld != "" {
+			subs, err := utils.GetSubs(s.ffmpegPath, mediafileOld)
+			if err != nil {
+				s.SelectInternalSubs.Options = []string{}
+				s.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
+				s.SelectInternalSubs.ClearSelected()
+				s.SelectInternalSubs.Disable()
+				return
+			}
+
+			s.SelectInternalSubs.PlaceHolder = lang.L("Embedded Subs")
+			s.SelectInternalSubs.Options = subs
+			s.SelectInternalSubs.Enable()
+		}
 	}
 
 	medialoop.OnChanged = func(b bool) {
@@ -496,7 +527,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 			}
 
 			if s.tvdata != nil && s.tvdata.CallbackURL != "" {
-				_, err = queueNext(s, true)
+				_, err := queueNext(s, true)
 				if err != nil {
 					stopAction(s)
 				}

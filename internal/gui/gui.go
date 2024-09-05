@@ -6,6 +6,7 @@ package gui
 import (
 	"container/ring"
 	"context"
+	"embed"
 	"errors"
 	"os"
 	"path/filepath"
@@ -17,14 +18,19 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/lang"
+	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/alexballas/go2tv/httphandlers"
 	"github.com/alexballas/go2tv/soapcalls"
+	"github.com/alexballas/go2tv/soapcalls/utils"
 )
 
 // NewScreen .
 type NewScreen struct {
+	tempFiles            []string
+	SelectInternalSubs   *widget.Select
 	CurrentPos           binding.String
 	EndPos               binding.String
 	serverStopCTX        context.Context
@@ -39,6 +45,7 @@ type NewScreen struct {
 	SubsText             *widget.Entry
 	CustomSubsCheck      *widget.Check
 	NextMediaCheck       *widget.Check
+	TranscodeCheckBox    *widget.Check
 	Stop                 *widget.Button
 	DeviceList           *deviceList
 	httpserver           *httphandlers.HTTPserver
@@ -58,9 +65,11 @@ type NewScreen struct {
 	renderingControlURL  string
 	connectionManagerURL string
 	currentmfolder       string
+	ffmpegPath           string
 	mediaFormats         []string
 	muError              sync.RWMutex
 	mu                   sync.RWMutex
+	ffmpegPathChanged    bool
 	Medialoop            bool
 	sliderActive         bool
 	Transcode            bool
@@ -88,27 +97,64 @@ func (f *debugWriter) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
+//go:embed translations
+var translations embed.FS
+
 // Start .
 func Start(ctx context.Context, s *NewScreen) {
+	if s == nil {
+		return
+	}
+
+	if s.tempFiles == nil {
+		s.tempFiles = make([]string, 0)
+	}
+
+	defer func() {
+		for _, file := range s.tempFiles {
+			os.Remove(file)
+		}
+	}()
+
 	w := s.Current
 	w.SetOnDropped(onDropFiles(s))
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Go2TV", container.NewPadded(mainWindow(s))),
-		container.NewTabItem("Settings", container.NewPadded(settingsWindow(s))),
-		container.NewTabItem("About", aboutWindow(s)),
+		container.NewTabItem(lang.L("Settings"), container.NewPadded(settingsWindow(s))),
+		container.NewTabItem(lang.L("About"), aboutWindow(s)),
 	)
 
 	s.Hotkeys = true
 	tabs.OnSelected = func(t *container.TabItem) {
-		currentTheme := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "Default")
-		fyne.CurrentApp().Settings().SetTheme(go2tvTheme{currentTheme})
+		s.TranscodeCheckBox.Enable()
+		if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
+			s.TranscodeCheckBox.SetChecked(false)
+			s.TranscodeCheckBox.Disable()
+			s.SelectInternalSubs.Options = []string{}
+			s.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
+			s.SelectInternalSubs.ClearSelected()
+			s.SelectInternalSubs.Disable()
+		}
+
+		if s.ffmpegPathChanged {
+			furi, err := storage.ParseURI("file://" + s.mediafile)
+			if err == nil {
+				go selectMediaFile(s, furi)
+			}
+			s.ffmpegPathChanged = false
+		}
 
 		if t.Text == "Go2TV" {
 			s.Hotkeys = true
 			return
 		}
 		s.Hotkeys = false
+	}
+
+	s.ffmpegPathChanged = false
+	if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
+		s.TranscodeCheckBox.Disable()
 	}
 
 	s.tabs = tabs
@@ -198,8 +244,17 @@ func (p *NewScreen) Fini() {
 }
 
 // InitFyneNewScreen .
-func InitFyneNewScreen(v string) *NewScreen {
+func InitFyneNewScreen(version string) *NewScreen {
 	go2tv := app.NewWithID("com.alexballas.go2tv")
+
+	switch go2tv.Preferences().String("Language") {
+	case "中文(简体)":
+		os.Setenv("LANG", "zh_CN.UTF-8")
+	case "English":
+		os.Setenv("LANG", "en_US.UTF-8")
+	}
+	lang.AddTranslationsFS(translations, "translations")
+
 	w := go2tv.NewWindow("Go2TV")
 	currentDir, err := os.Getwd()
 	if err != nil {
@@ -214,7 +269,7 @@ func InitFyneNewScreen(v string) *NewScreen {
 		Current:        w,
 		currentmfolder: currentDir,
 		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".m4a", ".jpg", ".jpeg", ".png"},
-		version:        v,
+		version:        version,
 		Debug:          dw,
 	}
 }
@@ -329,11 +384,11 @@ func setPlayPauseView(s string, screen *NewScreen) {
 	screen.PlayPause.Enable()
 	switch s {
 	case "Play":
-		screen.PlayPause.Text = "Play"
+		screen.PlayPause.Text = lang.L("Play")
 		screen.PlayPause.Icon = theme.MediaPlayIcon()
 		screen.PlayPause.Refresh()
 	case "Pause":
-		screen.PlayPause.Text = "Pause"
+		screen.PlayPause.Text = lang.L("Pause")
 		screen.PlayPause.Icon = theme.MediaPauseIcon()
 		screen.PlayPause.Refresh()
 	}

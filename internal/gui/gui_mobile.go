@@ -14,6 +14,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/alexballas/go2tv/httphandlers"
@@ -165,11 +166,11 @@ func setPlayPauseView(s string, screen *NewScreen) {
 	screen.PlayPause.Enable()
 	switch s {
 	case "Play":
-		screen.PlayPause.Text = "Play"
+		screen.PlayPause.Text = lang.L("Play")
 		screen.PlayPause.Icon = theme.MediaPlayIcon()
 		screen.PlayPause.Refresh()
 	case "Pause":
-		screen.PlayPause.Text = "Pause"
+		screen.PlayPause.Text = lang.L("Pause")
 		screen.PlayPause.Icon = theme.MediaPauseIcon()
 		screen.PlayPause.Refresh()
 	}

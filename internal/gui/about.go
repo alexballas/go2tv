@@ -16,6 +16,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -23,17 +24,17 @@ func aboutWindow(s *NewScreen) fyne.CanvasObject {
 	sr := fyne.NewStaticResource("Go2TV Icon", go2tvSmallIcon)
 	go2tvImage := canvas.NewImageFromResource(sr)
 	richhead := widget.NewRichTextFromMarkdown(`
-Cast your media files to UPnP/DLNA Media Renderers and Smart TVs
+` + lang.L("Cast your media files to UPnP/DLNA Media Renderers and Smart TVs") + `
 
 ---
 
-## Author
+## ` + lang.L("Author") + `
 Alex Ballas - alex@ballas.org
 
-## License
+## ` + lang.L("License") + `
 MIT
 
-## Version
+## ` + lang.L("Version") + `
 
 ` + s.version)
 
@@ -45,13 +46,13 @@ MIT
 			seg.Alignment = fyne.TextAlignCenter
 		}
 	}
-	githubbutton := widget.NewButton("Github page", func() {
+	githubbutton := widget.NewButton(lang.L("Github page"), func() {
 		go func() {
 			u, _ := url.Parse("https://github.com/alexballas/go2tv")
 			_ = fyne.CurrentApp().OpenURL(u)
 		}()
 	})
-	checkversion := widget.NewButton("Check version", func() {
+	checkversion := widget.NewButton(lang.L("Check version"), func() {
 		go checkVersion(s)
 	})
 
@@ -73,8 +74,8 @@ func checkVersion(s *NewScreen) {
 	s.CheckVersion.Disable()
 	defer s.CheckVersion.Enable()
 	errRedirectChecker := errors.New("redirect")
-	errVersioncomp := errors.New("failed to get version info - on develop or non-compiled version")
-	errVersionGet := errors.New("failed to get version info - check your internet connection")
+	errVersioncomp := errors.New(lang.L("failed to get version info") + " - " + lang.L("you're using a development or a non-compiled version"))
+	errVersionGet := errors.New(lang.L("failed to get version info") + " - " + lang.L("check your internet connection"))
 
 	str := strings.ReplaceAll(s.version, ".", "")
 	str = strings.TrimSpace(str)
@@ -120,10 +121,10 @@ func checkVersion(s *NewScreen) {
 
 		switch {
 		case chversion > currversion:
-			dialog.ShowInformation("Version checker", "New version: "+strings.Trim(filepath.Base(responceUrl.Path), "v"), s.Current)
+			dialog.ShowInformation(lang.L("Version checker"), lang.L("New version")+": "+strings.Trim(filepath.Base(responceUrl.Path), "v"), s.Current)
 			return
 		default:
-			dialog.ShowInformation("Version checker", "No new version", s.Current)
+			dialog.ShowInformation(lang.L("Version checker"), lang.L("No new version"), s.Current)
 			return
 		}
 	}

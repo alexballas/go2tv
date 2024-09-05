@@ -19,6 +19,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"github.com/alexballas/go2tv/devices"
@@ -31,7 +32,7 @@ import (
 
 func muteAction(screen *NewScreen) {
 	if screen.renderingControlURL == "" {
-		check(screen, errors.New("please select a device"))
+		check(screen, errors.New(lang.L("please select a device")))
 		return
 	}
 
@@ -48,7 +49,7 @@ func muteAction(screen *NewScreen) {
 	}
 
 	if err := screen.tvdata.SetMuteSoapCall("1"); err != nil {
-		check(screen, errors.New("could not send mute action"))
+		check(screen, errors.New(lang.L("could not send mute action")))
 		return
 	}
 
@@ -57,7 +58,7 @@ func muteAction(screen *NewScreen) {
 
 func unmuteAction(screen *NewScreen) {
 	if screen.renderingControlURL == "" {
-		check(screen, errors.New("please select a device"))
+		check(screen, errors.New(lang.L("please select a device")))
 		return
 	}
 
@@ -70,7 +71,7 @@ func unmuteAction(screen *NewScreen) {
 
 	// isMuted, _ := screen.tvdata.GetMuteSoapCall()
 	if err := screen.tvdata.SetMuteSoapCall("0"); err != nil {
-		check(screen, errors.New("could not send mute action"))
+		check(screen, errors.New(lang.L("could not send mute action")))
 		return
 	}
 
@@ -85,6 +86,9 @@ func selectMediaFile(screen *NewScreen, f fyne.URI) {
 		return
 	}
 
+	screen.SelectInternalSubs.ClearSelected()
+	screen.ExternalMediaURL.SetChecked(false)
+
 	screen.MediaText.Text = filepath.Base(mfile)
 	screen.mediafile = absMediaFile
 
@@ -96,6 +100,20 @@ func selectMediaFile(screen *NewScreen, f fyne.URI) {
 	screen.currentmfolder = filepath.Dir(absMediaFile)
 
 	screen.MediaText.Refresh()
+
+	subs, err := utils.GetSubs(screen.ffmpegPath, absMediaFile)
+	if err != nil {
+		screen.SelectInternalSubs.Options = []string{}
+		screen.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
+		screen.SelectInternalSubs.ClearSelected()
+		screen.SelectInternalSubs.Disable()
+		return
+	}
+
+	screen.SelectInternalSubs.Options = subs
+	screen.SelectInternalSubs.PlaceHolder = lang.L("Embedded Subs")
+
+	screen.SelectInternalSubs.Enable()
 }
 
 func selectSubsFile(screen *NewScreen, f fyne.URI) {
@@ -105,6 +123,8 @@ func selectSubsFile(screen *NewScreen, f fyne.URI) {
 	if err != nil {
 		return
 	}
+
+	screen.SelectInternalSubs.ClearSelected()
 
 	screen.SubsText.Text = filepath.Base(sfile)
 	screen.subsfile = absSubtitlesFile
@@ -225,13 +245,13 @@ func playAction(screen *NewScreen) {
 	}
 
 	if screen.mediafile == "" && screen.MediaText.Text == "" {
-		check(screen, errors.New("please select a media file or enter a media URL"))
+		check(screen, errors.New(lang.L("please select a media file or enter a media URL")))
 		startAfreshPlayButton(screen)
 		return
 	}
 
 	if screen.controlURL == "" {
-		check(screen, errors.New("please select a device"))
+		check(screen, errors.New(lang.L("please select a device")))
 		startAfreshPlayButton(screen)
 		return
 	}
@@ -319,6 +339,24 @@ func playAction(screen *NewScreen) {
 		}
 	}
 
+	if screen.SelectInternalSubs.Selected != "" {
+		for n, opt := range screen.SelectInternalSubs.Options {
+			if opt == screen.SelectInternalSubs.Selected {
+				screen.PlayPause.Text = lang.L("Extracting Subtitles")
+				screen.PlayPause.Refresh()
+				tempSubsPath, err := utils.ExtractSub(screen.ffmpegPath, n, screen.mediafile)
+				screen.PlayPause.Text = lang.L("Play")
+				screen.PlayPause.Refresh()
+				if err != nil {
+					break
+				}
+
+				screen.tempFiles = append(screen.tempFiles, tempSubsPath)
+				screen.subsfile = tempSubsPath
+			}
+		}
+	}
+
 	screen.tvdata = &soapcalls.TVPayload{
 		ControlURL:                  screen.controlURL,
 		EventURL:                    screen.eventlURL,
@@ -335,6 +373,7 @@ func playAction(screen *NewScreen) {
 		Transcode:                   screen.Transcode,
 		Seekable:                    isSeek,
 		LogOutput:                   screen.Debug,
+		FFmpegPath:                  screen.ffmpegPath,
 	}
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)
@@ -457,9 +496,14 @@ func clearmediaAction(screen *NewScreen) {
 	screen.MediaText.Text = ""
 	screen.mediafile = ""
 	screen.MediaText.Refresh()
+	screen.SelectInternalSubs.Options = []string{}
+	screen.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
+	screen.SelectInternalSubs.ClearSelected()
+	screen.SelectInternalSubs.Disable()
 }
 
 func clearsubsAction(screen *NewScreen) {
+	screen.SelectInternalSubs.ClearSelected()
 	screen.SubsText.Text = ""
 	screen.subsfile = ""
 	screen.SubsText.Refresh()
@@ -467,12 +511,12 @@ func clearsubsAction(screen *NewScreen) {
 
 func skipNextAction(screen *NewScreen) {
 	if screen.controlURL == "" {
-		check(screen, errors.New("please select a device"))
+		check(screen, errors.New(lang.L("please select a device")))
 		return
 	}
 
 	if screen.mediafile == "" {
-		check(screen, errors.New("please select a media file"))
+		check(screen, errors.New(lang.L("please select a media file")))
 		return
 	}
 
@@ -492,7 +536,7 @@ func skipNextAction(screen *NewScreen) {
 
 func previewmedia(screen *NewScreen) {
 	if screen.mediafile == "" {
-		check(screen, errors.New("please select a media file"))
+		check(screen, errors.New(lang.L("please select a media file")))
 		return
 	}
 
@@ -566,7 +610,7 @@ func getDevices(delay int) ([]devType, error) {
 
 func volumeAction(screen *NewScreen, up bool) {
 	if screen.renderingControlURL == "" {
-		check(screen, errors.New("please select a device"))
+		check(screen, errors.New(lang.L("please select a device")))
 		return
 	}
 
@@ -579,7 +623,7 @@ func volumeAction(screen *NewScreen, up bool) {
 
 	currentVolume, err := screen.tvdata.GetVolumeSoapCall()
 	if err != nil {
-		check(screen, errors.New("could not get the volume levels"))
+		check(screen, errors.New(lang.L("could not get the volume levels")))
 		return
 	}
 
@@ -596,7 +640,7 @@ func volumeAction(screen *NewScreen, up bool) {
 	stringVolume := strconv.Itoa(setVolume)
 
 	if err := screen.tvdata.SetVolumeSoapCall(stringVolume); err != nil {
-		check(screen, errors.New("could not send volume action"))
+		check(screen, errors.New(lang.L("could not send volume action")))
 	}
 }
 

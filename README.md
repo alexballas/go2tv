@@ -77,9 +77,13 @@ Quick Start
 -----
 Download the app here https://github.com/alexballas/Go2TV/releases/latest. A single executable. No installation or external dependencies.
 
-**Transcoding**
+**Transcoding (ffmpeg required)**
 
 Go2TV supports live video transcoding, if ffmpeg is installed. When transcoding, SEEK operations are not available. Transcoding offers the maximum compatibility with the various file formats and devices. Only works with video files.
+
+**MKV/MP4 Subtitle Selection Support (ffmpeg required)**
+
+Go2TV also supports selecting subtitles for video files that have embedded subtitle tracks. This functionality requires ffmpeg to be installed. You can choose the desired subtitle track when casting your media files, enhancing your viewing experience on UPnP/DLNA Media Renderers and Smart TVs.
 
 **MacOS potential issues**
 

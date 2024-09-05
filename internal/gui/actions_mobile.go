@@ -14,6 +14,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"github.com/alexballas/go2tv/devices"
@@ -26,7 +27,7 @@ import (
 func muteAction(screen *NewScreen) {
 	w := screen.Current
 	if screen.renderingControlURL == "" {
-		check(w, errors.New("please select a device"))
+		check(w, errors.New(lang.L("please select a device")))
 		return
 	}
 
@@ -43,7 +44,7 @@ func muteAction(screen *NewScreen) {
 	}
 
 	if err := screen.tvdata.SetMuteSoapCall("1"); err != nil {
-		check(w, errors.New("could not send mute action"))
+		check(w, errors.New(lang.L("could not send mute action")))
 		return
 	}
 
@@ -54,7 +55,7 @@ func unmuteAction(screen *NewScreen) {
 	w := screen.Current
 
 	if screen.renderingControlURL == "" {
-		check(w, errors.New("please select a device"))
+		check(w, errors.New(lang.L("please select a device")))
 		return
 	}
 
@@ -67,7 +68,7 @@ func unmuteAction(screen *NewScreen) {
 
 	// isMuted, _ := screen.tvdata.GetMuteSoapCall()
 	if err := screen.tvdata.SetMuteSoapCall("0"); err != nil {
-		check(w, errors.New("could not send mute action"))
+		check(w, errors.New(lang.L("could not send mute action")))
 		return
 	}
 
@@ -183,13 +184,13 @@ func playAction(screen *NewScreen) {
 	}
 
 	if screen.mediafile == nil && screen.MediaText.Text == "" {
-		check(w, errors.New("please select a media file or enter a media URL"))
+		check(w, errors.New(lang.L("please select a media file or enter a media URL")))
 		startAfreshPlayButton(screen)
 		return
 	}
 
 	if screen.controlURL == "" {
-		check(w, errors.New("please select a device"))
+		check(w, errors.New(lang.L("please select a device")))
 		startAfreshPlayButton(screen)
 		return
 	}
@@ -392,7 +393,7 @@ func getDevices(delay int) ([]devType, error) {
 func volumeAction(screen *NewScreen, up bool) {
 	w := screen.Current
 	if screen.renderingControlURL == "" {
-		check(w, errors.New("please select a device"))
+		check(w, errors.New(lang.L("please select a device")))
 		return
 	}
 
@@ -405,7 +406,7 @@ func volumeAction(screen *NewScreen, up bool) {
 
 	currentVolume, err := screen.tvdata.GetVolumeSoapCall()
 	if err != nil {
-		check(w, errors.New("could not get the volume levels"))
+		check(w, errors.New(lang.L("could not get the volume levels")))
 		return
 	}
 
@@ -422,7 +423,7 @@ func volumeAction(screen *NewScreen, up bool) {
 	stringVolume := strconv.Itoa(setVolume)
 
 	if err := screen.tvdata.SetVolumeSoapCall(stringVolume); err != nil {
-		check(w, errors.New("could not send volume action"))
+		check(w, errors.New(lang.L("could not send volume action")))
 	}
 }
 

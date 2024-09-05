@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -16,14 +17,18 @@ type ffprobeInfo struct {
 	} `json:"format"`
 }
 
-func DurationForMedia(f string) (string, error) {
+func DurationForMedia(ffmpeg string, f string) (string, error) {
 	_, err := os.Stat(f)
 	if err != nil {
 		return "", err
 	}
 
+	if err := CheckFFmpeg(ffmpeg); err != nil {
+		return "", err
+	}
+
 	cmd := exec.Command(
-		"ffprobe",
+		filepath.Join(filepath.Dir(ffmpeg), "ffprobe"),
 		"-loglevel", "error",
 		"-show_format",
 		"-of", "json",
