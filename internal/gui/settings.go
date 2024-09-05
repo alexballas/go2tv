@@ -186,8 +186,8 @@ func parseLanguage(s *NewScreen) func(string) {
 			switch t {
 			case "English":
 				fyne.CurrentApp().Preferences().SetString("Language", "English")
-			case "简体中文":
-				fyne.CurrentApp().Preferences().SetString("Language", "简体中文")
+			case "中文(简体)":
+				fyne.CurrentApp().Preferences().SetString("Language", "中文(简体)")
 			default:
 				fyne.CurrentApp().Preferences().SetString("Language", "System Default")
 			}
