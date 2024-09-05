@@ -248,7 +248,7 @@ func InitFyneNewScreen(version string) *NewScreen {
 	go2tv := app.NewWithID("com.alexballas.go2tv")
 
 	switch go2tv.Preferences().String("Language") {
-	case "简体中文":
+	case "中文(简体)":
 		os.Setenv("LANG", "zh_CN.UTF-8")
 	case "English":
 		os.Setenv("LANG", "en_US.UTF-8")
