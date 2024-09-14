@@ -1,4 +1,4 @@
-FROM golang:1.17.1-bullseye
+FROM golang:1.23
 
 ARG DEBIAN_FRONTEND=noninteractive
 RUN \
