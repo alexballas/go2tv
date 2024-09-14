@@ -29,7 +29,7 @@ jobs:
             cd /go2tv_dir
             /go/bin/go build -ldflags "-s -w" -o go2tv cmd/go2tv/go2tv.go
 
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v4
       with:
         name: go2tv_${{ env.GO2TV_VERSION }}_linux_arm64
         path: |
