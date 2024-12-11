@@ -245,7 +245,7 @@ func (p *NewScreen) Fini() {
 
 // InitFyneNewScreen .
 func InitFyneNewScreen(version string) *NewScreen {
-	go2tv := app.NewWithID("com.alexballas.go2tv")
+	go2tv := app.NewWithID("app.go2tv.go2tv")
 
 	switch go2tv.Preferences().String("Language") {
 	case "中文(简体)":
@@ -254,6 +254,8 @@ func InitFyneNewScreen(version string) *NewScreen {
 		os.Setenv("LANG", "en_US.UTF-8")
 	}
 	lang.AddTranslationsFS(translations, "translations")
+
+	go2tv.SetIcon(fyne.NewStaticResource("icon", go2TVIcon510))
 
 	w := go2tv.NewWindow("Go2TV")
 	currentDir, err := os.Getwd()

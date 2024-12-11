@@ -14,7 +14,7 @@ type go2tvTheme struct {
 
 var (
 	_                         fyne.Theme        = go2tvTheme{}
-	SystemVariant             fyne.ThemeVariant = 999
+	systemVariant             fyne.ThemeVariant = 999
 	signalSystemVariantChange                   = make(chan struct{})
 	once                      sync.Once
 )
@@ -23,7 +23,7 @@ func (m go2tvTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) c
 	switch m.Theme {
 	case "GrabVariant":
 		once.Do(func() {
-			SystemVariant = variant
+			systemVariant = variant
 			go func() {
 				signalSystemVariantChange <- struct{}{}
 			}()
