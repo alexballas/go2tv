@@ -41,7 +41,7 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 		// Wait for the SystemVariant variable to change
 		<-signalSystemVariantChange
 
-		switch SystemVariant {
+		switch systemVariant {
 		case theme.VariantDark:
 			dropdownTheme.PlaceHolder = lang.L("Dark")
 			parseTheme(lang.L("Dark"))

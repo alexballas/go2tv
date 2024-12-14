@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>app.go2tv.go2tv</id>
+
+  <name>Go2TV</name>
+  <developer_name>Alexandros Ballas</developer_name>
+  <summary>Cast media files to UPnP/DLNA Media Renderers and Smart TVs</summary>
+
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+
+  <description>
+   <p>Go2TV is a lightweight app designed to cast media files from your device directly to a Smart TV or any DLNA-compatible device on the same network. It supports various file formats and allows seamless streaming of videos, music, or images without the need for complicated setups or additional hardware. With its intuitive interface, Go2TV makes it simple to browse and select files, enabling users to enjoy their favorite content on the big screen with just a few taps. Perfect for casual media sharing or presentations, it's a convenient tool for enhancing your home entertainment experience.</p>
+  </description>
+
+  <launchable type="desktop-id">app.go2tv.go2tv.desktop</launchable>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/alexballas/go2tv/devel/assets/screenshots/Screenshot_light.png</image>
+      <caption>Main window (light mode)</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/alexballas/go2tv/devel/assets/screenshots/Screenshot_dark.png</image>
+      <caption>Main window (dark mode)</caption>
+    </screenshot>
+  </screenshots>
+
+  <url type="bugtracker">https://github.com/alexballas/go2tv/issues</url>
+  <url type="donation">https://ko-fi.com/alexballas</url>
+  <url type="homepage">https://go2tv.app</url>
+
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="1.17.1" date="2024-09-05" type="stable">
+      <description>
+        <ul>
+          <li>Update assets to follow the packaging guidelines for Linux GUI applications..</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/alexballas/go2tv/releases/tag/v1.17.1</url>
+    </release>
+    <release version="1.17.0" date="2024-09-05" type="stable">
+      <description>
+        <ul>
+          <li>Added support for Chinese language with an option for a fully localized Chinese UI.</li>
+          <li>Introduced a new language settings feature, offering both English and Chinese translations.</li>
+          <li>Implemented the ability to select subtitles directly from MKV and MP4 containers when available.</li>
+          <li>Added the option to specify the FFmpeg path in settings.</li>
+          <li>Now using faster FFmpeg presets for transcoding.</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/alexballas/go2tv/releases/tag/v1.17.0</url>
+    </release>
+  </releases>
+
+</component>

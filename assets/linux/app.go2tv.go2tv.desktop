@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+
+Name=Go2TV
+GenericName=Media Streaming
+Comment=Cast media files to UPnP/DLNA Media Renderers and Smart TVs.
+Categories=AudioVideo;Video;TV;Music;
+Keywords=streaming;video;audio;media;
+
+Icon=app.go2tv.go2tv
+Exec=go2tv
+Terminal=false

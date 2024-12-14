@@ -23,8 +23,8 @@ jobs:
 
     - name: Package (Linux)
       run: GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o go2tv cmd/go2tv/go2tv.go
-    
-    - uses: actions/upload-artifact@v2
+
+    - uses: actions/upload-artifact@v4
       with:
         name: go2tv_${{ env.GO2TV_VERSION }}_linux_amd64
         path: |
