@@ -4,7 +4,6 @@ go 1.23.3
 
 require (
 	fyne.io/fyne/v2 v2.5.2
-	github.com/alexballas/chardet v0.0.0-20241220171214-9254256f9d20
 	github.com/alexballas/go-ssdp v0.0.3
 	github.com/gdamore/tcell/v2 v2.7.4
 	github.com/h2non/filetype v1.1.3
@@ -13,6 +12,7 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.33.0
+	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	golang.org/x/time v0.8.0
 )
