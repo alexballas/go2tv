@@ -1,9 +1,10 @@
 module github.com/alexballas/go2tv
 
-go 1.23.1
+go 1.23.3
 
 require (
 	fyne.io/fyne/v2 v2.5.2
+	github.com/alexballas/chardet v0.0.0-20241220171214-9254256f9d20
 	github.com/alexballas/go-ssdp v0.0.3
 	github.com/gdamore/tcell/v2 v2.7.4
 	github.com/h2non/filetype v1.1.3

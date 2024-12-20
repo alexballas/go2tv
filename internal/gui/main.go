@@ -189,6 +189,13 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 		t.screen.CurrentPos.Set(reltime)
 		t.screen.EndPos.Set(end)
 
+		if t.screen.tvdata.Transcode {
+			t.screen.ffmpegSeek = roundedInt
+			stopAction(t.screen)
+			playAction(t.screen)
+
+		}
+
 		if err := t.screen.tvdata.SeekSoapCall(reltime); err != nil {
 			return
 		}
@@ -658,7 +665,7 @@ func sliderUpdate(s *NewScreen) {
 			continue
 		}
 
-		if s.State == "Stopped" || s.State == "" {
+		if (s.State == "Stopped" || s.State == "") && s.ffmpegSeek == 0 {
 			s.SlideBar.Slider.SetValue(0)
 			s.CurrentPos.Set("00:00:00")
 			s.EndPos.Set("00:00:00")
@@ -680,6 +687,15 @@ func sliderUpdate(s *NewScreen) {
 				continue
 			}
 
+			switch {
+			case s.ffmpegSeek > 0:
+				current += s.ffmpegSeek
+			case s.tvdata != nil && s.tvdata.FFmpegSeek > 0:
+				current += s.tvdata.FFmpegSeek
+			}
+
+			s.ffmpegSeek = 0
+
 			valueToSet := float64(current) * s.SlideBar.Max / float64(total)
 			if !math.IsNaN(valueToSet) {
 				s.SlideBar.SetValue(valueToSet)
@@ -689,12 +705,12 @@ func sliderUpdate(s *NewScreen) {
 					return
 				}
 
-				current, err := utils.FormatClockTime(getPos[1])
+				currentClock, err := utils.SecondsToClockTime(current)
 				if err != nil {
 					return
 				}
 
-				s.CurrentPos.Set(current)
+				s.CurrentPos.Set(currentClock)
 				s.EndPos.Set(end)
 			}
 		}

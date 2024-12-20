@@ -87,7 +87,10 @@ func (s *HTTPserver) StartServer(serverStarted chan<- error, media, subtitles in
 	// Dynamically add handlers to better support gapless playback where we're
 	// required to serve new files with our existing HTTP server.
 	s.AddHandler(mURL.Path, tvpayload, media)
-	s.AddHandler(sURL.Path, nil, subtitles)
+
+	if sURL.Path != "/." && !tvpayload.Transcode {
+		s.AddHandler(sURL.Path, nil, subtitles)
+	}
 
 	callbackURL, err := url.Parse(tvpayload.CallbackURL)
 	if err != nil {
@@ -165,6 +168,7 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 
 		reqParsedUnescape := html.UnescapeString(string(reqParsed))
 		previousstate, newstate, err := soapcalls.EventNotifyParser(reqParsedUnescape)
+
 		if err != nil {
 			http.NotFound(w, req)
 			return
@@ -293,7 +297,7 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 	// Since we're dealing with an io.Reader we can't
 	// allow any HEAD requests that some DMRs trigger.
 	if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "video") {
-		_ = utils.ServeTranscodedStream(w, f, ff, tv.FFmpegPath)
+		_ = utils.ServeTranscodedStream(w, f, ff, tv.FFmpegPath, tv.FFmpegSubsPath, tv.FFmpegSeek)
 		return
 	}
 
@@ -330,7 +334,8 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcall
 		if f.path != "" {
 			input = f.path
 		}
-		_ = utils.ServeTranscodedStream(w, input, ff, tv.FFmpegPath)
+
+		_ = utils.ServeTranscodedStream(w, input, ff, tv.FFmpegPath, tv.FFmpegSubsPath, tv.FFmpegSeek)
 		return
 	}
 

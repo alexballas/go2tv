@@ -40,7 +40,9 @@ type TVPayload struct {
 	CurrentTimers               map[string]*time.Timer
 	InitialMediaRenderersStates map[string]bool
 	MediaRenderersStates        map[string]*States
+	FFmpegSeek                  int
 	FFmpegPath                  string
+	FFmpegSubsPath              string
 	EventURL                    string
 	ControlURL                  string
 	MediaURL                    string

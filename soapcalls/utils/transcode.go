@@ -5,8 +5,10 @@ package utils
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os/exec"
+	"strconv"
 )
 
 var (
@@ -15,7 +17,7 @@ var (
 
 // ServeTranscodedStream passes an input file or io.Reader to ffmpeg and writes the output directly
 // to our io.Writer.
-func ServeTranscodedStream(w io.Writer, input interface{}, ff *exec.Cmd, ffmpeg string) error {
+func ServeTranscodedStream(w io.Writer, input interface{}, ff *exec.Cmd, ffmpegPath, subs string, seekSeconds int) error {
 	// Pipe streaming is not great as explained here
 	// https://video.stackexchange.com/questions/34087/ffmpeg-fails-on-pipe-to-pipe-video-decoding.
 	// That's why if we have the option to pass the file directly to ffmpeg, we should.
@@ -33,17 +35,26 @@ func ServeTranscodedStream(w io.Writer, input interface{}, ff *exec.Cmd, ffmpeg 
 		_ = ff.Process.Kill()
 	}
 
+	vf := fmt.Sprintf("format=yuv420p")
+	charenc, err := getCharDet(subs)
+	if err == nil {
+		vf = fmt.Sprintf("subtitles='%s':charenc=%s,format=yuv420p", subs, charenc)
+	}
+
+	fmt.Println(vf)
 	cmd := exec.Command(
-		ffmpeg,
+		ffmpegPath,
 		"-re",
+		"-ss", strconv.Itoa(seekSeconds),
+		"-copyts",
 		"-i", in,
 		"-vcodec", "h264",
 		"-acodec", "aac",
 		"-ac", "2",
-		"-vf", "format=yuv420p",
+		"-vf", vf,
 		"-preset", "ultrafast",
 		"-movflags", "+faststart",
-		"-f", "flv",
+		"-f", "mpegts",
 		"pipe:1",
 	)
 

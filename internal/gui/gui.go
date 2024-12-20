@@ -66,6 +66,7 @@ type NewScreen struct {
 	connectionManagerURL string
 	currentmfolder       string
 	ffmpegPath           string
+	ffmpegSeek           int
 	mediaFormats         []string
 	muError              sync.RWMutex
 	mu                   sync.RWMutex
@@ -318,7 +319,7 @@ func getNextMedia(screen *NewScreen) (string, string) {
 			continue
 		}
 
-		totalMedia += 1
+		totalMedia++
 	}
 
 	for _, f := range filelist {
@@ -334,7 +335,7 @@ func getNextMedia(screen *NewScreen) (string, string) {
 			continue
 		}
 
-		counter += 1
+		counter++
 
 		if f.Name() == filepath.Base(screen.mediafile) {
 			if totalMedia == counter {

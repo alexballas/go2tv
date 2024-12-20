@@ -374,6 +374,8 @@ func playAction(screen *NewScreen) {
 		Seekable:                    isSeek,
 		LogOutput:                   screen.Debug,
 		FFmpegPath:                  screen.ffmpegPath,
+		FFmpegSeek:                  screen.ffmpegSeek,
+		FFmpegSubsPath:              screen.subsfile,
 	}
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)
