@@ -41,7 +41,6 @@ func ServeTranscodedStream(w io.Writer, input interface{}, ff *exec.Cmd, ffmpegP
 		vf = fmt.Sprintf("subtitles='%s':charenc=%s,format=yuv420p", subs, charenc)
 	}
 
-	fmt.Println(vf)
 	cmd := exec.Command(
 		ffmpegPath,
 		"-re",

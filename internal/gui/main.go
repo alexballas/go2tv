@@ -117,9 +117,9 @@ func (t *tappedSlider) Dragged(e *fyne.DragEvent) {
 }
 
 func (t *tappedSlider) DragEnd() {
-	// This is a way to making the slider due to the DragEnd
-	// action racing the auto-refresh action. The auto-refresh action
-	// should reset this back to false after the first iterration.
+	// This ensures the slider functions correctly by addressing the race condition
+	// between the DragEnd action and the auto-refresh action.
+	// The auto-refresh action will reset this flag to false after the first iteration.
 	t.screen.sliderActive = true
 
 	if t.screen.State == "Playing" || t.screen.State == "Paused" {
@@ -193,7 +193,6 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 			t.screen.ffmpegSeek = roundedInt
 			stopAction(t.screen)
 			playAction(t.screen)
-
 		}
 
 		if err := t.screen.tvdata.SeekSoapCall(reltime); err != nil {
