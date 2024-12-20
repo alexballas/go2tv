@@ -149,6 +149,12 @@ func (t *tappedSlider) DragEnd() {
 		t.screen.CurrentPos.Set(reltime)
 		t.screen.EndPos.Set(end)
 
+		if t.screen.tvdata.Transcode {
+			t.screen.ffmpegSeek = roundedInt
+			stopAction(t.screen)
+			playAction(t.screen)
+		}
+
 		if err := t.screen.tvdata.SeekSoapCall(reltime); err != nil {
 			return
 		}
