@@ -48,7 +48,7 @@ func newDeviceList(dd *[]devType) *deviceList {
 	return list
 }
 
-func mainWindow(s *NewScreen) fyne.CanvasObject {
+func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	w := s.Current
 	var data []devType
 	list := newDeviceList(&data)
@@ -205,7 +205,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	return content
 }
 
-func refreshDevList(s *NewScreen, data *[]devType) {
+func refreshDevList(s *FyneScreen, data *[]devType) {
 	refreshDevices := time.NewTicker(5 * time.Second)
 
 	w := s.Current
@@ -271,7 +271,7 @@ func refreshDevList(s *NewScreen, data *[]devType) {
 	}
 }
 
-func checkMutefunc(s *NewScreen) {
+func checkMutefunc(s *FyneScreen) {
 	checkMute := time.NewTicker(1 * time.Second)
 
 	var checkMuteCounter int
