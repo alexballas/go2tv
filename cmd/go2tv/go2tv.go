@@ -106,7 +106,7 @@ func run() error {
 	}
 
 	if flagRes.gui {
-		scr := gui.InitFyneNewScreen(version)
+		scr := gui.NewFyneScreen(version)
 		gui.Start(exitCTX, scr)
 		return nil
 	}

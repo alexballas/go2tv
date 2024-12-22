@@ -28,7 +28,7 @@ import (
 
 type tappedSlider struct {
 	*widget.Slider
-	screen *NewScreen
+	screen *FyneScreen
 	end    string
 	mu     sync.Mutex
 }
@@ -59,7 +59,7 @@ func newDeviceList(dd *[]devType) *deviceList {
 	return list
 }
 
-func newTappableSlider(s *NewScreen) *tappedSlider {
+func newTappableSlider(s *FyneScreen) *tappedSlider {
 	slider := &tappedSlider{
 		Slider: &widget.Slider{
 			Max: 100,
@@ -207,7 +207,7 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 	}
 }
 
-func mainWindow(s *NewScreen) fyne.CanvasObject {
+func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	w := s.Current
 	var data []devType
 	list := newDeviceList(&data)
@@ -561,7 +561,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	return content
 }
 
-func refreshDevList(s *NewScreen, data *[]devType) {
+func refreshDevList(s *FyneScreen, data *[]devType) {
 	refreshDevices := time.NewTicker(5 * time.Second)
 
 	_, err := getDevices(2)
@@ -625,7 +625,7 @@ func refreshDevList(s *NewScreen, data *[]devType) {
 	}
 }
 
-func checkMutefunc(s *NewScreen) {
+func checkMutefunc(s *FyneScreen) {
 	checkMute := time.NewTicker(2 * time.Second)
 
 	var checkMuteCounter int
@@ -662,7 +662,7 @@ func checkMutefunc(s *NewScreen) {
 	}
 }
 
-func sliderUpdate(s *NewScreen) {
+func sliderUpdate(s *FyneScreen) {
 	t := time.NewTicker(time.Second)
 	for range t.C {
 		if s.sliderActive {

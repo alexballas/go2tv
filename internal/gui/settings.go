@@ -16,7 +16,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-func settingsWindow(s *NewScreen) fyne.CanvasObject {
+func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	w := s.Current
 
 	themeText := widget.NewLabel(lang.L("Theme"))
@@ -147,7 +147,7 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 	return container.New(layout.NewFormLayout(), themeText, dropdownTheme, languageText, dropdownLanguage, gaplessText, gaplessdropdown, ffmpegText, ffmpegTextEntry, debugText, debugExport)
 }
 
-func saveDebugLogs(f fyne.URIWriteCloser, s *NewScreen) {
+func saveDebugLogs(f fyne.URIWriteCloser, s *FyneScreen) {
 	w := s.Current
 	defer f.Close()
 
@@ -176,7 +176,7 @@ func parseTheme(t string) {
 	}()
 }
 
-func parseLanguage(s *NewScreen) func(string) {
+func parseLanguage(s *FyneScreen) func(string) {
 	w := s.Current
 	return func(t string) {
 		if t != fyne.CurrentApp().Preferences().StringWithFallback("Language", "System Default") {
