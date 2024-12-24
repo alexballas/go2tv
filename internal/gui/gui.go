@@ -128,26 +128,27 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	s.Hotkeys = true
 	tabs.OnSelected = func(t *container.TabItem) {
-		s.TranscodeCheckBox.Enable()
-		if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
-			s.TranscodeCheckBox.SetChecked(false)
-			s.TranscodeCheckBox.Disable()
-			s.SelectInternalSubs.Options = []string{}
-			s.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
-			s.SelectInternalSubs.ClearSelected()
-			s.SelectInternalSubs.Disable()
-		}
-
-		if s.ffmpegPathChanged {
-			furi, err := storage.ParseURI("file://" + s.mediafile)
-			if err == nil {
-				go selectMediaFile(s, furi)
-			}
-			s.ffmpegPathChanged = false
-		}
-
 		if t.Text == "Go2TV" {
 			s.Hotkeys = true
+			s.TranscodeCheckBox.Enable()
+
+			if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
+				s.TranscodeCheckBox.SetChecked(false)
+				s.TranscodeCheckBox.Disable()
+				s.SelectInternalSubs.Options = []string{}
+				s.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
+				s.SelectInternalSubs.ClearSelected()
+				s.SelectInternalSubs.Disable()
+			}
+
+			if s.ffmpegPathChanged {
+				furi, err := storage.ParseURI("file://" + s.mediafile)
+				if err == nil {
+					go selectMediaFile(s, furi)
+				}
+				s.ffmpegPathChanged = false
+			}
+
 			return
 		}
 		s.Hotkeys = false
@@ -244,16 +245,24 @@ func (p *FyneScreen) Fini() {
 	}
 }
 
-func InitFyneNewScreen(version string) *FyneScreen {
+func initFyneNewScreen(version string) *FyneScreen {
 	go2tv := app.NewWithID("app.go2tv.go2tv")
 
+	// Hack. Ongoing discussion in https://github.com/fyne-io/fyne/issues/5333
+	var content []byte
 	switch go2tv.Preferences().String("Language") {
 	case "中文(简体)":
-		os.Setenv("LANG", "zh_CN.UTF-8")
+		content, _ = translations.ReadFile("translations/zh.json")
 	case "English":
-		os.Setenv("LANG", "en_US.UTF-8")
+		content, _ = translations.ReadFile("translations/en.json")
 	}
-	lang.AddTranslationsFS(translations, "translations")
+
+	if content != nil {
+		name := lang.SystemLocale().LanguageString()
+		lang.AddTranslations(fyne.NewStaticResource(name+".json", content))
+	} else {
+		lang.AddTranslationsFS(translations, "translations")
+	}
 
 	go2tv.SetIcon(fyne.NewStaticResource("icon", go2TVIcon510))
 

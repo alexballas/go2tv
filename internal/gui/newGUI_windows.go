@@ -7,7 +7,7 @@ import (
 // NewFyneScreen .
 func NewFyneScreen(version string) *FyneScreen {
 	hideConsole()
-	return InitFyneNewScreen(version)
+	return initFyneNewScreen(version)
 }
 
 func hideConsole() {

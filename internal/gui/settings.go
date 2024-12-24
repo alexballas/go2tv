@@ -4,6 +4,7 @@
 package gui
 
 import (
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -54,6 +55,22 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	ffmpegText := widget.NewLabel("ffmpeg " + lang.L("Path"))
 	ffmpegTextEntry := widget.NewEntry()
 
+	ffmpegFolderSelect := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
+		dialog.ShowFolderOpen(func(lu fyne.ListableURI, err error) {
+			if err != nil {
+				dialog.ShowError(err, w)
+				return
+			}
+			if lu == nil {
+				return
+			}
+
+			p := filepath.ToSlash(lu.Path() + string(filepath.Separator) + "ffmpeg")
+			ffmpegTextEntry.SetText(p)
+		}, w)
+	})
+	ffmpegPathControls := container.New(layout.NewBorderLayout(nil, nil, nil, ffmpegFolderSelect), ffmpegFolderSelect, ffmpegTextEntry)
+
 	ffmpegTextEntry.Text = func() string {
 		if fyne.CurrentApp().Preferences().String("ffmpeg") != "" {
 			return fyne.CurrentApp().Preferences().String("ffmpeg")
@@ -62,7 +79,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		os := runtime.GOOS
 		switch os {
 		case "windows":
-			return `C:\ffmpeg\bin\ffmpeg`
+			return "C:/ffmpeg/bin/ffmpeg"
 		case "linux":
 			return "ffmpeg"
 		case "darwin":
@@ -73,6 +90,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 
 	}()
 	ffmpegTextEntry.Refresh()
+
 	s.ffmpegPath = ffmpegTextEntry.Text
 
 	ffmpegTextEntry.OnChanged = func(update string) {
@@ -144,7 +162,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 
 	dropdownTheme.Refresh()
 
-	return container.New(layout.NewFormLayout(), themeText, dropdownTheme, languageText, dropdownLanguage, gaplessText, gaplessdropdown, ffmpegText, ffmpegTextEntry, debugText, debugExport)
+	return container.New(layout.NewFormLayout(), themeText, dropdownTheme, languageText, dropdownLanguage, gaplessText, gaplessdropdown, ffmpegText, ffmpegPathControls, debugText, debugExport)
 }
 
 func saveDebugLogs(f fyne.URIWriteCloser, s *FyneScreen) {

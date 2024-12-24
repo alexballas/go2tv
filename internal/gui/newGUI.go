@@ -5,5 +5,5 @@ package gui
 
 // NewFyneScreen .
 func NewFyneScreen(version string) *FyneScreen {
-	return InitFyneNewScreen(version)
+	return initFyneNewScreen(version)
 }

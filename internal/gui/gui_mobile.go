@@ -121,8 +121,7 @@ func (p *FyneScreen) Fini() {
 	}
 }
 
-// InitFyneNewScreen .
-func InitFyneNewScreen(v string) *FyneScreen {
+func initFyneNewScreen(v string) *FyneScreen {
 	go2tv := app.NewWithID("app.go2tv.go2tv")
 	go2tv.Settings().SetTheme(go2tvTheme{"Dark"})
 
