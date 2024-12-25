@@ -21,36 +21,22 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	w := s.Current
 
 	themeText := widget.NewLabel(lang.L("Theme"))
-	dropdownTheme := widget.NewSelect([]string{lang.L("Light"), lang.L("Dark")}, parseTheme)
+	dropdownTheme := widget.NewSelect([]string{lang.L("System Default"), lang.L("Light"), lang.L("Dark")}, parseTheme)
 
 	languageText := widget.NewLabel(lang.L("Language"))
-	dropdownLanguage := widget.NewSelect([]string{"System Default", "English", "中文(简体)"}, parseLanguage(s))
+	dropdownLanguage := widget.NewSelect([]string{lang.L("System Default"), "English", "中文(简体)"}, parseLanguage(s))
 	selectedLanguage := fyne.CurrentApp().Preferences().StringWithFallback("Language", "System Default")
+
+	if selectedLanguage == "System Default" {
+		selectedLanguage = lang.L("System Default")
+	}
+
 	dropdownLanguage.PlaceHolder = selectedLanguage
 
-	themeName := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "GrabVariant")
-	switch themeName {
-	case "Light":
-		dropdownTheme.PlaceHolder = lang.L("Light")
-		parseTheme(lang.L("Light"))
-	case "Dark":
-		dropdownTheme.PlaceHolder = lang.L("Dark")
-		parseTheme(lang.L("Dark"))
-	case "GrabVariant", "Default":
-		fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"GrabVariant"})
-
-		// Wait for the SystemVariant variable to change
-		<-signalSystemVariantChange
-
-		switch systemVariant {
-		case theme.VariantDark:
-			dropdownTheme.PlaceHolder = lang.L("Dark")
-			parseTheme(lang.L("Dark"))
-		case theme.VariantLight:
-			dropdownTheme.PlaceHolder = lang.L("Light")
-			parseTheme(lang.L("Light"))
-		}
-	}
+	themeName := lang.L(fyne.CurrentApp().Preferences().StringWithFallback("Theme", "System Default"))
+	dropdownTheme.PlaceHolder = themeName
+	parseTheme(themeName)
+	go detectSystemThemeChange()
 
 	ffmpegText := widget.NewLabel("ffmpeg " + lang.L("Path"))
 	ffmpegTextEntry := widget.NewEntry()
@@ -185,11 +171,24 @@ func parseTheme(t string) {
 		time.Sleep(10 * time.Millisecond)
 		switch t {
 		case lang.L("Light"):
-			fyne.CurrentApp().Preferences().SetString("Theme", "Light")
 			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Light"})
+			fyne.CurrentApp().Preferences().SetString("Theme", "Light")
 		case lang.L("Dark"):
-			fyne.CurrentApp().Preferences().SetString("Theme", "Dark")
 			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Dark"})
+			fyne.CurrentApp().Preferences().SetString("Theme", "Dark")
+		default:
+			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"System Default"})
+			fyne.CurrentApp().Preferences().SetString("Theme", "System Default")
+
+			// Wait for the SystemVariant variable to change
+			<-signalSystemVariantChange
+
+			switch systemVariant {
+			case theme.VariantDark:
+				fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Dark"})
+			case theme.VariantLight:
+				fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Light"})
+			}
 		}
 	}()
 }
@@ -210,5 +209,24 @@ func parseLanguage(s *FyneScreen) func(string) {
 				fyne.CurrentApp().Preferences().SetString("Language", "System Default")
 			}
 		}()
+	}
+}
+
+func detectSystemThemeChange() {
+	tik := time.NewTicker(time.Second)
+	for range tik.C {
+		themeName := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "System Default")
+		if themeName == "System Default" {
+			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"System Default"})
+			// Wait for the SystemVariant variable to change
+			<-signalSystemVariantChange
+
+			switch systemVariant {
+			case theme.VariantDark:
+				fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Dark"})
+			case theme.VariantLight:
+				fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Light"})
+			}
+		}
 	}
 }

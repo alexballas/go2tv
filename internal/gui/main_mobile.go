@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/layout"
@@ -113,9 +112,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	externalmedia := widget.NewCheck(lang.L("Media from URL"), func(b bool) {})
 	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
 
-	mediafilelabel := canvas.NewText(lang.L("File")+":", nil)
-	subsfilelabel := canvas.NewText(lang.L("Subtitles")+":", nil)
-	devicelabel := canvas.NewText(lang.L("Select Device")+":", nil)
+	mediafilelabel := widget.NewLabel(lang.L("File") + ":")
+	subsfilelabel := widget.NewLabel(lang.L("Subtitles") + ":")
+	devicelabel := widget.NewLabel(lang.L("Select Device") + ":")
 
 	s.PlayPause = playpause
 	s.Stop = stop

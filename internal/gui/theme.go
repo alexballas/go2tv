@@ -2,7 +2,6 @@ package gui
 
 import (
 	"image/color"
-	"sync"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/theme"
@@ -16,18 +15,15 @@ var (
 	_                         fyne.Theme        = go2tvTheme{}
 	systemVariant             fyne.ThemeVariant = 999
 	signalSystemVariantChange                   = make(chan struct{})
-	once                      sync.Once
 )
 
 func (m go2tvTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
 	switch m.Theme {
-	case "GrabVariant":
-		once.Do(func() {
-			systemVariant = variant
-			go func() {
-				signalSystemVariantChange <- struct{}{}
-			}()
-		})
+	case "System Default":
+		systemVariant = variant
+		go func() {
+			signalSystemVariantChange <- struct{}{}
+		}()
 
 	case "Dark":
 		variant = theme.VariantDark
