@@ -1,0 +1,8 @@
+Website = "https://go2tv.app"
+
+[Details]
+  Icon = "assets/go2tv-icon-desktop-512.png"
+  Name = "Go2TV"
+  ID = "com.go2tv.go2tv"
+  Version = "1.18.0"
+  Build = 1

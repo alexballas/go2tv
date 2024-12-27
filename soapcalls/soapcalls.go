@@ -21,6 +21,10 @@ type Options struct {
 	Seek       bool
 }
 
+// NewTVPayload creates a new TVPayload based on the provided options.
+// It initializes the context if not already set, extracts UPnP service URLs,
+// generates a random callback path, and determines the listen address.
+// It returns a pointer to the created TVPayload or an error if any step fails.
 func NewTVPayload(o *Options) (*TVPayload, error) {
 	if o.ctx == nil {
 		o.ctx = context.Background()
@@ -60,6 +64,9 @@ func NewTVPayload(o *Options) (*TVPayload, error) {
 	}, nil
 }
 
+// ListenAddress extracts and returns the host component from the MediaURL field of the TVPayload struct.
+// It parses the MediaURL as a URL and retrieves the host part of it.
+// If the MediaURL is not a valid URL, it returns an empty string.
 func (p *TVPayload) ListenAddress() string {
 	mediaUrl, _ := url.Parse(p.MediaURL)
 	return mediaUrl.Host
