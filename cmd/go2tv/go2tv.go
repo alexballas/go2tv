@@ -37,8 +37,8 @@ var (
 	listPtr      = flag.Bool("l", false, "List all available UPnP/DLNA Media Renderer models and URLs.")
 	versionPtr   = flag.Bool("version", false, "Print version.")
 
-	ErrNoCombi    = errors.New("can't combine -l with other flags")
-	ErrFailtoList = errors.New("failed to list devices")
+	errNoCombi    = errors.New("can't combine -l with other flags")
+	errFailtoList = errors.New("failed to list devices")
 )
 
 type flagResults struct {
@@ -191,12 +191,12 @@ func listFlagFunction() error {
 	})
 
 	if flagsEnabled > 1 {
-		return ErrNoCombi
+		return errNoCombi
 	}
 
 	deviceList, err := devices.LoadSSDPservices(1)
 	if err != nil {
-		return ErrFailtoList
+		return errFailtoList
 	}
 
 	fmt.Println()
