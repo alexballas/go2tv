@@ -49,7 +49,7 @@ type osFileType struct {
 	path string
 }
 
-// AddHandler dynamically adds a new handler. Currenly used by the gapless playback logic where we use
+// AddHandler dynamically adds a new handler. Currently used by the gapless playback logic where we use
 // the same server to serve multiple media files.
 func (s *HTTPserver) AddHandler(path string, payload *soapcalls.TVPayload, media interface{}) {
 	s.mu.Lock()
