@@ -16,8 +16,8 @@ var (
 )
 
 func (m go2tvTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
-	switch m.Theme {
-	case "Dark":
+	switch {
+	case m.Theme == "Dark" || (m.Theme == "System Default" && variant == theme.VariantDark):
 		variant = theme.VariantDark
 		switch name {
 		case theme.ColorNameDisabled:
@@ -34,7 +34,7 @@ func (m go2tvTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) c
 			return color.NRGBA{R: 0x30, G: 0x30, B: 0x30, A: 0xff}
 		}
 
-	case "Light":
+	case m.Theme == "Light" || (m.Theme == "System Default" && variant == theme.VariantLight):
 		variant = theme.VariantLight
 		switch name {
 		case theme.ColorNameDisabled:
@@ -45,6 +45,7 @@ func (m go2tvTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) c
 			return color.NRGBA{R: 0xe5, G: 0xe5, B: 0xe5, A: 0xff}
 		}
 	}
+
 	theme.InnerPadding()
 	return theme.DefaultTheme().Color(name, variant)
 }
