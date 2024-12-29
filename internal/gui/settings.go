@@ -4,6 +4,7 @@
 package gui
 
 import (
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"time"
@@ -42,6 +43,15 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	ffmpegText := widget.NewLabel("ffmpeg " + lang.L("Path"))
 	ffmpegTextEntry := widget.NewEntry()
 
+	ffmpegFolderReset := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+		path, err := exec.LookPath("ffmpeg")
+		ffmpegTextEntry.SetText(path)
+		if err != nil {
+			ffmpegTextEntry.SetText("ffmpeg")
+		}
+		s.ffmpegPath = ffmpegTextEntry.Text
+	})
+
 	ffmpegFolderSelect := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
 		dialog.ShowFolderOpen(func(lu fyne.ListableURI, err error) {
 			if err != nil {
@@ -56,7 +66,9 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 			ffmpegTextEntry.SetText(p)
 		}, w)
 	})
-	ffmpegPathControls := container.New(layout.NewBorderLayout(nil, nil, nil, ffmpegFolderSelect), ffmpegFolderSelect, ffmpegTextEntry)
+
+	ffmpegRightButtons := container.NewHBox(ffmpegFolderSelect, ffmpegFolderReset)
+	ffmpegPathControls := container.New(layout.NewBorderLayout(nil, nil, nil, ffmpegRightButtons), ffmpegRightButtons, ffmpegTextEntry)
 
 	ffmpegTextEntry.Text = func() string {
 		if fyne.CurrentApp().Preferences().String("ffmpeg") != "" {
