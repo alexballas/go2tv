@@ -12,9 +12,7 @@ type go2tvTheme struct {
 }
 
 var (
-	_                         fyne.Theme        = go2tvTheme{}
-	systemVariant             fyne.ThemeVariant = 999
-	signalSystemVariantChange                   = make(chan struct{})
+	_ fyne.Theme = go2tvTheme{}
 )
 
 func (m go2tvTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
