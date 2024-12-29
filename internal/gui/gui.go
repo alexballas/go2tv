@@ -67,6 +67,7 @@ type FyneScreen struct {
 	currentmfolder       string
 	ffmpegPath           string
 	ffmpegSeek           int
+	systemTheme          fyne.ThemeVariant
 	mediaFormats         []string
 	muError              sync.RWMutex
 	mu                   sync.RWMutex

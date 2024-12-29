@@ -36,7 +36,9 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	themeName := lang.L(fyne.CurrentApp().Preferences().StringWithFallback("Theme", "System Default"))
 	dropdownTheme.PlaceHolder = themeName
 	parseTheme(themeName)
-	go detectSystemThemeChange()
+
+	s.systemTheme = fyne.CurrentApp().Settings().ThemeVariant()
+	go detectSystemThemeChange(s)
 
 	ffmpegText := widget.NewLabel("ffmpeg " + lang.L("Path"))
 	ffmpegTextEntry := widget.NewEntry()
@@ -177,13 +179,9 @@ func parseTheme(t string) {
 			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Dark"})
 			fyne.CurrentApp().Preferences().SetString("Theme", "Dark")
 		default:
-			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"System Default"})
 			fyne.CurrentApp().Preferences().SetString("Theme", "System Default")
 
-			// Wait for the SystemVariant variable to change
-			<-signalSystemVariantChange
-
-			switch systemVariant {
+			switch fyne.CurrentApp().Settings().ThemeVariant() {
 			case theme.VariantDark:
 				fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Dark"})
 			case theme.VariantLight:
@@ -212,16 +210,17 @@ func parseLanguage(s *FyneScreen) func(string) {
 	}
 }
 
-func detectSystemThemeChange() {
+func detectSystemThemeChange(s *FyneScreen) {
 	tik := time.NewTicker(time.Second)
-	for range tik.C {
-		themeName := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "System Default")
-		if themeName == "System Default" {
-			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"System Default"})
-			// Wait for the SystemVariant variable to change
-			<-signalSystemVariantChange
 
-			switch systemVariant {
+	for range tik.C {
+		currentSystemTheme := fyne.CurrentApp().Settings().ThemeVariant()
+		themeName := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "System Default")
+
+		if s.systemTheme != currentSystemTheme && themeName == "System Default" {
+			s.systemTheme = currentSystemTheme
+
+			switch s.systemTheme {
 			case theme.VariantDark:
 				fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Dark"})
 			case theme.VariantLight:

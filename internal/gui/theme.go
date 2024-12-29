@@ -19,12 +19,6 @@ var (
 
 func (m go2tvTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
 	switch m.Theme {
-	case "System Default":
-		systemVariant = variant
-		go func() {
-			signalSystemVariantChange <- struct{}{}
-		}()
-
 	case "Dark":
 		variant = theme.VariantDark
 		switch name {
