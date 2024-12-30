@@ -4,6 +4,8 @@
 package gui
 
 import (
+	"os/exec"
+	"path/filepath"
 	"runtime"
 	"time"
 	"os/exec"
@@ -17,58 +19,69 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-func settingsWindow(s *NewScreen) fyne.CanvasObject {
+func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	w := s.Current
 
 	themeText := widget.NewLabel(lang.L("Theme"))
-	dropdownTheme := widget.NewSelect([]string{lang.L("Light"), lang.L("Dark")}, parseTheme)
+	dropdownTheme := widget.NewSelect([]string{lang.L("System Default"), lang.L("Light"), lang.L("Dark")}, parseTheme)
 
 	languageText := widget.NewLabel(lang.L("Language"))
-	dropdownLanguage := widget.NewSelect([]string{"System Default", "English", "中文(简体)"}, parseLanguage(s))
+	dropdownLanguage := widget.NewSelect([]string{lang.L("System Default"), "English", "中文(简体)"}, parseLanguage(s))
 	selectedLanguage := fyne.CurrentApp().Preferences().StringWithFallback("Language", "System Default")
+
+	if selectedLanguage == "System Default" {
+		selectedLanguage = lang.L("System Default")
+	}
+
 	dropdownLanguage.PlaceHolder = selectedLanguage
 
-	themeName := fyne.CurrentApp().Preferences().StringWithFallback("Theme", "GrabVariant")
-	switch themeName {
-	case "Light":
-		dropdownTheme.PlaceHolder = lang.L("Light")
-		parseTheme(lang.L("Light"))
-	case "Dark":
-		dropdownTheme.PlaceHolder = lang.L("Dark")
-		parseTheme(lang.L("Dark"))
-	case "GrabVariant", "Default":
-		fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"GrabVariant"})
+	themeName := lang.L(fyne.CurrentApp().Preferences().StringWithFallback("Theme", "System Default"))
+	dropdownTheme.PlaceHolder = themeName
+	parseTheme(themeName)
 
-		// Wait for the SystemVariant variable to change
-		<-signalSystemVariantChange
-
-		switch systemVariant {
-		case theme.VariantDark:
-			dropdownTheme.PlaceHolder = lang.L("Dark")
-			parseTheme(lang.L("Dark"))
-		case theme.VariantLight:
-			dropdownTheme.PlaceHolder = lang.L("Light")
-			parseTheme(lang.L("Light"))
-		}
-	}
+	s.systemTheme = fyne.CurrentApp().Settings().ThemeVariant()
 
 	ffmpegText := widget.NewLabel("ffmpeg " + lang.L("Path"))
 	ffmpegTextEntry := widget.NewEntry()
+
+	ffmpegFolderReset := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+		path, err := exec.LookPath("ffmpeg")
+		ffmpegTextEntry.SetText(path)
+		if err != nil {
+			ffmpegTextEntry.SetText("ffmpeg")
+		}
+		s.ffmpegPath = ffmpegTextEntry.Text
+	})
+
+	ffmpegFolderSelect := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
+		dialog.ShowFolderOpen(func(lu fyne.ListableURI, err error) {
+			if err != nil {
+				dialog.ShowError(err, w)
+				return
+			}
+			if lu == nil {
+				return
+			}
+
+			p := filepath.ToSlash(lu.Path() + string(filepath.Separator) + "ffmpeg")
+			ffmpegTextEntry.SetText(p)
+		}, w)
+	})
+
+	ffmpegRightButtons := container.NewHBox(ffmpegFolderSelect, ffmpegFolderReset)
+	ffmpegPathControls := container.New(layout.NewBorderLayout(nil, nil, nil, ffmpegRightButtons), ffmpegRightButtons, ffmpegTextEntry)
 
 	ffmpegTextEntry.Text = func() string {
 		if fyne.CurrentApp().Preferences().String("ffmpeg") != "" {
 			return fyne.CurrentApp().Preferences().String("ffmpeg")
 		}
 
-		path, err := exec.LookPath("ffmpeg")
-		if err != nil {
-			//ffmpeg not found on path, will set as "ffmpeg"
-			return "ffmpeg"
-		}
+		path, _ := exec.LookPath("ffmpeg")
 		return path
 
 	}()
 	ffmpegTextEntry.Refresh()
+
 	s.ffmpegPath = ffmpegTextEntry.Text
 
 	ffmpegTextEntry.OnChanged = func(update string) {
@@ -140,10 +153,10 @@ func settingsWindow(s *NewScreen) fyne.CanvasObject {
 
 	dropdownTheme.Refresh()
 
-	return container.New(layout.NewFormLayout(), themeText, dropdownTheme, languageText, dropdownLanguage, gaplessText, gaplessdropdown, ffmpegText, ffmpegTextEntry, debugText, debugExport)
+	return container.New(layout.NewFormLayout(), themeText, dropdownTheme, languageText, dropdownLanguage, gaplessText, gaplessdropdown, ffmpegText, ffmpegPathControls, debugText, debugExport)
 }
 
-func saveDebugLogs(f fyne.URIWriteCloser, s *NewScreen) {
+func saveDebugLogs(f fyne.URIWriteCloser, s *FyneScreen) {
 	w := s.Current
 	defer f.Close()
 
@@ -163,16 +176,19 @@ func parseTheme(t string) {
 		time.Sleep(10 * time.Millisecond)
 		switch t {
 		case lang.L("Light"):
-			fyne.CurrentApp().Preferences().SetString("Theme", "Light")
 			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Light"})
+			fyne.CurrentApp().Preferences().SetString("Theme", "Light")
 		case lang.L("Dark"):
-			fyne.CurrentApp().Preferences().SetString("Theme", "Dark")
 			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Dark"})
+			fyne.CurrentApp().Preferences().SetString("Theme", "Dark")
+		default:
+			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"System Default"})
+			fyne.CurrentApp().Preferences().SetString("Theme", "System Default")
 		}
 	}()
 }
 
-func parseLanguage(s *NewScreen) func(string) {
+func parseLanguage(s *FyneScreen) func(string) {
 	w := s.Current
 	return func(t string) {
 		if t != fyne.CurrentApp().Preferences().StringWithFallback("Language", "System Default") {

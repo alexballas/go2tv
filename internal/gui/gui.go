@@ -27,8 +27,8 @@ import (
 	"github.com/alexballas/go2tv/soapcalls/utils"
 )
 
-// NewScreen .
-type NewScreen struct {
+// FyneScreen .
+type FyneScreen struct {
 	tempFiles            []string
 	SelectInternalSubs   *widget.Select
 	CurrentPos           binding.String
@@ -51,7 +51,7 @@ type NewScreen struct {
 	httpserver           *httphandlers.HTTPserver
 	MediaText            *widget.Entry
 	ExternalMediaURL     *widget.Check
-	GaplessMediaWatcher  func(context.Context, *NewScreen, *soapcalls.TVPayload)
+	GaplessMediaWatcher  func(context.Context, *FyneScreen, *soapcalls.TVPayload)
 	SlideBar             *tappedSlider
 	MuteUnmute           *widget.Button
 	VolumeDown           *widget.Button
@@ -66,6 +66,8 @@ type NewScreen struct {
 	connectionManagerURL string
 	currentmfolder       string
 	ffmpegPath           string
+	ffmpegSeek           int
+	systemTheme          fyne.ThemeVariant
 	mediaFormats         []string
 	muError              sync.RWMutex
 	mu                   sync.RWMutex
@@ -101,7 +103,7 @@ func (f *debugWriter) Write(b []byte) (int, error) {
 var translations embed.FS
 
 // Start .
-func Start(ctx context.Context, s *NewScreen) {
+func Start(ctx context.Context, s *FyneScreen) {
 	if s == nil {
 		return
 	}
@@ -127,26 +129,27 @@ func Start(ctx context.Context, s *NewScreen) {
 
 	s.Hotkeys = true
 	tabs.OnSelected = func(t *container.TabItem) {
-		s.TranscodeCheckBox.Enable()
-		if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
-			s.TranscodeCheckBox.SetChecked(false)
-			s.TranscodeCheckBox.Disable()
-			s.SelectInternalSubs.Options = []string{}
-			s.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
-			s.SelectInternalSubs.ClearSelected()
-			s.SelectInternalSubs.Disable()
-		}
-
-		if s.ffmpegPathChanged {
-			furi, err := storage.ParseURI("file://" + s.mediafile)
-			if err == nil {
-				go selectMediaFile(s, furi)
-			}
-			s.ffmpegPathChanged = false
-		}
-
 		if t.Text == "Go2TV" {
 			s.Hotkeys = true
+			s.TranscodeCheckBox.Enable()
+
+			if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
+				s.TranscodeCheckBox.SetChecked(false)
+				s.TranscodeCheckBox.Disable()
+				s.SelectInternalSubs.Options = []string{}
+				s.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
+				s.SelectInternalSubs.ClearSelected()
+				s.SelectInternalSubs.Disable()
+			}
+
+			if s.ffmpegPathChanged {
+				furi, err := storage.ParseURI("file://" + s.mediafile)
+				if err == nil {
+					go selectMediaFile(s, furi)
+				}
+				s.ffmpegPathChanged = false
+			}
+
 			return
 		}
 		s.Hotkeys = false
@@ -173,7 +176,7 @@ func Start(ctx context.Context, s *NewScreen) {
 
 }
 
-func onDropFiles(screen *NewScreen) func(p fyne.Position, u []fyne.URI) {
+func onDropFiles(screen *FyneScreen) func(p fyne.Position, u []fyne.URI) {
 	return func(p fyne.Position, u []fyne.URI) {
 		var mfiles, sfiles []fyne.URI
 
@@ -204,7 +207,7 @@ func onDropFiles(screen *NewScreen) func(p fyne.Position, u []fyne.URI) {
 }
 
 // EmitMsg Method to implement the screen interface
-func (p *NewScreen) EmitMsg(a string) {
+func (p *FyneScreen) EmitMsg(a string) {
 	switch a {
 	case "Playing":
 		setPlayPauseView("Pause", p)
@@ -224,7 +227,7 @@ func (p *NewScreen) EmitMsg(a string) {
 // Fini Method to implement the screen interface.
 // Will only be executed when we receive a callback message,
 // not when we explicitly click the Stop button.
-func (p *NewScreen) Fini() {
+func (p *FyneScreen) Fini() {
 	gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
 
 	if p.NextMediaCheck.Checked && gaplessOption == "Disabled" {
@@ -243,17 +246,24 @@ func (p *NewScreen) Fini() {
 	}
 }
 
-// InitFyneNewScreen .
-func InitFyneNewScreen(version string) *NewScreen {
+func initFyneNewScreen(version string) *FyneScreen {
 	go2tv := app.NewWithID("app.go2tv.go2tv")
 
+	// Hack. Ongoing discussion in https://github.com/fyne-io/fyne/issues/5333
+	var content []byte
 	switch go2tv.Preferences().String("Language") {
 	case "中文(简体)":
-		os.Setenv("LANG", "zh_CN.UTF-8")
+		content, _ = translations.ReadFile("translations/zh.json")
 	case "English":
-		os.Setenv("LANG", "en_US.UTF-8")
+		content, _ = translations.ReadFile("translations/en.json")
 	}
-	lang.AddTranslationsFS(translations, "translations")
+
+	if content != nil {
+		name := lang.SystemLocale().LanguageString()
+		lang.AddTranslations(fyne.NewStaticResource(name+".json", content))
+	} else {
+		lang.AddTranslationsFS(translations, "translations")
+	}
 
 	go2tv.SetIcon(fyne.NewStaticResource("icon", go2TVIcon510))
 
@@ -267,7 +277,7 @@ func InitFyneNewScreen(version string) *NewScreen {
 		ring: ring.New(1000),
 	}
 
-	return &NewScreen{
+	return &FyneScreen{
 		Current:        w,
 		currentmfolder: currentDir,
 		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".m4a", ".jpg", ".jpeg", ".png"},
@@ -276,7 +286,7 @@ func InitFyneNewScreen(version string) *NewScreen {
 	}
 }
 
-func check(s *NewScreen, err error) {
+func check(s *FyneScreen, err error) {
 	s.muError.Lock()
 	defer s.muError.Unlock()
 
@@ -291,7 +301,7 @@ func check(s *NewScreen, err error) {
 	}
 }
 
-func getNextMedia(screen *NewScreen) (string, string) {
+func getNextMedia(screen *FyneScreen) (string, string) {
 	filedir := filepath.Dir(screen.mediafile)
 	filelist, err := os.ReadDir(filedir)
 	check(screen, err)
@@ -318,7 +328,7 @@ func getNextMedia(screen *NewScreen) (string, string) {
 			continue
 		}
 
-		totalMedia += 1
+		totalMedia++
 	}
 
 	for _, f := range filelist {
@@ -334,7 +344,7 @@ func getNextMedia(screen *NewScreen) (string, string) {
 			continue
 		}
 
-		counter += 1
+		counter++
 
 		if f.Name() == filepath.Base(screen.mediafile) {
 			if totalMedia == counter {
@@ -357,7 +367,7 @@ func getNextMedia(screen *NewScreen) (string, string) {
 	return resName, resPath
 }
 
-func autoSelectNextSubs(v string, screen *NewScreen) {
+func autoSelectNextSubs(v string, screen *FyneScreen) {
 	name, path := getNextPossibleSubs(v)
 	screen.SubsText.Text = name
 	screen.subsfile = path
@@ -378,7 +388,7 @@ func getNextPossibleSubs(v string) (string, string) {
 	return name, path
 }
 
-func setPlayPauseView(s string, screen *NewScreen) {
+func setPlayPauseView(s string, screen *FyneScreen) {
 	if screen.cancelEnablePlay != nil {
 		screen.cancelEnablePlay()
 	}
@@ -396,7 +406,7 @@ func setPlayPauseView(s string, screen *NewScreen) {
 	}
 }
 
-func setMuteUnmuteView(s string, screen *NewScreen) {
+func setMuteUnmuteView(s string, screen *FyneScreen) {
 	switch s {
 	case "Mute":
 		screen.MuteUnmute.Icon = theme.VolumeUpIcon()
@@ -410,14 +420,14 @@ func setMuteUnmuteView(s string, screen *NewScreen) {
 // updateScreenState updates the screen state based on
 // the emitted messages. The State variable is used across
 // the GUI interface to control certain flows.
-func (p *NewScreen) updateScreenState(a string) {
+func (p *FyneScreen) updateScreenState(a string) {
 	p.mu.Lock()
 	p.State = a
 	p.mu.Unlock()
 }
 
 // getScreenState returns the current screen state
-func (p *NewScreen) getScreenState() string {
+func (p *FyneScreen) getScreenState() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.State

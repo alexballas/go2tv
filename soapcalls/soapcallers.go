@@ -40,7 +40,9 @@ type TVPayload struct {
 	CurrentTimers               map[string]*time.Timer
 	InitialMediaRenderersStates map[string]bool
 	MediaRenderersStates        map[string]*States
+	FFmpegSeek                  int
 	FFmpegPath                  string
+	FFmpegSubsPath              string
 	EventURL                    string
 	ControlURL                  string
 	MediaURL                    string
@@ -418,13 +420,6 @@ func (p *TVPayload) SeekSoapCall(reltime string) error {
 
 	client := &http.Client{}
 
-	//if retry {
-	//	retryClient := retryablehttp.NewClient()
-	//	retryClient.RetryMax = 3
-	//	retryClient.Logger = nil
-	//	client = retryClient.StandardClient()
-	//}
-
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlData))
 	if err != nil {
 		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
@@ -663,7 +658,8 @@ func (p *TVPayload) refreshLoopUUIDAsyncSoapCall(uuid string) func() {
 	}
 }
 
-// GetMuteSoapCall returns the mute status for our device
+// GetMuteSoapCall sends a SOAP request to the TV to get the current mute status.
+// It constructs the SOAP request, sends it to the TV, and parses the response.
 func (p *TVPayload) GetMuteSoapCall() (string, error) {
 	if p.ctx == nil {
 		p.ctx = context.Background()
@@ -744,7 +740,9 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 	return respGetMute.Body.GetMuteResponse.CurrentMute, nil
 }
 
-// SetMuteSoapCall returns true if muted and false if not muted.
+// SetMuteSoapCall sends a SOAP request to set the mute state of the TV.
+// It constructs the SOAP request, sets the necessary headers, and sends the request to the TV's RenderingControlURL.
+// The function logs the request and response details for debugging purposes.
 func (p *TVPayload) SetMuteSoapCall(number string) error {
 	if p.ctx == nil {
 		p.ctx = context.Background()
@@ -978,7 +976,8 @@ func (p *TVPayload) SetVolumeSoapCall(v string) error {
 	return nil
 }
 
-// GetProtocolInfo requests our device's protocol info.
+// GetProtocolInfo retrieves the protocol information from the device.
+// It constructs a SOAP request, sends it to the device, and processes the response.
 func (p *TVPayload) GetProtocolInfo() error {
 	if p.ctx == nil {
 		p.ctx = context.Background()
@@ -1135,7 +1134,8 @@ func (p *TVPayload) Gapless() (string, error) {
 	return nextURI, nil
 }
 
-// GetTransportInfo .
+// GetTransportInfo retrieves the transport information from the TV device.
+// It returns a slice of strings containing the current transport state, status, and speed, or an error if the operation fails.
 func (p *TVPayload) GetTransportInfo() ([]string, error) {
 	if p == nil {
 		return nil, errors.New("GetTransportInfo, nil tvdata")
@@ -1221,7 +1221,8 @@ func (p *TVPayload) GetTransportInfo() ([]string, error) {
 	return []string{state, status, speed}, nil
 }
 
-// GetPositionInfo .
+// GetPositionInfo retrieves the position information of the TV.
+// It returns a slice of strings containing the track duration and relative time, or an error if the operation fails.
 func (p *TVPayload) GetPositionInfo() ([]string, error) {
 	if p == nil {
 		return nil, errors.New("GetPositionInfo, nil tvdata")
@@ -1391,7 +1392,9 @@ func (p *TVPayload) UpdateMRstate(previous, new, uuid string) bool {
 	return false
 }
 
-// CreateMRstate .
+// CreateMRstate initializes the media renderer state for a given UUID.
+// It locks the TVPayload to ensure thread safety, sets the initial state
+// to true, and creates a new States instance for the media renderer.
 func (p *TVPayload) CreateMRstate(uuid string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -1399,7 +1402,9 @@ func (p *TVPayload) CreateMRstate(uuid string) {
 	p.MediaRenderersStates[uuid] = &States{}
 }
 
-// DeleteMRstate deletes the state entries for the specific UUID.
+// DeleteMRstate removes the media renderer state associated with the given UUID
+// from both InitialMediaRenderersStates and MediaRenderersStates maps. It ensures
+// that the operation is thread-safe by acquiring a lock on the TVPayload's mutex.
 func (p *TVPayload) DeleteMRstate(uuid string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -1407,14 +1412,17 @@ func (p *TVPayload) DeleteMRstate(uuid string) {
 	delete(p.MediaRenderersStates, uuid)
 }
 
-// SetProcessStopTrue set the stop process to true
+// SetProcessStopTrue sets the ProcessStop field to true for the media renderer
+// identified by the given UUID. It locks the TVPayload's mutex to ensure
+// thread-safe access to the MediaRenderersStates map.
 func (p *TVPayload) SetProcessStopTrue(uuid string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.MediaRenderersStates[uuid].ProcessStop = true
 }
 
-// GetProcessStop returns the processStop value of the specific UUID.
+// GetProcessStop checks if the process stop flag is set for a given media renderer identified by the UUID.
+// It returns true if the process stop flag is set, or an error if the media renderer is not in the initial state.
 func (p *TVPayload) GetProcessStop(uuid string) (bool, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()

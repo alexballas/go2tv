@@ -2,7 +2,6 @@ package gui
 
 import (
 	"image/color"
-	"sync"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/theme"
@@ -13,23 +12,12 @@ type go2tvTheme struct {
 }
 
 var (
-	_                         fyne.Theme        = go2tvTheme{}
-	systemVariant             fyne.ThemeVariant = 999
-	signalSystemVariantChange                   = make(chan struct{})
-	once                      sync.Once
+	_ fyne.Theme = go2tvTheme{}
 )
 
 func (m go2tvTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
-	switch m.Theme {
-	case "GrabVariant":
-		once.Do(func() {
-			systemVariant = variant
-			go func() {
-				signalSystemVariantChange <- struct{}{}
-			}()
-		})
-
-	case "Dark":
+	switch {
+	case m.Theme == "Dark" || (m.Theme == "System Default" && variant == theme.VariantDark):
 		variant = theme.VariantDark
 		switch name {
 		case theme.ColorNameDisabled:
@@ -46,7 +34,7 @@ func (m go2tvTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) c
 			return color.NRGBA{R: 0x30, G: 0x30, B: 0x30, A: 0xff}
 		}
 
-	case "Light":
+	case m.Theme == "Light" || (m.Theme == "System Default" && variant == theme.VariantLight):
 		variant = theme.VariantLight
 		switch name {
 		case theme.ColorNameDisabled:
@@ -57,6 +45,7 @@ func (m go2tvTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) c
 			return color.NRGBA{R: 0xe5, G: 0xe5, B: 0xe5, A: 0xff}
 		}
 	}
+
 	theme.InnerPadding()
 	return theme.DefaultTheme().Color(name, variant)
 }

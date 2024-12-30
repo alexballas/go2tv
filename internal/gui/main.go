@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/lang"
@@ -28,7 +27,7 @@ import (
 
 type tappedSlider struct {
 	*widget.Slider
-	screen *NewScreen
+	screen *FyneScreen
 	end    string
 	mu     sync.Mutex
 }
@@ -59,7 +58,7 @@ func newDeviceList(dd *[]devType) *deviceList {
 	return list
 }
 
-func newTappableSlider(s *NewScreen) *tappedSlider {
+func newTappableSlider(s *FyneScreen) *tappedSlider {
 	slider := &tappedSlider{
 		Slider: &widget.Slider{
 			Max: 100,
@@ -117,9 +116,9 @@ func (t *tappedSlider) Dragged(e *fyne.DragEvent) {
 }
 
 func (t *tappedSlider) DragEnd() {
-	// This is a way to making the slider due to the DragEnd
-	// action racing the auto-refresh action. The auto-refresh action
-	// should reset this back to false after the first iterration.
+	// This ensures the slider functions correctly by addressing the race condition
+	// between the DragEnd action and the auto-refresh action.
+	// The auto-refresh action will reset this flag to false after the first iteration.
 	t.screen.sliderActive = true
 
 	if t.screen.State == "Playing" || t.screen.State == "Paused" {
@@ -148,6 +147,12 @@ func (t *tappedSlider) DragEnd() {
 
 		t.screen.CurrentPos.Set(reltime)
 		t.screen.EndPos.Set(end)
+
+		if t.screen.tvdata.Transcode {
+			t.screen.ffmpegSeek = roundedInt
+			stopAction(t.screen)
+			playAction(t.screen)
+		}
 
 		if err := t.screen.tvdata.SeekSoapCall(reltime); err != nil {
 			return
@@ -189,13 +194,19 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 		t.screen.CurrentPos.Set(reltime)
 		t.screen.EndPos.Set(end)
 
+		if t.screen.tvdata.Transcode {
+			t.screen.ffmpegSeek = roundedInt
+			stopAction(t.screen)
+			playAction(t.screen)
+		}
+
 		if err := t.screen.tvdata.SeekSoapCall(reltime); err != nil {
 			return
 		}
 	}
 }
 
-func mainWindow(s *NewScreen) fyne.CanvasObject {
+func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	w := s.Current
 	var data []devType
 	list := newDeviceList(&data)
@@ -325,9 +336,9 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	nextmedia := widget.NewCheck(lang.L("Auto-Play Next File"), func(b bool) {})
 	transcode := widget.NewCheck(lang.L("Transcode"), func(b bool) {})
 
-	mediafilelabel := canvas.NewText(lang.L("File")+":", nil)
-	subsfilelabel := canvas.NewText(lang.L("Subtitles")+":", nil)
-	devicelabel := canvas.NewText(lang.L("Select Device")+":", nil)
+	mediafilelabel := widget.NewLabel(lang.L("File") + ":")
+	subsfilelabel := widget.NewLabel(lang.L("Subtitles") + ":")
+	devicelabel := widget.NewLabel(lang.L("Select Device") + ":")
 
 	selectInternalSubs := widget.NewSelect([]string{}, func(item string) {
 		if item == "" {
@@ -549,7 +560,7 @@ func mainWindow(s *NewScreen) fyne.CanvasObject {
 	return content
 }
 
-func refreshDevList(s *NewScreen, data *[]devType) {
+func refreshDevList(s *FyneScreen, data *[]devType) {
 	refreshDevices := time.NewTicker(5 * time.Second)
 
 	_, err := getDevices(2)
@@ -613,7 +624,7 @@ func refreshDevList(s *NewScreen, data *[]devType) {
 	}
 }
 
-func checkMutefunc(s *NewScreen) {
+func checkMutefunc(s *FyneScreen) {
 	checkMute := time.NewTicker(2 * time.Second)
 
 	var checkMuteCounter int
@@ -650,7 +661,7 @@ func checkMutefunc(s *NewScreen) {
 	}
 }
 
-func sliderUpdate(s *NewScreen) {
+func sliderUpdate(s *FyneScreen) {
 	t := time.NewTicker(time.Second)
 	for range t.C {
 		if s.sliderActive {
@@ -658,7 +669,7 @@ func sliderUpdate(s *NewScreen) {
 			continue
 		}
 
-		if s.State == "Stopped" || s.State == "" {
+		if (s.State == "Stopped" || s.State == "") && s.ffmpegSeek == 0 {
 			s.SlideBar.Slider.SetValue(0)
 			s.CurrentPos.Set("00:00:00")
 			s.EndPos.Set("00:00:00")
@@ -680,6 +691,15 @@ func sliderUpdate(s *NewScreen) {
 				continue
 			}
 
+			switch {
+			case s.ffmpegSeek > 0:
+				current += s.ffmpegSeek
+			case s.tvdata != nil && s.tvdata.FFmpegSeek > 0:
+				current += s.tvdata.FFmpegSeek
+			}
+
+			s.ffmpegSeek = 0
+
 			valueToSet := float64(current) * s.SlideBar.Max / float64(total)
 			if !math.IsNaN(valueToSet) {
 				s.SlideBar.SetValue(valueToSet)
@@ -689,12 +709,12 @@ func sliderUpdate(s *NewScreen) {
 					return
 				}
 
-				current, err := utils.FormatClockTime(getPos[1])
+				currentClock, err := utils.SecondsToClockTime(current)
 				if err != nil {
 					return
 				}
 
-				s.CurrentPos.Set(current)
+				s.CurrentPos.Set(currentClock)
 				s.EndPos.Set(end)
 			}
 		}

@@ -54,5 +54,7 @@
     "Update Language Preferences": "Update Language Preferences",
     "Please restart the application for the changes to take effect.": "Please restart the application for the changes to take effect.",
     "Language": "Language",
-    "Saved to": "Saved to"
+    "Saved to": "Saved to",
+    "Folder": "Folder",
+    "System Default": "System Default"
 }

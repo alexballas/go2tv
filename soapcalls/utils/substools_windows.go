@@ -27,8 +27,10 @@ type tags struct {
 	Language string `mapstructure:"language"`
 }
 
+// ErrNoSubs - No subs detected
 var ErrNoSubs = errors.New("no subs")
 
+// GetSubs - List all subs in our video file.
 func GetSubs(ffmpeg string, f string) ([]string, error) {
 	_, err := os.Stat(f)
 	if err != nil {
@@ -90,6 +92,8 @@ func GetSubs(ffmpeg string, f string) ([]string, error) {
 	return out, nil
 }
 
+// ExtractSub - Save the extracted sub into a temp file.
+// Return the path of that file.
 func ExtractSub(ffmpeg string, n int, f string) (string, error) {
 	_, err := os.Stat(f)
 	if err != nil {

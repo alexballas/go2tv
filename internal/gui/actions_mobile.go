@@ -24,7 +24,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func muteAction(screen *NewScreen) {
+func muteAction(screen *FyneScreen) {
 	w := screen.Current
 	if screen.renderingControlURL == "" {
 		check(w, errors.New(lang.L("please select a device")))
@@ -51,7 +51,7 @@ func muteAction(screen *NewScreen) {
 	setMuteUnmuteView("Unmute", screen)
 }
 
-func unmuteAction(screen *NewScreen) {
+func unmuteAction(screen *FyneScreen) {
 	w := screen.Current
 
 	if screen.renderingControlURL == "" {
@@ -75,7 +75,7 @@ func unmuteAction(screen *NewScreen) {
 	setMuteUnmuteView("Mute", screen)
 }
 
-func mediaAction(screen *NewScreen) {
+func mediaAction(screen *FyneScreen) {
 	w := screen.Current
 	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 		check(w, err)
@@ -97,7 +97,7 @@ func mediaAction(screen *NewScreen) {
 	fd.Show()
 }
 
-func subsAction(screen *NewScreen) {
+func subsAction(screen *FyneScreen) {
 	w := screen.Current
 	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 		check(w, err)
@@ -123,7 +123,7 @@ func subsAction(screen *NewScreen) {
 	fd.Show()
 }
 
-func playAction(screen *NewScreen) {
+func playAction(screen *FyneScreen) {
 	var mediaFile, subsFile interface{}
 	w := screen.Current
 
@@ -332,26 +332,26 @@ func playAction(screen *NewScreen) {
 	}
 }
 
-func pauseAction(screen *NewScreen) {
+func pauseAction(screen *FyneScreen) {
 	w := screen.Current
 
 	err := screen.tvdata.SendtoTV("Pause")
 	check(w, err)
 }
 
-func clearmediaAction(screen *NewScreen) {
+func clearmediaAction(screen *FyneScreen) {
 	screen.MediaText.Text = ""
 	screen.mediafile = nil
 	screen.MediaText.Refresh()
 }
 
-func clearsubsAction(screen *NewScreen) {
+func clearsubsAction(screen *FyneScreen) {
 	screen.SubsText.Text = ""
 	screen.subsfile = nil
 	screen.SubsText.Refresh()
 }
 
-func stopAction(screen *NewScreen) {
+func stopAction(screen *FyneScreen) {
 	screen.PlayPause.Enable()
 
 	if screen.tvdata == nil || screen.tvdata.ControlURL == "" {
@@ -390,7 +390,7 @@ func getDevices(delay int) ([]devType, error) {
 	return guiDeviceList, nil
 }
 
-func volumeAction(screen *NewScreen, up bool) {
+func volumeAction(screen *FyneScreen, up bool) {
 	w := screen.Current
 	if screen.renderingControlURL == "" {
 		check(w, errors.New(lang.L("please select a device")))
@@ -427,7 +427,7 @@ func volumeAction(screen *NewScreen, up bool) {
 	}
 }
 
-func startAfreshPlayButton(screen *NewScreen) {
+func startAfreshPlayButton(screen *FyneScreen) {
 	if screen.cancelEnablePlay != nil {
 		screen.cancelEnablePlay()
 	}

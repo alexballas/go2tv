@@ -54,5 +54,7 @@
     "Update Language Preferences": "更新语言偏好设置",
     "Please restart the application for the changes to take effect.": "请重新启动应用程序以使更改生效。",
     "Language": "语言",
-    "Saved to": "已保存到"
+    "Saved to": "已保存到",
+    "Folder": "文件夹",
+    "System Default": "系统默认"
 }

@@ -20,7 +20,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-func aboutWindow(s *NewScreen) fyne.CanvasObject {
+func aboutWindow(s *FyneScreen) fyne.CanvasObject {
 	sr := fyne.NewStaticResource("Go2TV Icon", go2TVSmallIcon)
 	go2tvImage := canvas.NewImageFromResource(sr)
 	richhead := widget.NewRichTextFromMarkdown(`
@@ -70,7 +70,7 @@ MIT
 	return container.NewPadded(cont)
 }
 
-func checkVersion(s *NewScreen) {
+func checkVersion(s *FyneScreen) {
 	s.CheckVersion.Disable()
 	defer s.CheckVersion.Enable()
 	errRedirectChecker := errors.New("redirect")
