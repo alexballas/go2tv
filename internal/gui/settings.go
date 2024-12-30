@@ -6,9 +6,7 @@ package gui
 import (
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"time"
-	"os/exec"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
