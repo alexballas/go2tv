@@ -56,5 +56,7 @@
     "Language": "语言",
     "Saved to": "已保存到",
     "Folder": "文件夹",
-    "System Default": "系统默认"
+    "System Default": "系统默认",
+    "Enabled": "已启用",
+    "Disabled": "已禁用"
 }

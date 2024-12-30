@@ -119,14 +119,23 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	})
 
 	gaplessText := widget.NewLabel(lang.L("Gapless Playback"))
-	gaplessdropdown := widget.NewSelect([]string{"Enabled", "Disabled"}, func(ss string) {
-		if ss == "Enabled" && fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled") == "Disabled" {
+	gaplessdropdown := widget.NewSelect([]string{lang.L("Enabled"), lang.L("Disabled")}, func(ss string) {
+		var selection string
+		if lang.L("Enabled") == ss {
+			selection = "Enabled"
+		}
+
+		if lang.L("Disabled") == ss {
+			selection = "Disabled"
+		}
+
+		if selection == "Enabled" && fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled") == "Disabled" {
 			dialog.ShowInformation(lang.L("Gapless Playback"), lang.L(`Not all devices support gapless playback. If 'Auto-Play Next File' is not working correctly, please disable it.`), w)
 		}
 
-		fyne.CurrentApp().Preferences().SetString("Gapless", ss)
+		fyne.CurrentApp().Preferences().SetString("Gapless", selection)
 		if s.NextMediaCheck.Checked {
-			switch ss {
+			switch selection {
 			case "Enabled":
 				switch s.State {
 				case "Playing", "Paused":
@@ -149,7 +158,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		}
 	})
 	gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
-	gaplessdropdown.SetSelected(gaplessOption)
+	gaplessdropdown.SetSelected(lang.L(gaplessOption))
 
 	dropdownTheme.Refresh()
 
