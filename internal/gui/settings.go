@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"time"
+	"os/exec"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -75,17 +76,8 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 			return fyne.CurrentApp().Preferences().String("ffmpeg")
 		}
 
-		os := runtime.GOOS
-		switch os {
-		case "windows":
-			return "C:/ffmpeg/bin/ffmpeg"
-		case "linux":
-			return "ffmpeg"
-		case "darwin":
-			return "/opt/homebrew/bin/ffmpeg"
-		default:
-			return "ffmpeg"
-		}
+		path, _ := exec.LookPath("ffmpeg")
+		return path
 
 	}()
 	ffmpegTextEntry.Refresh()
