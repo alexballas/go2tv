@@ -3,7 +3,7 @@ module github.com/alexballas/go2tv
 go 1.23.3
 
 require (
-	fyne.io/fyne/v2 v2.5.2
+	fyne.io/fyne/v2 v2.5.3
 	github.com/alexballas/go-ssdp v0.0.3
 	github.com/gdamore/tcell/v2 v2.7.4
 	github.com/h2non/filetype v1.1.3

@@ -454,6 +454,10 @@ out:
 				}
 
 				if nextURI == "" {
+					if screen.tvdata == nil {
+						continue
+					}
+
 					// No need to check for the error as this is something
 					// that we did in previous steps in our workflow
 					mPath, _ := url.Parse(screen.tvdata.MediaURL)
