@@ -30,7 +30,7 @@ import (
 	"github.com/skratchdot/open-golang/open"
 )
 
-func muteAction(screen *NewScreen) {
+func muteAction(screen *FyneScreen) {
 	if screen.renderingControlURL == "" {
 		check(screen, errors.New(lang.L("please select a device")))
 		return
@@ -56,7 +56,7 @@ func muteAction(screen *NewScreen) {
 	setMuteUnmuteView("Unmute", screen)
 }
 
-func unmuteAction(screen *NewScreen) {
+func unmuteAction(screen *FyneScreen) {
 	if screen.renderingControlURL == "" {
 		check(screen, errors.New(lang.L("please select a device")))
 		return
@@ -78,7 +78,7 @@ func unmuteAction(screen *NewScreen) {
 	setMuteUnmuteView("Mute", screen)
 }
 
-func selectMediaFile(screen *NewScreen, f fyne.URI) {
+func selectMediaFile(screen *FyneScreen, f fyne.URI) {
 	mfile := f.Path()
 	absMediaFile, err := filepath.Abs(mfile)
 	check(screen, err)
@@ -116,7 +116,7 @@ func selectMediaFile(screen *NewScreen, f fyne.URI) {
 	screen.SelectInternalSubs.Enable()
 }
 
-func selectSubsFile(screen *NewScreen, f fyne.URI) {
+func selectSubsFile(screen *FyneScreen, f fyne.URI) {
 	sfile := f.Path()
 	absSubtitlesFile, err := filepath.Abs(sfile)
 	check(screen, err)
@@ -131,7 +131,7 @@ func selectSubsFile(screen *NewScreen, f fyne.URI) {
 	screen.SubsText.Refresh()
 }
 
-func mediaAction(screen *NewScreen) {
+func mediaAction(screen *FyneScreen) {
 	w := screen.Current
 	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 		check(screen, err)
@@ -157,7 +157,7 @@ func mediaAction(screen *NewScreen) {
 	fd.Show()
 }
 
-func subsAction(screen *NewScreen) {
+func subsAction(screen *FyneScreen) {
 	w := screen.Current
 	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 		check(screen, err)
@@ -185,7 +185,7 @@ func subsAction(screen *NewScreen) {
 	fd.Show()
 }
 
-func playAction(screen *NewScreen) {
+func playAction(screen *FyneScreen) {
 	var mediaFile interface{}
 
 	screen.PlayPause.Disable()
@@ -374,6 +374,8 @@ func playAction(screen *NewScreen) {
 		Seekable:                    isSeek,
 		LogOutput:                   screen.Debug,
 		FFmpegPath:                  screen.ffmpegPath,
+		FFmpegSeek:                  screen.ffmpegSeek,
+		FFmpegSubsPath:              screen.subsfile,
 	}
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)
@@ -420,7 +422,7 @@ func playAction(screen *NewScreen) {
 
 }
 
-func startAfreshPlayButton(screen *NewScreen) {
+func startAfreshPlayButton(screen *FyneScreen) {
 	if screen.cancelEnablePlay != nil {
 		screen.cancelEnablePlay()
 	}
@@ -429,7 +431,7 @@ func startAfreshPlayButton(screen *NewScreen) {
 	screen.updateScreenState("Stopped")
 }
 
-func gaplessMediaWatcher(ctx context.Context, screen *NewScreen, payload *soapcalls.TVPayload) {
+func gaplessMediaWatcher(ctx context.Context, screen *FyneScreen, payload *soapcalls.TVPayload) {
 	t := time.NewTicker(1 * time.Second)
 out:
 	for {
@@ -452,6 +454,10 @@ out:
 				}
 
 				if nextURI == "" {
+					if screen.tvdata == nil {
+						continue
+					}
+
 					// No need to check for the error as this is something
 					// that we did in previous steps in our workflow
 					mPath, _ := url.Parse(screen.tvdata.MediaURL)
@@ -487,12 +493,12 @@ out:
 	}
 }
 
-func pauseAction(screen *NewScreen) {
+func pauseAction(screen *FyneScreen) {
 	err := screen.tvdata.SendtoTV("Pause")
 	check(screen, err)
 }
 
-func clearmediaAction(screen *NewScreen) {
+func clearmediaAction(screen *FyneScreen) {
 	screen.MediaText.Text = ""
 	screen.mediafile = ""
 	screen.MediaText.Refresh()
@@ -502,14 +508,14 @@ func clearmediaAction(screen *NewScreen) {
 	screen.SelectInternalSubs.Disable()
 }
 
-func clearsubsAction(screen *NewScreen) {
+func clearsubsAction(screen *FyneScreen) {
 	screen.SelectInternalSubs.ClearSelected()
 	screen.SubsText.Text = ""
 	screen.subsfile = ""
 	screen.SubsText.Refresh()
 }
 
-func skipNextAction(screen *NewScreen) {
+func skipNextAction(screen *FyneScreen) {
 	if screen.controlURL == "" {
 		check(screen, errors.New(lang.L("please select a device")))
 		return
@@ -534,7 +540,7 @@ func skipNextAction(screen *NewScreen) {
 	playAction(screen)
 }
 
-func previewmedia(screen *NewScreen) {
+func previewmedia(screen *FyneScreen) {
 	if screen.mediafile == "" {
 		check(screen, errors.New(lang.L("please select a media file")))
 		return
@@ -569,7 +575,7 @@ func previewmedia(screen *NewScreen) {
 	}
 }
 
-func stopAction(screen *NewScreen) {
+func stopAction(screen *FyneScreen) {
 	screen.PlayPause.Enable()
 
 	if screen.tvdata == nil || screen.tvdata.ControlURL == "" {
@@ -608,7 +614,7 @@ func getDevices(delay int) ([]devType, error) {
 	return guiDeviceList, nil
 }
 
-func volumeAction(screen *NewScreen, up bool) {
+func volumeAction(screen *FyneScreen, up bool) {
 	if screen.renderingControlURL == "" {
 		check(screen, errors.New(lang.L("please select a device")))
 		return
@@ -644,7 +650,7 @@ func volumeAction(screen *NewScreen, up bool) {
 	}
 }
 
-func queueNext(screen *NewScreen, clear bool) (*soapcalls.TVPayload, error) {
+func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 	if screen.tvdata == nil {
 		return nil, errors.New("queueNext, nil tvdata")
 	}

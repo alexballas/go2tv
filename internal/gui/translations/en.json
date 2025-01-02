@@ -25,7 +25,7 @@
     "Debug": "Debug",
     "Path": "Path",
     "Export Debug Logs": "Export Debug Logs",
-    "Not all devices support gapless playback. If 'Auto-Play Next File' is not working correctly, please disable it.": "Not all devices support gapless playback. If 'Auto-Play Next File' is not working correctly, please disable it.",
+    "Some devices don't support gapless playback. If 'Auto-Play Next File' isn't working properly, try turning it off.": "Some devices don't support gapless playback. If 'Auto-Play Next File' isn't working properly, try turning it off.",
     "About": "About",
     "Version": "Version",
     "Author": "Author",
@@ -54,5 +54,9 @@
     "Update Language Preferences": "Update Language Preferences",
     "Please restart the application for the changes to take effect.": "Please restart the application for the changes to take effect.",
     "Language": "Language",
-    "Saved to": "Saved to"
+    "Saved to": "Saved to",
+    "Folder": "Folder",
+    "System Default": "System Default",
+    "Enabled": "Enabled",
+    "Disabled": "Disabled"
 }

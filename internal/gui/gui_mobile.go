@@ -22,8 +22,8 @@ import (
 	"github.com/pkg/errors"
 )
 
-// NewScreen .
-type NewScreen struct {
+// FyneScreen .
+type FyneScreen struct {
 	mu                   sync.RWMutex
 	Debug                *debugWriter
 	Current              fyne.Window
@@ -74,7 +74,7 @@ func (f *debugWriter) Write(b []byte) (int, error) {
 }
 
 // Start .
-func Start(ctx context.Context, s *NewScreen) {
+func Start(ctx context.Context, s *FyneScreen) {
 	w := s.Current
 
 	tabs := container.NewAppTabs(
@@ -94,7 +94,7 @@ func Start(ctx context.Context, s *NewScreen) {
 }
 
 // EmitMsg Method to implement the screen interface
-func (p *NewScreen) EmitMsg(a string) {
+func (p *FyneScreen) EmitMsg(a string) {
 	switch a {
 	case "Playing":
 		setPlayPauseView("Pause", p)
@@ -114,21 +114,20 @@ func (p *NewScreen) EmitMsg(a string) {
 // Fini Method to implement the screen interface.
 // Will only be executed when we receive a callback message,
 // not when we explicitly click the Stop button.
-func (p *NewScreen) Fini() {
+func (p *FyneScreen) Fini() {
 	// Main media loop logic
 	if p.Medialoop {
 		playAction(p)
 	}
 }
 
-// InitFyneNewScreen .
-func InitFyneNewScreen(v string) *NewScreen {
+func initFyneNewScreen(v string) *FyneScreen {
 	go2tv := app.NewWithID("app.go2tv.go2tv")
 	go2tv.Settings().SetTheme(go2tvTheme{"Dark"})
 
 	w := go2tv.NewWindow("Go2TV")
 
-	return &NewScreen{
+	return &FyneScreen{
 		Current:      w,
 		mediaFormats: []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".m4a", ".jpg", ".jpeg", ".png"},
 		version:      v,
@@ -145,20 +144,20 @@ func check(win fyne.Window, err error) {
 // updateScreenState updates the screen state based on
 // the emitted messages. The State variable is used across
 // the GUI interface to control certain flows.
-func (p *NewScreen) updateScreenState(a string) {
+func (p *FyneScreen) updateScreenState(a string) {
 	p.mu.Lock()
 	p.State = a
 	p.mu.Unlock()
 }
 
 // getScreenState returns the current screen state
-func (p *NewScreen) getScreenState() string {
+func (p *FyneScreen) getScreenState() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.State
 }
 
-func setPlayPauseView(s string, screen *NewScreen) {
+func setPlayPauseView(s string, screen *FyneScreen) {
 	if screen.cancelEnablePlay != nil {
 		screen.cancelEnablePlay()
 	}
@@ -176,7 +175,7 @@ func setPlayPauseView(s string, screen *NewScreen) {
 	}
 }
 
-func setMuteUnmuteView(s string, screen *NewScreen) {
+func setMuteUnmuteView(s string, screen *FyneScreen) {
 	switch s {
 	case "Mute":
 		screen.MuteUnmute.Icon = theme.VolumeUpIcon()

@@ -19,7 +19,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-func aboutWindow(s *NewScreen) fyne.CanvasObject {
+func aboutWindow(s *FyneScreen) fyne.CanvasObject {
 	richhead := widget.NewRichTextFromMarkdown(`
 # Go2TV
 
@@ -62,7 +62,7 @@ MIT
 	return container.NewVBox(richhead, container.NewCenter(container.NewHBox(githubbutton, checkversion)))
 }
 
-func checkVersion(s *NewScreen) {
+func checkVersion(s *FyneScreen) {
 	s.CheckVersion.Disable()
 	defer s.CheckVersion.Enable()
 	errRedirectChecker := errors.New("redirect")

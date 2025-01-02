@@ -62,7 +62,7 @@ This is a GUI only limitation.
 
 Build requirements and dependencies
 -----
-- Go v1.19+
+- Go v1.23+
 - ffmpeg (optional)
 
 **Build using Docker**
@@ -73,13 +73,21 @@ $ docker build --force-rm [--pull] -t go2tv github.com/alexballas/go2tv#main
 ```
 Notice the branch name after the `#`, as the above will build `main`. You can also build `devel` if you want to build the latest code. Usage under Docker is outside this document's scope, check Docker docs for more information, specially volume mounts and networking. [x11docker](https://github.com/mviereck/x11docker) might come handy to run GUI mode, although it's not tested, since main Docker usage is CLI.
 
+**Running using Docker**
+
+Example:
+``` console
+$ xhost +local:docker  # Allows Docker containers to connect to the X server
+$ docker run -it --network host -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix go2tv go2tv
+```
+
 Quick Start
 -----
 Download the app here https://github.com/alexballas/Go2TV/releases/latest. A single executable. No installation or external dependencies.
 
 **Transcoding (ffmpeg required)**
 
-Go2TV supports live video transcoding, if ffmpeg is installed. When transcoding, SEEK operations are not available. Transcoding offers the maximum compatibility with the various file formats and devices. Only works with video files.
+Go2TV supports live video transcoding, if ffmpeg is installed. When transcoding, SEEK operations are not available. Transcoding offers the maximum compatibility with the various file formats and devices. Only works with video files. *Note:* The Flatpak version of Go2TV bundles ffmpeg.
 
 **MKV/MP4 Subtitle Selection Support (ffmpeg required)**
 
