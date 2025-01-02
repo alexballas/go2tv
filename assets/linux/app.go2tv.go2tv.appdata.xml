@@ -38,6 +38,18 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.18.0" date="2025-01-02" type="stable">
+      <description>
+        <ul>
+          <li>Added seek support for video transcoding.</li>
+          <li>Improved user interface.</li>
+          <li>Fixed CLI issue on Windows; a black window may briefly appear during startup now.</li>
+          <li>Improved device discoverability: the app now uses a specific port (1900) for SSDP traffic, making it easier to configure firewalls.</li>
+          <li>Fix broken language selection.</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/alexballas/go2tv/releases/tag/v1.18.0</url>
+    </release>
     <release version="1.17.1" date="2024-09-05" type="stable">
       <description>
         <ul>
