@@ -128,7 +128,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		}
 
 		if selection == "Enabled" && fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled") == "Disabled" {
-			dialog.ShowInformation(lang.L("Gapless Playback"), lang.L(`Not all devices support gapless playback. If 'Auto-Play Next File' is not working correctly, please disable it.`), w)
+			dialog.ShowInformation(lang.L("Gapless Playback"), lang.L(`Some devices don't support gapless playback. If 'Auto-Play Next File' isn't working properly, try turning it off.`), w)
 		}
 
 		fyne.CurrentApp().Preferences().SetString("Gapless", selection)

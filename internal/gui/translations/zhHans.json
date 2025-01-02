@@ -25,7 +25,7 @@
     "Debug": "调试",
     "Path": "小路",
     "Export Debug Logs": "导出调试日志",
-    "Not all devices support gapless playback. If 'Auto-Play Next File' is not working correctly, please disable it.": "如果“自动播放下一个文件”无法正常工作，请禁用此功能。并非所有设备都支持无缝播放",
+    "Some devices don't support gapless playback. If 'Auto-Play Next File' isn't working properly, try turning it off.": "一些设备不支持无缝播放。如果“自动播放下一个文件”无法正常工作，请尝试关闭它。",
     "About": "关于",
     "Version": "版本",
     "Author": "作者",
