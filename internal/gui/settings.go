@@ -52,7 +52,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	})
 
 	ffmpegFolderSelect := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
-		dialog.ShowFolderOpen(func(lu fyne.ListableURI, err error) {
+		fd := dialog.NewFolderOpen(func(lu fyne.ListableURI, err error) {
 			if err != nil {
 				dialog.ShowError(err, w)
 				return
@@ -64,6 +64,10 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 			p := filepath.ToSlash(lu.Path() + string(filepath.Separator) + "ffmpeg")
 			ffmpegTextEntry.SetText(p)
 		}, w)
+
+		fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
+		fd.Show()
+
 	})
 
 	ffmpegRightButtons := container.NewHBox(ffmpegFolderSelect, ffmpegFolderReset)
@@ -102,7 +106,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 			return
 		}
 
-		dialog.ShowFileSave(func(writer fyne.URIWriteCloser, err error) {
+		fd := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
 			if err != nil {
 				dialog.ShowError(err, s.Current)
 				return
@@ -114,6 +118,8 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 			saveDebugLogs(writer, s)
 		}, s.Current)
 
+		fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
+		fd.Show()
 	})
 
 	gaplessText := widget.NewLabel(lang.L("Gapless Playback"))
