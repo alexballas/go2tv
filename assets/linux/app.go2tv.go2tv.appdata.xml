@@ -41,6 +41,11 @@
 
   <content_rating type="oars-1.1"/>
 
+  <branding>
+    <color type="primary" scheme_preference="light">#eadaffff</color>
+    <color type="primary" scheme_preference="dark">#d8bdffff</color>
+  </branding>
+
   <releases>
     <release version="1.18.0" date="2025-01-02" type="stable">
       <description>
