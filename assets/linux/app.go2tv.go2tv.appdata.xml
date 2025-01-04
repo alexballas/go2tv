@@ -28,6 +28,10 @@
       <image>https://raw.githubusercontent.com/alexballas/go2tv/devel/assets/screenshots/Screenshot_dark.png</image>
       <caption>Main window (dark mode)</caption>
     </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/alexballas/go2tv/devel/assets/screenshots/Screenshot_settings_dark.png</image>
+      <caption>Settings window (dark mode)</caption>
+    </screenshot>
   </screenshots>
 
   <url type="bugtracker">https://github.com/alexballas/go2tv/issues</url>
