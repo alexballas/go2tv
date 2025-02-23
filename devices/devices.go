@@ -46,7 +46,12 @@ func LoadSSDPservices(delay int) (map[string]string, error) {
 		address = &addr
 	}
 
-	list, err := ssdp.Search(ssdp.All, delay, address.String())
+	var addrString string
+	if address != nil {
+		addrString = address.String()
+	}
+
+	list, err := ssdp.Search(ssdp.All, delay, addrString)
 	if err != nil {
 		return nil, fmt.Errorf("LoadSSDPservices search error: %w", err)
 	}
