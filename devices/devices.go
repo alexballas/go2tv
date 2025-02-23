@@ -3,6 +3,7 @@ package devices
 import (
 	"context"
 	"fmt"
+	"net"
 	"sort"
 
 	"github.com/alexballas/go-ssdp"
@@ -21,7 +22,31 @@ var (
 func LoadSSDPservices(delay int) (map[string]string, error) {
 	// Reset device list every time we call this.
 	urlList := make(map[string]string)
-	list, err := ssdp.Search(ssdp.All, delay, "239.255.255.250:1900")
+
+	port := 1900
+
+	var (
+		address *net.UDPAddr
+		tries   int
+	)
+
+	for address == nil && tries < 100 {
+		addr := net.UDPAddr{
+			Port: port,
+			IP:   net.ParseIP("239.255.255.250"),
+		}
+
+		_, err := net.ListenUDP("udp", &addr)
+		if err != nil {
+			port++
+			tries++
+			continue
+		}
+
+		address = &addr
+	}
+
+	list, err := ssdp.Search(ssdp.All, delay, address.String())
 	if err != nil {
 		return nil, fmt.Errorf("LoadSSDPservices search error: %w", err)
 	}
