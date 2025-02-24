@@ -93,6 +93,10 @@ Go2TV supports live video transcoding, if ffmpeg is installed. When transcoding,
 
 Go2TV also supports selecting subtitles for video files that have embedded subtitle tracks. This functionality requires ffmpeg to be installed. You can choose the desired subtitle track when casting your media files, enhancing your viewing experience on UPnP/DLNA Media Renderers and Smart TVs.
 
+**SSDP Listen Port Range**
+
+Go2TV now binds the SSDP listener to a port within the fixed range 1900-2000, instead of relying on the system's automatic port assignment. The application will automatically select the first available port from this range. If you are running Go2TV behind a firewall, ensure that inbound UDP traffic is allowed on ports 1900-2000 to enable proper SSDP discovery and device communication.
+
 **MacOS potential issues**
 
 If you get the "cannot be opened because the developer cannot be verified" error, you can apply the following workaround.
