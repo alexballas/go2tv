@@ -33,11 +33,10 @@ func LoadSSDPservices(delay int) (map[string]string, error) {
 	for address == nil && tries < 100 {
 		addr := net.UDPAddr{
 			Port: port,
-			IP:   net.ParseIP("239.255.255.250"),
+			IP:   net.ParseIP("0.0.0.0"),
 		}
 
-		_, err := net.ListenUDP("udp", &addr)
-		if err != nil {
+		if err := checkInterfacesForPort(port); err != nil {
 			port++
 			tries++
 			continue
@@ -118,4 +117,42 @@ func DevicePicker(devices map[string]string, n int) (string, error) {
 	}
 
 	return "", ErrSomethingWentWrong
+}
+
+func checkInterfacesForPort(port int) error {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return err
+	}
+
+	for _, iface := range interfaces {
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return err
+		}
+
+		for _, addr := range addrs {
+			ip, _, _ := net.ParseCIDR(addr.String())
+
+			if ip.IsLoopback() || ip.To4() == nil {
+				continue
+			}
+
+			udpAddr := net.UDPAddr{
+				Port: port,
+				IP:   ip,
+			}
+
+			udpConn, err := net.ListenUDP("udp4", &udpAddr)
+			if err != nil {
+				return err
+			}
+
+			udpConn.Close()
+			return nil
+
+		}
+	}
+
+	return nil
 }
