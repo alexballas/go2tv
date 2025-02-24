@@ -47,6 +47,14 @@
   </branding>
 
   <releases>
+      <release version="1.18.1" date="2025-01-02" type="stable">
+      <description>
+        <ul>
+          <li>Fix broken device detection on Windows 11.</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/alexballas/go2tv/releases/tag/v1.18.1</url>
+    </release>
     <release version="1.18.0" date="2025-01-02" type="stable">
       <description>
         <ul>
