@@ -71,7 +71,7 @@ Since the repo provides a [Dockerfile](./Dockerfile), you can build a Go2TV Dock
 ``` console
 $ docker build --force-rm [--pull] -t go2tv github.com/alexballas/go2tv#main
 ```
-Notice the branch name after the `#`, as the above will build `main`. You can also build `devel` if you want to build the latest code. Usage under Docker is outside this document's scope, check Docker docs for more information, specially volume mounts and networking. [x11docker](https://github.com/mviereck/x11docker) might come handy to run GUI mode, although it's not tested, since main Docker usage is CLI.
+Notice the branch name after the `#`, as the above will build `main`. You can also build `devel` if you want to build the latest code. Usage under Docker is outside this document's scope, check Docker docs for more information, specially volume mounts and networking.
 
 **Running using Docker**
 
