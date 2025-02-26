@@ -21,7 +21,7 @@ import (
 )
 
 func aboutWindow(s *FyneScreen) fyne.CanvasObject {
-	sr := fyne.NewStaticResource("Go2TV Icon", go2TVSmallIcon)
+	sr := fyne.NewStaticResource("Go2TV Icon", go2TVIcon512)
 	go2tvImage := canvas.NewImageFromResource(sr)
 	richhead := widget.NewRichTextFromMarkdown(`
 ` + lang.L("Cast your media files to UPnP/DLNA Media Renderers and Smart TVs") + `

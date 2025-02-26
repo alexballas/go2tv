@@ -254,6 +254,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		}
 	})
 
+	// Avoid parallel execution of getDevices.
+	blockGetDevices := make(chan struct{})
 	go func() {
 		var err error
 		data, err = getDevices(1)
@@ -266,6 +268,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		})
 
 		list.Refresh()
+
+		blockGetDevices <- struct{}{}
 	}()
 
 	mfiletext := widget.NewEntry()
@@ -548,7 +552,10 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	// Device list auto-refresh.
 	// TODO: Add context to cancel
-	go refreshDevList(s, &data)
+	go func() {
+		<-blockGetDevices
+		refreshDevList(s, &data)
+	}()
 
 	// Check mute status for selected device.
 	// TODO: Add context to cancel

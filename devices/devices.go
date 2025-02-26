@@ -3,6 +3,7 @@ package devices
 import (
 	"context"
 	"fmt"
+	"net"
 	"sort"
 
 	"github.com/alexballas/go-ssdp"
@@ -21,7 +22,35 @@ var (
 func LoadSSDPservices(delay int) (map[string]string, error) {
 	// Reset device list every time we call this.
 	urlList := make(map[string]string)
-	list, err := ssdp.Search(ssdp.All, delay, "239.255.255.250:1900")
+
+	port := 1900
+
+	var (
+		address *net.UDPAddr
+		tries   int
+	)
+
+	for address == nil && tries < 100 {
+		addr := net.UDPAddr{
+			Port: port,
+			IP:   net.ParseIP("0.0.0.0"),
+		}
+
+		if err := checkInterfacesForPort(port); err != nil {
+			port++
+			tries++
+			continue
+		}
+
+		address = &addr
+	}
+
+	var addrString string
+	if address != nil {
+		addrString = address.String()
+	}
+
+	list, err := ssdp.Search(ssdp.All, delay, addrString)
 	if err != nil {
 		return nil, fmt.Errorf("LoadSSDPservices search error: %w", err)
 	}
@@ -88,4 +117,42 @@ func DevicePicker(devices map[string]string, n int) (string, error) {
 	}
 
 	return "", ErrSomethingWentWrong
+}
+
+func checkInterfacesForPort(port int) error {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return err
+	}
+
+	for _, iface := range interfaces {
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return err
+		}
+
+		for _, addr := range addrs {
+			ip, _, _ := net.ParseCIDR(addr.String())
+
+			if ip.IsLoopback() || ip.To4() == nil {
+				continue
+			}
+
+			udpAddr := net.UDPAddr{
+				Port: port,
+				IP:   ip,
+			}
+
+			udpConn, err := net.ListenUDP("udp4", &udpAddr)
+			if err != nil {
+				return err
+			}
+
+			udpConn.Close()
+			return nil
+
+		}
+	}
+
+	return nil
 }

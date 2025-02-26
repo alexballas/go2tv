@@ -71,7 +71,7 @@ Since the repo provides a [Dockerfile](./Dockerfile), you can build a Go2TV Dock
 ``` console
 $ docker build --force-rm [--pull] -t go2tv github.com/alexballas/go2tv#main
 ```
-Notice the branch name after the `#`, as the above will build `main`. You can also build `devel` if you want to build the latest code. Usage under Docker is outside this document's scope, check Docker docs for more information, specially volume mounts and networking. [x11docker](https://github.com/mviereck/x11docker) might come handy to run GUI mode, although it's not tested, since main Docker usage is CLI.
+Notice the branch name after the `#`, as the above will build `main`. You can also build `devel` if you want to build the latest code. Usage under Docker is outside this document's scope, check Docker docs for more information, specially volume mounts and networking.
 
 **Running using Docker**
 
@@ -92,6 +92,10 @@ Go2TV supports live video transcoding, if ffmpeg is installed. When transcoding,
 **MKV/MP4 Subtitle Selection Support (ffmpeg required)**
 
 Go2TV also supports selecting subtitles for video files that have embedded subtitle tracks. This functionality requires ffmpeg to be installed. You can choose the desired subtitle track when casting your media files, enhancing your viewing experience on UPnP/DLNA Media Renderers and Smart TVs.
+
+**SSDP Listen Port Range (for firewall configurations)**
+
+Go2TV now binds the SSDP listener to a port within the fixed range 1900-2000, instead of relying on the system's automatic port assignment. The application will automatically select the first available port from this range. If you are running Go2TV behind a firewall, ensure that inbound UDP traffic is allowed on ports 1900-2000 to enable proper SSDP discovery and device communication.
 
 **MacOS potential issues**
 

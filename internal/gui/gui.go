@@ -265,7 +265,7 @@ func initFyneNewScreen(version string) *FyneScreen {
 		lang.AddTranslationsFS(translations, "translations")
 	}
 
-	go2tv.SetIcon(fyne.NewStaticResource("icon", go2TVIcon510))
+	go2tv.SetIcon(fyne.NewStaticResource("icon", go2TVIcon512))
 
 	w := go2tv.NewWindow("Go2TV")
 	currentDir, err := os.Getwd()

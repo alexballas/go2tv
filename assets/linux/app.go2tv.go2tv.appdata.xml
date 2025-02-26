@@ -4,7 +4,7 @@
 
   <name>Go2TV</name>
   <developer_name>Alexandros Ballas</developer_name>
-  <summary>Cast media files to UPnP/DLNA Media Renderers and Smart TVs</summary>
+  <summary>Stream media to TVs and devices</summary>
 
   <metadata_license>MIT</metadata_license>
   <project_license>MIT</project_license>
@@ -28,6 +28,10 @@
       <image>https://raw.githubusercontent.com/alexballas/go2tv/devel/assets/screenshots/Screenshot_dark.png</image>
       <caption>Main window (dark mode)</caption>
     </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/alexballas/go2tv/devel/assets/screenshots/Screenshot_settings_dark.png</image>
+      <caption>Settings window (dark mode)</caption>
+    </screenshot>
   </screenshots>
 
   <url type="bugtracker">https://github.com/alexballas/go2tv/issues</url>
@@ -37,7 +41,20 @@
 
   <content_rating type="oars-1.1"/>
 
+  <branding>
+    <color type="primary" scheme_preference="light">#eadaffff</color>
+    <color type="primary" scheme_preference="dark">#d8bdffff</color>
+  </branding>
+
   <releases>
+      <release version="1.18.1" date="2025-01-02" type="stable">
+      <description>
+        <ul>
+          <li>Fix broken device detection on Windows 11.</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/alexballas/go2tv/releases/tag/v1.18.1</url>
+    </release>
     <release version="1.18.0" date="2025-01-02" type="stable">
       <description>
         <ul>
