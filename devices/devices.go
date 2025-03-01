@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"runtime"
 	"sort"
 
 	"github.com/alexballas/go-ssdp"
@@ -46,7 +47,7 @@ func LoadSSDPservices(delay int) (map[string]string, error) {
 	}
 
 	var addrString string
-	if address != nil {
+	if address != nil && runtime.GOOS != "android" {
 		addrString = address.String()
 	}
 
