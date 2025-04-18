@@ -6,7 +6,6 @@ package gui
 import (
 	"os/exec"
 	"path/filepath"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -185,8 +184,7 @@ func saveDebugLogs(f fyne.URIWriteCloser, s *FyneScreen) {
 }
 
 func parseTheme(t string) {
-	go func() {
-		time.Sleep(10 * time.Millisecond)
+	go fyne.DoAndWait(func() {
 		switch t {
 		case lang.L("Light"):
 			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Light"})
@@ -198,7 +196,7 @@ func parseTheme(t string) {
 			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"System Default"})
 			fyne.CurrentApp().Preferences().SetString("Theme", "System Default")
 		}
-	}()
+	})
 }
 
 func parseLanguage(s *FyneScreen) func(string) {

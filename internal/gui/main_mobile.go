@@ -40,7 +40,9 @@ func newDeviceList(dd *[]devType) *deviceList {
 	}
 
 	list.UpdateItem = func(i widget.ListItemID, o fyne.CanvasObject) {
-		o.(*fyne.Container).Objects[1].(*widget.Label).SetText((*dd)[i].name)
+		fyne.Do(func() {
+			o.(*fyne.Container).Objects[1].(*widget.Label).SetText((*dd)[i].name)
+		})
 	}
 
 	list.ExtendBaseWidget(list)
@@ -52,6 +54,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	var data []devType
 	list := newDeviceList(&data)
 
+	// Avoid parallel execution of getDevices.
+	blockGetDevices := make(chan struct{})
 	go func() {
 		var err error
 		data, err = getDevices(1)
@@ -63,50 +67,69 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			return (data)[i].name < (data)[j].name
 		})
 
-		list.Refresh()
+		fyne.Do(func() {
+			list.Refresh()
+		})
+
+		blockGetDevices <- struct{}{}
+
 	}()
 
 	mfiletext := widget.NewEntry()
 	sfiletext := widget.NewEntry()
 
 	mfile := widget.NewButton(lang.L("Select Media File"), func() {
-		go mediaAction(s)
+		mediaAction(s)
 	})
 
 	mfiletext.Disable()
 
 	sfile := widget.NewButton(lang.L("Select Subtitles File"), func() {
-		go subsAction(s)
+		subsAction(s)
 	})
 
 	sfiletext.Disable()
 
 	playpause := widget.NewButtonWithIcon(lang.L("Play"), theme.MediaPlayIcon(), func() {
-		go playAction(s)
+		go fyne.Do(func() {
+			playAction(s)
+		})
 	})
 
 	stop := widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
-		go stopAction(s)
+		go fyne.Do(func() {
+			stopAction(s)
+		})
 	})
 
 	volumeup := widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
-		go volumeAction(s, true)
+		go fyne.Do(func() {
+			volumeAction(s, true)
+		})
 	})
 
 	muteunmute := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() {
-		go muteAction(s)
+		go fyne.Do(func() {
+			muteAction(s)
+		})
 	})
 
 	volumedown := widget.NewButtonWithIcon("", theme.ContentRemoveIcon(), func() {
-		go volumeAction(s, false)
+		go fyne.Do(func() {
+			volumeAction(s, false)
+		})
 	})
 
 	clearmedia := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		go clearmediaAction(s)
+		go fyne.Do(func() {
+			clearmediaAction(s)
+		})
 	})
 
 	clearsubs := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		go clearsubsAction(s)
+		go fyne.Do(func() {
+			clearsubsAction(s)
+		})
 	})
 
 	externalmedia := widget.NewCheck(lang.L("Media from URL"), func(b bool) {})
@@ -196,7 +219,10 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	}
 
 	// Device list auto-refresh
-	go refreshDevList(s, &data)
+	go func() {
+		<-blockGetDevices
+		refreshDevList(s, &data)
+	}()
 
 	// Check mute status for selected device
 	go checkMutefunc(s)
@@ -266,7 +292,9 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 			s.DeviceList.UnselectAll()
 		}
 
-		s.DeviceList.Refresh()
+		fyne.Do(func() {
+			s.DeviceList.Refresh()
+		})
 	}
 }
 

@@ -22,7 +22,7 @@ jobs:
       run: sudo apt update && sudo apt install xorg-dev
 
     - name: Package (Linux)
-      run: GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o go2tv cmd/go2tv/go2tv.go
+      run: GOOS=linux GOARCH=amd64 go build -tags migrated_fynedo -ldflags "-s -w" -o go2tv cmd/go2tv/go2tv.go
 
     - uses: actions/upload-artifact@v4
       with:

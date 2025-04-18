@@ -162,26 +162,33 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 		screen.cancelEnablePlay()
 	}
 
-	screen.PlayPause.Enable()
+	fyne.Do(func() {
+		screen.PlayPause.Enable()
+	})
+
 	switch s {
 	case "Play":
 		screen.PlayPause.Text = lang.L("Play")
 		screen.PlayPause.Icon = theme.MediaPlayIcon()
-		screen.PlayPause.Refresh()
 	case "Pause":
 		screen.PlayPause.Text = lang.L("Pause")
 		screen.PlayPause.Icon = theme.MediaPauseIcon()
-		screen.PlayPause.Refresh()
 	}
+
+	fyne.Do(func() {
+		screen.PlayPause.Refresh()
+	})
 }
 
 func setMuteUnmuteView(s string, screen *FyneScreen) {
 	switch s {
 	case "Mute":
 		screen.MuteUnmute.Icon = theme.VolumeUpIcon()
-		screen.MuteUnmute.Refresh()
 	case "Unmute":
 		screen.MuteUnmute.Icon = theme.VolumeMuteIcon()
-		screen.MuteUnmute.Refresh()
 	}
+
+	fyne.Do(func() {
+		screen.MuteUnmute.Refresh()
+	})
 }
