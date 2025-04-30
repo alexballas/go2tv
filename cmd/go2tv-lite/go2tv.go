@@ -62,7 +62,7 @@ func main() {
 
 func run() error {
 	var absMediaFile, mediaType string
-	var mediaFile interface{}
+	var mediaFile any
 	var isSeek bool
 	var s *httphandlers.HTTPserver
 

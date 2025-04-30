@@ -94,7 +94,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	debugText := widget.NewLabel(lang.L("Debug"))
 	debugExport := widget.NewButton(lang.L("Export Debug Logs"), func() {
 		var itemInRing bool
-		s.Debug.ring.Do(func(p interface{}) {
+		s.Debug.ring.Do(func(p any) {
 			if p != nil {
 				itemInRing = true
 			}
@@ -172,7 +172,7 @@ func saveDebugLogs(f fyne.URIWriteCloser, s *FyneScreen) {
 	w := s.Current
 	defer f.Close()
 
-	s.Debug.ring.Do(func(p interface{}) {
+	s.Debug.ring.Do(func(p any) {
 		if p != nil {
 			_, err := f.Write([]byte(p.(string)))
 			if err != nil {

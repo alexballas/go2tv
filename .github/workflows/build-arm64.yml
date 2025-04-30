@@ -15,7 +15,7 @@ jobs:
       with:
         copy_repository_path: /go2tv_dir
         copy_artifact_path: go2tv
-        image_additional_mb: 800
+        image_additional_mb: 4096
         base_image: raspios_lite_arm64:latest
         commands: |
             cd /

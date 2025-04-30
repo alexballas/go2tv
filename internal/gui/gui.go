@@ -145,7 +145,9 @@ func Start(ctx context.Context, s *FyneScreen) {
 			if s.ffmpegPathChanged {
 				furi, err := storage.ParseURI("file://" + s.mediafile)
 				if err == nil {
-					go selectMediaFile(s, furi)
+					go fyne.Do(func() {
+						selectMediaFile(s, furi)
+					})
 				}
 				s.ffmpegPathChanged = false
 			}

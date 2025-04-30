@@ -634,19 +634,25 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 
 		if !includes && !utils.HostPortIsAlive(u.Host) {
 			s.controlURL = ""
-			s.DeviceList.UnselectAll()
+			fyne.Do(func() {
+				s.DeviceList.UnselectAll()
+			})
 		}
 
 		var found bool
 		for n, a := range *data {
 			if s.selectedDevice.addr == a.addr {
 				found = true
-				s.DeviceList.Select(n)
+				fyne.Do(func() {
+					s.DeviceList.Select(n)
+				})
 			}
 		}
 
 		if !found {
-			s.DeviceList.UnselectAll()
+			fyne.Do(func() {
+				s.DeviceList.UnselectAll()
+			})
 		}
 
 		fyne.Do(func() {

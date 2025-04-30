@@ -28,7 +28,7 @@ type HTTPserver struct {
 	ffmpeg   *exec.Cmd
 	handlers map[string]struct {
 		payload *soapcalls.TVPayload
-		media   interface{}
+		media   any
 	}
 	mu sync.Mutex
 }
@@ -51,11 +51,11 @@ type osFileType struct {
 
 // AddHandler dynamically adds a new handler. Currently used by the gapless playback logic where we use
 // the same server to serve multiple media files.
-func (s *HTTPserver) AddHandler(path string, payload *soapcalls.TVPayload, media interface{}) {
+func (s *HTTPserver) AddHandler(path string, payload *soapcalls.TVPayload, media any) {
 	s.mu.Lock()
 	s.handlers[path] = struct {
 		payload *soapcalls.TVPayload
-		media   interface{}
+		media   any
 	}{payload: payload, media: media}
 	s.mu.Unlock()
 }
@@ -69,7 +69,7 @@ func (s *HTTPserver) RemoveHandler(path string) {
 
 // StartServer will start a HTTP server to serve the selected media files and
 // also handle the subscriptions requests from the DMR devices.
-func (s *HTTPserver) StartServer(serverStarted chan<- error, media, subtitles interface{},
+func (s *HTTPserver) StartServer(serverStarted chan<- error, media, subtitles any,
 	tvpayload *soapcalls.TVPayload, screen Screen,
 ) {
 	mURL, err := url.Parse(tvpayload.MediaURL)
@@ -226,18 +226,20 @@ func NewServer(a string) *HTTPserver {
 		ffmpeg: new(exec.Cmd),
 		handlers: make(map[string]struct {
 			payload *soapcalls.TVPayload
-			media   interface{}
+			media   any
 		}),
 	}
 
 	return &srv
 }
 
-func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, mf interface{}, ff *exec.Cmd) {
-	var isMedia bool
-	var transcode bool
-	var seek bool
-	var mediaType string
+func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, mf any, ff *exec.Cmd) {
+	var (
+		isMedia   bool
+		transcode bool
+		seek      bool
+		mediaType string
+	)
 
 	if tv != nil {
 		isMedia = true
@@ -328,7 +330,7 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcall
 	if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "video") {
 		// Since we're dealing with an io.Reader we can't
 		// allow any HEAD requests that some DMRs trigger.
-		var input interface{} = f.file
+		var input any = f.file
 		// The only case where we should expect f.path to be ""
 		// is only during our unit tests where we emulate the files.
 		if f.path != "" {
