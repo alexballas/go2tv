@@ -42,6 +42,8 @@ func ServeTranscodedStream(w io.Writer, input any, ff *exec.Cmd, ffmpegPath, sub
 		}
 	}
 
+	vf = "scale='min(1920,iw)':min'(1080,ih)':force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2," + vf
+
 	cmd := exec.Command(
 		ffmpegPath,
 		"-re",
