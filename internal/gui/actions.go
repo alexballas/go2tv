@@ -188,7 +188,9 @@ func subsAction(screen *FyneScreen) {
 func playAction(screen *FyneScreen) {
 	var mediaFile any
 
-	screen.PlayPause.Disable()
+	fyne.Do(func() {
+		screen.PlayPause.Disable()
+	})
 
 	if screen.cancelEnablePlay != nil {
 		screen.cancelEnablePlay()

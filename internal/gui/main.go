@@ -351,8 +351,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		if !r.Allow() {
 			return
 		}
-		fyne.Do(func() {
-			go previewmedia(s)
+		go fyne.Do(func() {
+			previewmedia(s)
 		})
 	})
 
