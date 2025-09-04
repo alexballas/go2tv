@@ -666,8 +666,7 @@ func checkMutefunc(s *FyneScreen) {
 
 	var checkMuteCounter int
 	for range checkMute.C {
-		// Stop trying after 5 failures
-		// to get the mute status
+		// Stop trying to get the mute status after 5 failures.
 		if checkMuteCounter == 5 {
 			s.renderingControlURL = ""
 			checkMuteCounter = 0

@@ -983,26 +983,19 @@ func (p *TVPayload) GetProtocolInfo() error {
 		p.ctx = context.Background()
 	}
 
-	parsedConnectionManagerURL, err := url.Parse(p.ConnectionManagerURL)
-	if err != nil {
-		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "URL Parse").Err(err).Msg("")
-		return fmt.Errorf("GetProtocolInfo parse error: %w", err)
-	}
-
-	var xmlbuilder []byte
-
-	xmlbuilder, err = getProtocolInfoSoapBuild()
+	xmlbuilder, err := getProtocolInfoSoapBuild()
 	if err != nil {
 		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "Build").Err(err).Msg("")
 		return fmt.Errorf("GetProtocolInfo build error: %w", err)
 	}
 
 	client := &http.Client{}
-	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedConnectionManagerURL.String(), bytes.NewReader(xmlbuilder))
+	req, err := http.NewRequestWithContext(p.ctx, "POST", p.ConnectionManagerURL, bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "Prepare POST").Err(err).Msg("")
-		return fmt.Errorf("GetProtocolInfo POST error: %w", err)
+		return fmt.Errorf("GetProtocolInfo prepare POST error: %w", err)
 	}
+
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:ConnectionManager:1#GetProtocolInfo"`},
 		"content-type": []string{"text/xml"},
@@ -1012,8 +1005,8 @@ func (p *TVPayload) GetProtocolInfo() error {
 
 	headerBytesReq, err := json.Marshal(req.Header)
 	if err != nil {
-		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "Header Marshaling").Err(err).Msg("")
-		return fmt.Errorf("GetProtocolInfo Request Marshaling error: %w", err)
+		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "Header Marshaling failed <ignoring>").Err(err).Msg("")
+		return nil
 	}
 
 	p.Log().Debug().
@@ -1023,20 +1016,21 @@ func (p *TVPayload) GetProtocolInfo() error {
 
 	res, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("GetProtocolInfo Do POST error: %w", err)
+		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "Do POST failed <ignoring>").Err(err).Msg("")
+		return nil
 	}
 	defer res.Body.Close()
 
 	headerBytesRes, err := json.Marshal(res.Header)
 	if err != nil {
-		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "Header Marshaling #2").Err(err).Msg("")
-		return fmt.Errorf("GetProtocolInfo Response Marshaling error: %w", err)
+		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "Header Marshaling #2 failed <ignoring>").Err(err).Msg("")
+		return nil
 	}
 
 	resBytes, err := io.ReadAll(res.Body)
 	if err != nil {
-		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "Readall").Err(err).Msg("")
-		return fmt.Errorf("GetProtocolInfo Failed to read response: %w", err)
+		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "Readall failed <ignoring>").Err(err).Msg("")
+		return nil
 	}
 
 	p.Log().Debug().
