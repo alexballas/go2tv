@@ -53,7 +53,9 @@ MIT
 		}()
 	})
 	checkversion := widget.NewButton(lang.L("Check version"), func() {
-		go checkVersion(s)
+		go fyne.Do(func() {
+			checkVersion(s)
+		})
 	})
 
 	s.CheckVersion = checkversion

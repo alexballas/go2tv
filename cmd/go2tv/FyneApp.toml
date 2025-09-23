@@ -3,6 +3,9 @@ Website = "https://go2tv.app"
 [Details]
   Icon = "assets/go2tv-icon-desktop-512.png"
   Name = "go2tv"
-  ID = "com.go2tv.go2tv"
-  Version = "1.18.0"
+  ID = "app.go2tv.go2tv"
+  Version = "1.18.1"
   Build = 1
+
+[Migrations]
+  fyneDo = true

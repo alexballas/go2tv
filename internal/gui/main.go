@@ -51,7 +51,9 @@ func newDeviceList(dd *[]devType) *deviceList {
 	}
 
 	list.UpdateItem = func(i widget.ListItemID, o fyne.CanvasObject) {
-		o.(*fyne.Container).Objects[1].(*widget.Label).SetText((*dd)[i].name)
+		fyne.Do(func() {
+			o.(*fyne.Container).Objects[1].(*widget.Label).SetText((*dd)[i].name)
+		})
 	}
 
 	list.ExtendBaseWidget(list)
@@ -267,7 +269,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			return (data)[i].name < (data)[j].name
 		})
 
-		list.Refresh()
+		fyne.Do(func() {
+			list.Refresh()
+		})
 
 		blockGetDevices <- struct{}{}
 	}()
@@ -276,48 +280,64 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	sfiletext := widget.NewEntry()
 
 	mfile := widget.NewButton(lang.L("Select Media File"), func() {
-		go mediaAction(s)
+		mediaAction(s)
 	})
 
 	mfiletext.Disable()
 
 	sfile := widget.NewButton(lang.L("Select Subtitles File"), func() {
-		go subsAction(s)
+		subsAction(s)
 	})
 
 	sfile.Disable()
 	sfiletext.Disable()
 
 	playpause := widget.NewButtonWithIcon(lang.L("Play"), theme.MediaPlayIcon(), func() {
-		go playAction(s)
+		go fyne.Do(func() {
+			playAction(s)
+		})
 	})
 
 	stop := widget.NewButtonWithIcon(lang.L("Stop"), theme.MediaStopIcon(), func() {
-		go stopAction(s)
+		go fyne.Do(func() {
+			stopAction(s)
+		})
 	})
 
 	volumeup := widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
-		go volumeAction(s, true)
+		go fyne.Do(func() {
+			volumeAction(s, true)
+		})
 	})
 
 	muteunmute := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() {
-		go muteAction(s)
+		go fyne.Do(func() {
+			muteAction(s)
+		})
 	})
 
 	volumedown := widget.NewButtonWithIcon("", theme.ContentRemoveIcon(), func() {
-		go volumeAction(s, false)
+		go fyne.Do(func() {
+			volumeAction(s, false)
+		})
 	})
 
 	clearmedia := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		go clearmediaAction(s)
+		go fyne.Do(func() {
+			clearmediaAction(s)
+		})
 	})
 
 	clearsubs := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		go clearsubsAction(s)
+		go fyne.Do(func() {
+			clearsubsAction(s)
+		})
 	})
 
 	skipNext := widget.NewButtonWithIcon("", theme.MediaSkipNextIcon(), func() {
-		go skipNextAction(s)
+		go fyne.Do(func() {
+			skipNextAction(s)
+		})
 	})
 	sliderBar := newTappableSlider(s)
 
@@ -331,7 +351,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		if !r.Allow() {
 			return
 		}
-		go previewmedia(s)
+		go fyne.Do(func() {
+			previewmedia(s)
+		})
 	})
 
 	sfilecheck := widget.NewCheck(lang.L("Manual Subtitles"), func(b bool) {})
@@ -612,22 +634,30 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 
 		if !includes && !utils.HostPortIsAlive(u.Host) {
 			s.controlURL = ""
-			s.DeviceList.UnselectAll()
+			fyne.Do(func() {
+				s.DeviceList.UnselectAll()
+			})
 		}
 
 		var found bool
 		for n, a := range *data {
 			if s.selectedDevice.addr == a.addr {
 				found = true
-				s.DeviceList.Select(n)
+				fyne.Do(func() {
+					s.DeviceList.Select(n)
+				})
 			}
 		}
 
 		if !found {
-			s.DeviceList.UnselectAll()
+			fyne.Do(func() {
+				s.DeviceList.UnselectAll()
+			})
 		}
 
-		s.DeviceList.Refresh()
+		fyne.Do(func() {
+			s.DeviceList.Refresh()
+		})
 	}
 }
 
@@ -636,8 +666,7 @@ func checkMutefunc(s *FyneScreen) {
 
 	var checkMuteCounter int
 	for range checkMute.C {
-		// Stop trying after 5 failures
-		// to get the mute status
+		// Stop trying to get the mute status after 5 failures.
 		if checkMuteCounter == 5 {
 			s.renderingControlURL = ""
 			checkMuteCounter = 0
@@ -677,9 +706,11 @@ func sliderUpdate(s *FyneScreen) {
 		}
 
 		if (s.State == "Stopped" || s.State == "") && s.ffmpegSeek == 0 {
-			s.SlideBar.Slider.SetValue(0)
-			s.CurrentPos.Set("00:00:00")
-			s.EndPos.Set("00:00:00")
+			fyne.Do(func() {
+				s.SlideBar.Slider.SetValue(0)
+				s.CurrentPos.Set("00:00:00")
+				s.EndPos.Set("00:00:00")
+			})
 		}
 
 		if s.State == "Playing" {
@@ -705,11 +736,15 @@ func sliderUpdate(s *FyneScreen) {
 				current += s.tvdata.FFmpegSeek
 			}
 
-			s.ffmpegSeek = 0
+			fyne.Do(func() {
+				s.ffmpegSeek = 0
+			})
 
 			valueToSet := float64(current) * s.SlideBar.Max / float64(total)
 			if !math.IsNaN(valueToSet) {
-				s.SlideBar.SetValue(valueToSet)
+				fyne.Do(func() {
+					s.SlideBar.SetValue(valueToSet)
+				})
 
 				end, err := utils.FormatClockTime(getPos[0])
 				if err != nil {

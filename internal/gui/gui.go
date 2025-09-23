@@ -145,7 +145,9 @@ func Start(ctx context.Context, s *FyneScreen) {
 			if s.ffmpegPathChanged {
 				furi, err := storage.ParseURI("file://" + s.mediafile)
 				if err == nil {
-					go selectMediaFile(s, furi)
+					go fyne.Do(func() {
+						selectMediaFile(s, furi)
+					})
 				}
 				s.ffmpegPathChanged = false
 			}
@@ -232,7 +234,9 @@ func (p *FyneScreen) Fini() {
 
 	if p.NextMediaCheck.Checked && gaplessOption == "Disabled" {
 		p.MediaText.Text, p.mediafile = getNextMedia(p)
-		p.MediaText.Refresh()
+		fyne.Do(func() {
+			p.MediaText.Refresh()
+		})
 
 		if !p.CustomSubsCheck.Checked {
 			autoSelectNextSubs(p.mediafile, p)
@@ -371,7 +375,9 @@ func autoSelectNextSubs(v string, screen *FyneScreen) {
 	name, path := getNextPossibleSubs(v)
 	screen.SubsText.Text = name
 	screen.subsfile = path
-	screen.SubsText.Refresh()
+	fyne.Do(func() {
+		screen.SubsText.Refresh()
+	})
 }
 
 func getNextPossibleSubs(v string) (string, string) {
@@ -393,28 +399,35 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 		screen.cancelEnablePlay()
 	}
 
-	screen.PlayPause.Enable()
+	fyne.Do(func() {
+		screen.PlayPause.Enable()
+	})
+
 	switch s {
 	case "Play":
 		screen.PlayPause.Text = lang.L("Play")
 		screen.PlayPause.Icon = theme.MediaPlayIcon()
-		screen.PlayPause.Refresh()
 	case "Pause":
 		screen.PlayPause.Text = lang.L("Pause")
 		screen.PlayPause.Icon = theme.MediaPauseIcon()
-		screen.PlayPause.Refresh()
 	}
+
+	fyne.Do(func() {
+		screen.PlayPause.Refresh()
+	})
 }
 
 func setMuteUnmuteView(s string, screen *FyneScreen) {
 	switch s {
 	case "Mute":
 		screen.MuteUnmute.Icon = theme.VolumeUpIcon()
-		screen.MuteUnmute.Refresh()
 	case "Unmute":
 		screen.MuteUnmute.Icon = theme.VolumeMuteIcon()
-		screen.MuteUnmute.Refresh()
 	}
+
+	fyne.Do(func() {
+		screen.MuteUnmute.Refresh()
+	})
 }
 
 // updateScreenState updates the screen state based on

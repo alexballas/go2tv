@@ -6,7 +6,6 @@ package gui
 import (
 	"os/exec"
 	"path/filepath"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -95,7 +94,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	debugText := widget.NewLabel(lang.L("Debug"))
 	debugExport := widget.NewButton(lang.L("Export Debug Logs"), func() {
 		var itemInRing bool
-		s.Debug.ring.Do(func(p interface{}) {
+		s.Debug.ring.Do(func(p any) {
 			if p != nil {
 				itemInRing = true
 			}
@@ -173,7 +172,7 @@ func saveDebugLogs(f fyne.URIWriteCloser, s *FyneScreen) {
 	w := s.Current
 	defer f.Close()
 
-	s.Debug.ring.Do(func(p interface{}) {
+	s.Debug.ring.Do(func(p any) {
 		if p != nil {
 			_, err := f.Write([]byte(p.(string)))
 			if err != nil {
@@ -185,8 +184,7 @@ func saveDebugLogs(f fyne.URIWriteCloser, s *FyneScreen) {
 }
 
 func parseTheme(t string) {
-	go func() {
-		time.Sleep(10 * time.Millisecond)
+	go fyne.DoAndWait(func() {
 		switch t {
 		case lang.L("Light"):
 			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Light"})
@@ -198,7 +196,7 @@ func parseTheme(t string) {
 			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"System Default"})
 			fyne.CurrentApp().Preferences().SetString("Theme", "System Default")
 		}
-	}()
+	})
 }
 
 func parseLanguage(s *FyneScreen) func(string) {

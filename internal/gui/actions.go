@@ -186,9 +186,11 @@ func subsAction(screen *FyneScreen) {
 }
 
 func playAction(screen *FyneScreen) {
-	var mediaFile interface{}
+	var mediaFile any
 
-	screen.PlayPause.Disable()
+	fyne.Do(func() {
+		screen.PlayPause.Disable()
+	})
 
 	if screen.cancelEnablePlay != nil {
 		screen.cancelEnablePlay()
@@ -471,7 +473,9 @@ out:
 					screen.httpserver.RemoveHandler(sPath.Path)
 
 					screen.MediaText.Text, screen.mediafile = getNextMedia(screen)
-					screen.MediaText.Refresh()
+					fyne.Do(func() {
+						screen.MediaText.Refresh()
+					})
 
 					if !screen.CustomSubsCheck.Checked {
 						autoSelectNextSubs(screen.mediafile, screen)
@@ -683,7 +687,7 @@ func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 		isSeek = true
 	}
 
-	var mediaFile interface{} = fpath
+	var mediaFile any = fpath
 	oldMediaURL, err := url.Parse(screen.tvdata.MediaURL)
 	if err != nil {
 		return nil, err

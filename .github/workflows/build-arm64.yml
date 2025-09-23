@@ -3,7 +3,7 @@ on: [push]
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v3
 
@@ -15,7 +15,7 @@ jobs:
       with:
         copy_repository_path: /go2tv_dir
         copy_artifact_path: go2tv
-        image_additional_mb: 800
+        image_additional_mb: 4096
         base_image: raspios_lite_arm64:latest
         commands: |
             cd /
@@ -27,7 +27,7 @@ jobs:
             rm go1.23.4.linux-arm64.tar.gz
             export GOROOT=/go
             cd /go2tv_dir
-            /go/bin/go build -ldflags "-s -w" -o go2tv cmd/go2tv/go2tv.go
+            /go/bin/go build -tags migrated_fynedo -ldflags "-s -w" -o go2tv cmd/go2tv/go2tv.go
 
     - uses: actions/upload-artifact@v4
       with:
