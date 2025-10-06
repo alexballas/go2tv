@@ -58,5 +58,7 @@
     "Folder": "Folder",
     "System Default": "System Default",
     "Enabled": "Enabled",
-    "Disabled": "Disabled"
+    "Disabled": "Disabled",
+    "Auto-Play":"Auto-Play",
+    "Same File Types Only":"Same File Types Only"
 }

@@ -254,6 +254,10 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		if k.Name == "Next" {
 			s.VolumeDown.Tapped(fynePE)
 		}
+
+		if k.Name == "N" {
+			s.SkipNextButton.Tapped(fynePE)
+		}
 	})
 
 	// Avoid parallel execution of getDevices.
@@ -395,6 +399,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.VolumeUp = volumeup
 	s.VolumeDown = volumedown
 	s.NextMediaCheck = nextmedia
+	s.SkipNextButton = skipNext
 	s.SlideBar = sliderBar
 	s.CurrentPos = curPos
 	s.EndPos = endPos

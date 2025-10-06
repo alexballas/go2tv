@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -29,54 +30,59 @@ import (
 
 // FyneScreen .
 type FyneScreen struct {
-	tempFiles            []string
-	SelectInternalSubs   *widget.Select
-	CurrentPos           binding.String
-	EndPos               binding.String
-	serverStopCTX        context.Context
-	Current              fyne.Window
-	cancelEnablePlay     context.CancelFunc
-	PlayPause            *widget.Button
-	Debug                *debugWriter
-	VolumeUp             *widget.Button
-	tvdata               *soapcalls.TVPayload
-	tabs                 *container.AppTabs
-	CheckVersion         *widget.Button
-	SubsText             *widget.Entry
-	CustomSubsCheck      *widget.Check
-	NextMediaCheck       *widget.Check
-	TranscodeCheckBox    *widget.Check
-	Stop                 *widget.Button
-	DeviceList           *deviceList
-	httpserver           *httphandlers.HTTPserver
-	MediaText            *widget.Entry
-	ExternalMediaURL     *widget.Check
-	GaplessMediaWatcher  func(context.Context, *FyneScreen, *soapcalls.TVPayload)
-	SlideBar             *tappedSlider
-	MuteUnmute           *widget.Button
-	VolumeDown           *widget.Button
-	selectedDevice       devType
-	State                string
-	mediafile            string
-	version              string
-	eventlURL            string
-	subsfile             string
-	controlURL           string
-	renderingControlURL  string
-	connectionManagerURL string
-	currentmfolder       string
-	ffmpegPath           string
-	ffmpegSeek           int
-	systemTheme          fyne.ThemeVariant
-	mediaFormats         []string
-	muError              sync.RWMutex
-	mu                   sync.RWMutex
-	ffmpegPathChanged    bool
-	Medialoop            bool
-	sliderActive         bool
-	Transcode            bool
-	ErrorVisible         bool
-	Hotkeys              bool
+	tempFiles             []string
+	SelectInternalSubs    *widget.Select
+	CurrentPos            binding.String
+	EndPos                binding.String
+	serverStopCTX         context.Context
+	Current               fyne.Window
+	cancelEnablePlay      context.CancelFunc
+	PlayPause             *widget.Button
+	Debug                 *debugWriter
+	VolumeUp              *widget.Button
+	SkipNextButton        *widget.Button
+	tvdata                *soapcalls.TVPayload
+	tabs                  *container.AppTabs
+	CheckVersion          *widget.Button
+	SubsText              *widget.Entry
+	CustomSubsCheck       *widget.Check
+	NextMediaCheck        *widget.Check
+	TranscodeCheckBox     *widget.Check
+	Stop                  *widget.Button
+	DeviceList            *deviceList
+	httpserver            *httphandlers.HTTPserver
+	MediaText             *widget.Entry
+	ExternalMediaURL      *widget.Check
+	SkinNextOnlySameTypes bool
+	GaplessMediaWatcher   func(context.Context, *FyneScreen, *soapcalls.TVPayload)
+	SlideBar              *tappedSlider
+	MuteUnmute            *widget.Button
+	VolumeDown            *widget.Button
+	selectedDevice        devType
+	State                 string
+	mediafile             string
+	version               string
+	eventlURL             string
+	subsfile              string
+	controlURL            string
+	renderingControlURL   string
+	connectionManagerURL  string
+	currentmfolder        string
+	ffmpegPath            string
+	ffmpegSeek            int
+	systemTheme           fyne.ThemeVariant
+	mediaFormats          []string
+	audioFormats          []string
+	videoFormats          []string
+	imageFormats          []string
+	muError               sync.RWMutex
+	mu                    sync.RWMutex
+	ffmpegPathChanged     bool
+	Medialoop             bool
+	sliderActive          bool
+	Transcode             bool
+	ErrorVisible          bool
+	Hotkeys               bool
 }
 
 type debugWriter struct {
@@ -285,6 +291,9 @@ func initFyneNewScreen(version string) *FyneScreen {
 		Current:        w,
 		currentmfolder: currentDir,
 		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".m4a", ".jpg", ".jpeg", ".png"},
+		imageFormats:   []string{".jpg", ".jpeg", ".png"},
+		videoFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv"},
+		audioFormats:   []string{".mp3", ".flac", ".wav", ".m4a"},
 		version:        version,
 		Debug:          dw,
 	}
@@ -310,65 +319,39 @@ func getNextMedia(screen *FyneScreen) (string, string) {
 	filelist, err := os.ReadDir(filedir)
 	check(screen, err)
 
-	var (
-		breaknext                    bool
-		totalMedia, counter          int
-		firstMedia, resName, resPath string
-	)
-
-	for _, f := range filelist {
-		isMedia := false
-		for _, vext := range screen.mediaFormats {
-			if filepath.Ext(filepath.Join(filedir, f.Name())) == vext {
-				if firstMedia == "" {
-					firstMedia = f.Name()
-				}
-				isMedia = true
-				break
-			}
+	files := make([]string, 0)
+	getType := func(s string) string {
+		switch {
+		case slices.Contains(screen.imageFormats, filepath.Ext(s)):
+			return "image"
+		case slices.Contains(screen.videoFormats, filepath.Ext(s)):
+			return "video"
+		case slices.Contains(screen.audioFormats, filepath.Ext(s)):
+			return "audio"
 		}
-
-		if !isMedia {
-			continue
-		}
-
-		totalMedia++
+		return ""
 	}
 
 	for _, f := range filelist {
-		isMedia := false
-		for _, vext := range screen.mediaFormats {
-			if filepath.Ext(filepath.Join(filedir, f.Name())) == vext {
-				isMedia = true
-				break
-			}
-		}
+		fullPath := filepath.Join(filedir, f.Name())
 
-		if !isMedia {
+		if !slices.Contains(screen.mediaFormats, filepath.Ext(fullPath)) {
 			continue
 		}
 
-		counter++
-
-		if f.Name() == filepath.Base(screen.mediafile) {
-			if totalMedia == counter {
-				// start over
-				resName = firstMedia
-				resPath = filepath.Join(filedir, firstMedia)
-			}
-
-			breaknext = true
+		if screen.SkinNextOnlySameTypes && getType(screen.mediafile) != getType(fullPath) {
 			continue
 		}
 
-		if breaknext {
-			resName = f.Name()
-			resPath = filepath.Join(filedir, f.Name())
-			break
-		}
+		files = append(files, f.Name())
 	}
 
-	return resName, resPath
+	idx := slices.Index(files, filepath.Base(screen.mediafile))
+	if idx+1 == len(files) {
+		return files[0], filepath.Join(filedir, files[0])
+	}
+
+	return files[idx+1], filepath.Join(filedir, files[idx+1])
 }
 
 func autoSelectNextSubs(v string, screen *FyneScreen) {

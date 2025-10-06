@@ -213,14 +213,14 @@ func playAction(screen *FyneScreen) {
 	}
 
 	if screen.mediafile != nil {
-		mediaURL, err := storage.OpenFileFromURI(screen.mediafile)
+		mediaURL, err := storage.Reader(screen.mediafile)
 		check(screen.Current, err)
 		if err != nil {
 			startAfreshPlayButton(screen)
 			return
 		}
 
-		mediaURLinfo, err := storage.OpenFileFromURI(screen.mediafile)
+		mediaURLinfo, err := storage.Reader(screen.mediafile)
 		check(screen.Current, err)
 		if err != nil {
 			startAfreshPlayButton(screen)
