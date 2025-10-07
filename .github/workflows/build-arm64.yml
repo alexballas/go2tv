@@ -1,33 +1,28 @@
-name: Build for ARMv8 (64-bit)
+name: Build for ARM64
 on: [push]
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-arm
+    strategy:
+      fail-fast: false
+
     steps:
     - uses: actions/checkout@v3
 
     - name: Set env
       run: if grep -Fxq "devel" cmd/go2tv/version.txt;then echo "GO2TV_VERSION=$(cat cmd/go2tv/version.txt)";else echo "GO2TV_VERSION=v$(cat cmd/go2tv/version.txt)";fi  >> $GITHUB_ENV
 
-    - uses: pguyot/arm-runner-action@v2
-      id: main_image
+    - uses: WillAbides/setup-go-faster@v1.14.0
+      id: setup-go-faster
       with:
-        copy_repository_path: /go2tv_dir
-        copy_artifact_path: go2tv
-        image_additional_mb: 4096
-        base_image: raspios_lite_arm64:latest
-        commands: |
-            cd /
-            sudo apt update
-            sudo apt install -y xorg-dev
-            sudo apt clean
-            wget -nv https://go.dev/dl/go1.23.4.linux-arm64.tar.gz
-            tar -xzf go1.23.4.linux-arm64.tar.gz
-            rm go1.23.4.linux-arm64.tar.gz
-            export GOROOT=/go
-            cd /go2tv_dir
-            /go/bin/go build -tags migrated_fynedo -ldflags "-s -w" -o go2tv cmd/go2tv/go2tv.go
+        go-version: "*"
+
+    - name: Get dependencies
+      run: sudo apt update && sudo apt install xorg-dev
+
+    - name: Package (Linux)
+      run: go build -tags migrated_fynedo -ldflags "-s -w" -o go2tv cmd/go2tv/go2tv.go
 
     - uses: actions/upload-artifact@v4
       with:
