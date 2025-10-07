@@ -13,7 +13,7 @@ jobs:
     - name: Set env
       run: if grep -Fxq "devel" cmd/go2tv/version.txt;then echo "GO2TV_VERSION=$(cat cmd/go2tv/version.txt)";else echo "GO2TV_VERSION=v$(cat cmd/go2tv/version.txt)";fi  >> $GITHUB_ENV
 
-    - uses: WillAbides/setup-go-faster@v1.11.0
+    - uses: WillAbides/setup-go-faster@v1.14.0
       id: setup-go-faster
       with:
         go-version: "*"
