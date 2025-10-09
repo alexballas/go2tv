@@ -247,7 +247,7 @@ func playAction(screen *FyneScreen) {
 	}
 
 	if screen.subsfile != nil {
-		subsFile, err = storage.OpenFileFromURI(screen.subsfile)
+		subsFile, err = storage.Reader(screen.subsfile)
 		check(screen.Current, err)
 		if err != nil {
 			startAfreshPlayButton(screen)
