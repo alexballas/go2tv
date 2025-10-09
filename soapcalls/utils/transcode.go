@@ -15,9 +15,18 @@ var (
 	ErrInvalidInput = errors.New("invalid ffmpeg input")
 )
 
+// SubtitleSize represents the subtitle size option
+type SubtitleSize int
+
+const (
+	SubtitleSizeSmall SubtitleSize = iota
+	SubtitleSizeMedium
+	SubtitleSizeLarge
+)
+
 // ServeTranscodedStream passes an input file or io.Reader to ffmpeg and writes the output directly
 // to our io.Writer.
-func ServeTranscodedStream(w io.Writer, input any, ff *exec.Cmd, ffmpegPath, subs string, seekSeconds int) error {
+func ServeTranscodedStream(w io.Writer, input any, ff *exec.Cmd, ffmpegPath, subs string, seekSeconds int, subSize SubtitleSize) error {
 	// Pipe streaming is not great as explained here
 	// https://video.stackexchange.com/questions/34087/ffmpeg-fails-on-pipe-to-pipe-video-decoding.
 	// That's why if we have the option to pass the file directly to ffmpeg, we should.
@@ -38,9 +47,20 @@ func ServeTranscodedStream(w io.Writer, input any, ff *exec.Cmd, ffmpegPath, sub
 	vf := "format=yuv420p"
 	charenc, err := getCharDet(subs)
 	if err == nil {
-		vf = fmt.Sprintf("subtitles='%s':charenc=%s,format=yuv420p", subs, charenc)
+		fontSize := 24
+		switch subSize {
+		case SubtitleSizeSmall:
+			fontSize = 20
+		case SubtitleSizeLarge:
+			fontSize = 30
+		}
+
+		forceStyle := fmt.Sprintf(":force_style='FontSize=%d,Outline=1'", fontSize)
+
 		if charenc == "UTF-8" {
-			vf = fmt.Sprintf("subtitles='%s',format=yuv420p", subs)
+			vf = fmt.Sprintf("subtitles='%s'%s,format=yuv420p", subs, forceStyle)
+		} else {
+			vf = fmt.Sprintf("subtitles='%s':charenc=%s%s,format=yuv420p", subs, charenc, forceStyle)
 		}
 	}
 
@@ -56,7 +76,15 @@ func ServeTranscodedStream(w io.Writer, input any, ff *exec.Cmd, ffmpegPath, sub
 		"-acodec", "aac",
 		"-ac", "2",
 		"-vf", vf,
+		"-preset", "ultrafast",
+		"-tune", "zerolatency", // Reduces buffering
+		"-g", "30", // Smaller GOP size for faster start
+		"-keyint_min", "15",
+		"-sc_threshold", "0", // Disable scene detection
 		"-movflags", "+faststart",
+		"-fflags", "nobuffer", // Reduce input buffering
+		"-flags", "low_delay", // Low delay mode
+		"-max_delay", "0", // Minimize muxer delay
 		"-f", "mpegts",
 		"pipe:1",
 	)

@@ -60,5 +60,6 @@
     "Enabled": "Enabled",
     "Disabled": "Disabled",
     "Auto-Play":"Auto-Play",
-    "Same File Types Only":"Same File Types Only"
+    "Same File Types Only":"Same File Types Only",
+    "Extracting Subtitles":"Extracting Subtitles"
 }
