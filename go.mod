@@ -14,7 +14,6 @@ require (
 	github.com/rs/zerolog v1.34.0
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
-	golang.org/x/sys v0.37.0
 	golang.org/x/time v0.14.0
 )
 
@@ -54,6 +53,7 @@ require (
 	github.com/yuin/goldmark v1.7.13 // indirect
 	golang.org/x/image v0.32.0 // indirect
 	golang.org/x/net v0.46.0 // indirect
+	golang.org/x/sys v0.37.0 // indirect
 	golang.org/x/term v0.36.0 // indirect
 	golang.org/x/text v0.30.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

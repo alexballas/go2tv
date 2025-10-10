@@ -191,3 +191,8 @@ func setMuteUnmuteView(s string, screen *FyneScreen) {
 		screen.MuteUnmute.Refresh()
 	})
 }
+
+// NewFyneScreen .
+func NewFyneScreen(version string) *FyneScreen {
+	return initFyneNewScreen(version)
+}
