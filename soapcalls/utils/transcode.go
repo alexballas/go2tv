@@ -1,5 +1,4 @@
 //go:build !windows
-// +build !windows
 
 package utils
 
@@ -46,6 +45,9 @@ func ServeTranscodedStream(w io.Writer, input any, ff *exec.Cmd, ffmpegPath, sub
 
 	vf := "format=yuv420p"
 	charenc, err := getCharDet(subs)
+
+	// For now I'm just using Medium as default.
+	// We can later add an option in the GUI to select subtitle size.
 	if err == nil {
 		fontSize := 24
 		switch subSize {

@@ -1,5 +1,4 @@
 //go:build android || ios
-// +build android ios
 
 package gui
 
