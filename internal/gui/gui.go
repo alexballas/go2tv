@@ -7,6 +7,7 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -401,4 +402,36 @@ func (p *FyneScreen) getScreenState() string {
 // NewFyneScreen .
 func NewFyneScreen(version string) *FyneScreen {
 	return initFyneNewScreen(version)
+}
+
+func onDropFiles(screen *FyneScreen) func(p fyne.Position, u []fyne.URI) {
+	return func(p fyne.Position, u []fyne.URI) {
+		fmt.Println(u)
+
+		var mfiles, sfiles []fyne.URI
+
+	out:
+		for _, f := range u {
+			if strings.HasSuffix(strings.ToUpper(f.Name()), ".SRT") {
+				sfiles = append(sfiles, f)
+				continue
+			}
+
+			for _, s := range screen.mediaFormats {
+				if strings.HasSuffix(strings.ToUpper(f.Name()), strings.ToUpper(s)) {
+					mfiles = append(mfiles, f)
+					continue out
+				}
+			}
+		}
+
+		if len(sfiles) > 0 {
+			screen.CustomSubsCheck.SetChecked(true)
+			selectSubsFile(screen, sfiles[0])
+		}
+
+		if len(mfiles) > 0 {
+			selectMediaFile(screen, mfiles[0])
+		}
+	}
 }
