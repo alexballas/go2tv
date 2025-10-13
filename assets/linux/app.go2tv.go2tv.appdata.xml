@@ -47,6 +47,20 @@
   </branding>
 
   <releases>
+        <release version="1.19.0" date="2025-10-13" type="stable">
+        <description>
+          <ul>
+            <li>Added "Same File Types Only" setting for auto-play functionality.</li>
+            <li>Fixed a compatibility issue with some old model Samsung TV.</li>
+            <li>Upgraded Go from 1.23.3 to 1.25.</li>
+            <li>Updated 15+ dependencies to latest versions.</li>
+            <li>Resolved FFmpeg video scaling issues.</li>
+            <li>Increased size of the subtitles when transcoding.</li>
+            <li>Added new translations for Chinese.</li>
+          </ul>
+        </description>
+        <url type="details">https://github.com/alexballas/go2tv/releases/tag/v1.19.0</url>
+      </release>
       <release version="1.18.1" date="2025-01-02" type="stable">
       <description>
         <ul>

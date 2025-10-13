@@ -7,7 +7,6 @@ import (
 	"context"
 	"embed"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -406,8 +405,6 @@ func NewFyneScreen(version string) *FyneScreen {
 
 func onDropFiles(screen *FyneScreen) func(p fyne.Position, u []fyne.URI) {
 	return func(p fyne.Position, u []fyne.URI) {
-		fmt.Println(u)
-
 		var mfiles, sfiles []fyne.URI
 
 	out:
