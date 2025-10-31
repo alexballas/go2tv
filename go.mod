@@ -3,7 +3,7 @@ module github.com/alexballas/go2tv
 go 1.25
 
 require (
-	fyne.io/fyne/v2 v2.6.3
+	fyne.io/fyne/v2 v2.7.0
 	github.com/alexballas/go-ssdp v0.0.3
 	github.com/gdamore/tcell/v2 v2.9.0
 	github.com/go-viper/mapstructure/v2 v2.4.0
@@ -18,7 +18,7 @@ require (
 )
 
 require (
-	fyne.io/systray v1.11.0 // indirect
+	fyne.io/systray v1.11.1-0.20250603113521-ca66a66d8b58 // indirect
 	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
