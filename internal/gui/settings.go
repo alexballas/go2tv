@@ -1,5 +1,4 @@
 //go:build !(android || ios)
-// +build !android,!ios
 
 package gui
 
@@ -165,7 +164,16 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 
 	dropdownTheme.Refresh()
 
-	return container.New(layout.NewFormLayout(), themeText, dropdownTheme, languageText, dropdownLanguage, gaplessText, gaplessdropdown, ffmpegText, ffmpegPathControls, debugText, debugExport)
+	sameTypeAutoNext := widget.NewLabel(lang.L("Auto-Play"))
+	sameTypeAutoNextCheck := widget.NewCheck(lang.L("Same File Types Only"), func(b bool) {
+		fyne.CurrentApp().Preferences().SetBool("AutoPlaySameTypes", b)
+		s.SkinNextOnlySameTypes = b
+	})
+
+	sameTypeAutoNextOption := fyne.CurrentApp().Preferences().BoolWithFallback("AutoPlaySameTypes", true)
+	sameTypeAutoNextCheck.SetChecked(sameTypeAutoNextOption)
+
+	return container.New(layout.NewFormLayout(), themeText, dropdownTheme, languageText, dropdownLanguage, gaplessText, gaplessdropdown, ffmpegText, ffmpegPathControls, sameTypeAutoNext, sameTypeAutoNextCheck, debugText, debugExport)
 }
 
 func saveDebugLogs(f fyne.URIWriteCloser, s *FyneScreen) {

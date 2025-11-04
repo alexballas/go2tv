@@ -1,5 +1,4 @@
 //go:build android || ios
-// +build android ios
 
 package gui
 
@@ -213,14 +212,14 @@ func playAction(screen *FyneScreen) {
 	}
 
 	if screen.mediafile != nil {
-		mediaURL, err := storage.OpenFileFromURI(screen.mediafile)
+		mediaURL, err := storage.Reader(screen.mediafile)
 		check(screen.Current, err)
 		if err != nil {
 			startAfreshPlayButton(screen)
 			return
 		}
 
-		mediaURLinfo, err := storage.OpenFileFromURI(screen.mediafile)
+		mediaURLinfo, err := storage.Reader(screen.mediafile)
 		check(screen.Current, err)
 		if err != nil {
 			startAfreshPlayButton(screen)
@@ -247,7 +246,7 @@ func playAction(screen *FyneScreen) {
 	}
 
 	if screen.subsfile != nil {
-		subsFile, err = storage.OpenFileFromURI(screen.subsfile)
+		subsFile, err = storage.Reader(screen.subsfile)
 		check(screen.Current, err)
 		if err != nil {
 			startAfreshPlayButton(screen)

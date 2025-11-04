@@ -299,7 +299,7 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 	// Since we're dealing with an io.Reader we can't
 	// allow any HEAD requests that some DMRs trigger.
 	if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "video") {
-		_ = utils.ServeTranscodedStream(w, f, ff, tv.FFmpegPath, tv.FFmpegSubsPath, tv.FFmpegSeek)
+		_ = utils.ServeTranscodedStream(w, f, ff, tv.FFmpegPath, tv.FFmpegSubsPath, tv.FFmpegSeek, utils.SubtitleSizeMedium)
 		return
 	}
 
@@ -337,7 +337,7 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcall
 			input = f.path
 		}
 
-		_ = utils.ServeTranscodedStream(w, input, ff, tv.FFmpegPath, tv.FFmpegSubsPath, tv.FFmpegSeek)
+		_ = utils.ServeTranscodedStream(w, input, ff, tv.FFmpegPath, tv.FFmpegSubsPath, tv.FFmpegSeek, utils.SubtitleSizeMedium)
 		return
 	}
 

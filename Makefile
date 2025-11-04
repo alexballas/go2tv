@@ -1,4 +1,5 @@
 LDFLAGS="-s -w"
+LDFLAGS_WINDOWS="-s -w -H=windowsgui"
 TAGS?=migrated_fynedo
 
 BUILD_DIR=build
@@ -23,7 +24,7 @@ build: clean
 	go build -tags "$(TAGS)" -trimpath -ldflags $(LDFLAGS) -o $(BIN) cmd/go2tv/go2tv.go
 
 windows: clean
-	env CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ GOOS=windows GOARCH=amd64 go build -trimpath -ldflags $(LDFLAGS) -o $(BIN_WIN) cmd/go2tv/go2tv.go
+	env CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ GOOS=windows GOARCH=amd64 go build -tags "$(TAGS)" -trimpath -ldflags $(LDFLAGS_WINDOWS) -o $(BIN_WIN) cmd/go2tv/go2tv.go
 
 install: build
 	mkdir -vp /usr/local/bin/

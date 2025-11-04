@@ -1,5 +1,4 @@
 //go:build android || ios
-// +build android ios
 
 package gui
 
@@ -191,4 +190,9 @@ func setMuteUnmuteView(s string, screen *FyneScreen) {
 	fyne.Do(func() {
 		screen.MuteUnmute.Refresh()
 	})
+}
+
+// NewFyneScreen .
+func NewFyneScreen(version string) *FyneScreen {
+	return initFyneNewScreen(version)
 }

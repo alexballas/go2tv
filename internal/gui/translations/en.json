@@ -58,5 +58,10 @@
     "Folder": "Folder",
     "System Default": "System Default",
     "Enabled": "Enabled",
-    "Disabled": "Disabled"
+    "Disabled": "Disabled",
+    "Auto-Play":"Auto-Play",
+    "Same File Types Only":"Same File Types Only",
+    "Extracting Subtitles":"Extracting Subtitles",
+    "Drag and Drop is not supported in Flatpak builds.\nPlease use the 'Select Media File' button instead.":"Drag and Drop is not supported in Flatpak builds.\nPlease use the 'Select Media File' button instead.",
+    "Show Hidden Files":"Show Hidden Files"
 }

@@ -55,9 +55,11 @@ func main() {
 }
 
 func run() error {
-	var absMediaFile, mediaType string
-	var mediaFile any
-	var isSeek bool
+	var (
+		absMediaFile, mediaType string
+		mediaFile               any
+		isSeek                  bool
+	)
 
 	exitCTX, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
