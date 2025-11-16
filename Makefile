@@ -75,7 +75,7 @@ appimage: build
 
 	# Fetch appimagetool if missing
 	if [ ! -x $(APPIMAGETOOL) ]; then \
-		URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-$(ARCH).AppImage"; \
+		URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$(ARCH).AppImage"; \
 		curl -L "$$URL" -o $(APPIMAGETOOL) || wget -O $(APPIMAGETOOL) "$$URL"; \
 		chmod +x $(APPIMAGETOOL); \
 	fi
