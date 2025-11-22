@@ -95,7 +95,7 @@ Go2TV also supports selecting subtitles for video files that have embedded subti
 
 **SSDP Listen Port Range (for firewall configurations)**
 
-Go2TV now binds the SSDP listener to a port within the fixed range 1900-2000, instead of relying on the system's automatic port assignment. The application will automatically select the first available port from this range. If you are running Go2TV behind a firewall, ensure that inbound UDP traffic is allowed on ports 1900-2000 to enable proper SSDP discovery and device communication.
+Go2TV now binds the SSDP listener to a port within the fixed range 3339-3438, instead of relying on the system's automatic port assignment. The application will automatically select the first available port from this range. If you are running Go2TV behind a firewall, ensure that inbound UDP traffic is allowed on ports 3339-3438 to enable proper SSDP discovery and device communication.
 
 **MacOS potential issues**
 

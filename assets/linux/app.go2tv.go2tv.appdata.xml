@@ -57,6 +57,7 @@
             <li>Resolved FFmpeg video scaling issues.</li>
             <li>Increased size of the subtitles when transcoding.</li>
             <li>Added new translations for Chinese.</li>
+            <li>Improved device discoverability: the app now uses source ports 3339-3438 for SSDP discoverability.</li>
           </ul>
         </description>
         <url type="details">https://github.com/alexballas/go2tv/releases/tag/v1.19.0</url>

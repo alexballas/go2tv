@@ -23,7 +23,7 @@ func LoadSSDPservices(delay int) (map[string]string, error) {
 	// Reset device list every time we call this.
 	urlList := make(map[string]string)
 
-	port := 1900
+	port := 3339
 
 	var (
 		address *net.UDPAddr
