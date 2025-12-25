@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"sort"
+	"time"
 
 	"github.com/alexballas/go-ssdp"
 	"github.com/alexballas/go2tv/soapcalls"
@@ -92,6 +93,70 @@ func LoadSSDPservices(delay int) (map[string]string, error) {
 
 	if len(deviceList) > 0 {
 		return deviceList, nil
+	}
+
+	return nil, ErrNoDeviceAvailable
+}
+
+// LoadAllDevices returns a combined map of DLNA and Chromecast devices.
+// It runs both discovery mechanisms concurrently and returns partial results
+// immediately without waiting for both to complete. This ensures delays in
+// one protocol don't block the other.
+func LoadAllDevices(delay int) (map[string]string, error) {
+	type deviceResult struct {
+		devices map[string]string
+		err     error
+	}
+
+	dlnaChan := make(chan deviceResult, 1)
+	ccChan := make(chan deviceResult, 1)
+
+	// Launch DLNA discovery in background
+	go func() {
+		devices, err := LoadSSDPservices(delay)
+		dlnaChan <- deviceResult{devices: devices, err: err}
+	}()
+
+	// Launch Chromecast discovery in background (instant, reads from cache)
+	go func() {
+		devices := GetChromecastDevices()
+		ccChan <- deviceResult{devices: devices, err: nil}
+	}()
+
+	// Collect results as they arrive, with timeout
+	combined := make(map[string]string)
+	timeout := time.After(time.Duration(delay+1) * time.Second)
+	resultsReceived := 0
+
+	for resultsReceived < 2 {
+		select {
+		case result := <-dlnaChan:
+			if result.err == nil && result.devices != nil {
+				for name, addr := range result.devices {
+					combined[name] = addr
+				}
+			}
+			resultsReceived++
+
+		case result := <-ccChan:
+			if result.devices != nil {
+				for name, addr := range result.devices {
+					combined[name] = addr
+				}
+			}
+			resultsReceived++
+
+		case <-timeout:
+			// Return partial results if timeout occurs
+			if len(combined) > 0 {
+				return combined, nil
+			}
+			return nil, ErrNoDeviceAvailable
+		}
+	}
+
+	if len(combined) > 0 {
+		return combined, nil
 	}
 
 	return nil, ErrNoDeviceAvailable
