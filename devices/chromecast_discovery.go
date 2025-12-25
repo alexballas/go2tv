@@ -103,6 +103,7 @@ func healthCheckChromecastDevices(ctx context.Context) {
 // GetChromecastDevices returns the current cached Chromecast devices.
 // Returns a map in the same format as DLNA devices: map[friendlyName] = address
 // with " (Chromecast)" suffix added to distinguish device type in UI.
+// Addresses are returned as URLs (http://IP:PORT) to match DLNA format.
 func GetChromecastDevices() map[string]string {
 	ccMu.Lock()
 	defer ccMu.Unlock()
@@ -112,7 +113,9 @@ func GetChromecastDevices() map[string]string {
 		// Format: map[name] = address (same as DLNA)
 		// Add suffix to distinguish Chromecast devices in the UI
 		friendlyName := name + " (Chromecast)"
-		result[friendlyName] = address
+		// Convert to URL format to match DLNA (GUI expects URLs)
+		addressURL := "http://" + address
+		result[friendlyName] = addressURL
 	}
 
 	return result
