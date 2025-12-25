@@ -3,6 +3,7 @@ package devices
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"sort"
 	"time"
@@ -132,17 +133,13 @@ func LoadAllDevices(delay int) (map[string]string, error) {
 		select {
 		case result := <-dlnaChan:
 			if result.err == nil && result.devices != nil {
-				for name, addr := range result.devices {
-					combined[name] = addr
-				}
+				maps.Copy(combined, result.devices)
 			}
 			resultsReceived++
 
 		case result := <-ccChan:
 			if result.devices != nil {
-				for name, addr := range result.devices {
-					combined[name] = addr
-				}
+				maps.Copy(combined, result.devices)
 			}
 			resultsReceived++
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -50,14 +51,17 @@ func discoverChromecastDevices(ctx context.Context) {
 		entries := make(chan *zeroconf.ServiceEntry)
 		go func(results <-chan *zeroconf.ServiceEntry) {
 			for entry := range results {
-				if entry.AddrIPv4 == nil || len(entry.AddrIPv4) == 0 {
+				if len(entry.AddrIPv4) == 0 {
 					continue
 				}
 
 				address := fmt.Sprintf("%s:%d", entry.AddrIPv4[0], entry.Port)
 				friendlyName := entry.Instance
-				if friendlyName == "" {
-					friendlyName = entry.HostName
+
+				for _, v := range entry.Text {
+					if strings.Contains(v, "fn=") {
+						friendlyName = strings.TrimPrefix(v, "fn=")
+					}
 				}
 
 				ccMu.Lock()
