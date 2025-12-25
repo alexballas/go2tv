@@ -22,6 +22,7 @@ import (
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/alexballas/go2tv/devices"
 	"github.com/alexballas/go2tv/httphandlers"
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/alexballas/go2tv/soapcalls/utils"
@@ -173,6 +174,9 @@ func Start(ctx context.Context, s *FyneScreen) {
 	w.Resize(fyne.NewSize(w.Canvas().Size().Width, w.Canvas().Size().Height*1.2))
 	w.CenterOnScreen()
 	w.SetMaster()
+
+	// Start Chromecast discovery in background
+	go devices.StartChromecastDiscoveryLoop(ctx)
 
 	go func() {
 		<-ctx.Done()

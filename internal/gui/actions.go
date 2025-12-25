@@ -596,7 +596,7 @@ func stopAction(screen *FyneScreen) {
 }
 
 func getDevices(delay int) ([]devType, error) {
-	deviceList, err := devices.LoadSSDPservices(delay)
+	deviceList, err := devices.LoadAllDevices(delay)
 	if err != nil {
 		return nil, fmt.Errorf("getDevices error: %w", err)
 	}
