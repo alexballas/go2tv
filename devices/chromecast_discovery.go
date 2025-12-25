@@ -100,16 +100,19 @@ func healthCheckChromecastDevices(ctx context.Context) {
 	}
 }
 
-// GetChromecastDevices returns the current cached Chromecast devices with health checking.
-// Returns a map of device addresses to friendly names with " (Chromecast)" suffix.
+// GetChromecastDevices returns the current cached Chromecast devices.
+// Returns a map in the same format as DLNA devices: map[friendlyName] = address
+// with " (Chromecast)" suffix added to distinguish device type in UI.
 func GetChromecastDevices() map[string]string {
 	ccMu.Lock()
 	defer ccMu.Unlock()
 
 	result := make(map[string]string)
 	for address, name := range chromeCastDevices {
+		// Format: map[name] = address (same as DLNA)
 		// Add suffix to distinguish Chromecast devices in the UI
-		result[address] = name + " (Chromecast)"
+		friendlyName := name + " (Chromecast)"
+		result[friendlyName] = address
 	}
 
 	return result
