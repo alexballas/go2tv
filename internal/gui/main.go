@@ -429,7 +429,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		s.selectedDevice = data[id]
 		s.selectedDeviceType = data[id].deviceType
 
-		setTranscodeForDeviceType(s, data[id].deviceType, nil)
+		setTranscodeForDeviceType(s, data[id].deviceType)
 
 		if data[id].deviceType == devices.DeviceTypeDLNA {
 			t, err := soapcalls.DMRextractor(context.Background(), data[id].addr)
