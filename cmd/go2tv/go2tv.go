@@ -12,7 +12,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 	"syscall"
 
@@ -196,23 +195,14 @@ func listFlagFunction() error {
 		return errNoCombi
 	}
 
-	deviceList, err := devices.LoadSSDPservices(1)
+	deviceList, err := devices.LoadAllDevices(1)
 	if err != nil {
 		return errFailtoList
 	}
 
 	fmt.Println()
 
-	// We loop through this map twice as we need to maintain
-	// the correct order.
-	var keys []string
-	for k := range deviceList {
-		keys = append(keys, k)
-	}
-
-	sort.Strings(keys)
-
-	for q, k := range keys {
+	for q, dev := range deviceList {
 		boldStart := ""
 		boldEnd := ""
 
@@ -222,8 +212,9 @@ func listFlagFunction() error {
 		}
 		fmt.Printf("%sDevice %v%s\n", boldStart, q+1, boldEnd)
 		fmt.Printf("%s--------%s\n", boldStart, boldEnd)
-		fmt.Printf("%sModel:%s %s\n", boldStart, boldEnd, k)
-		fmt.Printf("%sURL:%s   %s\n", boldStart, boldEnd, deviceList[k])
+		fmt.Printf("%sModel:%s %s\n", boldStart, boldEnd, dev.Name)
+		fmt.Printf("%sURL:%s   %s\n", boldStart, boldEnd, dev.Addr)
+		fmt.Printf("%sType:%s   %s\n", boldStart, boldEnd, dev.Type)
 		fmt.Println()
 	}
 
@@ -322,7 +313,7 @@ func checkTflag(res *flagResults) error {
 		return nil
 	}
 
-	deviceList, err := devices.LoadSSDPservices(1)
+	deviceList, err := devices.LoadAllDevices(1)
 	if err != nil {
 		return fmt.Errorf("checkTflag service loading error: %w", err)
 	}

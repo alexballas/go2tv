@@ -7,7 +7,6 @@ import (
 	"errors"
 	"math"
 	"net/url"
-	"sort"
 	"sync"
 	"time"
 
@@ -268,10 +267,6 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			data = nil
 		}
 
-		sort.Slice(data, func(i, j int) bool {
-			return (data)[i].name < (data)[j].name
-		})
-
 		fyne.Do(func() {
 			list.Refresh()
 		})
@@ -430,16 +425,23 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
 		playpause.Enable()
-		t, err := soapcalls.DMRextractor(context.Background(), data[id].addr)
-		check(s, err)
-		if err == nil {
-			s.selectedDevice = data[id]
-			s.controlURL = t.AvtransportControlURL
-			s.eventlURL = t.AvtransportEventSubURL
-			s.renderingControlURL = t.RenderingControlURL
-			s.connectionManagerURL = t.ConnectionManagerURL
-			if s.tvdata != nil {
-				s.tvdata.RenderingControlURL = s.renderingControlURL
+
+		s.selectedDevice = data[id]
+		s.selectedDeviceType = data[id].deviceType
+
+		setTranscodeForDeviceType(s, data[id].deviceType, nil)
+
+		if data[id].deviceType == devices.DeviceTypeDLNA {
+			t, err := soapcalls.DMRextractor(context.Background(), data[id].addr)
+			check(s, err)
+			if err == nil {
+				s.controlURL = t.AvtransportControlURL
+				s.eventlURL = t.AvtransportEventSubURL
+				s.renderingControlURL = t.RenderingControlURL
+				s.connectionManagerURL = t.ConnectionManagerURL
+				if s.tvdata != nil {
+					s.tvdata.RenderingControlURL = s.renderingControlURL
+				}
 			}
 		}
 	}
@@ -447,10 +449,16 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	transcode.OnChanged = func(b bool) {
 		if b {
 			s.Transcode = true
+			if s.selectedDeviceType == devices.DeviceTypeDLNA {
+				s.previousTranscodePref = true
+			}
 			return
 		}
 
 		s.Transcode = false
+		if s.selectedDeviceType == devices.DeviceTypeDLNA {
+			s.previousTranscodePref = false
+		}
 	}
 
 	sfilecheck.OnChanged = func(b bool) {
@@ -617,10 +625,6 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 			if utils.HostPortIsAlive(oldAddress.Host) {
 				newDevices = append(newDevices, old)
 			}
-
-			sort.Slice(newDevices, func(i, j int) bool {
-				return (newDevices)[i].name < (newDevices)[j].name
-			})
 		}
 
 		// check to see if the new refresh includes

@@ -13,11 +13,13 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 
 ---
 
-## Phase 1: Core Infrastructure & Device Discovery
+## Phase 1: Core Infrastructure & Device Discovery ✅
 
 **Goal**: Establish foundation for multi-protocol support and implement Chromecast device discovery
 
 **Duration Estimate**: 1-2 weeks
+
+**Status**: Completed
 
 ### Tasks
 
@@ -56,11 +58,13 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 
 ---
 
-## Phase 2: Device Selection & UI Behavior
+## Phase 2: Device Selection & UI Behavior ✅
 
 **Goal**: Implement device-aware UI that adapts based on selected device type
 
 **Duration Estimate**: 1 week
+
+**Status**: Completed
 
 ### Tasks
 
@@ -84,17 +88,17 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
   - Restore previous transcode preference
   - Unlock checkbox
 
-#### 2.4 Settings Persistence
-- Save last selected device type to preferences
-- Save per-device-type transcode preferences
-- Restore state on app restart
+#### 2.4 Runtime State Management
+- Track device type in memory (selectedDeviceType field)
+- Store current transcode state (previousTranscodePref)
+- No persistence needed - transcode is a runtime state
 
 **Dependencies**: Phase 1
 
 **Deliverables**:
 - UI automatically adapts when device type changes
 - FFmpeg controls locked for Chromecast, unlocked for DLNA
-- User preferences preserved per device type
+- Runtime state tracks current device type and transcode selection
 
 ---
 

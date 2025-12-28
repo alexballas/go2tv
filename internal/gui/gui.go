@@ -59,6 +59,7 @@ type FyneScreen struct {
 	MuteUnmute            *widget.Button
 	VolumeDown            *widget.Button
 	selectedDevice        devType
+	selectedDeviceType    string
 	State                 string
 	mediafile             string
 	version               string
@@ -81,6 +82,7 @@ type FyneScreen struct {
 	Medialoop             bool
 	sliderActive          bool
 	Transcode             bool
+	previousTranscodePref bool
 	ErrorVisible          bool
 	Hotkeys               bool
 }
@@ -90,8 +92,9 @@ type debugWriter struct {
 }
 
 type devType struct {
-	name string
-	addr string
+	name       string
+	addr       string
+	deviceType string
 }
 
 type mainButtonsLayout struct {
@@ -164,6 +167,9 @@ func Start(ctx context.Context, s *FyneScreen) {
 	}
 
 	s.ffmpegPathChanged = false
+
+	s.previousTranscodePref = false
+
 	if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
 		s.TranscodeCheckBox.Disable()
 	}

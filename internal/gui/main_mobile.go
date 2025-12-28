@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"net/url"
-	"sort"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -61,10 +60,6 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		if err != nil {
 			data = nil
 		}
-
-		sort.Slice(data, func(i, j int) bool {
-			return (data)[i].name < (data)[j].name
-		})
 
 		fyne.Do(func() {
 			list.Refresh()
@@ -164,16 +159,21 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
 		playpause.Enable()
-		t, err := soapcalls.DMRextractor(context.Background(), data[id].addr)
-		check(w, err)
-		if err == nil {
-			s.selectedDevice = data[id]
-			s.controlURL = t.AvtransportControlURL
-			s.eventlURL = t.AvtransportEventSubURL
-			s.renderingControlURL = t.RenderingControlURL
-			s.connectionManagerURL = t.ConnectionManagerURL
-			if s.tvdata != nil {
-				s.tvdata.RenderingControlURL = s.renderingControlURL
+
+		s.selectedDevice = data[id]
+		s.selectedDeviceType = data[id].deviceType
+
+		if data[id].deviceType == devices.DeviceTypeDLNA {
+			t, err := soapcalls.DMRextractor(context.Background(), data[id].addr)
+			check(w, err)
+			if err == nil {
+				s.controlURL = t.AvtransportControlURL
+				s.eventlURL = t.AvtransportEventSubURL
+				s.renderingControlURL = t.RenderingControlURL
+				s.connectionManagerURL = t.ConnectionManagerURL
+				if s.tvdata != nil {
+					s.tvdata.RenderingControlURL = s.renderingControlURL
+				}
 			}
 		}
 	}
@@ -255,10 +255,6 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 			if utils.HostPortIsAlive(oldAddress.Host) {
 				datanew = append(datanew, old)
 			}
-
-			sort.Slice(datanew, func(i, j int) bool {
-				return (datanew)[i].name < (datanew)[j].name
-			})
 		}
 
 		// check to see if the new refresh includes

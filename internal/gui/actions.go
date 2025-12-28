@@ -10,7 +10,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -600,18 +599,14 @@ func getDevices(delay int) ([]devType, error) {
 	if err != nil {
 		return nil, fmt.Errorf("getDevices error: %w", err)
 	}
-	// We loop through this map twice as we need to maintain
-	// the correct order.
-	var keys []string
-	for k := range deviceList {
-		keys = append(keys, k)
-	}
-
-	sort.Strings(keys)
 
 	var guiDeviceList []devType
-	for _, k := range keys {
-		guiDeviceList = append(guiDeviceList, devType{k, deviceList[k]})
+	for _, dev := range deviceList {
+		guiDeviceList = append(guiDeviceList, devType{
+			name:       dev.Name,
+			addr:       dev.Addr,
+			deviceType: dev.Type,
+		})
 	}
 
 	return guiDeviceList, nil

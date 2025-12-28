@@ -3,7 +3,6 @@ package devices
 import (
 	"context"
 	"fmt"
-	"maps"
 	"net"
 	"sort"
 	"time"
@@ -13,15 +12,26 @@ import (
 	"github.com/pkg/errors"
 )
 
+const (
+	DeviceTypeDLNA       = "DLNA"
+	DeviceTypeChromecast = "Chromecast"
+)
+
+type Device struct {
+	Name string
+	Addr string
+	Type string
+}
+
 var (
 	ErrNoDeviceAvailable  = errors.New("loadSSDPservices: No available Media Renderers")
 	ErrDeviceNotAvailable = errors.New("devicePicker: Requested device not available")
 	ErrSomethingWentWrong = errors.New("devicePicker: Something went terribly wrong")
 )
 
-// LoadSSDPservices returns a map with all the devices that support the
+// LoadSSDPservices returns a slice of DLNA devices that support the
 // AVTransport service.
-func LoadSSDPservices(delay int) (map[string]string, error) {
+func LoadSSDPservices(delay int) ([]Device, error) {
 	// Reset device list every time we call this.
 	urlList := make(map[string]string)
 
@@ -92,20 +102,30 @@ func LoadSSDPservices(delay int) (map[string]string, error) {
 		}
 	}
 
-	if len(deviceList) > 0 {
-		return deviceList, nil
+	if len(deviceList) == 0 {
+		return nil, ErrNoDeviceAvailable
 	}
 
-	return nil, ErrNoDeviceAvailable
+	// Convert map to Device slice with proper type
+	result := make([]Device, 0, len(deviceList))
+	for name, addr := range deviceList {
+		result = append(result, Device{
+			Name: name,
+			Addr: addr,
+			Type: DeviceTypeDLNA,
+		})
+	}
+
+	return result, nil
 }
 
-// LoadAllDevices returns a combined map of DLNA and Chromecast devices.
+// LoadAllDevices returns a combined slice of DLNA and Chromecast devices.
 // It runs both discovery mechanisms concurrently and returns partial results
 // immediately without waiting for both to complete. This ensures delays in
 // one protocol don't block the other.
-func LoadAllDevices(delay int) (map[string]string, error) {
+func LoadAllDevices(delay int) ([]Device, error) {
 	type deviceResult struct {
-		devices map[string]string
+		devices []Device
 		err     error
 	}
 
@@ -125,27 +145,28 @@ func LoadAllDevices(delay int) (map[string]string, error) {
 	}()
 
 	// Collect results as they arrive, with timeout
-	combined := make(map[string]string)
+	combined := make([]Device, 0)
 	timeout := time.After(time.Duration(delay+1) * time.Second)
 	resultsReceived := 0
 
 	for resultsReceived < 2 {
 		select {
 		case result := <-dlnaChan:
-			if result.err == nil && result.devices != nil {
-				maps.Copy(combined, result.devices)
+			if result.err == nil {
+				combined = append(combined, result.devices...)
 			}
 			resultsReceived++
 
 		case result := <-ccChan:
 			if result.devices != nil {
-				maps.Copy(combined, result.devices)
+				combined = append(combined, result.devices...)
 			}
 			resultsReceived++
 
 		case <-timeout:
 			// Return partial results if timeout occurs
 			if len(combined) > 0 {
+				sortDevices(combined)
 				return combined, nil
 			}
 			return nil, ErrNoDeviceAvailable
@@ -153,32 +174,37 @@ func LoadAllDevices(delay int) (map[string]string, error) {
 	}
 
 	if len(combined) > 0 {
+		sortDevices(combined)
 		return combined, nil
 	}
 
 	return nil, ErrNoDeviceAvailable
 }
 
-// DevicePicker will pick the nth device from the devices input map.
-func DevicePicker(devices map[string]string, n int) (string, error) {
+// sortDevices sorts devices by type (DLNA first, then Chromecast)
+// and alphabetically within each type
+func sortDevices(devices []Device) {
+	sort.Slice(devices, func(i, j int) bool {
+		// If types differ, DLNA comes first
+		if devices[i].Type != devices[j].Type {
+			return devices[i].Type < devices[j].Type
+		}
+		// Within same type, sort alphabetically by name
+		return devices[i].Name < devices[j].Name
+	})
+}
+
+// DevicePicker will pick the nth device from the devices input slice.
+func DevicePicker(devices []Device, n int) (string, error) {
 	if n > len(devices) || len(devices) == 0 || n <= 0 {
 		return "", ErrDeviceNotAvailable
 	}
 
-	var keys []string
-	for k := range devices {
-		keys = append(keys, k)
+	if n > len(devices) {
+		return "", ErrDeviceNotAvailable
 	}
 
-	sort.Strings(keys)
-
-	for q, k := range keys {
-		if n == q+1 {
-			return devices[k], nil
-		}
-	}
-
-	return "", ErrSomethingWentWrong
+	return devices[n-1].Addr, nil
 }
 
 func checkInterfacesForPort(port int) error {
