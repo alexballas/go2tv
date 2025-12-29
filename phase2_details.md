@@ -194,14 +194,34 @@ Update device selection logic (same as desktop):
 Update CLI to work with Device structs:
 
 - **Update listFlagFunction()**:
-  - Change `devices.LoadSSDPservices(1)` to `devices.LoadAllDevices(1)`
-  - Iterate over `[]devices.Device` instead of map
-  - Display `dev.Name`, `dev.Addr`, and `dev.Type`
-  - Remove manual sorting (done in devices package)
+  - **IMPORTANT**: Chromecast discovery requires background loop to be running
+  - Create bubbletea-based dynamic device list with auto-refresh
+  - Add local `Device` struct for CLI display (separate from devices.Device)
+  - Create `listDevicesModel` struct implementing `tea.Model`:
+    - `devices []Device` - current device list
+    - `Init()` - calls `devices.StartChromecastDiscoveryLoop(context.Background())`
+      - **Critical**: This starts Chromecast mDNS discovery
+    - `checkDevices()` - calls `devices.LoadAllDevices(2)` to fetch devices
+    - `Update()` - handles refresh messages and auto-refreshes every 2 seconds
+    - `View()` - formats device list display
+  - Replace static list with dynamic bubbletea program:
+    - Shows "Scanning devices... (q to quit)" initially
+    - Auto-refreshes device list every 2 seconds
+    - Devices appear as they are discovered (DLNA and Chromecast)
+  - Display format: `"• Device Name [URL]"` for each device
 
 - **Update checkTflag()**:
   - Change `devices.LoadSSDPservices(1)` to `devices.LoadAllDevices(1)`
   - Call `DevicePicker()` with slice instead of map
+
+**Key Discovery Behavior**:
+- **Chromecast devices only appear after `StartChromecastDiscoveryLoop()` is running**
+  - Static list call would show 0 Chromecast devices
+  - Background loop continuously discovers via mDNS
+  - `Init()` method in tea.Model starts this loop
+- **Auto-refresh**: Device list updates every 2 seconds as devices are discovered
+- **DLNA devices**: Appear immediately (SSDP is synchronous discovery)
+- **Chromecast devices**: Appear as mDNS discovers them (may take a few seconds)
 
 #### [MODIFY] [cmd/go2tv-lite/go2tv.go](file:///home/alex/test/go2tv/cmd/go2tv-lite/go2tv-lite.go)
 
@@ -337,8 +357,30 @@ Test transcode control behavior:
 - Device type check: `if data[id].deviceType == devices.DeviceTypeDLNA`
 - Early return: Only DLNA devices attempt DLNA-specific operations
 
+**Chromecast Discovery Architecture**:
+- **Background loop**: `StartChromecastDiscoveryLoop()` must be running for devices to appear
+- **mDNS protocol**: Continuously browses `_googlecast._tcp` service every 10 seconds
+- **Device cache**: Stores discovered devices in package-level map
+- **Health checking**: Removes stale devices every 5 seconds
+- **CLI requirement**: `-l` flag uses bubbletea with `Init()` starting discovery loop
+  - `Init()` calls `devices.StartChromecastDiscoveryLoop(context.Background())`
+  - Auto-refreshes device list every 2 seconds as devices are discovered
+  - DLNA devices appear immediately (synchronous SSDP)
+  - Chromecast devices appear as mDNS discovers them (may take ~5-10 seconds)
+- **GUI requirement**: `gui.Start()` calls discovery on app startup
+  - `go devices.StartChromecastDiscoveryLoop(ctx)` runs in background
+  - Devices appear in list continuously updated
+
+**Bubbletea CLI Implementation**:
+- **Dynamic list**: Replaces static device listing with auto-refreshing UI
+- **tea.Model pattern**: `listDevicesModel` implements Init, Update, View methods
+- **Auto-refresh**: `tea.Tick(time.Second*2)` triggers device list refresh every 2 seconds
+- **Discovery startup**: `Init()` method starts Chromecast discovery loop
+- **Display format**: `"• Device Name [URL]"` with color support
+- **Interactive**: Press 'q' to quit, list refreshes automatically
+
 **Code Organization**:
 - **devices package**: Core abstraction, Device struct, discovery, sorting
 - **internal/gui/device_ui_adapter.go**: UI state management functions
 - **internal/gui/**: Desktop and mobile GUI implementations
-- **cmd/go2tv**: CLI implementations using Device struct
+- **cmd/go2tv**: CLI implementations using Device struct with bubbletea
