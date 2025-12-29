@@ -11,9 +11,9 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	"errors"
 
@@ -23,6 +23,7 @@ import (
 	"github.com/alexballas/go2tv/internal/interactive"
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/alexballas/go2tv/soapcalls/utils"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 var (
@@ -36,8 +37,7 @@ var (
 	listPtr      = flag.Bool("l", false, "List all available UPnP/DLNA Media Renderer models and URLs.")
 	versionPtr   = flag.Bool("version", false, "Print version.")
 
-	errNoCombi    = errors.New("can't combine -l with other flags")
-	errFailtoList = errors.New("failed to list devices")
+	errNoCombi = errors.New("can't combine -l with other flags")
 )
 
 type flagResults struct {
@@ -64,7 +64,6 @@ func run() error {
 	defer cancel()
 
 	flag.Parse()
-
 	flagRes, err := processflags()
 	if err != nil {
 		return err
@@ -185,6 +184,63 @@ func run() error {
 	return nil
 }
 
+type Device struct {
+	Model string
+	URL   string
+}
+
+type refreshMsg []Device
+
+type listDevicesModel struct {
+	devices []Device
+}
+
+func checkDevices() tea.Cmd {
+	return func() tea.Msg {
+		deviceList, _ := devices.LoadAllDevices(2)
+
+		var rMsg refreshMsg
+		for _, dev := range deviceList {
+			rMsg = append(rMsg, Device{
+				Model: dev.Name,
+				URL:   dev.Addr,
+			})
+		}
+
+		return rMsg
+	}
+}
+
+func (m listDevicesModel) Init() tea.Cmd {
+	devices.StartChromecastDiscoveryLoop(context.Background())
+	return checkDevices()
+}
+
+func (m listDevicesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		if msg.String() == "q" {
+			return m, tea.Quit
+		}
+
+	case refreshMsg:
+		m.devices = msg
+		return m, tea.Tick(time.Second*2, func(t time.Time) tea.Msg {
+			return checkDevices()()
+		})
+	}
+
+	return m, nil
+}
+
+func (m listDevicesModel) View() string {
+	s := "Scanning devices... (q to quit)\n\n"
+	for _, dev := range m.devices {
+		s += "• " + dev.Model + " [" + dev.URL + "] " + "\n"
+	}
+	return s
+}
+
 func listFlagFunction() error {
 	flagsEnabled := 0
 	flag.Visit(func(*flag.Flag) {
@@ -195,35 +251,14 @@ func listFlagFunction() error {
 		return errNoCombi
 	}
 
-	deviceList, err := devices.LoadAllDevices(1)
-	if err != nil {
-		return errFailtoList
-	}
+	p := tea.NewProgram(listDevicesModel{})
+	_, err := p.Run()
 
-	fmt.Println()
-
-	for q, dev := range deviceList {
-		boldStart := ""
-		boldEnd := ""
-
-		if runtime.GOOS == "linux" {
-			boldStart = "\033[1m"
-			boldEnd = "\033[0m"
-		}
-		fmt.Printf("%sDevice %v%s\n", boldStart, q+1, boldEnd)
-		fmt.Printf("%s--------%s\n", boldStart, boldEnd)
-		fmt.Printf("%sModel:%s %s\n", boldStart, boldEnd, dev.Name)
-		fmt.Printf("%sURL:%s   %s\n", boldStart, boldEnd, dev.Addr)
-		fmt.Printf("%sType:%s   %s\n", boldStart, boldEnd, dev.Type)
-		fmt.Println()
-	}
-
-	return nil
+	return err
 }
 
 func processflags() (*flagResults, error) {
 	res := &flagResults{}
-
 	if checkVerflag() {
 		res.exit = true
 		return res, nil
@@ -268,6 +303,10 @@ func checkVflag() error {
 		if _, err := os.Stat(*mediaArg); os.IsNotExist(err) {
 			return fmt.Errorf("checkVflags error: %w", err)
 		}
+
+		if *targetPtr == "" {
+			return fmt.Errorf("checkVflags error: %w", errors.New("no target device specified with -t flag"))
+		}
 	}
 
 	return nil
@@ -310,17 +349,6 @@ func checkTflag(res *flagResults) error {
 		}
 
 		res.dmrURL = *targetPtr
-		return nil
-	}
-
-	deviceList, err := devices.LoadAllDevices(1)
-	if err != nil {
-		return fmt.Errorf("checkTflag service loading error: %w", err)
-	}
-
-	res.dmrURL, err = devices.DevicePicker(deviceList, 1)
-	if err != nil {
-		return fmt.Errorf("checkTflag device picker error: %w", err)
 	}
 
 	return nil
