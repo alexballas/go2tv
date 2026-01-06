@@ -13,8 +13,27 @@ import (
 
 type ffprobeInfo struct {
 	Format struct {
-		Duration string `json:"duration"`
+		Duration   string `json:"duration"`
+		FormatName string `json:"format_name"`
+		BitRate    string `json:"bit_rate"`
 	} `json:"format"`
+	Streams []struct {
+		CodecType  string `json:"codec_type"`
+		CodecName  string `json:"codec_name"`
+		Profile    string `json:"profile"`
+		Channels   int    `json:"channels"`
+		SampleRate string `json:"sample_rate"`
+		Width      int    `json:"width"`
+		Height     int    `json:"height"`
+	} `json:"streams"`
+}
+
+type MediaCodecInfo struct {
+	VideoCodec    string
+	VideoProfile  string
+	AudioCodec    string
+	AudioChannels int
+	Container     string
 }
 
 func DurationForMedia(ffmpeg string, f string) (string, error) {
@@ -55,6 +74,90 @@ func DurationForMedia(ffmpeg string, f string) (string, error) {
 
 	duration := time.Duration(ff * float64(time.Second))
 	return formatDuration(duration), nil
+}
+
+func GetMediaCodecInfo(ffmpeg string, f string) (*MediaCodecInfo, error) {
+	_, err := os.Stat(f)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := CheckFFmpeg(ffmpeg); err != nil {
+		return nil, err
+	}
+
+	cmd := exec.Command(
+		filepath.Join(filepath.Dir(ffmpeg), "ffprobe"),
+		"-loglevel", "error",
+		"-show_format",
+		"-show_streams",
+		"-of", "json",
+		f,
+	)
+
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000}
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	var info ffprobeInfo
+	if err := json.Unmarshal(output, &info); err != nil {
+		return nil, err
+	}
+
+	result := &MediaCodecInfo{
+		Container: info.Format.FormatName,
+	}
+
+	for _, stream := range info.Streams {
+		switch stream.CodecType {
+		case "video":
+			result.VideoCodec = stream.CodecName
+			result.VideoProfile = stream.Profile
+		case "audio":
+			result.AudioCodec = stream.CodecName
+			result.AudioChannels = stream.Channels
+		}
+	}
+
+	return result, nil
+}
+
+func IsChromecastCompatible(info *MediaCodecInfo) bool {
+	if info == nil {
+		return false
+	}
+
+	supportedVideoCodecs := map[string]bool{
+		"h264": true,
+		"hevc": true,
+		"vp8":  true,
+		"vp9":  true,
+		"av1":  true,
+	}
+
+	supportedAudioCodecs := map[string]bool{
+		"aac":    true,
+		"mp3":    true,
+		"vorbis": true,
+		"opus":   true,
+		"flac":   true,
+	}
+
+	supportedContainers := map[string]bool{
+		"mp4":      true,
+		"webm":     true,
+		"matroska": true,
+		"mkv":      true,
+	}
+
+	videoOK := info.VideoCodec == "" || supportedVideoCodecs[info.VideoCodec]
+	audioOK := info.AudioCodec == "" || supportedAudioCodecs[info.AudioCodec]
+	containerOK := supportedContainers[info.Container]
+
+	return videoOK && audioOK && containerOK
 }
 
 func formatDuration(t time.Duration) string {

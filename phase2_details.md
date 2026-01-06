@@ -11,9 +11,10 @@ Implementation plan for adding device-aware UI that adapts based on selected dev
 > **Decisions Made**:
 > - Device type tracked explicitly via Device.Type field (not from string parsing)
 > - " (Chromecast)" suffix preserved for visual UI distinction
-> - No tooltip message explaining locked controls (user feedback: disabled checkbox is sufficient)
+> - Transcode option not automatically changed by device type - up to user
 > - Runtime state only - no persistence of transcode preference
 > - Devices sorted by type first (DLNA before Chromecast), then alphabetically
+> - Conditional transcoding: only transcode when media format is incompatible (implemented in Phase 4)
 
 ---
 
@@ -83,33 +84,6 @@ Update to work with Device structs:
   - Call `sortDevices(combined)` before returning
   - Ensures consistent ordering: DLNA first, then Chromecast
 
-### GUI State Management
-
-#### [NEW] [device_ui_adapter.go](file:///home/alex/test/go2tv/internal/gui/device_ui_adapter.go)
-
-Create UI state management functions:
-
-- **lockFFmpegControls(screen *FyneScreen)**:
-  - Disable `TranscodeCheckBox` widget
-  - Used for Chromecast devices
-
-- **unlockFFmpegControls(screen *FyneScreen)**:
-  - Enable `TranscodeCheckBox` widget
-  - Used for DLNA devices
-
-- **setTranscodeForDeviceType(screen *FyneScreen, deviceType string)**:
-  - Switch based on `deviceType`
-  - **Chromecast**:
-    - Store current transcode preference in `previousTranscodePref`
-    - Set `Transcode = true`
-    - Call `TranscodeCheckBox.SetChecked(true)`
-    - Call `lockFFmpegControls(screen)`
-  - **DLNA**:
-    - Restore `Transcode = previousTranscodePref`
-    - Call `TranscodeCheckBox.SetChecked(previousTranscodePref)`
-    - Call `unlockFFmpegControls(screen)`
-  - **Default**: Unlock controls
-
 ### GUI Desktop Integration
 
 #### [MODIFY] [gui.go](file:///home/alex/test/go2tv/internal/gui/gui.go)
@@ -118,14 +92,9 @@ Add device type tracking:
 
 - **Update FyneScreen struct**:
   - Add `selectedDeviceType string` field
-  - Add `previousTranscodePref bool` field
 
 - **Update devType struct**:
   - Add `deviceType string` field
-
-- **Initialize preferences** in `Start()`:
-  - Set `previousTranscodePref = false` (starts unchecked each session)
-  - No persistence to settings
 
 #### [MODIFY] [actions.go](file:///home/alex/test/go2tv/internal/gui/actions.go)
 
@@ -140,22 +109,15 @@ Update device loading:
 
 Update device selection logic:
 
-- **Remove tooltip widget**:
-  - Remove `transcodeTooltip` label creation
-  - Remove `tooltipContainer` from UI layout
-  - No explanatory messages needed
-
 - **Update list.OnSelected callback**:
   - Set `s.selectedDevice = data[id]`
   - Set `s.selectedDeviceType = data[id].deviceType`
-  - Call `setTranscodeForDeviceType(s, data[id].deviceType)`
-  - **Only call DMRextractor() for DLNA devices**:
+  - Only call `DMRextractor()` for DLNA devices:
     - Check `if data[id].deviceType == devices.DeviceTypeDLNA`
     - This prevents errors when selecting Chromecast (no SOAP)
 
 - **Update transcode.OnChanged callback**:
-  - Only update `previousTranscodePref` for DLNA devices
-  - Check `if s.selectedDeviceType == devices.DeviceTypeDLNA`
+  - Simply update `s.Transcode = b`
   - No persistence to settings (runtime state only)
 
 ### GUI Mobile Integration
@@ -166,7 +128,6 @@ Add device type tracking (same as desktop):
 
 - **Update FyneScreen struct**:
   - Add `selectedDeviceType string` field
-  - Add `previousTranscodePref bool` field
   - Add `TranscodeCheckBox *widget.Check` field
 
 - **Update devType struct**:
@@ -184,7 +145,7 @@ Update device selection logic (same as desktop):
 - **Update list.OnSelected callback**:
   - Set `s.selectedDevice = data[id]`
   - Set `s.selectedDeviceType = data[id].deviceType`
-  - **Only call DMRextractor() for DLNA devices**:
+  - Only call `DMRextractor()` for DLNA devices:
     - Check `if data[id].deviceType == devices.DeviceTypeDLNA`
 
 ### CLI Integration
@@ -248,18 +209,6 @@ Test device struct and type constants:
 
 **Command**: `go test -v ./devices -run TestDevice`
 
-#### Unit Tests for UI State Management
-
-**New file**: `internal/gui/device_ui_adapter_test.go`
-
-Test transcode control behavior:
-- `TestSetTranscodeForDeviceType_Chromecast()` - verify checkbox locked/enabled
-- `TestSetTranscodeForDeviceType_DLNA()` - verify checkbox unlocked/restored
-- `TestLockFFmpegControls()` - verify checkbox disabled
-- `TestUnlockFFmpegControls()` - verify checkbox enabled
-
-**Command**: `go test -v ./internal/gui -run TestSetTranscode`
-
 ### Manual Verification
 
 #### Test 1: Chromecast Device Selection
@@ -269,14 +218,13 @@ Test transcode control behavior:
 **Steps**:
 1. Build and run Go2TV: `make build && ./build/go2tv`
 2. Select a Chromecast device from list
-3. Verify "Transcode" checkbox is automatically checked
-4. Verify "Transcode" checkbox is disabled (grayed out)
+3. Verify "Transcode" checkbox state is unchanged from previous selection
+4. Verify user can toggle "Transcode" checkbox on/off (if FFmpeg is installed)
 5. Verify no error message appears for DMRextractor
 6. Select a DLNA device from list
-7. Verify "Transcode" checkbox is restored to previous state
-8. Verify "Transcode" checkbox is enabled (interactive)
+7. Verify "Transcode" checkbox state remains unchanged
 
-**Expected Result**: UI adapts seamlessly between device types, no errors.
+**Expected Result**: UI adapts seamlessly between device types, no errors. Transcode state not automatically changed by device type.
 
 #### Test 2: DLNA Functionality Unchanged
 
@@ -285,10 +233,11 @@ Test transcode control behavior:
 **Steps**:
 1. Build and run Go2TV: `make build && ./build/go2tv`
 2. Select a DLNA device from list
-3. Verify "Transcode" checkbox is enabled
-4. Toggle "Transcode" checkbox on/off
-5. Verify preference remembered when switching between DLNA devices
-6. Select media file and play
+3. Verify "Transcode" checkbox state is unchanged
+4. Toggle "Transcode" checkbox on/off (if FFmpeg is installed)
+5. Select another DLNA device from list
+6. Verify "Transcode" checkbox state remains unchanged (no restoration)
+7. Select media file and play
 7. Verify normal DLNA playback works
 
 **Expected Result**: All existing DLNA functionality works without regression.
@@ -331,20 +280,16 @@ Test transcode control behavior:
 
 **Runtime State Management**:
 - **No persistence**: Transcode preference not saved to settings
-- **Per-session memory**: `previousTranscodePref` resets to false on app start
-- **Type-aware switching**: Preference remembered when switching between DLNA devices
-- **Type-forced state**: Chromecast always enables transcode (user can't disable)
+- **Per-session**: Transcode state maintained as user changes it during session
+- **Phase 4 enhancement**: Auto-detect media compatibility and auto-enable when needed
 
 **UI Adaptation Flow**:
 1. User selects device from list
 2. `list.OnSelected` callback fires
 3. Device type extracted from `data[id].deviceType`
-4. `setTranscodeForDeviceType()` called with type
-5. Based on type:
-   - Chromecast: Enable+lock transcode, store old preference
-   - DLNA: Restore old preference, unlock transcode
-6. DLNA only: Call `DMRextractor()` for SOAP URLs
+4. DLNA only: Call `DMRextractor()` for SOAP URLs
    - Chromecast skips this (no SOAP protocol yet)
+5. Phase 4: When media file selected, auto-detect format for Chromecast and adjust transcode if needed
 
 **Sorting Strategy**:
 - Primary sort: Device type (DLNA < Chromecast)
@@ -381,6 +326,5 @@ Test transcode control behavior:
 
 **Code Organization**:
 - **devices package**: Core abstraction, Device struct, discovery, sorting
-- **internal/gui/device_ui_adapter.go**: UI state management functions
 - **internal/gui/**: Desktop and mobile GUI implementations
 - **cmd/go2tv**: CLI implementations using Device struct with bubbletea

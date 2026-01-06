@@ -73,31 +73,23 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 - Update device selection logic to track device type
 - Store device type in `selectedDevice` field
 
-#### 2.2 FFmpeg UI Control Logic
-- Create `internal/gui/device_ui_adapter.go` with UI state management
-- Implement `lockFFmpegControls()` - disables transcode checkbox when Chromecast selected
-- Implement `unlockFFmpegControls()` - restores controls for DLNA devices
-- Add visual feedback (tooltip/label) explaining why controls are locked
+#### 2.2 Transcode Option Behavior
+- Transcode checkbox enabled when any device is selected
+- For DLNA devices: Restore previous DLNA transcode preference
+- For Chromecast devices: Leave transcode state unchanged
+- User controls transcode option manually
+- Auto-detect media compatibility in Phase 4 when media is loaded and auto-enable if needed
 
-#### 2.3 Automatic Transcode Selection
-- When Chromecast device selected:
-  - Automatically enable `TranscodeCheckBox`
-  - Lock checkbox (disable user interaction)
-  - Store previous transcode preference
-- When DLNA device selected:
-  - Restore previous transcode preference
-  - Unlock checkbox
-
-#### 2.4 Runtime State Management
+#### 2.3 Runtime State Management
 - Track device type in memory (selectedDeviceType field)
-- Store current transcode state (previousTranscodePref)
+- Transcode checkbox state maintained as user changes it
 - No persistence needed - transcode is a runtime state
 
 **Dependencies**: Phase 1
 
 **Deliverables**:
-- UI automatically adapts when device type changes
-- FFmpeg controls locked for Chromecast, unlocked for DLNA
+- UI adapts when device type changes (DMRextractor skipped for Chromecast)
+- Transcode option not automatically changed by device type
 - Runtime state tracks current device type and transcode selection
 
 ---
@@ -146,7 +138,7 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 
 ## Phase 4: Media Transcoding for Chromecast
 
-**Goal**: Implement Chromecast-specific transcoding with mandatory FFmpeg usage
+**Goal**: Implement Chromecast-specific transcoding with conditional FFmpeg usage
 
 **Duration Estimate**: 2 weeks
 
@@ -154,18 +146,27 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 
 #### 4.1 Chromecast Media Format Specifications
 - Document supported formats:
-  - **Video**: H.264 High Profile (level 4.1, max 1080p@30fps or 720p@60fps)
-  - **Audio**: AAC (stereo, max 48kHz), MP3, Vorbis
-  - **Container**: MP4 (preferred), WebM
-- Define FFmpeg transcoding profiles for Chromecast
+  - **Video**: H.264 High Profile, HEVC, VP8, VP9, AV1
+  - **Audio**: AAC, MP3, Vorbis, Opus, FLAC
+  - **Container**: MP4, WebM, MKV/Matroska
+- Define FFmpeg transcoding profiles for Chromecast (when transcoding needed)
 
-#### 4.2 Transcoding Profile System
-- Create `soapcalls/utils/transcode_profiles.go`
-- Define `TranscodeProfile` struct (video codec, audio codec, container, bitrate, resolution)
-- Implement `GetChromecastProfile()` - returns Chromecast-compatible profile
-- Implement `GetDLNAProfile()` - returns existing DLNA profile (if any)
+#### 4.2 Media Format Detection
+- Extend `ffprobe.go` to extract video/audio codec information
+- Add `GetMediaCodecInfo()` function to parse codec data
+- Add `IsChromecastCompatible()` function to check if transcoding needed
+- Support both Windows and non-Windows platforms
 
-#### 4.3 Chromecast FFmpeg Command Builder
+#### 4.3 Conditional Transcoding Logic
+- When media file is selected for Chromecast:
+  - Use ffprobe to detect media format
+  - Check if format is compatible with Chromecast
+  - Auto-enable transcode checkbox if incompatible
+  - Allow user to override if desired
+- For compatible formats: stream directly (no transcoding)
+- For incompatible formats: transcode to H.264/AAC/MP4
+
+#### 4.4 Chromecast FFmpeg Command Builder
 - Create `soapcalls/utils/chromecast_transcode.go`
 - Implement `BuildChromecastFFmpegArgs()`:
   ```
@@ -180,24 +181,25 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 - Handle subtitle burning (if subtitles provided)
 - Implement adaptive bitrate based on network conditions (future enhancement)
 
-#### 4.4 Integration with HTTP Server
+#### 4.5 Integration with HTTP Server
 - Modify `httphandlers/httphandlers.go` to detect device type
-- Route Chromecast requests through Chromecast transcoding pipeline
+- Route Chromecast requests through conditional transcoding pipeline
 - Ensure DLNA requests use existing pipeline
 - Update `ServeTranscodedStream` to accept transcode profile
 
-#### 4.5 Media URL Generation
+#### 4.6 Media URL Generation
 - Chromecast requires accessible HTTP URL for media
-- Ensure HTTP server exposes transcoded stream at predictable URL
+- Ensure HTTP server exposes stream at predictable URL (direct or transcoded)
 - Implement proper MIME type headers for Chromecast
 - Add CORS headers if needed
 
 **Dependencies**: Phase 3
 
 **Deliverables**:
+- Media format detection using ffprobe
+- Conditional transcoding (only when needed)
 - Chromecast-specific FFmpeg transcoding profiles
-- Automatic transcoding for all media when casting to Chromecast
-- Proper media format conversion (H.264 + AAC in MP4 container)
+- Automatic format conversion for incompatible media (H.264 + AAC in MP4 container)
 
 ---
 
@@ -253,13 +255,19 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 ## Technical Decisions & Constraints
 
 ### Chromecast Media Requirements
-- **Mandatory Transcoding**: Always use FFmpeg for Chromecast (no direct streaming)
-- **Format**: MP4 container with H.264 video + AAC audio
-- **Resolution**: Max 1080p@30fps or 720p@60fps
-- **Bitrate**: Target 8-10 Mbps for video, 192 kbps for audio
-- **Audio**: Stereo AAC at 48kHz (no higher sample rates)
+- **Conditional Transcoding**: Transcode only when media format is incompatible
+- **Direct Streaming**: Stream directly when format is compatible with Chromecast
+- **Supported Formats**:
+  - Video: H.264 (High Profile), HEVC, VP8, VP9, AV1
+  - Audio: AAC, MP3, Vorbis, Opus, FLAC (audio-only)
+  - Containers: MP4, WebM, MKV/Matroska
+- **Transcoded Format** (when needed):
+  - **Format**: MP4 container with H.264 video + AAC audio
+  - **Resolution**: Max 1080p@30fps or 720p@60fps
+  - **Bitrate**: Target 8-10 Mbps for video, 192 kbps for audio
+  - **Audio**: Stereo AAC at 48kHz
 
-### FFmpeg Command Template
+### FFmpeg Command Template (when transcoding is needed)
 ```bash
 ffmpeg -i input.mkv \
   -c:v libx264 -profile:v high -level 4.1 \
@@ -270,6 +278,8 @@ ffmpeg -i input.mkv \
   -movflags +faststart \
   -f mp4 pipe:1
 ```
+
+**Note**: Transcoding is only performed when input media format is incompatible with Chromecast. Compatible media (e.g., MP4/H.264/AAC) streams directly without transcoding.
 
 ### Device Discovery
 - **DLNA**: SSDP (existing implementation)
@@ -300,12 +310,14 @@ ffmpeg -i input.mkv \
 ## Success Criteria
 
 - ✅ Chromecast devices appear in device list with clear identification
-- ✅ Selecting Chromecast device automatically enables and locks FFmpeg transcoding
+- ✅ Transcode option not automatically changed by device type
+- ✅ Compatible media streams directly without transcoding
+- ✅ Incompatible media automatically transcodes to Chromecast-compatible format
 - ✅ Media plays successfully on Chromecast devices
 - ✅ All playback controls work (play, pause, stop, seek, volume)
 - ✅ Switching between DLNA and Chromecast devices works seamlessly
 - ✅ No regression in existing DLNA functionality
-- ✅ User experience is intuitive and requires no manual configuration
+- ✅ User experience is intuitive with automatic format detection
 
 ---
 

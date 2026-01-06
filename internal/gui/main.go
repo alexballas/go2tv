@@ -429,8 +429,6 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		s.selectedDevice = data[id]
 		s.selectedDeviceType = data[id].deviceType
 
-		setTranscodeForDeviceType(s, data[id].deviceType)
-
 		if data[id].deviceType == devices.DeviceTypeDLNA {
 			t, err := soapcalls.DMRextractor(context.Background(), data[id].addr)
 			check(s, err)
@@ -447,18 +445,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	}
 
 	transcode.OnChanged = func(b bool) {
-		if b {
-			s.Transcode = true
-			if s.selectedDeviceType == devices.DeviceTypeDLNA {
-				s.previousTranscodePref = true
-			}
-			return
-		}
-
-		s.Transcode = false
-		if s.selectedDeviceType == devices.DeviceTypeDLNA {
-			s.previousTranscodePref = false
-		}
+		s.Transcode = b
 	}
 
 	sfilecheck.OnChanged = func(b bool) {

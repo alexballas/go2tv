@@ -82,7 +82,6 @@ type FyneScreen struct {
 	Medialoop             bool
 	sliderActive          bool
 	Transcode             bool
-	previousTranscodePref bool
 	ErrorVisible          bool
 	Hotkeys               bool
 }
@@ -167,8 +166,6 @@ func Start(ctx context.Context, s *FyneScreen) {
 	}
 
 	s.ffmpegPathChanged = false
-
-	s.previousTranscodePref = false
 
 	if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
 		s.TranscodeCheckBox.Disable()

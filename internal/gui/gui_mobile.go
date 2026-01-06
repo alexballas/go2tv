@@ -23,37 +23,36 @@ import (
 
 // FyneScreen .
 type FyneScreen struct {
-	mu                    sync.RWMutex
-	Debug                 *debugWriter
-	Current               fyne.Window
-	tvdata                *soapcalls.TVPayload
-	Stop                  *widget.Button
-	MuteUnmute            *widget.Button
-	CheckVersion          *widget.Button
-	CustomSubsCheck       *widget.Check
-	ExternalMediaURL      *widget.Check
-	cancelEnablePlay      context.CancelFunc
-	MediaText             *widget.Entry
-	SubsText              *widget.Entry
-	DeviceList            *deviceList
-	httpserver            *httphandlers.HTTPserver
-	PlayPause             *widget.Button
-	TranscodeCheckBox     *widget.Check
-	mediafile             fyne.URI
-	subsfile              fyne.URI
-	selectedDevice        devType
-	selectedDeviceType    string
-	NextMediaCheck        *widget.Check
-	State                 string
-	controlURL            string
-	eventlURL             string
-	renderingControlURL   string
-	connectionManagerURL  string
-	version               string
-	mediaFormats          []string
-	Transcode             bool
-	previousTranscodePref bool
-	Medialoop             bool
+	mu                   sync.RWMutex
+	Debug                *debugWriter
+	Current              fyne.Window
+	tvdata               *soapcalls.TVPayload
+	Stop                 *widget.Button
+	MuteUnmute           *widget.Button
+	CheckVersion         *widget.Button
+	CustomSubsCheck      *widget.Check
+	ExternalMediaURL     *widget.Check
+	cancelEnablePlay     context.CancelFunc
+	MediaText            *widget.Entry
+	SubsText             *widget.Entry
+	DeviceList           *deviceList
+	httpserver           *httphandlers.HTTPserver
+	PlayPause            *widget.Button
+	TranscodeCheckBox    *widget.Check
+	mediafile            fyne.URI
+	subsfile             fyne.URI
+	selectedDevice       devType
+	selectedDeviceType   string
+	NextMediaCheck       *widget.Check
+	State                string
+	controlURL           string
+	eventlURL            string
+	renderingControlURL  string
+	connectionManagerURL string
+	version              string
+	mediaFormats         []string
+	Transcode            bool
+	Medialoop            bool
 }
 
 type debugWriter struct {
