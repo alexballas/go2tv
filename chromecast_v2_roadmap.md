@@ -100,44 +100,42 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 
 **Duration Estimate**: 2-3 weeks
 
-### Tasks
+### Sub-Phases
 
-#### 3.1 Cast Protocol Dependencies
+#### Phase 3a: Core Cast Protocol Package
 - Add `github.com/vishen/go-chromecast` library to `go.mod`
-- Add SRT to WebVTT subtitle conversion utility
+- Create `castprotocol/client.go` - CastClient wrapper
+- Create `castprotocol/status.go` - CastStatus struct
+- **Checkpoint**: `make build` succeeds
 
-#### 3.2 Cast Protocol Package
-- Create `castprotocol/` package for Chromecast-specific logic
-- Implement `CastClient` wrapper around go-chromecast Application
-- Methods: Connect, Load, Play, Pause, Stop, Seek, SetVolume, SetMuted, GetStatus, Close
-- Implement `CastStatus` struct for playback state
+#### Phase 3b: Device State Management
+- Add `chromecastClient` field to `FyneScreen` struct
+- Add `resetDeviceState()` function
+- Update device selection callback with state reset
+- **Checkpoint**: Switch devices, verify UI resets
 
-#### 3.3 Device Selection State Reset (Critical)
-- Add `resetDeviceState()` function to clear protocol-specific state on device switch
-- Clear DLNA fields (controlURL, eventlURL, renderingControlURL, connectionManagerURL)
-- Close Chromecast client connection
-- Reset UI state (slider, time labels, play button)
-- **Purpose**: Prevent DLNA state leakage to Chromecast operations
+#### Phase 3c: GUI Playback Actions
+- Add `chromecastPlayAction()` (local files + external URLs)
+- Add `chromecastStatusWatcher()` (status polling, auto-play next)
+- Modify `stopAction()` for Chromecast
+- **Checkpoint**: Play/pause/stop works on Chromecast
 
-#### 3.4 GUI Actions Integration
-- Add `chromecastPlayAction()` for Chromecast playback
-  - Support local files (via internal HTTP server)
-  - Support external URLs (direct pass-through, no server)
-- Add `chromecastStatusWatcher()` for status polling
-  - Update UI (slider, time labels, play/pause state)
-  - Trigger `Fini()` on media end for auto-play next (consistent with DLNA)
-- Modify `stopAction()`, `muteAction()`, `volumeAction()` with Chromecast support
-- Use type-checking (`selectedDeviceType`) for protocol branching
+#### Phase 3d: GUI Control Actions
+- Modify `muteAction()` for Chromecast
+- Modify `volumeAction()` for Chromecast
+- Modify slider seek (`DragEnd()`, `Tapped()`) for Chromecast
+- **Checkpoint**: Seek, volume, mute work on Chromecast
 
-#### 3.5 CLI Chromecast Support
-- Detect Chromecast device from `-t` URL (port 8009)
-- Add `runChromecastCLI()` function for CLI playback
-- Support `-v` (local file) and `-u` (URL) flags with Chromecast targets
-- Simple status polling and Ctrl+C to stop
+#### Phase 3e: CLI Chromecast Support
+- Add `isChromecastURL()` helper (port 8009 detection)
+- Add `runChromecastCLI()` function
+- Update `checkTflag()` with device type detection
+- **Checkpoint**: `go2tv -v file.mp4 -t http://cast:8009` works
 
-#### 3.6 Subtitle Support
-- When transcoding: Burn subtitles in (handled by Phase 4)
-- When NOT transcoding: Convert SRT to WebVTT, serve via HTTP, pass URL to Chromecast
+#### Phase 3f: Subtitle Support
+- Create `soapcalls/utils/srt_to_webvtt.go`
+- Integrate WebVTT subtitles in chromecastPlayAction
+- **Checkpoint**: Subtitles display on Chromecast
 
 **Dependencies**: Phase 2
 
@@ -145,7 +143,7 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 - Working Cast v2 protocol implementation
 - Robust device switching with state reset safeguards
 - Basic playback controls (play, pause, stop, seek, volume, mute) on Chromecast
-- **CLI support for Chromecast devices via `-t` flag**
+- CLI support for Chromecast devices via `-t` flag
 - Auto-play next media support (GUI only)
 - Subtitle support (WebVTT for direct streaming)
 
