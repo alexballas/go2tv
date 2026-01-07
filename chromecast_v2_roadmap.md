@@ -96,7 +96,7 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 
 ## Phase 3: Chromecast Communication Protocol
 
-**Goal**: Implement Cast v2 protocol for device communication
+**Goal**: Implement Cast v2 protocol for device communication with robust state management
 
 **Duration Estimate**: 2-3 weeks
 
@@ -104,35 +104,50 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 
 #### 3.1 Cast Protocol Dependencies
 - Add `github.com/vishen/go-chromecast` library to `go.mod`
-- Review library API and capabilities
-- Document required protocol messages (CONNECT, LAUNCH, LOAD, PLAY, PAUSE, STOP, SEEK)
+- Add SRT to WebVTT subtitle conversion utility
 
-#### 3.2 Protocol Abstraction Layer
+#### 3.2 Cast Protocol Package
 - Create `castprotocol/` package for Chromecast-specific logic
-- Define `CastClient` interface with methods: Connect, Launch, Load, Play, Pause, Stop, Seek, GetStatus
-- Implement connection management (WebSocket to Chromecast device)
-- Implement session management (app launch, media session)
+- Implement `CastClient` wrapper around go-chromecast Application
+- Methods: Connect, Load, Play, Pause, Stop, Seek, SetVolume, SetMuted, GetStatus, Close
+- Implement `CastStatus` struct for playback state
 
-#### 3.3 Media Controller
-- Create `castprotocol/media_controller.go`
-- Implement media loading (URL, metadata, content type)
-- Implement playback controls (play, pause, stop)
-- Implement seek functionality
-- Implement volume control
-- Implement status polling
+#### 3.3 Device Selection State Reset (Critical)
+- Add `resetDeviceState()` function to clear protocol-specific state on device switch
+- Clear DLNA fields (controlURL, eventlURL, renderingControlURL, connectionManagerURL)
+- Close Chromecast client connection
+- Reset UI state (slider, time labels, play button)
+- **Purpose**: Prevent DLNA state leakage to Chromecast operations
 
-#### 3.4 Protocol Interface Unification
-- Create `protocol/` package with `MediaRenderer` interface
-- Implement `DLNARenderer` wrapper around existing SOAP calls
-- Implement `ChromecastRenderer` using Cast protocol
-- Update `soapcalls.TVPayload` to use `MediaRenderer` interface
+#### 3.4 GUI Actions Integration
+- Add `chromecastPlayAction()` for Chromecast playback
+  - Support local files (via internal HTTP server)
+  - Support external URLs (direct pass-through, no server)
+- Add `chromecastStatusWatcher()` for status polling
+  - Update UI (slider, time labels, play/pause state)
+  - Trigger `Fini()` on media end for auto-play next (consistent with DLNA)
+- Modify `stopAction()`, `muteAction()`, `volumeAction()` with Chromecast support
+- Use type-checking (`selectedDeviceType`) for protocol branching
+
+#### 3.5 CLI Chromecast Support
+- Detect Chromecast device from `-t` URL (port 8009)
+- Add `runChromecastCLI()` function for CLI playback
+- Support `-v` (local file) and `-u` (URL) flags with Chromecast targets
+- Simple status polling and Ctrl+C to stop
+
+#### 3.6 Subtitle Support
+- When transcoding: Burn subtitles in (handled by Phase 4)
+- When NOT transcoding: Convert SRT to WebVTT, serve via HTTP, pass URL to Chromecast
 
 **Dependencies**: Phase 2
 
 **Deliverables**:
 - Working Cast v2 protocol implementation
-- Unified protocol interface for DLNA and Chromecast
-- Basic playback control (play, pause, stop) working on Chromecast
+- Robust device switching with state reset safeguards
+- Basic playback controls (play, pause, stop, seek, volume, mute) on Chromecast
+- **CLI support for Chromecast devices via `-t` flag**
+- Auto-play next media support (GUI only)
+- Subtitle support (WebVTT for direct streaming)
 
 ---
 
@@ -205,38 +220,45 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 
 ## Phase 5: Integration, Testing & Polish
 
-**Goal**: Complete integration, comprehensive testing, and UX refinement
+**Goal**: Complete integration, comprehensive testing, UX refinement, and protocol unification
 
 **Duration Estimate**: 1-2 weeks
 
 ### Tasks
 
-#### 5.1 End-to-End Integration
+#### 5.1 Protocol Interface Unification (Deferred from Phase 3)
+- Create `protocol/` package with `MediaRenderer` interface
+- Implement `DLNARenderer` wrapper around existing SOAP calls
+- Refactor `ChromecastRenderer` to implement `MediaRenderer`
+- Update action functions to use `MediaRenderer` interface
+- Refactor `soapcalls.TVPayload` to use interface where applicable
+
+#### 5.2 End-to-End Integration
 - Wire up all components (discovery → selection → protocol → transcoding)
 - Implement error handling and recovery
 - Add logging for debugging
 - Test complete playback flow for both DLNA and Chromecast
 
-#### 5.2 UI Polish
+#### 5.3 UI Polish
 - Add Chromecast icon to device list
 - Improve visual feedback for locked controls
 - Add status messages ("Transcoding required for Chromecast")
 - Update help/documentation
 
-#### 5.3 Testing Matrix
+#### 5.4 Testing Matrix
 - **DLNA Devices**: Verify no regression in existing functionality
 - **Chromecast Devices**: Test all media types (video, audio, images)
 - **Device Switching**: Test switching between DLNA and Chromecast mid-session
 - **Transcoding**: Verify all input formats transcode correctly
 - **Error Cases**: Network failures, unsupported formats, device disconnection
 
-#### 5.4 Performance Optimization
+#### 5.5 Performance Optimization
 - Profile transcoding performance
 - Optimize FFmpeg parameters for latency vs quality
 - Implement connection pooling if needed
 - Add caching for device discovery
 
-#### 5.5 Documentation
+#### 5.6 Documentation
 - Update README.md with Chromecast support information
 - Document Chromecast-specific requirements
 - Add troubleshooting guide
@@ -246,6 +268,7 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 
 **Deliverables**:
 - Fully functional Chromecast V2 support
+- Unified protocol interface (`MediaRenderer`)
 - Comprehensive test coverage
 - Updated documentation
 - Production-ready release
