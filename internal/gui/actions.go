@@ -191,6 +191,14 @@ func playAction(screen *FyneScreen) {
 		screen.PlayPause.Disable()
 	})
 
+	// Branch based on device type - MUST be first, before any DLNA-specific logic
+	// Chromecast has its own status watcher, doesn't need the DLNA timeout mechanism
+	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
+		chromecastPlayAction(screen)
+		return
+	}
+
+	// DLNA timeout mechanism - re-enable play button if no response after 3 seconds
 	if screen.cancelEnablePlay != nil {
 		screen.cancelEnablePlay()
 	}
@@ -222,6 +230,7 @@ func playAction(screen *FyneScreen) {
 		}
 	}()
 
+	// DLNA pause/resume handling (tvdata required)
 	currentState := screen.getScreenState()
 
 	if currentState == "Paused" {
@@ -254,12 +263,6 @@ func playAction(screen *FyneScreen) {
 	if screen.selectedDevice.addr == "" {
 		check(screen, errors.New(lang.L("please select a device")))
 		startAfreshPlayButton(screen)
-		return
-	}
-
-	// Branch based on device type
-	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
-		chromecastPlayAction(screen)
 		return
 	}
 
@@ -445,13 +448,22 @@ func chromecastPlayAction(screen *FyneScreen) {
 		if currentState == "Paused" {
 			if err := screen.chromecastClient.Play(); err != nil {
 				check(screen, err)
+				startAfreshPlayButton(screen)
+				return
 			}
+			// Update UI to show Pause button (resume succeeded)
+			setPlayPauseView("Pause", screen)
+			screen.updateScreenState("Playing")
 			return
 		}
-		if screen.PlayPause.Text == "Pause" {
+		if screen.getScreenState() == "Playing" {
 			if err := screen.chromecastClient.Pause(); err != nil {
 				check(screen, err)
+				return
 			}
+			// Update UI to show Play button (pause succeeded)
+			setPlayPauseView("Play", screen)
+			screen.updateScreenState("Paused")
 			return
 		}
 	}
@@ -462,6 +474,9 @@ func chromecastPlayAction(screen *FyneScreen) {
 		startAfreshPlayButton(screen)
 		return
 	}
+
+	transcode := screen.Transcode
+	ffmpegSeek := screen.ffmpegSeek
 
 	// Initialize Chromecast client
 	client, err := castprotocol.NewCastClient(screen.selectedDevice.addr)
@@ -484,11 +499,9 @@ func chromecastPlayAction(screen *FyneScreen) {
 	var serverStoppedCTX context.Context
 
 	if screen.ExternalMediaURL.Checked {
-		// EXTERNAL URL: Pass directly to Chromecast (no HTTP server needed)
 		mediaURL = screen.MediaText.Text
-		screen.mediafile = mediaURL // Track for state management
+		screen.mediafile = mediaURL
 
-		// Get media type from stream
 		mediaURLinfo, err := utils.StreamURL(context.Background(), mediaURL)
 		if err != nil {
 			check(screen, err)
@@ -503,15 +516,10 @@ func chromecastPlayAction(screen *FyneScreen) {
 			return
 		}
 
-		// No HTTP server for external URLs - use background context for watcher
 		var cancel context.CancelFunc
 		serverStoppedCTX, cancel = context.WithCancel(context.Background())
 		screen.serverStopCTX = serverStoppedCTX
-		// Store cancel func to stop watcher on stop action
-		go func() {
-			<-serverStoppedCTX.Done()
-			cancel()
-		}()
+		go func() { <-serverStoppedCTX.Done(); cancel() }()
 
 	} else {
 		// LOCAL FILE: Serve via internal HTTP server
@@ -529,7 +537,6 @@ func chromecastPlayAction(screen *FyneScreen) {
 			return
 		}
 
-		// Start HTTP server for local media
 		whereToListen, err := utils.URLtoListenIPandPort(screen.selectedDevice.addr)
 		if err != nil {
 			check(screen, err)
@@ -537,7 +544,6 @@ func chromecastPlayAction(screen *FyneScreen) {
 			return
 		}
 
-		// Stop any existing server
 		if screen.httpserver != nil {
 			screen.httpserver.StopServer()
 		}
@@ -547,8 +553,8 @@ func chromecastPlayAction(screen *FyneScreen) {
 		var serverCTXStop context.CancelFunc
 		serverStoppedCTX, serverCTXStop = context.WithCancel(context.Background())
 		screen.serverStopCTX = serverStoppedCTX
+		screen.cancelServerStop = serverCTXStop
 
-		// Start simple HTTP server for Chromecast (no TVPayload/DLNA callbacks needed)
 		go func() {
 			screen.httpserver.StartSimpleServer(serverStarted, screen.mediafile)
 			serverCTXStop()
@@ -563,53 +569,35 @@ func chromecastPlayAction(screen *FyneScreen) {
 		mediaURL = "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile)
 	}
 
-	// Handle subtitle file for Chromecast (WebVTT conversion)
-	// PHASE 4 INTEGRATION POINT: Two subtitle paths:
-	//   1. Transcoding DISABLED: Serve WebVTT sidecar (handled here)
-	//   2. Transcoding ENABLED: Subtitles burned into video stream (Phase 4 FFmpeg handles)
-	//
-	// When screen.TranscodeCheckBox.Checked is true, Phase 4's FFmpeg command will include
-	// subtitle burn-in filter, so we skip WebVTT sidecar here.
+	// Handle subtitles
 	var subtitleURL string
-	if screen.subsfile != "" && !screen.Transcode {
-		// Only use WebVTT sidecar when NOT transcoding
+	if screen.subsfile != "" && !transcode {
 		whereToListen, _ := utils.URLtoListenIPandPort(screen.selectedDevice.addr)
-
-		// Handle subtitle based on file extension
 		ext := strings.ToLower(filepath.Ext(screen.subsfile))
 		switch ext {
 		case ".srt":
 			webvttData, err := utils.ConvertSRTtoWebVTT(screen.subsfile)
 			if err != nil {
 				check(screen, fmt.Errorf("subtitle conversion: %w", err))
-				// Continue without subtitles rather than failing
 			} else {
-				// Register WebVTT data with HTTP server using existing AddHandler pattern
 				screen.httpserver.AddHandler("/subtitles.vtt", nil, webvttData)
 				subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
 			}
 		case ".vtt":
-			// Already WebVTT - register file path with AddHandler
 			screen.httpserver.AddHandler("/subtitles.vtt", nil, screen.subsfile)
 			subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
-		default:
-			// Other subtitle formats (e.g., ASS, SSA) require transcoding with burn-in
 		}
 	}
-	// When transcoding is enabled, screen.subsfile is passed to FFmpeg in Phase 4
-	// and subtitles are burned into the video stream - no sidecar needed
 
-	// Load media on Chromecast (with optional subtitles)
-	if err := client.Load(mediaURL, mediaType, screen.ffmpegSeek, subtitleURL); err != nil {
-		check(screen, fmt.Errorf("chromecast load: %w", err))
-		startAfreshPlayButton(screen)
-		return
-	}
+	// Load media with timeout
+	go func() {
+		if err := client.Load(mediaURL, mediaType, ffmpegSeek, subtitleURL); err != nil {
+			check(screen, fmt.Errorf("chromecast load: %w", err))
+			startAfreshPlayButton(screen)
+			return
+		}
+	}()
 
-	setPlayPauseView("Pause", screen)
-	screen.updateScreenState("Playing")
-
-	// Start Chromecast status polling
 	go chromecastStatusWatcher(serverStoppedCTX, screen)
 }
 
@@ -620,6 +608,7 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 	defer ticker.Stop()
 
 	var previousState string
+	var mediaStarted bool // Track if media has started (seen BUFFERING or PLAYING)
 
 	for {
 		select {
@@ -631,37 +620,43 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 			}
 
 			status, err := screen.chromecastClient.GetStatus()
+			fmt.Println(status.PlayerState)
 			if err != nil {
 				continue
 			}
 
 			// Update state based on player state
 			switch status.PlayerState {
+			case "BUFFERING":
+				// Media is loading - mark as started but don't change UI yet
+				mediaStarted = true
 			case "PLAYING":
+				mediaStarted = true
 				if screen.getScreenState() != "Playing" {
 					setPlayPauseView("Pause", screen)
 					screen.updateScreenState("Playing")
 				}
 			case "PAUSED":
+				mediaStarted = true
 				if screen.getScreenState() != "Paused" {
 					setPlayPauseView("Play", screen)
 					screen.updateScreenState("Paused")
 				}
 			case "IDLE":
-				// Media finished playing - trigger auto-play next via Fini()
-				// Only trigger if we were playing (not if stopped manually)
-				if previousState == "PLAYING" {
-					// Call Fini() which handles auto-play next logic
-					// This is consistent with DLNA callback behavior
+				// Only treat IDLE as "finished" if media had actually started playing
+				// Ignore initial IDLE states while media is loading
+				if mediaStarted && previousState == "PLAYING" {
+					// Media finished - trigger auto-play next via Fini()
 					screen.Fini()
 					return
 				}
+				// If we haven't started yet, just ignore IDLE
 			}
 
 			previousState = status.PlayerState
 
-			// Update slider position
-			if !screen.sliderActive && status.Duration > 0 {
+			// Update slider position (only if media has started)
+			if mediaStarted && !screen.sliderActive && status.Duration > 0 {
 				progress := (float64(status.CurrentTime) / float64(status.Duration)) * screen.SlideBar.Max
 				fyne.Do(func() {
 					screen.SlideBar.SetValue(progress)
@@ -678,7 +673,6 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 }
 
 func startAfreshPlayButton(screen *FyneScreen) {
-
 	if screen.cancelEnablePlay != nil {
 		screen.cancelEnablePlay()
 	}
@@ -834,22 +828,20 @@ func previewmedia(screen *FyneScreen) {
 }
 
 func stopAction(screen *FyneScreen) {
-	screen.PlayPause.Enable()
+	setPlayPauseView("Play", screen)
+	screen.updateScreenState("Stopped")
 
-	// Handle Chromecast stop
 	if screen.chromecastClient != nil && screen.chromecastClient.IsConnected() {
 		_ = screen.chromecastClient.Stop()
 		screen.chromecastClient.Close(false)
 		screen.chromecastClient = nil
+		if screen.cancelServerStop != nil {
+			screen.cancelServerStop()
+		}
+		return
 	}
 
-	// Handle DLNA stop (existing logic)
 	if screen.tvdata == nil || screen.tvdata.ControlURL == "" {
-		// Non-DLNA device (likely Chromecast), cleanup HTTP server if active
-		if screen.httpserver != nil {
-			screen.httpserver.StopServer()
-		}
-		screen.EmitMsg("Stopped")
 		return
 	}
 
@@ -858,10 +850,8 @@ func stopAction(screen *FyneScreen) {
 	if screen.httpserver != nil {
 		screen.httpserver.StopServer()
 	}
+
 	screen.tvdata = nil
-	// In theory, we should expect an emit message
-	// from the media renderer, but there seems
-	// to be a race condition that prevents this.
 	screen.EmitMsg("Stopped")
 }
 

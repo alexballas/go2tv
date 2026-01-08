@@ -64,9 +64,6 @@ func (c *CastClient) Connect() error {
 // startTime is the position in seconds to start playback from.
 // If subtitleURL is provided and the app is connected, uses custom load with subtitle track.
 func (c *CastClient) Load(mediaURL string, contentType string, startTime int, subtitleURL string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	// If subtitles are provided and we have the app launched, use custom load with tracks
 	if subtitleURL != "" && c.app.App() != nil {
 		transportId := c.app.App().TransportId
@@ -131,10 +128,14 @@ func (c *CastClient) GetStatus() (*CastStatus, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	// Request fresh status from device (Update refreshes the cached status)
+	if err := c.app.Update(); err != nil {
+		return nil, err
+	}
+
 	_, media, vol := c.app.Status()
 
 	status := &CastStatus{}
-
 	if vol != nil {
 		status.Volume = float32(vol.Level)
 		status.Muted = vol.Muted
@@ -157,6 +158,7 @@ func (c *CastClient) GetStatus() (*CastStatus, error) {
 
 // Close disconnects from the Chromecast device.
 func (c *CastClient) Close(stopMedia bool) error {
+	fmt.Println("closing")
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

@@ -7,6 +7,7 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -36,6 +37,7 @@ type FyneScreen struct {
 	CurrentPos            binding.String
 	EndPos                binding.String
 	serverStopCTX         context.Context
+	cancelServerStop      context.CancelFunc
 	Current               fyne.Window
 	cancelEnablePlay      context.CancelFunc
 	PlayPause             *widget.Button
@@ -185,6 +187,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	go func() {
 		<-ctx.Done()
+		fmt.Println("Context done", ctx.Err())
 		os.Exit(0)
 	}()
 
@@ -248,9 +251,9 @@ func initFyneNewScreen(version string) *FyneScreen {
 
 	if content != nil {
 		name := lang.SystemLocale().LanguageString()
-		lang.AddTranslations(fyne.NewStaticResource(name+".json", content))
+		_ = lang.AddTranslations(fyne.NewStaticResource(name+".json", content))
 	} else {
-		lang.AddTranslationsFS(translations, "translations")
+		_ = lang.AddTranslationsFS(translations, "translations")
 	}
 
 	go2tv.SetIcon(fyne.NewStaticResource("icon", go2TVIcon512))
