@@ -424,8 +424,6 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
-		playpause.Enable()
-
 		// CRITICAL: Reset all device state when switching between devices
 		// This prevents DLNA state from leaking to Chromecast and vice versa
 		if s.selectedDevice.addr != "" && s.selectedDevice.addr != data[id].addr {

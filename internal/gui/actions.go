@@ -589,7 +589,7 @@ func chromecastPlayAction(screen *FyneScreen) {
 		}
 	}
 
-	// Load media with timeout
+	// Load media and update UI on success
 	go func() {
 		if err := client.Load(mediaURL, mediaType, ffmpegSeek, subtitleURL); err != nil {
 			check(screen, fmt.Errorf("chromecast load: %w", err))
@@ -607,7 +607,6 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	var previousState string
 	var mediaStarted bool // Track if media has started (seen BUFFERING or PLAYING)
 
 	for {
@@ -645,15 +644,14 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 			case "IDLE":
 				// Only treat IDLE as "finished" if media had actually started playing
 				// Ignore initial IDLE states while media is loading
-				if mediaStarted && previousState == "PLAYING" {
-					// Media finished - trigger auto-play next via Fini()
+				if mediaStarted {
+					// Media finished - trigger auto-play next via Fini() and cleanup
 					screen.Fini()
+					startAfreshPlayButton(screen)
 					return
 				}
 				// If we haven't started yet, just ignore IDLE
 			}
-
-			previousState = status.PlayerState
 
 			// Update slider position (only if media has started)
 			if mediaStarted && !screen.sliderActive && status.Duration > 0 {
@@ -667,6 +665,15 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 				total, _ := utils.SecondsToClockTime(int(status.Duration))
 				screen.CurrentPos.Set(current)
 				screen.EndPos.Set(total)
+
+				// Fallback: Detect media completion when CurrentTime reaches Duration
+				// go-chromecast doesn't always report IDLE when media finishes
+				// Using 1.5 second threshold since Chromecast stops updating ~1-2s early
+				if status.CurrentTime >= status.Duration-1.5 && status.Duration > 0 {
+					screen.Fini()
+					startAfreshPlayButton(screen)
+					return
+				}
 			}
 		}
 	}
