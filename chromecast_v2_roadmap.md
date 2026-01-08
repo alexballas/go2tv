@@ -102,17 +102,20 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 
 ### Sub-Phases
 
-#### Phase 3a: Core Cast Protocol Package
-- Add `github.com/vishen/go-chromecast` library to `go.mod`
-- Create `castprotocol/client.go` - CastClient wrapper
-- Create `castprotocol/status.go` - CastStatus struct
-- **Checkpoint**: `make build` succeeds
+#### Phase 3a: Core Cast Protocol Package ✅
+- Add `github.com/vishen/go-chromecast` library to `go.mod` ✅
+- Create `castprotocol/client.go` - CastClient wrapper with custom connection ✅
+- Create `castprotocol/status.go` - CastStatus struct ✅
+- Create `castprotocol/media.go` - MediaTrack types for WebVTT subtitles ✅
+- Create `castprotocol/loader.go` - LoadWithSubtitles custom command ✅
+- See [phase3a_details.md](file:///home/alex/test/go2tv/phase3a_details.md) for implementation details
+- **Checkpoint**: `make build` succeeds ✅
 
-#### Phase 3b: Device State Management
-- Add `chromecastClient` field to `FyneScreen` struct
-- Add `resetDeviceState()` function
-- Update device selection callback with state reset
-- **Checkpoint**: Switch devices, verify UI resets
+#### Phase 3b: Device State Management ✅
+- Add `chromecastClient` field to `FyneScreen` struct ✅
+- Add `resetDeviceState()` function ✅
+- Update device selection callback with state reset ✅
+- **Checkpoint**: Switch devices, verify UI resets ✅
 
 #### Phase 3c: GUI Playback Actions
 - Add `chromecastPlayAction()` (local files + external URLs)

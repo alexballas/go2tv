@@ -22,6 +22,7 @@ import (
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/alexballas/go2tv/castprotocol"
 	"github.com/alexballas/go2tv/devices"
 	"github.com/alexballas/go2tv/httphandlers"
 	"github.com/alexballas/go2tv/soapcalls"
@@ -60,6 +61,7 @@ type FyneScreen struct {
 	VolumeDown            *widget.Button
 	selectedDevice        devType
 	selectedDeviceType    string
+	chromecastClient      *castprotocol.CastClient // Active Chromecast connection
 	State                 string
 	mediafile             string
 	version               string
@@ -403,6 +405,36 @@ func (p *FyneScreen) getScreenState() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.State
+}
+
+// resetDeviceState clears all protocol-specific state when switching devices.
+// This prevents DLNA parameters from leaking to Chromecast operations.
+// Note: Does NOT stop the HTTP server - that should only happen via stop button or device signal.
+func (p *FyneScreen) resetDeviceState() {
+	// Clear DLNA-specific state
+	p.controlURL = ""
+	p.eventlURL = ""
+	p.renderingControlURL = ""
+	p.connectionManagerURL = ""
+	p.tvdata = nil
+
+	// Close any active Chromecast connection
+	if p.chromecastClient != nil {
+		p.chromecastClient.Close(true)
+		p.chromecastClient = nil
+	}
+
+	// Reset playback state
+	p.State = ""
+	p.ffmpegSeek = 0
+
+	// Reset UI state
+	fyne.Do(func() {
+		p.CurrentPos.Set("00:00:00")
+		p.EndPos.Set("00:00:00")
+		p.SlideBar.Slider.SetValue(0)
+		setPlayPauseView("Play", p)
+	})
 }
 
 // NewFyneScreen .

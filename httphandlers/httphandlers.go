@@ -67,6 +67,25 @@ func (s *HTTPserver) RemoveHandler(path string) {
 	s.mu.Unlock()
 }
 
+// StartSimpleServer starts a minimal HTTP server for serving media files.
+// Used by Chromecast which doesn't need DLNA callback handlers or TVPayload.
+func (s *HTTPserver) StartSimpleServer(serverStarted chan<- error, mediaPath string) {
+	// Register media handler
+	mediaFilename := "/" + utils.ConvertFilename(mediaPath)
+	s.AddHandler(mediaFilename, nil, mediaPath)
+
+	s.Mux.HandleFunc("/", s.ServeMediaHandler())
+
+	ln, err := net.Listen("tcp", s.http.Addr)
+	if err != nil {
+		serverStarted <- fmt.Errorf("server listen error: %w", err)
+		return
+	}
+
+	serverStarted <- nil
+	_ = s.http.Serve(ln)
+}
+
 // StartServer will start a HTTP server to serve the selected media files and
 // also handle the subscriptions requests from the DMR devices.
 func (s *HTTPserver) StartServer(serverStarted chan<- error, media, subtitles any,
@@ -270,6 +289,11 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 }
 
 func serveContentBytes(w http.ResponseWriter, r *http.Request, mediaType string, f []byte) {
+	// Add CORS for subtitle files (needed for Chromecast)
+	if strings.HasSuffix(r.URL.Path, ".vtt") || strings.HasSuffix(r.URL.Path, ".srt") {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+	}
+
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
 		contentFeatures, err := utils.BuildContentFeatures(mediaType, "01", false)
 		if err != nil {
