@@ -1023,8 +1023,10 @@ func chromecastPlayAction(screen *FyneScreen) {
         // Only use WebVTT sidecar when NOT transcoding
         whereToListen, _ := utils.URLtoListenIPandPort(screen.selectedDevice.addr)
 
-        // Check if subtitle is SRT format - convert to WebVTT
-        if strings.HasSuffix(strings.ToLower(screen.subsfile), ".srt") {
+        // Handle subtitle based on file extension
+        ext := strings.ToLower(filepath.Ext(screen.subsfile))
+        switch ext {
+        case ".srt":
             webvttData, err := utils.ConvertSRTtoWebVTT(screen.subsfile)
             if err != nil {
                 check(screen, fmt.Errorf("subtitle conversion: %w", err))
@@ -1034,12 +1036,13 @@ func chromecastPlayAction(screen *FyneScreen) {
                 screen.httpserver.AddHandler("/subtitles.vtt", nil, webvttData)
                 subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
             }
-        } else if strings.HasSuffix(strings.ToLower(screen.subsfile), ".vtt") {
+        case ".vtt":
             // Already WebVTT - register file path with AddHandler
             screen.httpserver.AddHandler("/subtitles.vtt", nil, screen.subsfile)
             subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
+        default:
+            // Other subtitle formats (e.g., ASS, SSA) require transcoding with burn-in
         }
-        // Note: Other subtitle formats (e.g., ASS, SSA) require transcoding with burn-in
     }
     // When transcoding is enabled, screen.subsfile is passed to FFmpeg in Phase 4
     // and subtitles are burned into the video stream - no sidecar needed
