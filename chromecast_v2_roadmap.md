@@ -128,13 +128,15 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 
 #### Phase 3e: CLI Chromecast Support
 - Add `isChromecastURL()` helper (port 8009 detection)
-- Add `runChromecastCLI()` function
+- Create `internal/interactive/chromecast.go` - interactive terminal UI
+- Add `runChromecastCLI()` function with tcell-based controls
 - Update `checkTflag()` with device type detection
-- **Checkpoint**: `go2tv -v file.mp4 -t http://cast:8009` works
+- **Checkpoint**: `go2tv -v file.mp4 -t http://cast:8009` works with interactive UI
 
 #### Phase 3f: Subtitle Support
-- Create `soapcalls/utils/srt_to_webvtt.go`
-- Integrate WebVTT subtitles in chromecastPlayAction
+- Create `soapcalls/utils/srt_to_webvtt.go` - SRT to WebVTT conversion
+- Add CORS headers in `serveContentBytes()` for subtitle paths
+- Integrate WebVTT subtitles in `chromecastPlayAction` using `AddHandler`
 - **Checkpoint**: Subtitles display on Chromecast
 
 **Dependencies**: Phase 2
@@ -204,7 +206,7 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 - Chromecast requires accessible HTTP URL for media
 - Ensure HTTP server exposes stream at predictable URL (direct or transcoded)
 - Implement proper MIME type headers for Chromecast
-- Add CORS headers if needed
+- Add CORS headers for transcoded media streams (subtitle CORS already in Phase 3f)
 
 **Dependencies**: Phase 3
 
@@ -349,5 +351,4 @@ ffmpeg -i input.mkv \
 - Hardware-accelerated transcoding (VAAPI, NVENC, QSV)
 - Chromecast Ultra 4K support
 - Queue management for Chromecast
-- Subtitle support for Chromecast (burned-in or WebVTT)
 - Google Cast SDK integration for mobile apps

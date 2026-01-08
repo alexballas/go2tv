@@ -111,21 +111,9 @@ func ConvertSRTReaderToWebVTT(r io.Reader) ([]byte, error) {
 
 ---
 
-#### httphandlers - Minor CORS Addition
+#### [MODIFY] [httphandlers/httphandlers.go](file:///home/alex/test/go2tv/httphandlers/httphandlers.go)
 
-The existing `AddHandler`/`serveContent` pattern already supports `[]byte` media:
-
-```go
-// serveContent (line 259-263) already dispatches []byte to serveContentBytes:
-switch f := mf.(type) {
-case []byte:
-    serveContentBytes(w, r, mediaType, f)
-}
-```
-
-**CORS Headers for Chromecast**: Chromecast fetches subtitles cross-origin, so we need `Access-Control-Allow-Origin: *`.
-
-**Option A - Add CORS in serveContentBytes for subtitle paths** (minimal change):
+**Add CORS for subtitle paths** in `serveContentBytes`:
 
 ```go
 func serveContentBytes(w http.ResponseWriter, r *http.Request, mediaType string, f []byte) {
@@ -138,13 +126,26 @@ func serveContentBytes(w http.ResponseWriter, r *http.Request, mediaType string,
 }
 ```
 
-**Usage in chromecastPlayAction**:
+**Add StartSimpleServer for Chromecast** (doesn't require TVPayload):
+
 ```go
-// Register WebVTT bytes with HTTP server using existing pattern
-webvttData, err := utils.ConvertSRTtoWebVTT(screen.subsfile)
-if err == nil {
-    screen.httpserver.AddHandler("/subtitles.vtt", nil, webvttData)
-    subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
+// StartSimpleServer starts a minimal HTTP server for serving media files.
+// Used by Chromecast which doesn't need DLNA callback handlers or TVPayload.
+func (s *HTTPserver) StartSimpleServer(serverStarted chan<- error, mediaPath string) {
+    // Register media handler
+    mediaFilename := "/" + utils.ConvertFilename(mediaPath)
+    s.AddHandler(mediaFilename, nil, mediaPath)
+
+    s.Mux.HandleFunc("/", s.ServeMediaHandler())
+
+    ln, err := net.Listen("tcp", s.http.Addr)
+    if err != nil {
+        serverStarted <- fmt.Errorf("server listen error: %w", err)
+        return
+    }
+
+    serverStarted <- nil
+    _ = s.http.Serve(ln)
 }
 ```
 
@@ -803,7 +804,7 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, flagRes *f
     serverStarted := make(chan error)
 
     go func() {
-        s.StartServer(serverStarted, mediaFile, "", nil, nil)
+        s.StartSimpleServer(serverStarted, mediaPath)
     }()
 
     if err := <-serverStarted; err != nil {
@@ -996,9 +997,9 @@ func chromecastPlayAction(screen *FyneScreen) {
         serverStoppedCTX, serverCTXStop = context.WithCancel(context.Background())
         screen.serverStopCTX = serverStoppedCTX
 
-        // Start HTTP server (reuse existing DLNA server infrastructure)
+        // Start simple HTTP server for Chromecast (no TVPayload/DLNA callbacks needed)
         go func() {
-            screen.httpserver.StartServer(serverStarted, screen.mediafile, "", nil, screen)
+            screen.httpserver.StartSimpleServer(serverStarted, screen.mediafile)
             serverCTXStop()
         }()
 
@@ -1016,10 +1017,10 @@ func chromecastPlayAction(screen *FyneScreen) {
     //   1. Transcoding DISABLED: Serve WebVTT sidecar (handled here)
     //   2. Transcoding ENABLED: Subtitles burned into video stream (Phase 4 FFmpeg handles)
     //
-    // When screen.Transcode.Checked is true, Phase 4's FFmpeg command will include
+    // When screen.TranscodeCheckBox.Checked is true, Phase 4's FFmpeg command will include
     // subtitle burn-in filter, so we skip WebVTT sidecar here.
     var subtitleURL string
-    if screen.subsfile != "" && !screen.Transcode.Checked {
+    if screen.subsfile != "" && !screen.TranscodeCheckBox.Checked {
         // Only use WebVTT sidecar when NOT transcoding
         whereToListen, _ := utils.URLtoListenIPandPort(screen.selectedDevice.addr)
 
@@ -1493,16 +1494,16 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 - This reuses existing auto-play logic, no Chromecast-specific queue API
 
 ### Subtitle Support
-**Decision**: Two paths based on transcoding state (`screen.Transcode.Checked`).
+**Decision**: Two paths based on transcoding state (`screen.TranscodeCheckBox.Checked`).
 
 **Phase 3 (this plan)** - WebVTT sidecar for direct streaming:
-- Condition: `screen.subsfile != "" && !screen.Transcode.Checked`
+- Condition: `screen.subsfile != "" && !screen.TranscodeCheckBox.Checked`
 - Convert SRT → WebVTT via `utils.ConvertSRTtoWebVTT()`
 - Serve WebVTT via HTTP server (`RegisterSubtitleData()`)
 - Pass subtitle URL to Chromecast `Load()` call
 
 **Phase 4 (future)** - Burn-in for transcoding:
-- Condition: `screen.Transcode.Checked` (skip WebVTT logic)
+- Condition: `screen.TranscodeCheckBox.Checked` (skip WebVTT logic)
 - FFmpeg includes subtitle filter: `-vf "subtitles=file.srt"`
 - `screen.subsfile` passed to FFmpeg command builder
 - No separate subtitle track - burned into video stream
@@ -1510,7 +1511,7 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 **Integration Contract**:
 ```
 if screen.subsfile != "" {
-    if screen.Transcode.Checked {
+    if screen.TranscodeCheckBox.Checked {
         // Phase 4: FFmpeg burns subtitles into stream
         // Pass screen.subsfile to BuildChromecastFFmpegArgs()
     } else {
