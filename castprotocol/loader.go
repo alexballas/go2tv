@@ -30,10 +30,9 @@ type CustomLoadPayload struct {
 	Type           string              `json:"type"`
 	RequestId      int                 `json:"requestId"`
 	Media          MediaItemWithTracks `json:"media"`
-	CurrentTime    int                 `json:"currentTime"`
+	CurrentTime    float64             `json:"currentTime"` // Seconds (SDK uses float)
 	Autoplay       bool                `json:"autoplay"`
 	ActiveTrackIds []int               `json:"activeTrackIds,omitempty"`
-	TextTrackStyle *TextTrackStyle     `json:"textTrackStyle,omitempty"`
 }
 
 // SetRequestId implements cast.Payload interface
@@ -65,19 +64,21 @@ func LoadWithSubtitles(conn cast.Conn, transportId string, mediaURL string, cont
 		activeTrackIds = []int{1} // Activate the subtitle track
 	}
 
+	// Add text track style to media
+	media.TextTrackStyle = &TextTrackStyle{
+		BackgroundColor: "#00000000", // Transparent
+		FontScale:       1.0,
+		EdgeType:        "OUTLINE",
+		EdgeColor:       "#000000FF",
+		ForegroundColor: "#FFFFFFFF", // White text
+	}
+
 	payload := &CustomLoadPayload{
 		Type:           "LOAD",
 		Media:          media,
-		CurrentTime:    startTime,
+		CurrentTime:    float64(startTime),
 		Autoplay:       true,
 		ActiveTrackIds: activeTrackIds,
-		TextTrackStyle: &TextTrackStyle{
-			BackgroundColor: "#00000000", // Transparent
-			FontScale:       1.0,
-			EdgeType:        "OUTLINE",
-			EdgeColor:       "#000000FF",
-			ForegroundColor: "#FFFFFFFF", // White text
-		},
 	}
 
 	requestID := nextRequestID()

@@ -14,12 +14,13 @@ type MediaTrack struct {
 
 // MediaItemWithTracks extends MediaItem with tracks support for subtitles.
 type MediaItemWithTracks struct {
-	ContentId   string       `json:"contentId"`
-	ContentType string       `json:"contentType"`
-	StreamType  string       `json:"streamType"`
-	Duration    float32      `json:"duration,omitempty"`
-	Metadata    MediaMeta    `json:"metadata,omitempty"`
-	Tracks      []MediaTrack `json:"tracks,omitempty"`
+	ContentId      string          `json:"contentId"`
+	ContentType    string          `json:"contentType"`
+	StreamType     string          `json:"streamType"`
+	Duration       float32         `json:"duration,omitempty"`
+	Metadata       MediaMeta       `json:"metadata,omitempty"`
+	Tracks         []MediaTrack    `json:"tracks,omitempty"`
+	TextTrackStyle *TextTrackStyle `json:"textTrackStyle,omitempty"`
 }
 
 // MediaMeta contains metadata about the media.
