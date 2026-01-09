@@ -30,13 +30,29 @@ import (
 )
 
 func muteAction(screen *FyneScreen) {
-	if screen.renderingControlURL == "" {
-		check(screen, errors.New(lang.L("please select a device")))
+	// Handle icon toggle (mute -> unmute)
+	if screen.MuteUnmute.Icon == theme.VolumeMuteIcon() {
+		unmuteAction(screen)
 		return
 	}
 
-	if screen.MuteUnmute.Icon == theme.VolumeMuteIcon() {
-		unmuteAction(screen)
+	// Handle Chromecast mute
+	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
+		if screen.chromecastClient == nil || !screen.chromecastClient.IsConnected() {
+			check(screen, errors.New(lang.L("chromecast not connected")))
+			return
+		}
+		if err := screen.chromecastClient.SetMuted(true); err != nil {
+			check(screen, errors.New(lang.L("could not send mute action")))
+			return
+		}
+		setMuteUnmuteView("Unmute", screen)
+		return
+	}
+
+	// Handle DLNA mute
+	if screen.renderingControlURL == "" {
+		check(screen, errors.New(lang.L("please select a device")))
 		return
 	}
 
@@ -56,6 +72,21 @@ func muteAction(screen *FyneScreen) {
 }
 
 func unmuteAction(screen *FyneScreen) {
+	// Handle Chromecast unmute
+	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
+		if screen.chromecastClient == nil || !screen.chromecastClient.IsConnected() {
+			check(screen, errors.New(lang.L("chromecast not connected")))
+			return
+		}
+		if err := screen.chromecastClient.SetMuted(false); err != nil {
+			check(screen, errors.New(lang.L("could not send mute action")))
+			return
+		}
+		setMuteUnmuteView("Mute", screen)
+		return
+	}
+
+	// Handle DLNA unmute
 	if screen.renderingControlURL == "" {
 		check(screen, errors.New(lang.L("please select a device")))
 		return
@@ -902,6 +933,41 @@ func getDevices(delay int) ([]devType, error) {
 }
 
 func volumeAction(screen *FyneScreen, up bool) {
+	// Handle Chromecast volume
+	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
+		if screen.chromecastClient == nil || !screen.chromecastClient.IsConnected() {
+			check(screen, errors.New(lang.L("chromecast not connected")))
+			return
+		}
+
+		// Get current volume from status
+		status, err := screen.chromecastClient.GetStatus()
+		if err != nil {
+			check(screen, errors.New(lang.L("could not get the volume levels")))
+			return
+		}
+
+		// Volume is 0.0 to 1.0, step by 0.05 (5%)
+		newVolume := status.Volume - 0.05
+		if up {
+			newVolume = status.Volume + 0.05
+		}
+
+		// Clamp to valid range
+		if newVolume < 0 {
+			newVolume = 0
+		}
+		if newVolume > 1 {
+			newVolume = 1
+		}
+
+		if err := screen.chromecastClient.SetVolume(newVolume); err != nil {
+			check(screen, errors.New(lang.L("could not send volume action")))
+		}
+		return
+	}
+
+	// Handle DLNA volume
 	if screen.renderingControlURL == "" {
 		check(screen, errors.New(lang.L("please select a device")))
 		return
