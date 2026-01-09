@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -597,6 +598,9 @@ func chromecastPlayAction(screen *FyneScreen) {
 
 	} else {
 		// LOCAL FILE: Serve via internal HTTP server
+		// On Android/iOS, Fyne storage only provides io.ReadCloser which doesn't support seeking.
+		// http.ServeContent requires io.ReadSeeker for range requests (video seeking).
+		// Solution: Copy file content to a temp file that we can use with os.File.
 		mediaReader, err := storage.Reader(screen.mediafile)
 		if err != nil {
 			check(w, err)
@@ -629,7 +633,7 @@ func chromecastPlayAction(screen *FyneScreen) {
 		screen.serverStopCTX = serverStoppedCTX
 		screen.cancelServerStop = serverCTXStop
 
-		// Get media reader for serving
+		// Get media reader for copying to temp file
 		mediaFile, err := storage.Reader(screen.mediafile)
 		if err != nil {
 			check(w, err)
@@ -637,17 +641,43 @@ func chromecastPlayAction(screen *FyneScreen) {
 			return
 		}
 
-		// Add media handler and start simple server for Chromecast
+		// Copy to temp file for http.ServeContent (needs io.ReadSeeker)
+		ext := filepath.Ext(screen.MediaText.Text)
+		tempFile, err := os.CreateTemp("", "go2tv-*"+ext)
+		if err != nil {
+			mediaFile.Close()
+			check(w, fmt.Errorf("temp file create: %w", err))
+			startAfreshPlayButton(screen)
+			return
+		}
+
+		if _, err := io.Copy(tempFile, mediaFile); err != nil {
+			mediaFile.Close()
+			tempFile.Close()
+			os.Remove(tempFile.Name())
+			check(w, fmt.Errorf("temp file copy: %w", err))
+			startAfreshPlayButton(screen)
+			return
+		}
+		mediaFile.Close()
+		tempFile.Close()
+
+		tempFilePath := tempFile.Name()
+
+		// Add media handler with temp file path (string type triggers os.Open in handler)
 		mediaFilename := "/" + utils.ConvertFilename(screen.MediaText.Text)
-		screen.httpserver.AddHandler(mediaFilename, nil, mediaFile)
+		screen.httpserver.AddHandler(mediaFilename, nil, tempFilePath)
 
 		serverStarted := make(chan error)
 		go func() {
 			screen.httpserver.StartServing(serverStarted)
+			// Clean up temp file when server stops
+			os.Remove(tempFilePath)
 			serverCTXStop()
 		}()
 
 		if err := <-serverStarted; err != nil {
+			os.Remove(tempFilePath)
 			check(w, err)
 			startAfreshPlayButton(screen)
 			return
