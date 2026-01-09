@@ -849,6 +849,9 @@ func skipNextAction(screen *FyneScreen) {
 		return
 	}
 
+	// Capture old path for handler cleanup
+	oldMediaPath := screen.mediafile
+
 	name, nextMediaPath := getNextMedia(screen)
 	screen.MediaText.Text = name
 	screen.mediafile = nextMediaPath
@@ -875,39 +878,38 @@ func skipNextAction(screen *FyneScreen) {
 			return
 		}
 
-		// Get subtitle URL if needed
+		// Get subtitle URL if needed (remove old handler first)
 		subtitleURL := ""
-		if screen.subsfile != "" && screen.httpserver != nil {
+		screen.httpserver.RemoveHandler("/subtitles.vtt")
+		if screen.subsfile != "" {
 			ext := strings.ToLower(filepath.Ext(screen.subsfile))
 			switch ext {
 			case ".srt":
 				webvttData, err := utils.ConvertSRTtoWebVTT(screen.subsfile)
 				if err == nil {
 					screen.httpserver.AddHandler("/subtitles.vtt", nil, webvttData)
+					subtitleURL = "http://" + screen.httpserver.GetAddr() + "/subtitles.vtt"
 				}
 			case ".vtt":
 				screen.httpserver.AddHandler("/subtitles.vtt", nil, screen.subsfile)
-			}
-			// Get base URL from existing server
-			if screen.serverStopCTX != nil {
-				// Assuming we have a working server, use same host for subtitles
+				subtitleURL = "http://" + screen.httpserver.GetAddr() + "/subtitles.vtt"
 			}
 		}
 
-		// Add the new media to the HTTP server (path, payload, media)
+		// Remove old media handler and add new one
+		screen.httpserver.RemoveHandler("/" + utils.ConvertFilename(oldMediaPath))
 		screen.httpserver.AddHandler("/"+utils.ConvertFilename(screen.mediafile), nil, screen.mediafile)
 
 		// Build media URL using the actual HTTP server address
 		mediaURL := "http://" + screen.httpserver.GetAddr() + "/" + utils.ConvertFilename(screen.mediafile)
 
-		// Load new media on existing connection
-		if err := screen.chromecastClient.Load(mediaURL, mediaType, 0, subtitleURL); err != nil {
-			check(screen, fmt.Errorf("chromecast load: %w", err))
-			return
-		}
-
-		setPlayPauseView("Pause", screen)
-		screen.updateScreenState("Playing")
+		// Load new media on existing connection (async to avoid blocking)
+		go func() {
+			if err := screen.chromecastClient.Load(mediaURL, mediaType, 0, subtitleURL); err != nil {
+				check(screen, fmt.Errorf("chromecast load: %w", err))
+				return
+			}
+		}()
 
 		return
 	}
