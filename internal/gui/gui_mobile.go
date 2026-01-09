@@ -56,6 +56,7 @@ type FyneScreen struct {
 	connectionManagerURL string
 	version              string
 	mediaFormats         []string
+	tempMediaFile        string // Temp file path for mobile media serving (cleanup on stop)
 	Transcode            bool
 	Medialoop            bool
 }

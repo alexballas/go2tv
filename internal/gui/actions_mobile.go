@@ -247,13 +247,9 @@ func playAction(screen *FyneScreen) {
 	}
 
 	if screen.mediafile != nil {
-		mediaURL, err := storage.Reader(screen.mediafile)
-		check(screen.Current, err)
-		if err != nil {
-			startAfreshPlayButton(screen)
-			return
-		}
-
+		// On Android/iOS, Fyne storage only provides io.ReadCloser which doesn't support seeking.
+		// http.ServeContent requires io.ReadSeeker for range requests (video seeking).
+		// Solution: Copy file content to a temp file that we can use with os.File.
 		mediaURLinfo, err := storage.Reader(screen.mediafile)
 		check(screen.Current, err)
 		if err != nil {
@@ -262,21 +258,60 @@ func playAction(screen *FyneScreen) {
 		}
 
 		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
+		mediaURLinfo.Close()
 		check(w, err)
 		if err != nil {
 			startAfreshPlayButton(screen)
 			return
 		}
 
-		mediaFile = mediaURL
+		// Images: read to byte buffer (small, no seeking needed)
 		if strings.Contains(mediaType, "image") {
-			readerToBytes, err := io.ReadAll(mediaURL)
-			mediaURL.Close()
+			mediaReader, err := storage.Reader(screen.mediafile)
+			if err != nil {
+				check(w, err)
+				startAfreshPlayButton(screen)
+				return
+			}
+			readerToBytes, err := io.ReadAll(mediaReader)
+			mediaReader.Close()
 			if err != nil {
 				startAfreshPlayButton(screen)
 				return
 			}
 			mediaFile = readerToBytes
+		} else {
+			// Video/Audio: copy to temp file for seeking support
+			mediaReader, err := storage.Reader(screen.mediafile)
+			if err != nil {
+				check(w, err)
+				startAfreshPlayButton(screen)
+				return
+			}
+
+			ext := filepath.Ext(screen.MediaText.Text)
+			tempFile, err := os.CreateTemp("", "go2tv-*"+ext)
+			if err != nil {
+				mediaReader.Close()
+				check(w, fmt.Errorf("temp file create: %w", err))
+				startAfreshPlayButton(screen)
+				return
+			}
+
+			if _, err := io.Copy(tempFile, mediaReader); err != nil {
+				mediaReader.Close()
+				tempFile.Close()
+				os.Remove(tempFile.Name())
+				check(w, fmt.Errorf("temp file copy: %w", err))
+				startAfreshPlayButton(screen)
+				return
+			}
+			mediaReader.Close()
+			tempFile.Close()
+
+			// Store for cleanup in stopAction and use path for serving
+			screen.tempMediaFile = tempFile.Name()
+			mediaFile = screen.tempMediaFile
 		}
 	}
 
@@ -390,6 +425,12 @@ func clearsubsAction(screen *FyneScreen) {
 func stopAction(screen *FyneScreen) {
 	setPlayPauseView("Play", screen)
 	screen.updateScreenState("Stopped")
+
+	// Clean up temp media file
+	if screen.tempMediaFile != "" {
+		os.Remove(screen.tempMediaFile)
+		screen.tempMediaFile = ""
+	}
 
 	// Handle Chromecast stop
 	if screen.chromecastClient != nil && screen.chromecastClient.IsConnected() {
