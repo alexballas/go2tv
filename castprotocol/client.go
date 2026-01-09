@@ -92,7 +92,6 @@ func (c *CastClient) Load(mediaURL string, contentType string, startTime int, su
 		return fmt.Errorf("no transport ID available")
 	}
 
-	fmt.Printf("Loading with subtitles: transportId=%s, subtitleURL=%s\n", transportId, subtitleURL)
 	return LoadWithSubtitles(c.conn, transportId, mediaURL, contentType, startTime, subtitleURL)
 }
 
@@ -173,7 +172,6 @@ func (c *CastClient) GetStatus() (*CastStatus, error) {
 
 // Close disconnects from the Chromecast device.
 func (c *CastClient) Close(stopMedia bool) error {
-	fmt.Println("closing")
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
