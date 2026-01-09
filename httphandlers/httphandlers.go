@@ -91,6 +91,21 @@ func (s *HTTPserver) StartSimpleServer(serverStarted chan<- error, mediaPath str
 	_ = s.http.Serve(ln)
 }
 
+// StartServing starts the HTTP server after handlers have been added via AddHandler.
+// Used by mobile Chromecast which adds handlers separately with io.ReadCloser media.
+func (s *HTTPserver) StartServing(serverStarted chan<- error) {
+	s.Mux.HandleFunc("/", s.ServeMediaHandler())
+
+	ln, err := net.Listen("tcp", s.http.Addr)
+	if err != nil {
+		serverStarted <- fmt.Errorf("server listen error: %w", err)
+		return
+	}
+
+	serverStarted <- nil
+	_ = s.http.Serve(ln)
+}
+
 // StartServer will start a HTTP server to serve the selected media files and
 // also handle the subscriptions requests from the DMR devices.
 func (s *HTTPserver) StartServer(serverStarted chan<- error, media, subtitles any,

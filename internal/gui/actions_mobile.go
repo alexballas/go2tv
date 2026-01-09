@@ -516,27 +516,29 @@ func startAfreshPlayButton(screen *FyneScreen) {
 func chromecastPlayAction(screen *FyneScreen) {
 	w := screen.Current
 
-	// Handle pause/resume if already playing
+	// Handle pause/resume if already playing - query Chromecast status directly
 	if screen.chromecastClient != nil && screen.chromecastClient.IsConnected() {
-		currentState := screen.getScreenState()
-		if currentState == "Paused" {
-			if err := screen.chromecastClient.Play(); err != nil {
-				check(w, err)
-				startAfreshPlayButton(screen)
+		status, err := screen.chromecastClient.GetStatus()
+		if err == nil {
+			switch status.PlayerState {
+			case "PLAYING":
+				if err := screen.chromecastClient.Pause(); err != nil {
+					check(w, err)
+					return
+				}
+				setPlayPauseView("Play", screen)
+				screen.updateScreenState("Paused")
+				return
+			case "PAUSED":
+				if err := screen.chromecastClient.Play(); err != nil {
+					check(w, err)
+					startAfreshPlayButton(screen)
+					return
+				}
+				setPlayPauseView("Pause", screen)
+				screen.updateScreenState("Playing")
 				return
 			}
-			setPlayPauseView("Pause", screen)
-			screen.updateScreenState("Playing")
-			return
-		}
-		if screen.getScreenState() == "Playing" {
-			if err := screen.chromecastClient.Pause(); err != nil {
-				check(w, err)
-				return
-			}
-			setPlayPauseView("Play", screen)
-			screen.updateScreenState("Paused")
-			return
 		}
 	}
 
@@ -622,7 +624,6 @@ func chromecastPlayAction(screen *FyneScreen) {
 		}
 
 		screen.httpserver = httphandlers.NewServer(whereToListen)
-		serverStarted := make(chan error)
 		var serverCTXStop context.CancelFunc
 		serverStoppedCTX, serverCTXStop = context.WithCancel(context.Background())
 		screen.serverStopCTX = serverStoppedCTX
@@ -636,8 +637,13 @@ func chromecastPlayAction(screen *FyneScreen) {
 			return
 		}
 
+		// Add media handler and start simple server for Chromecast
+		mediaFilename := "/" + utils.ConvertFilename(screen.MediaText.Text)
+		screen.httpserver.AddHandler(mediaFilename, nil, mediaFile)
+
+		serverStarted := make(chan error)
 		go func() {
-			screen.httpserver.StartServer(serverStarted, mediaFile, nil, nil, screen)
+			screen.httpserver.StartServing(serverStarted)
 			serverCTXStop()
 		}()
 
@@ -647,7 +653,7 @@ func chromecastPlayAction(screen *FyneScreen) {
 			return
 		}
 
-		mediaURL = "http://" + whereToListen + "/" + utils.ConvertFilename(screen.MediaText.Text)
+		mediaURL = "http://" + whereToListen + mediaFilename
 	}
 
 	// Handle subtitles

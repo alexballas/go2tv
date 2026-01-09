@@ -145,15 +145,19 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 - **Checkpoint**: Subtitles work on compatible Chromecast devices ✅
 - **Note**: Google TV Default Media Receiver ignores side-loaded tracks
 
-#### Phase 3g: Mobile Chromecast Support
-- Add `chromecastClient` field to mobile `FyneScreen` struct (`gui_mobile.go`)
-- Port `chromecastPlayAction()` to `actions_mobile.go`
-- Port `chromecastStatusWatcher()` to mobile
-- Update mobile `stopAction()` for Chromecast
-- Update mobile `pauseAction()` for Chromecast
-- Add volume/mute support for Chromecast on mobile
-- Port skip next fixes to mobile
-- **Checkpoint**: Full Chromecast playback works on Android/iOS
+#### Phase 3g: Mobile Chromecast Support ✅
+- Add `chromecastClient` field to mobile `FyneScreen` struct (`gui_mobile.go`) ✅
+- Port `chromecastPlayAction()` to `actions_mobile.go` ✅
+- Port `chromecastStatusWatcher()` to mobile ✅
+- Update mobile `stopAction()` for Chromecast ✅
+- Update mobile `muteAction()`/`unmuteAction()` for Chromecast ✅
+- Add volume support for Chromecast on mobile ✅
+- Update `getDevices()` to use `LoadAllDevices()` ✅
+- Start Chromecast discovery loop in `Start()` ✅
+- Update device selection callback to handle Chromecast ✅
+- Update `checkMutefunc()` to poll Chromecast mute status ✅
+- **Note**: Skip next not applicable on mobile (no skip next feature)
+- **Checkpoint**: Full Chromecast playback works on Android/iOS ✅
 
 **Dependencies**: Phase 2
 

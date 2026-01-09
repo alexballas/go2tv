@@ -273,31 +273,47 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 		// check to see if the new refresh includes
 		// one of the already selected devices
 		var includes bool
-		u, _ := url.Parse(s.controlURL)
-		for _, d := range datanew {
-			n, _ := url.Parse(d.addr)
-			if n.Host == u.Host {
-				includes = true
+		selectedAddr := s.controlURL
+		if s.selectedDeviceType == devices.DeviceTypeChromecast {
+			selectedAddr = s.selectedDevice.addr
+		}
+		if selectedAddr != "" {
+			u, _ := url.Parse(selectedAddr)
+			for _, d := range datanew {
+				n, _ := url.Parse(d.addr)
+				if n.Host == u.Host {
+					includes = true
+				}
 			}
 		}
 
 		*data = datanew
 
-		if !includes && !utils.HostPortIsAlive(u.Host) {
-			s.controlURL = ""
-			s.DeviceList.UnselectAll()
+		if selectedAddr != "" && !includes {
+			u, _ := url.Parse(selectedAddr)
+			if !utils.HostPortIsAlive(u.Host) {
+				s.controlURL = ""
+				s.selectedDevice = devType{}
+				fyne.Do(func() {
+					s.DeviceList.UnselectAll()
+				})
+			}
 		}
 
 		var found bool
 		for n, a := range *data {
 			if s.selectedDevice.addr == a.addr {
 				found = true
-				s.DeviceList.Select(n)
+				fyne.Do(func() {
+					s.DeviceList.Select(n)
+				})
 			}
 		}
 
 		if !found {
-			s.DeviceList.UnselectAll()
+			fyne.Do(func() {
+				s.DeviceList.UnselectAll()
+			})
 		}
 
 		fyne.Do(func() {

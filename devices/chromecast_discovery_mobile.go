@@ -5,6 +5,7 @@ package devices
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"strings"
@@ -33,17 +34,20 @@ func discoverChromecastDevices(ctx context.Context) {
 	// Suppress hashicorp/mdns logging
 	log.SetFlags(0)
 
+	// Loop to handle query restarts (long-running)
 	for {
+		// Checks if context is done before starting new query
 		select {
 		case <-ctx.Done():
 			return
 		default:
 		}
 
-		// Create channel for results
+		// Create channel for results - MUST be new for each Query call
+		// as mdns closes the channel when finished.
 		entriesCh := make(chan *mdns.ServiceEntry, 10)
 
-		// Start a goroutine to process results
+		// Start a goroutine to process results for this query
 		go func() {
 			for entry := range entriesCh {
 				if entry.AddrV4 == nil {
@@ -77,20 +81,23 @@ func discoverChromecastDevices(ctx context.Context) {
 			}
 		}()
 
-		// Lookup Chromecast devices (blocking call with timeout)
 		params := mdns.DefaultParams("_googlecast._tcp")
 		params.Entries = entriesCh
-		params.Timeout = 2 * time.Second
+		// Set a long timeout to keep the client open/listening.
+		params.Timeout = 1 * time.Hour
 		params.DisableIPv6 = true
+		params.Logger = log.New(io.Discard, "", 0)
 
-		_ = mdns.Query(params)
-		close(entriesCh)
+		// Use QueryContext to respect context cancellation
+		// This will close entriesCh when it returns
+		_ = mdns.QueryContext(ctx, params)
 
-		// Small delay before next scan
+		// If we are here, either timeout occurred or context cancelled.
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(500 * time.Millisecond):
+		default:
+			// If just timeout, loop again immediately
 		}
 	}
 }
