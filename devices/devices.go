@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/url"
 	"sort"
 	"time"
 
@@ -28,6 +29,15 @@ var (
 	ErrDeviceNotAvailable = errors.New("devicePicker: Requested device not available")
 	ErrSomethingWentWrong = errors.New("devicePicker: Something went terribly wrong")
 )
+
+// IsChromecastURL returns true if the URL points to a Chromecast device (port 8009).
+func IsChromecastURL(deviceURL string) bool {
+	u, err := url.Parse(deviceURL)
+	if err != nil {
+		return false
+	}
+	return u.Port() == "8009"
+}
 
 // LoadSSDPservices returns a slice of DLNA devices that support the
 // AVTransport service.

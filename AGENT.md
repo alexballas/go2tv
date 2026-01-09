@@ -2,7 +2,7 @@
 trigger: always_on
 ---
 
-# AGENTS.md
+# AGENT.md
 
 This document contains guidelines for agentic coding agents working in this Go2TV codebase.
 
@@ -40,6 +40,10 @@ This document contains guidelines for agentic coding agents working in this Go2T
 - Define structs for XML/SOAP message structures with XML tags
 - Use builder pattern for complex constructions (e.g., `setAVTransportSoapBuild`)
 - Return errors with context using `fmt.Errorf("function: %w", err)`
+
+### Control Flow
+- Prefer `switch` over `else if` chains
+- Use stdlib functions (e.g., `strings.IndexByte`, `url.Parse`) over custom implementations
 
 ### Error Handling
 - Always handle returned errors

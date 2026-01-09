@@ -129,12 +129,12 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 - Modify `volumeAction()` for Chromecast ✅
 - **Checkpoint**: Volume, mute work on Chromecast ✅
 
-#### Phase 3e: CLI Chromecast Support
-- Add `isChromecastURL()` helper (port 8009 detection)
-- Create `internal/interactive/chromecast.go` - interactive terminal UI
-- Add `runChromecastCLI()` function with tcell-based controls
-- Update `checkTflag()` with device type detection
-- **Checkpoint**: `go2tv -v file.mp4 -t http://cast:8009` works with interactive UI
+#### Phase 3e: CLI Chromecast Support ✅
+- Add `IsChromecastURL()` helper (port 8009 detection) ✅
+- Create `internal/interactive/chromecast.go` - interactive terminal UI ✅
+- Add `runChromecastCLI()` function with tcell-based controls ✅
+- Branch in `run()` to route Chromecast URLs ✅
+- **Checkpoint**: `go2tv -v file.mp4 -t http://cast:8009` works with interactive UI ✅
 
 #### Phase 3f: Subtitle Support ✅
 - Create `soapcalls/utils/srt_to_webvtt.go` - SRT to WebVTT conversion ✅
@@ -145,6 +145,16 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 - **Checkpoint**: Subtitles work on compatible Chromecast devices ✅
 - **Note**: Google TV Default Media Receiver ignores side-loaded tracks
 
+#### Phase 3g: Mobile Chromecast Support
+- Add `chromecastClient` field to mobile `FyneScreen` struct (`gui_mobile.go`)
+- Port `chromecastPlayAction()` to `actions_mobile.go`
+- Port `chromecastStatusWatcher()` to mobile
+- Update mobile `stopAction()` for Chromecast
+- Update mobile `pauseAction()` for Chromecast
+- Add volume/mute support for Chromecast on mobile
+- Port skip next fixes to mobile
+- **Checkpoint**: Full Chromecast playback works on Android/iOS
+
 **Dependencies**: Phase 2
 
 **Deliverables**:
@@ -154,6 +164,7 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 - CLI support for Chromecast devices via `-t` flag
 - Auto-play next media support (GUI only)
 - Subtitle support (WebVTT for direct streaming)
+- Mobile (Android/iOS) Chromecast support
 
 ---
 
@@ -191,6 +202,9 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 - Create `soapcalls/utils/chromecast_transcode.go`
 - Implement `BuildChromecastFFmpegArgs()`:
   ```
+  -re
+  -ss <seekSeconds>   # optional, for seek support
+  -copyts             # preserve timestamps when seeking
   -i input
   -c:v libx264 -profile:v high -level 4.1
   -preset fast -crf 23
@@ -199,6 +213,7 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
   -movflags +faststart
   -f mp4 pipe:1
   ```
+- Support seek via `-re -ss <seconds> -copyts` (same as DLNA transcoding)
 - Handle subtitle burning (if subtitles provided)
 - Implement adaptive bitrate based on network conditions (future enhancement)
 
@@ -298,7 +313,10 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 
 ### FFmpeg Command Template (when transcoding is needed)
 ```bash
-ffmpeg -i input.mkv \
+ffmpeg -re \
+  -ss <seekSeconds> \
+  -copyts \
+  -i input.mkv \
   -c:v libx264 -profile:v high -level 4.1 \
   -preset fast -crf 23 \
   -maxrate 10M -bufsize 20M \
@@ -308,7 +326,10 @@ ffmpeg -i input.mkv \
   -f mp4 pipe:1
 ```
 
-**Note**: Transcoding is only performed when input media format is incompatible with Chromecast. Compatible media (e.g., MP4/H.264/AAC) streams directly without transcoding.
+**Notes**:
+- `-re -ss <seconds> -copyts` enables seek support (same pattern as DLNA transcoding)
+- Transcoding is only performed when input media format is incompatible with Chromecast
+- Compatible media (e.g., MP4/H.264/AAC) streams directly without transcoding
 
 ### Device Discovery
 - **DLNA**: SSDP (existing implementation)

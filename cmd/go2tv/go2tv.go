@@ -17,6 +17,7 @@ import (
 
 	"errors"
 
+	"github.com/alexballas/go2tv/castprotocol"
 	"github.com/alexballas/go2tv/devices"
 	"github.com/alexballas/go2tv/httphandlers"
 	"github.com/alexballas/go2tv/internal/gui"
@@ -141,6 +142,11 @@ func run() error {
 		return err
 	}
 
+	// Branch based on device type
+	if devices.IsChromecastURL(flagRes.dmrURL) {
+		return runChromecastCLI(exitCTX, cancel, flagRes.dmrURL, absMediaFile, mediaType, absSubtitlesFile)
+	}
+
 	scr, err := interactive.InitTcellNewScreen(cancel)
 	if err != nil {
 		return err
@@ -179,6 +185,84 @@ func run() error {
 	case e := <-interExit:
 		return e
 	case <-exitCTX.Done():
+	}
+
+	return nil
+}
+
+func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL, mediaPath, mediaType, subsPath string) error {
+	// Create Chromecast client
+	client, err := castprotocol.NewCastClient(deviceURL)
+	if err != nil {
+		return fmt.Errorf("chromecast init: %w", err)
+	}
+
+	if err := client.Connect(); err != nil {
+		return fmt.Errorf("chromecast connect: %w", err)
+	}
+	defer client.Close(true)
+
+	// Get listen address from device URL
+	whereToListen, err := utils.URLtoListenIPandPort(deviceURL)
+	if err != nil {
+		return fmt.Errorf("chromecast listen addr: %w", err)
+	}
+
+	// Start HTTP server for media
+	httpServer := httphandlers.NewServer(whereToListen)
+	serverStarted := make(chan error)
+
+	go func() {
+		httpServer.StartSimpleServer(serverStarted, mediaPath)
+	}()
+
+	if err := <-serverStarted; err != nil {
+		return fmt.Errorf("chromecast server: %w", err)
+	}
+
+	// Build media URL
+	mediaURL := "http://" + whereToListen + "/" + utils.ConvertFilename(mediaPath)
+
+	// Handle subtitles
+	subtitleURL := ""
+	if subsPath != "" {
+		if _, err := os.Stat(subsPath); err == nil {
+			ext := strings.ToLower(filepath.Ext(subsPath))
+			switch ext {
+			case ".srt":
+				webvttData, err := utils.ConvertSRTtoWebVTT(subsPath)
+				if err == nil {
+					httpServer.AddHandler("/subtitles.vtt", nil, webvttData)
+					subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
+				}
+			case ".vtt":
+				httpServer.AddHandler("/subtitles.vtt", nil, subsPath)
+				subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
+			}
+		}
+	}
+
+	// Init interactive screen
+	scr, err := interactive.InitChromecastScreen(cancel)
+	if err != nil {
+		return err
+	}
+	scr.Client = client
+
+	// Load media (async)
+	go func() {
+		if err := client.Load(mediaURL, mediaType, 0, subtitleURL); err != nil {
+			fmt.Fprintf(os.Stderr, "chromecast load: %v\n", err)
+		}
+	}()
+
+	interExit := make(chan error)
+	go scr.InterInit(mediaPath, interExit)
+
+	select {
+	case e := <-interExit:
+		return e
+	case <-ctx.Done():
 	}
 
 	return nil

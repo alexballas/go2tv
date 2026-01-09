@@ -20,8 +20,6 @@ type CastClient struct {
 	connected bool
 }
 
-// NewCastClient creates a new Chromecast client for the given address.
-// Address format: "http://192.168.1.100:8009" (as stored in Device.Addr)
 func NewCastClient(deviceAddr string) (*CastClient, error) {
 	u, err := url.Parse(deviceAddr)
 	if err != nil {
