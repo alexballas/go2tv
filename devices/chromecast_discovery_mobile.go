@@ -81,23 +81,21 @@ func discoverChromecastDevices(ctx context.Context) {
 			}
 		}()
 
+		// Lookup Chromecast devices (blocking call with timeout)
 		params := mdns.DefaultParams("_googlecast._tcp")
 		params.Entries = entriesCh
-		// Set a long timeout to keep the client open/listening.
-		params.Timeout = 1 * time.Hour
+		params.Timeout = 2 * time.Second
 		params.DisableIPv6 = true
 		params.Logger = log.New(io.Discard, "", 0)
 
-		// Use QueryContext to respect context cancellation
-		// This will close entriesCh when it returns
-		_ = mdns.QueryContext(ctx, params)
+		_ = mdns.Query(params)
+		close(entriesCh)
 
-		// If we are here, either timeout occurred or context cancelled.
+		// Small delay before next scan
 		select {
 		case <-ctx.Done():
 			return
-		default:
-			// If just timeout, loop again immediately
+		case <-time.After(500 * time.Millisecond):
 		}
 	}
 }
