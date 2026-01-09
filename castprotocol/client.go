@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"sync"
+	"time"
 
 	"github.com/vishen/go-chromecast/application"
 	"github.com/vishen/go-chromecast/cast"
@@ -62,23 +63,37 @@ func (c *CastClient) Connect() error {
 
 // Load loads media from URL onto the Chromecast.
 // startTime is the position in seconds to start playback from.
-// If subtitleURL is provided and the app is connected, uses custom load with subtitle track.
+// If subtitleURL is provided, uses custom load command with subtitle tracks.
 func (c *CastClient) Load(mediaURL string, contentType string, startTime int, subtitleURL string) error {
-	// If subtitles are provided and we have the app launched, use custom load with tracks
-	if subtitleURL != "" && c.app.App() != nil {
-		transportId := c.app.App().TransportId
-		if transportId != "" {
-			return LoadWithSubtitles(c.conn, transportId, mediaURL, contentType, startTime, subtitleURL)
+	// If no subtitles, use standard load
+	if subtitleURL == "" {
+		if err := c.app.Load(mediaURL, startTime, contentType, false, false, false); err != nil {
+			return err
 		}
+		return nil
 	}
 
-	// Fallback to standard load (no subtitles)
-	// go-chromecast Load signature: (filenameOrUrl, startTime, contentType, transcode, detach, forceDetach)
+	// With subtitles: need to launch app first, then send custom load
+	// First, launch the DefaultMediaReceiver app
 	if err := c.app.Load(mediaURL, startTime, contentType, false, false, false); err != nil {
 		return err
 	}
 
-	return nil
+	// Wait for app to be ready
+	time.Sleep(1 * time.Second)
+
+	app := c.app.App()
+	if app == nil {
+		return fmt.Errorf("media receiver app not available")
+	}
+
+	transportId := app.TransportId
+	if transportId == "" {
+		return fmt.Errorf("no transport ID available")
+	}
+
+	fmt.Printf("Loading with subtitles: transportId=%s, subtitleURL=%s\n", transportId, subtitleURL)
+	return LoadWithSubtitles(c.conn, transportId, mediaURL, contentType, startTime, subtitleURL)
 }
 
 // Play resumes playback.

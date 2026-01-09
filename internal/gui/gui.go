@@ -7,7 +7,6 @@ import (
 	"context"
 	"embed"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -187,7 +186,6 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	go func() {
 		<-ctx.Done()
-		fmt.Println("Context done", ctx.Err())
 		os.Exit(0)
 	}()
 

@@ -133,6 +133,19 @@ func (s *HTTPserver) StartServer(serverStarted chan<- error, media, subtitles an
 // ServeMediaHandler is a helper method used to properly handle media and subtitle streaming.
 func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Add CORS headers for subtitle files (needed for Chromecast)
+		if strings.HasSuffix(r.URL.Path, ".vtt") || strings.HasSuffix(r.URL.Path, ".srt") {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+			// Handle OPTIONS preflight request
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+		}
+
 		s.mu.Lock()
 		out, exists := s.handlers[r.URL.Path]
 		s.mu.Unlock()

@@ -571,21 +571,24 @@ func chromecastPlayAction(screen *FyneScreen) {
 
 	// Handle subtitles
 	var subtitleURL string
-	if screen.subsfile != "" && !transcode {
-		whereToListen, _ := utils.URLtoListenIPandPort(screen.selectedDevice.addr)
-		ext := strings.ToLower(filepath.Ext(screen.subsfile))
-		switch ext {
-		case ".srt":
-			webvttData, err := utils.ConvertSRTtoWebVTT(screen.subsfile)
-			if err != nil {
-				check(screen, fmt.Errorf("subtitle conversion: %w", err))
-			} else {
-				screen.httpserver.AddHandler("/subtitles.vtt", nil, webvttData)
-				subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
+	if screen.subsfile != "" && !transcode && screen.httpserver != nil {
+		// Extract host:port from mediaURL to ensure subtitle uses same server
+		mediaURLParsed, err := url.Parse(mediaURL)
+		if err == nil && mediaURLParsed.Host != "" {
+			ext := strings.ToLower(filepath.Ext(screen.subsfile))
+			switch ext {
+			case ".srt":
+				webvttData, err := utils.ConvertSRTtoWebVTT(screen.subsfile)
+				if err != nil {
+					check(screen, fmt.Errorf("subtitle conversion: %w", err))
+				} else {
+					screen.httpserver.AddHandler("/subtitles.vtt", nil, webvttData)
+					subtitleURL = "http://" + mediaURLParsed.Host + "/subtitles.vtt"
+				}
+			case ".vtt":
+				screen.httpserver.AddHandler("/subtitles.vtt", nil, screen.subsfile)
+				subtitleURL = "http://" + mediaURLParsed.Host + "/subtitles.vtt"
 			}
-		case ".vtt":
-			screen.httpserver.AddHandler("/subtitles.vtt", nil, screen.subsfile)
-			subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
 		}
 	}
 
@@ -619,7 +622,6 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 			}
 
 			status, err := screen.chromecastClient.GetStatus()
-			fmt.Println(status.PlayerState)
 			if err != nil {
 				continue
 			}

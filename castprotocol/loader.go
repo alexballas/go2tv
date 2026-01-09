@@ -15,6 +15,15 @@ func nextRequestID() int {
 	return int(atomic.AddInt32(&requestIDCounter, 1))
 }
 
+// TextTrackStyle defines the appearance of subtitle text on Chromecast.
+type TextTrackStyle struct {
+	BackgroundColor string  `json:"backgroundColor,omitempty"` // ARGB format e.g. "#00000000"
+	ForegroundColor string  `json:"foregroundColor,omitempty"` // ARGB format e.g. "#FFFFFFFF"
+	EdgeType        string  `json:"edgeType,omitempty"`        // "NONE", "OUTLINE", "DROP_SHADOW", etc.
+	EdgeColor       string  `json:"edgeColor,omitempty"`       // ARGB format
+	FontScale       float32 `json:"fontScale,omitempty"`       // Font size multiplier
+}
+
 // CustomLoadPayload is a LoadMediaCommand with tracks support.
 // This extends the standard cast.LoadMediaCommand to include subtitle tracks.
 type CustomLoadPayload struct {
@@ -24,6 +33,7 @@ type CustomLoadPayload struct {
 	CurrentTime    int                 `json:"currentTime"`
 	Autoplay       bool                `json:"autoplay"`
 	ActiveTrackIds []int               `json:"activeTrackIds,omitempty"`
+	TextTrackStyle *TextTrackStyle     `json:"textTrackStyle,omitempty"`
 }
 
 // SetRequestId implements cast.Payload interface
@@ -61,6 +71,13 @@ func LoadWithSubtitles(conn cast.Conn, transportId string, mediaURL string, cont
 		CurrentTime:    startTime,
 		Autoplay:       true,
 		ActiveTrackIds: activeTrackIds,
+		TextTrackStyle: &TextTrackStyle{
+			BackgroundColor: "#00000000", // Transparent
+			FontScale:       1.0,
+			EdgeType:        "OUTLINE",
+			EdgeColor:       "#000000FF",
+			ForegroundColor: "#FFFFFFFF", // White text
+		},
 	}
 
 	requestID := nextRequestID()

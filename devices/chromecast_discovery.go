@@ -39,7 +39,7 @@ func discoverChromecastDevices(ctx context.Context) {
 		default:
 		}
 
-		timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		timeoutCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
 
 		resolver, err := zeroconf.NewResolver(nil)
 		if err != nil {

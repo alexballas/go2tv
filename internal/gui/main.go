@@ -122,6 +122,24 @@ func (t *tappedSlider) DragEnd() {
 	t.screen.sliderActive = true
 
 	if t.screen.State == "Playing" || t.screen.State == "Paused" {
+		// Handle Chromecast seeking
+		if t.screen.chromecastClient != nil && t.screen.chromecastClient.IsConnected() {
+			status, err := t.screen.chromecastClient.GetStatus()
+			if err != nil || status.Duration <= 0 {
+				return
+			}
+
+			seekPos := int((t.screen.SlideBar.Value / t.screen.SlideBar.Max) * float64(status.Duration))
+			if err := t.screen.chromecastClient.Seek(seekPos); err != nil {
+				return
+			}
+			return
+		}
+
+		// Handle DLNA seeking
+		if t.screen.tvdata == nil {
+			return
+		}
 		getPos, err := t.screen.tvdata.GetPositionInfo()
 		if err != nil {
 			return
@@ -168,6 +186,24 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 	t.Slider.Tapped(p)
 
 	if t.screen.State == "Playing" || t.screen.State == "Paused" {
+		// Handle Chromecast seeking
+		if t.screen.chromecastClient != nil && t.screen.chromecastClient.IsConnected() {
+			status, err := t.screen.chromecastClient.GetStatus()
+			if err != nil || status.Duration <= 0 {
+				return
+			}
+
+			seekPos := int((t.screen.SlideBar.Value / t.screen.SlideBar.Max) * float64(status.Duration))
+			if err := t.screen.chromecastClient.Seek(seekPos); err != nil {
+				return
+			}
+			return
+		}
+
+		// Handle DLNA seeking
+		if t.screen.tvdata == nil {
+			return
+		}
 		getPos, err := t.screen.tvdata.GetPositionInfo()
 		if err != nil {
 			return
@@ -593,15 +629,15 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 }
 
 func refreshDevList(s *FyneScreen, data *[]devType) {
-	refreshDevices := time.NewTicker(5 * time.Second)
+	refreshDevices := time.NewTicker(2 * time.Second)
 
-	_, err := getDevices(2)
+	_, err := getDevices(1)
 	if err != nil && !errors.Is(err, devices.ErrNoDeviceAvailable) {
 		check(s, err)
 	}
 
 	for range refreshDevices.C {
-		newDevices, _ := getDevices(2)
+		newDevices, _ := getDevices(1)
 
 	outer:
 		for _, old := range *data {
