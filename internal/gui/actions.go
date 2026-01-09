@@ -478,6 +478,25 @@ func chromecastPlayAction(screen *FyneScreen) {
 	transcode := screen.Transcode
 	ffmpegSeek := screen.ffmpegSeek
 
+	// Handle internal (embedded) subtitles extraction
+	if screen.SelectInternalSubs.Selected != "" {
+		for n, opt := range screen.SelectInternalSubs.Options {
+			if opt == screen.SelectInternalSubs.Selected {
+				screen.PlayPause.Text = lang.L("Extracting Subtitles")
+				screen.PlayPause.Refresh()
+				tempSubsPath, err := utils.ExtractSub(screen.ffmpegPath, n, screen.mediafile)
+				screen.PlayPause.Text = lang.L("Play")
+				screen.PlayPause.Refresh()
+				if err != nil {
+					break
+				}
+
+				screen.tempFiles = append(screen.tempFiles, tempSubsPath)
+				screen.subsfile = tempSubsPath
+			}
+		}
+	}
+
 	// Initialize Chromecast client
 	client, err := castprotocol.NewCastClient(screen.selectedDevice.addr)
 	if err != nil {

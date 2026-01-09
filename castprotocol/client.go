@@ -73,14 +73,19 @@ func (c *CastClient) Load(mediaURL string, contentType string, startTime int, su
 		return nil
 	}
 
-	// With subtitles: need to launch app first, then send custom load
-	// First, launch the DefaultMediaReceiver app
-	if err := c.app.Load(mediaURL, startTime, contentType, false, false, false); err != nil {
-		return err
+	// With subtitles: launch the app first WITHOUT loading media, then send custom load
+	// This prevents double playback (first without subs, then with subs queued)
+	if err := LaunchDefaultReceiver(c.conn); err != nil {
+		return fmt.Errorf("launch receiver: %w", err)
 	}
 
 	// Wait for app to be ready
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
+
+	// Update app state to get the transport ID
+	if err := c.app.Update(); err != nil {
+		return fmt.Errorf("update app state: %w", err)
+	}
 
 	app := c.app.App()
 	if app == nil {

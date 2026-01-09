@@ -97,6 +97,44 @@ func LoadWithSubtitles(conn cast.Conn, transportId string, mediaURL string, cont
 // Ensure CustomLoadPayload implements the cast.Payload interface
 var _ cast.Payload = (*CustomLoadPayload)(nil)
 
+// LaunchRequest is a payload to launch an app on Chromecast without loading media.
+type LaunchRequest struct {
+	Type      string `json:"type"`
+	RequestId int    `json:"requestId"`
+	AppId     string `json:"appId"`
+}
+
+// SetRequestId implements cast.Payload interface
+func (p *LaunchRequest) SetRequestId(id int) {
+	p.RequestId = id
+}
+
+// DefaultMediaReceiverAppID is the app ID for the Default Media Receiver
+const DefaultMediaReceiverAppID = "CC1AD845"
+
+// LaunchDefaultReceiver launches the Default Media Receiver app without loading media.
+// This allows sending a LoadWithSubtitles command afterwards.
+func LaunchDefaultReceiver(conn cast.Conn) error {
+	payload := &LaunchRequest{
+		Type:  "LAUNCH",
+		AppId: DefaultMediaReceiverAppID,
+	}
+
+	requestID := nextRequestID()
+	payload.SetRequestId(requestID)
+
+	// Send to receiver namespace - destination is "receiver-0" for launching apps
+	err := conn.Send(requestID, payload, "sender-0", "receiver-0", CastNamespaceReceiver)
+	if err != nil {
+		return fmt.Errorf("send launch request: %w", err)
+	}
+
+	return nil
+}
+
+// CastNamespaceReceiver is the namespace for receiver control messages
+const CastNamespaceReceiver = "urn:x-cast:com.google.cast.receiver"
+
 // MarshalJSON for custom JSON output
 func (m *MediaItemWithTracks) MarshalJSON() ([]byte, error) {
 	type Alias MediaItemWithTracks
