@@ -117,17 +117,17 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 - Update device selection callback with state reset ✅
 - **Checkpoint**: Switch devices, verify UI resets ✅
 
-#### Phase 3c: GUI Playback Actions
-- Add `chromecastPlayAction()` (local files + external URLs)
-- Add `chromecastStatusWatcher()` (status polling, auto-play next)
-- Modify `stopAction()` for Chromecast
-- **Checkpoint**: Play/pause/stop works on Chromecast
+#### Phase 3c: GUI Playback Actions ✅
+- Add `chromecastPlayAction()` (local files + external URLs) ✅
+- Add `chromecastStatusWatcher()` (status polling, auto-play next) ✅
+- Modify `stopAction()` for Chromecast ✅
+- Modify slider seek (`DragEnd()`, `Tapped()`) for Chromecast ✅
+- **Checkpoint**: Play/pause/stop/seek works on Chromecast ✅
 
 #### Phase 3d: GUI Control Actions
 - Modify `muteAction()` for Chromecast
 - Modify `volumeAction()` for Chromecast
-- Modify slider seek (`DragEnd()`, `Tapped()`) for Chromecast
-- **Checkpoint**: Seek, volume, mute work on Chromecast
+- **Checkpoint**: Volume, mute work on Chromecast
 
 #### Phase 3e: CLI Chromecast Support
 - Add `isChromecastURL()` helper (port 8009 detection)
