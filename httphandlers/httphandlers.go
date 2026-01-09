@@ -67,6 +67,11 @@ func (s *HTTPserver) RemoveHandler(path string) {
 	s.mu.Unlock()
 }
 
+// GetAddr returns the server's listen address (ip:port).
+func (s *HTTPserver) GetAddr() string {
+	return s.http.Addr
+}
+
 // StartSimpleServer starts a minimal HTTP server for serving media files.
 // Used by Chromecast which doesn't need DLNA callback handlers or TVPayload.
 func (s *HTTPserver) StartSimpleServer(serverStarted chan<- error, mediaPath string) {

@@ -528,21 +528,25 @@ func chromecastPlayAction(screen *FyneScreen) {
 		}
 	}
 
-	// Initialize Chromecast client
-	client, err := castprotocol.NewCastClient(screen.selectedDevice.addr)
-	if err != nil {
-		check(screen, fmt.Errorf("chromecast init: %w", err))
-		startAfreshPlayButton(screen)
-		return
-	}
+	// Reuse existing client if connected (for loop/autoplay), otherwise create new one
+	client := screen.chromecastClient
+	if client == nil || !client.IsConnected() {
+		var err error
+		client, err = castprotocol.NewCastClient(screen.selectedDevice.addr)
+		if err != nil {
+			check(screen, fmt.Errorf("chromecast init: %w", err))
+			startAfreshPlayButton(screen)
+			return
+		}
 
-	if err := client.Connect(); err != nil {
-		check(screen, fmt.Errorf("chromecast connect: %w", err))
-		startAfreshPlayButton(screen)
-		return
-	}
+		if err := client.Connect(); err != nil {
+			check(screen, fmt.Errorf("chromecast connect: %w", err))
+			startAfreshPlayButton(screen)
+			return
+		}
 
-	screen.chromecastClient = client
+		screen.chromecastClient = client
+	}
 
 	var mediaURL string
 	var mediaType string
@@ -697,9 +701,13 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 				// Only treat IDLE as "finished" if media had actually started playing
 				// Ignore initial IDLE states while media is loading
 				if mediaStarted {
-					// Media finished - trigger auto-play next via Fini() and cleanup
+					// Media finished - trigger auto-play next or loop via Fini()
 					screen.Fini()
-					startAfreshPlayButton(screen)
+
+					// Only reset UI if not looping or auto-playing next
+					if !screen.Medialoop && !screen.NextMediaCheck.Checked {
+						startAfreshPlayButton(screen)
+					}
 					return
 				}
 				// If we haven't started yet, just ignore IDLE
@@ -723,7 +731,10 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 				// Using 1.5 second threshold since Chromecast stops updating ~1-2s early
 				if status.CurrentTime >= status.Duration-1.5 && status.Duration > 0 {
 					screen.Fini()
-					startAfreshPlayButton(screen)
+					// Only reset UI if not looping or auto-playing next
+					if !screen.Medialoop && !screen.NextMediaCheck.Checked {
+						startAfreshPlayButton(screen)
+					}
 					return
 				}
 			}
@@ -827,7 +838,8 @@ func clearsubsAction(screen *FyneScreen) {
 }
 
 func skipNextAction(screen *FyneScreen) {
-	if screen.controlURL == "" {
+	// Check if any device is selected (DLNA uses controlURL, Chromecast uses selectedDevice)
+	if screen.controlURL == "" && screen.selectedDeviceType != devices.DeviceTypeChromecast {
 		check(screen, errors.New(lang.L("please select a device")))
 		return
 	}
@@ -846,8 +858,62 @@ func skipNextAction(screen *FyneScreen) {
 		autoSelectNextSubs(screen.mediafile, screen)
 	}
 
-	stopAction(screen)
+	// For Chromecast: reuse existing connection for faster skip
+	if screen.selectedDeviceType == devices.DeviceTypeChromecast &&
+		screen.chromecastClient != nil && screen.chromecastClient.IsConnected() {
 
+		// Get media type
+		mfile, err := os.Open(screen.mediafile)
+		if err != nil {
+			check(screen, err)
+			return
+		}
+		mediaType, err := utils.GetMimeDetailsFromFile(mfile)
+		mfile.Close()
+		if err != nil {
+			check(screen, err)
+			return
+		}
+
+		// Get subtitle URL if needed
+		subtitleURL := ""
+		if screen.subsfile != "" && screen.httpserver != nil {
+			ext := strings.ToLower(filepath.Ext(screen.subsfile))
+			switch ext {
+			case ".srt":
+				webvttData, err := utils.ConvertSRTtoWebVTT(screen.subsfile)
+				if err == nil {
+					screen.httpserver.AddHandler("/subtitles.vtt", nil, webvttData)
+				}
+			case ".vtt":
+				screen.httpserver.AddHandler("/subtitles.vtt", nil, screen.subsfile)
+			}
+			// Get base URL from existing server
+			if screen.serverStopCTX != nil {
+				// Assuming we have a working server, use same host for subtitles
+			}
+		}
+
+		// Add the new media to the HTTP server (path, payload, media)
+		screen.httpserver.AddHandler("/"+utils.ConvertFilename(screen.mediafile), nil, screen.mediafile)
+
+		// Build media URL using the actual HTTP server address
+		mediaURL := "http://" + screen.httpserver.GetAddr() + "/" + utils.ConvertFilename(screen.mediafile)
+
+		// Load new media on existing connection
+		if err := screen.chromecastClient.Load(mediaURL, mediaType, 0, subtitleURL); err != nil {
+			check(screen, fmt.Errorf("chromecast load: %w", err))
+			return
+		}
+
+		setPlayPauseView("Pause", screen)
+		screen.updateScreenState("Playing")
+
+		return
+	}
+
+	// For DLNA or if Chromecast client not ready: use stop+play
+	stopAction(screen)
 	playAction(screen)
 }
 

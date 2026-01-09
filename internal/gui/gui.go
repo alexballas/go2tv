@@ -217,7 +217,15 @@ func (p *FyneScreen) EmitMsg(a string) {
 func (p *FyneScreen) Fini() {
 	gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
 
-	if p.NextMediaCheck.Checked && gaplessOption == "Disabled" {
+	// For Chromecast, ignore gapless setting (it's DLNA-specific)
+	isChromecast := p.selectedDeviceType == devices.DeviceTypeChromecast
+
+	// For Chromecast, reset state to Stopped so playAction doesn't interpret as pause
+	if isChromecast {
+		p.updateScreenState("Stopped")
+	}
+
+	if p.NextMediaCheck.Checked && (isChromecast || gaplessOption == "Disabled") {
 		p.MediaText.Text, p.mediafile = getNextMedia(p)
 		fyne.Do(func() {
 			p.MediaText.Refresh()
@@ -228,6 +236,7 @@ func (p *FyneScreen) Fini() {
 		}
 
 		playAction(p)
+		return
 	}
 	// Main media loop logic
 	if p.Medialoop {
