@@ -16,6 +16,8 @@ import (
 	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/alexballas/go2tv/castprotocol"
+	"github.com/alexballas/go2tv/devices"
 	"github.com/alexballas/go2tv/httphandlers"
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/pkg/errors"
@@ -27,12 +29,15 @@ type FyneScreen struct {
 	Debug                *debugWriter
 	Current              fyne.Window
 	tvdata               *soapcalls.TVPayload
+	chromecastClient     *castprotocol.CastClient
 	Stop                 *widget.Button
 	MuteUnmute           *widget.Button
 	CheckVersion         *widget.Button
 	CustomSubsCheck      *widget.Check
 	ExternalMediaURL     *widget.Check
 	cancelEnablePlay     context.CancelFunc
+	serverStopCTX        context.Context
+	cancelServerStop     context.CancelFunc
 	MediaText            *widget.Entry
 	SubsText             *widget.Entry
 	DeviceList           *deviceList
@@ -79,6 +84,9 @@ func (f *debugWriter) Write(b []byte) (int, error) {
 // Start .
 func Start(ctx context.Context, s *FyneScreen) {
 	w := s.Current
+
+	// Start Chromecast discovery in background
+	go devices.StartChromecastDiscoveryLoop(ctx)
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Go2TV", container.NewVScroll(container.NewPadded(mainWindow(s)))),

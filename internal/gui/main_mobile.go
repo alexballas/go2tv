@@ -163,7 +163,14 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		s.selectedDevice = data[id]
 		s.selectedDeviceType = data[id].deviceType
 
-		if data[id].deviceType == devices.DeviceTypeDLNA {
+		// Reset device state when switching
+		if s.chromecastClient != nil {
+			s.chromecastClient.Close(false)
+			s.chromecastClient = nil
+		}
+
+		switch data[id].deviceType {
+		case devices.DeviceTypeDLNA:
 			t, err := soapcalls.DMRextractor(context.Background(), data[id].addr)
 			check(w, err)
 			if err == nil {
@@ -175,6 +182,12 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 					s.tvdata.RenderingControlURL = s.renderingControlURL
 				}
 			}
+		case devices.DeviceTypeChromecast:
+			// Clear DLNA-specific state when selecting Chromecast
+			s.controlURL = ""
+			s.eventlURL = ""
+			s.renderingControlURL = ""
+			s.connectionManagerURL = ""
 		}
 	}
 
@@ -298,7 +311,24 @@ func checkMutefunc(s *FyneScreen) {
 
 	var checkMuteCounter int
 	for range checkMute.C {
+		// Handle Chromecast mute status
+		if s.selectedDeviceType == devices.DeviceTypeChromecast {
+			if s.chromecastClient == nil || !s.chromecastClient.IsConnected() {
+				continue
+			}
+			status, err := s.chromecastClient.GetStatus()
+			if err != nil {
+				continue
+			}
+			if status.Muted {
+				setMuteUnmuteView("Unmute", s)
+			} else {
+				setMuteUnmuteView("Mute", s)
+			}
+			continue
+		}
 
+		// Handle DLNA mute status
 		// Stop trying after 5 failures
 		// to get the mute status
 		if checkMuteCounter == 5 {

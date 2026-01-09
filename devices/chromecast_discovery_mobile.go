@@ -1,11 +1,10 @@
-//go:build !(android || ios)
+//go:build android || ios
 
 package devices
 
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"strings"
@@ -22,10 +21,8 @@ var (
 	ccMu              sync.Mutex
 )
 
-// StartChromecastDiscoveryLoop continuously discovers Chromecast devices on the local network using mDNS.
-// It runs indefinitely until the provided context is canceled, searching for devices every 2 seconds.
-// Discovered devices are stored in a global map with their network addresses as keys.
-// The function runs background goroutines to handle device discovery and health checking.
+// StartChromecastDiscoveryLoop attempts mDNS discovery on mobile platforms.
+// Note: This may not work without native NSD/Bonjour integration.
 func StartChromecastDiscoveryLoop(ctx context.Context) {
 	go discoverChromecastDevices(ctx)
 	go healthCheckChromecastDevices(ctx)
@@ -33,6 +30,8 @@ func StartChromecastDiscoveryLoop(ctx context.Context) {
 
 // discoverChromecastDevices continuously browses for Chromecast devices using mDNS
 func discoverChromecastDevices(ctx context.Context) {
+	// Suppress hashicorp/mdns logging
+	log.SetFlags(0)
 
 	for {
 		select {
@@ -83,7 +82,6 @@ func discoverChromecastDevices(ctx context.Context) {
 		params.Entries = entriesCh
 		params.Timeout = 2 * time.Second
 		params.DisableIPv6 = true
-		params.Logger = log.New(io.Discard, "", 0)
 
 		_ = mdns.Query(params)
 		close(entriesCh)
@@ -98,7 +96,6 @@ func discoverChromecastDevices(ctx context.Context) {
 }
 
 // healthCheckChromecastDevices periodically checks if cached Chromecast devices are still alive
-// and removes stale devices from the cache
 func healthCheckChromecastDevices(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -120,16 +117,13 @@ func healthCheckChromecastDevices(ctx context.Context) {
 }
 
 // GetChromecastDevices returns the current cached Chromecast devices.
-// Returns a slice of Device structs with type set to DeviceTypeChromecast.
 func GetChromecastDevices() []Device {
 	ccMu.Lock()
 	defer ccMu.Unlock()
 
 	result := make([]Device, 0, len(chromeCastDevices))
 	for address, name := range chromeCastDevices {
-		// Convert to URL format to match DLNA (GUI expects URLs)
 		addressURL := "http://" + address
-		// Add suffix to distinguish Chromecast devices in the UI
 		friendlyName := name + " (Chromecast)"
 		result = append(result, Device{
 			Name: friendlyName,
@@ -142,7 +136,6 @@ func GetChromecastDevices() []Device {
 }
 
 // HostPortIsAlive checks if a device at the given address is reachable via TCP connection.
-// Returns true if the connection succeeds within 2 seconds.
 func HostPortIsAlive(address string) bool {
 	conn, err := net.DialTimeout("tcp", address, 2*time.Second)
 	if err != nil {
