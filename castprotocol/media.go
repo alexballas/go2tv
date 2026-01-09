@@ -29,16 +29,6 @@ type MediaMeta struct {
 	Title        string `json:"title,omitempty"`
 }
 
-// LoadMediaWithTracksCommand is an extended load command that supports tracks and activeTrackIds.
-type LoadMediaWithTracksCommand struct {
-	Type           string              `json:"type"`
-	RequestId      int                 `json:"requestId"`
-	Media          MediaItemWithTracks `json:"media"`
-	CurrentTime    int                 `json:"currentTime"`
-	Autoplay       bool                `json:"autoplay"`
-	ActiveTrackIds []int               `json:"activeTrackIds,omitempty"`
-}
-
 // NewSubtitleTrack creates a MediaTrack configured for WebVTT subtitles.
 func NewSubtitleTrack(trackId int, url, name, language string) MediaTrack {
 	return MediaTrack{
