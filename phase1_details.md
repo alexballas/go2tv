@@ -202,10 +202,11 @@ Test mDNS discovery (requires network):
 - **No cross-blocking**: Delays in DLNA don't block Chromecast results and vice versa
 
 **Device Caching Strategy** (from mdnstest):
-- Background goroutine continuously discovers devices via mDNS (10s interval)
+- Background goroutine continuously discovers devices via mDNS (2s query timeout + 500ms delay)
 - Devices cached in package-level map with mutex protection
 - Health checking goroutine runs every 5 seconds, removes stale devices
 - GUI calls `LoadAllDevices()` which reads from cache (fast, no blocking)
+- **Mobile**: Uses same 2s timeout pattern for recovery when phone wakes from sleep
 
 **Backward Compatibility**:
 - `LoadSSDPservices()` kept unchanged for existing callers
