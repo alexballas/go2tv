@@ -6,6 +6,7 @@ import (
 	"container/ring"
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -85,6 +86,13 @@ func (f *debugWriter) Write(b []byte) (int, error) {
 // Start .
 func Start(ctx context.Context, s *FyneScreen) {
 	w := s.Current
+
+	// Clean up orphaned temp files from previous crashes
+	if files, err := filepath.Glob(filepath.Join(os.TempDir(), "go2tv-*")); err == nil {
+		for _, f := range files {
+			os.Remove(f)
+		}
+	}
 
 	// Start Chromecast discovery in background
 	go devices.StartChromecastDiscoveryLoop(ctx)
