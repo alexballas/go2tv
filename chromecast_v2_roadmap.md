@@ -136,11 +136,14 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 - Update `checkTflag()` with device type detection
 - **Checkpoint**: `go2tv -v file.mp4 -t http://cast:8009` works with interactive UI
 
-#### Phase 3f: Subtitle Support
-- Create `soapcalls/utils/srt_to_webvtt.go` - SRT to WebVTT conversion
-- Add CORS headers in `serveContentBytes()` for subtitle paths
-- Integrate WebVTT subtitles in `chromecastPlayAction` using `AddHandler`
-- **Checkpoint**: Subtitles display on Chromecast
+#### Phase 3f: Subtitle Support ✅
+- Create `soapcalls/utils/srt_to_webvtt.go` - SRT to WebVTT conversion ✅
+- Add CORS headers in `ServeMediaHandler()` for subtitle paths ✅
+- Integrate WebVTT subtitles in `chromecastPlayAction` using `AddHandler` ✅
+- Add embedded MKV subtitle extraction via `ExtractSub()` ✅
+- Implement `LaunchDefaultReceiver()` to avoid double LOAD ✅
+- **Checkpoint**: Subtitles work on compatible Chromecast devices ✅
+- **Note**: Google TV Default Media Receiver ignores side-loaded tracks
 
 **Dependencies**: Phase 2
 

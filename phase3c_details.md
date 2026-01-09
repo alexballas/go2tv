@@ -2,7 +2,7 @@
 
 ## Summary
 
-This phase implemented Chromecast playback controls in the GUI, including play/pause/stop, seek, progress tracking, and subtitle support.
+This phase implemented Chromecast playback controls in the GUI, including play/pause/stop, seek, progress tracking, and subtitle support (external and embedded).
 
 ## Features Implemented
 
@@ -19,66 +19,45 @@ This phase implemented Chromecast playback controls in the GUI, including play/p
 ### ✅ Progress Tracking
 - Status watcher polls Chromecast every 1 second
 - Updates slider position based on `CurrentTime/Duration`
-- Detects media completion when `CurrentTime >= Duration - 1.5s` (go-chromecast doesn't reliably report IDLE)
+- Detects media completion when `CurrentTime >= Duration - 1.5s`
 
-### ✅ Subtitle Support (Partial)
-- SRT files converted to WebVTT format
-- VTT files served directly
-- CORS headers added for Chromecast compatibility
-- `textTrackStyle` added to LOAD command for styling
-- **Limitation**: Default Media Receiver on Chromecast with Google TV ignores side-loaded subtitle tracks
+### ✅ Subtitle Support
+- **External SRT/VTT**: Served via HTTP with CORS headers
+- **Embedded MKV subs**: Extracted via ffmpeg to temp SRT, converted to WebVTT
+- `LaunchDefaultReceiver()` → single `LoadWithSubtitles()` prevents double playback
+- **Note**: Default Media Receiver on Google TV may ignore side-loaded tracks
 
 ## Key Files Modified
 
 | File | Changes |
 |------|---------|
-| `internal/gui/actions.go` | Chromecast play/pause/stop logic, status watcher |
+| `internal/gui/actions.go` | Chromecast play/pause/stop, status watcher, embedded sub extraction |
 | `internal/gui/main.go` | Chromecast seek in slider handlers |
-| `internal/gui/gui.go` | Device state reset, button updates |
-| `castprotocol/client.go` | Load with subtitles, status polling with Update() |
-| `castprotocol/loader.go` | TextTrackStyle struct, CustomLoadPayload |
-| `castprotocol/media.go` | MediaTrack struct for subtitle tracks |
+| `castprotocol/client.go` | Load with subtitles, LaunchDefaultReceiver integration |
+| `castprotocol/loader.go` | LaunchDefaultReceiver, TextTrackStyle, CustomLoadPayload |
+| `castprotocol/media.go` | MediaTrack, MediaItemWithTracks with TextTrackStyle |
 | `httphandlers/httphandlers.go` | CORS headers for subtitle files |
 | `devices/chromecast_discovery.go` | Faster discovery (1s timeout) |
 
-## Known Issues
+## Key Implementation Details
 
-### Subtitle Display on Google TV
-The Default Media Receiver (`CC1AD845`) on Chromecast with Google TV devices does not display side-loaded subtitle tracks. This is a known limitation of the receiver app.
-
-**Workaround**: Use "Transcode" mode to burn subtitles into video stream via FFmpeg.
-
-**Works on**: Original Chromecast dongle, Chromecast Ultra
-
-## Code Patterns
-
-### Status Watcher Pattern
+### LaunchDefaultReceiver Pattern
+To avoid double playback when loading with subtitles:
 ```go
-func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
-    ticker := time.NewTicker(1 * time.Second)
-    defer ticker.Stop()
-    
-    var mediaStarted bool
-    for {
-        select {
-        case <-ctx.Done(): return
-        case <-ticker.C:
-            status, _ := screen.chromecastClient.GetStatus()
-            // Update UI based on status.PlayerState
-            // Detect completion when CurrentTime >= Duration - 1.5
-        }
-    }
-}
+// In client.go Load() - when subtitleURL is present:
+LaunchDefaultReceiver(c.conn)  // Launch app without media
+time.Sleep(2 * time.Second)
+c.app.Update()                  // Get transport ID
+LoadWithSubtitles(...)          // Single LOAD with tracks
 ```
 
-### Device-Specific Branching
+### Embedded Subtitle Extraction
 ```go
-// In playAction - branch early for Chromecast
-if screen.selectedDeviceType == devices.DeviceTypeChromecast {
-    chromecastPlayAction(screen)
-    return
+// In chromecastPlayAction - before Chromecast client init:
+if screen.SelectInternalSubs.Selected != "" {
+    tempSubsPath, _ := utils.ExtractSub(ffmpegPath, n, mediafile)
+    screen.subsfile = tempSubsPath  // Used by subtitle handler
 }
-// DLNA code follows...
 ```
 
 ## Testing Notes
@@ -86,10 +65,11 @@ if screen.selectedDeviceType == devices.DeviceTypeChromecast {
 1. **Play/Pause/Stop** - Verified working
 2. **Seek** - Both tap and drag work
 3. **Progress bar** - Updates correctly during playback
-4. **Subtitles** - WebVTT served with CORS, but not displayed on Google TV
-5. **Discovery** - Reduced to 1s timeout for faster device detection
+4. **External subtitles (.srt/.vtt)** - Working
+5. **Embedded MKV subtitles** - Extraction via ffmpeg working
+6. **Subtitle display on Google TV** - Receiver limitation, may not display
 
 ## Next Steps
 
-- Phase 4: CLI mode support for Chromecast
-- Phase 5: Protocol interface unification (optional)
+- Phase 3d: Volume/Mute controls
+- Phase 3e: CLI mode support for Chromecast
