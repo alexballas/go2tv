@@ -707,7 +707,7 @@ func chromecastPlayAction(screen *FyneScreen) {
 
 		// Add media handler with temp file path (string type triggers os.Open in handler)
 		mediaFilename := "/" + utils.ConvertFilename(screen.MediaText.Text)
-		screen.httpserver.AddHandler(mediaFilename, nil, tempFilePath)
+		screen.httpserver.AddHandler(mediaFilename, nil, nil, tempFilePath)
 
 		serverStarted := make(chan error)
 		go func() {
@@ -740,7 +740,7 @@ func chromecastPlayAction(screen *FyneScreen) {
 					webvttData, err := utils.ConvertSRTReaderToWebVTT(subsReader)
 					subsReader.Close()
 					if err == nil {
-						screen.httpserver.AddHandler("/subtitles.vtt", nil, webvttData)
+						screen.httpserver.AddHandler("/subtitles.vtt", nil, nil, webvttData)
 						subtitleURL = "http://" + mediaURLParsed.Host + "/subtitles.vtt"
 					}
 				}
@@ -750,7 +750,7 @@ func chromecastPlayAction(screen *FyneScreen) {
 					subsData, err := io.ReadAll(subsReader)
 					subsReader.Close()
 					if err == nil {
-						screen.httpserver.AddHandler("/subtitles.vtt", nil, subsData)
+						screen.httpserver.AddHandler("/subtitles.vtt", nil, nil, subsData)
 						subtitleURL = "http://" + mediaURLParsed.Host + "/subtitles.vtt"
 					}
 				}

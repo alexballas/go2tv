@@ -47,16 +47,26 @@ func NewCastClient(deviceAddr string) (*CastClient, error) {
 }
 
 // Connect establishes connection to the Chromecast device.
+// Retries up to 3 times on timeout errors.
 func (c *CastClient) Connect() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if err := c.app.Start(c.host, c.port); err != nil {
-		return fmt.Errorf("chromecast connect: %w", err)
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		if err := c.app.Start(c.host, c.port); err != nil {
+			lastErr = err
+			// On timeout, wait and retry
+			if attempt < 3 {
+				time.Sleep(time.Duration(attempt) * time.Second) // 1s, 2s backoff
+				continue
+			}
+		} else {
+			c.connected = true
+			return nil
+		}
 	}
-
-	c.connected = true
-	return nil
+	return fmt.Errorf("chromecast connect (after 3 attempts): %w", lastErr)
 }
 
 // Load loads media from URL onto the Chromecast.

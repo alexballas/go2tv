@@ -636,11 +636,11 @@ func chromecastPlayAction(screen *FyneScreen) {
 				if err != nil {
 					check(screen, fmt.Errorf("subtitle conversion: %w", err))
 				} else {
-					screen.httpserver.AddHandler("/subtitles.vtt", nil, webvttData)
+					screen.httpserver.AddHandler("/subtitles.vtt", nil, nil, webvttData)
 					subtitleURL = "http://" + mediaURLParsed.Host + "/subtitles.vtt"
 				}
 			case ".vtt":
-				screen.httpserver.AddHandler("/subtitles.vtt", nil, screen.subsfile)
+				screen.httpserver.AddHandler("/subtitles.vtt", nil, nil, screen.subsfile)
 				subtitleURL = "http://" + mediaURLParsed.Host + "/subtitles.vtt"
 			}
 		}
@@ -887,18 +887,18 @@ func skipNextAction(screen *FyneScreen) {
 			case ".srt":
 				webvttData, err := utils.ConvertSRTtoWebVTT(screen.subsfile)
 				if err == nil {
-					screen.httpserver.AddHandler("/subtitles.vtt", nil, webvttData)
+					screen.httpserver.AddHandler("/subtitles.vtt", nil, nil, webvttData)
 					subtitleURL = "http://" + screen.httpserver.GetAddr() + "/subtitles.vtt"
 				}
 			case ".vtt":
-				screen.httpserver.AddHandler("/subtitles.vtt", nil, screen.subsfile)
+				screen.httpserver.AddHandler("/subtitles.vtt", nil, nil, screen.subsfile)
 				subtitleURL = "http://" + screen.httpserver.GetAddr() + "/subtitles.vtt"
 			}
 		}
 
 		// Remove old media handler and add new one
 		screen.httpserver.RemoveHandler("/" + utils.ConvertFilename(oldMediaPath))
-		screen.httpserver.AddHandler("/"+utils.ConvertFilename(screen.mediafile), nil, screen.mediafile)
+		screen.httpserver.AddHandler("/"+utils.ConvertFilename(screen.mediafile), nil, nil, screen.mediafile)
 
 		// Build media URL using the actual HTTP server address
 		mediaURL := "http://" + screen.httpserver.GetAddr() + "/" + utils.ConvertFilename(screen.mediafile)
@@ -1144,8 +1144,8 @@ func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 		return nil, err
 	}
 
-	screen.httpserver.AddHandler(mURL.Path, nextTvData, mediaFile)
-	screen.httpserver.AddHandler(sURL.Path, nil, spath)
+	screen.httpserver.AddHandler(mURL.Path, nextTvData, nil, mediaFile)
+	screen.httpserver.AddHandler(sURL.Path, nil, nil, spath)
 
 	if err := nextTvData.SendtoTV("Queue"); err != nil {
 		return nil, err

@@ -232,11 +232,11 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 			case ".srt":
 				webvttData, err := utils.ConvertSRTtoWebVTT(subsPath)
 				if err == nil {
-					httpServer.AddHandler("/subtitles.vtt", nil, webvttData)
+					httpServer.AddHandler("/subtitles.vtt", nil, nil, webvttData)
 					subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
 				}
 			case ".vtt":
-				httpServer.AddHandler("/subtitles.vtt", nil, subsPath)
+				httpServer.AddHandler("/subtitles.vtt", nil, nil, subsPath)
 				subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
 			}
 		}
