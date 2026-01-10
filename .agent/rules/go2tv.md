@@ -44,7 +44,7 @@ This document contains guidelines for agentic coding agents working in this Go2T
 
 ### Types & Functions
 - Define structs for XML/SOAP message structures with XML tags
-- Use builder pattern for complex constructions (e.g., `setAVTransportSoapBuild`)
+- Use stdlib functions over custom implementations
 - Return errors with context using `fmt.Errorf("function: %w", err)`
 
 ### Error Handling

@@ -69,7 +69,9 @@ func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec
 
 	vf = "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2," + vf
 
-	cmd := exec.CommandContext(ctx,
+	// Use regular Command instead of CommandContext to avoid nil pointer crash
+	// when context cancels before process starts
+	cmd := exec.Command(
 		ffmpegPath,
 		"-re",
 		"-ss", strconv.Itoa(seekSeconds),
@@ -80,14 +82,14 @@ func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec
 		"-ac", "2",
 		"-vf", vf,
 		"-preset", "ultrafast",
-		"-tune", "zerolatency", // Reduces buffering
-		"-g", "30", // Smaller GOP size for faster start
+		"-tune", "zerolatency",
+		"-g", "30",
 		"-keyint_min", "15",
-		"-sc_threshold", "0", // Disable scene detection
+		"-sc_threshold", "0",
 		"-movflags", "+faststart",
-		"-fflags", "nobuffer", // Reduce input buffering
-		"-flags", "low_delay", // Low delay mode
-		"-max_delay", "0", // Minimize muxer delay
+		"-fflags", "nobuffer",
+		"-flags", "low_delay",
+		"-max_delay", "0",
 		"-f", "mpegts",
 		"pipe:1",
 	)
@@ -100,5 +102,26 @@ func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec
 
 	ff.Stdout = w
 
-	return ff.Run()
+	// Start the process first
+	if err := ff.Start(); err != nil {
+		return err
+	}
+
+	// Now handle context cancellation in a goroutine (process is guaranteed to be non-nil)
+	done := make(chan error, 1)
+	go func() {
+		done <- ff.Wait()
+	}()
+
+	select {
+	case <-ctx.Done():
+		// Context cancelled, kill the process
+		if ff.Process != nil {
+			_ = ff.Process.Kill()
+		}
+		<-done // Wait for process to exit
+		return ctx.Err()
+	case err := <-done:
+		return err
+	}
 }

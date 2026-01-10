@@ -42,9 +42,9 @@ var (
 )
 
 type flagResults struct {
-	dmrURL string
-	exit   bool
-	gui    bool
+	targetURL string // Device URL (DLNA renderer or Chromecast)
+	exit      bool
+	gui       bool
 }
 
 func main() {
@@ -142,9 +142,12 @@ func run() error {
 		return err
 	}
 
+	// Get ffmpeg path for transcoding
+	ffmpegPath, _ := exec.LookPath("ffmpeg")
+
 	// Branch based on device type
-	if devices.IsChromecastURL(flagRes.dmrURL) {
-		return runChromecastCLI(exitCTX, cancel, flagRes.dmrURL, absMediaFile, mediaType, absSubtitlesFile)
+	if devices.IsChromecastURL(flagRes.targetURL) {
+		return runChromecastCLI(exitCTX, cancel, flagRes.targetURL, absMediaFile, mediaType, absSubtitlesFile, ffmpegPath, *transcodePtr)
 	}
 
 	scr, err := interactive.InitTcellNewScreen(cancel)
@@ -153,7 +156,7 @@ func run() error {
 	}
 
 	tvdata, err := soapcalls.NewTVPayload(&soapcalls.Options{
-		DMR:       flagRes.dmrURL,
+		DMR:       flagRes.targetURL,
 		Media:     absMediaFile,
 		Subs:      absSubtitlesFile,
 		Mtype:     mediaType,
@@ -190,7 +193,23 @@ func run() error {
 	return nil
 }
 
-func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL, mediaPath, mediaType, subsPath string) error {
+func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL, mediaPath, mediaType, subsPath, ffmpegPath string, transcode bool) error {
+	// Auto-enable transcoding if media is incompatible and ffmpeg available
+	if !transcode && ffmpegPath != "" {
+		info, err := utils.GetMediaCodecInfo(ffmpegPath, mediaPath)
+		switch {
+		case err != nil:
+			// Can't determine compatibility, proceed without transcoding
+		case !utils.IsChromecastCompatible(info):
+			if utils.CheckFFmpeg(ffmpegPath) == nil {
+				transcode = true
+				fmt.Println("Media format incompatible with Chromecast, transcoding enabled")
+			} else {
+				fmt.Println("Warning: Media may not play (incompatible format, ffmpeg not available)")
+			}
+		}
+	}
+
 	// Create Chromecast client
 	client, err := castprotocol.NewCastClient(deviceURL)
 	if err != nil {
@@ -212,8 +231,30 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 	httpServer := httphandlers.NewServer(whereToListen)
 	serverStarted := make(chan error)
 
+	// Create TranscodeOptions if transcoding enabled
+	var tcOpts *utils.TranscodeOptions
+	if transcode {
+		// Determine subtitle path for burning
+		tcSubsPath := ""
+		if subsPath != "" {
+			if _, err := os.Stat(subsPath); err == nil {
+				tcSubsPath = subsPath
+			}
+		}
+
+		tcOpts = &utils.TranscodeOptions{
+			FFmpegPath:   ffmpegPath,
+			SubsPath:     tcSubsPath,
+			SeekSeconds:  0,
+			SubtitleSize: utils.SubtitleSizeMedium,
+			LogOutput:    nil, // CLI uses stdout
+		}
+		// Update content type for transcoded output
+		mediaType = "video/mp4"
+	}
+
 	go func() {
-		httpServer.StartSimpleServer(serverStarted, mediaPath)
+		httpServer.StartSimpleServerWithTranscode(serverStarted, mediaPath, tcOpts)
 	}()
 
 	if err := <-serverStarted; err != nil {
@@ -223,9 +264,9 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 	// Build media URL
 	mediaURL := "http://" + whereToListen + "/" + utils.ConvertFilename(mediaPath)
 
-	// Handle subtitles
+	// Handle subtitles (WebVTT side-loading - only when NOT transcoding)
 	subtitleURL := ""
-	if subsPath != "" {
+	if subsPath != "" && !transcode {
 		if _, err := os.Stat(subsPath); err == nil {
 			ext := strings.ToLower(filepath.Ext(subsPath))
 			switch ext {
@@ -432,7 +473,7 @@ func checkTflag(res *flagResults) error {
 			return fmt.Errorf("checkTflag parse error: %w", err)
 		}
 
-		res.dmrURL = *targetPtr
+		res.targetURL = *targetPtr
 	}
 
 	return nil

@@ -144,6 +144,11 @@ func selectMediaFile(screen *FyneScreen, f fyne.URI) {
 	screen.SelectInternalSubs.PlaceHolder = lang.L("Embedded Subs")
 
 	screen.SelectInternalSubs.Enable()
+
+	// Auto-enable transcoding for incompatible Chromecast media
+	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
+		screen.checkChromecastCompatibility()
+	}
 }
 
 func selectSubsFile(screen *FyneScreen, f fyne.URI) {
@@ -609,8 +614,28 @@ func chromecastPlayAction(screen *FyneScreen) {
 		screen.serverStopCTX = serverStoppedCTX
 		screen.cancelServerStop = serverCTXStop
 
+		// Create TranscodeOptions if transcoding enabled
+		var tcOpts *utils.TranscodeOptions
+		if transcode {
+			// Determine subtitle path for burning (only if user selected)
+			subsPath := ""
+			if screen.subsfile != "" {
+				subsPath = screen.subsfile
+			}
+
+			tcOpts = &utils.TranscodeOptions{
+				FFmpegPath:   screen.ffmpegPath,
+				SubsPath:     subsPath,
+				SeekSeconds:  ffmpegSeek,
+				SubtitleSize: utils.SubtitleSizeMedium,
+				LogOutput:    screen.Debug,
+			}
+			// Update content type for transcoded output
+			mediaType = "video/mp4"
+		}
+
 		go func() {
-			screen.httpserver.StartSimpleServer(serverStarted, screen.mediafile)
+			screen.httpserver.StartSimpleServerWithTranscode(serverStarted, screen.mediafile, tcOpts)
 			serverCTXStop()
 		}()
 

@@ -178,71 +178,43 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 
 **Duration Estimate**: 2 weeks
 
-### Tasks
+### Sub-Phases
+
+#### Phase 4a: Core Infrastructure
+- Create `TranscodeOptions` struct (separate from TVPayload for Chromecast)
+- Add `ServeChromecastTranscodedStream()` with fragmented MP4 output
+- Add `StartSimpleServerWithTranscode()` HTTP server method
+- Update HTTP handler routing for Chromecast vs DLNA transcoding
+- See [phase4_details.md](file:///home/alex/test/go2tv/phase4_details.md) for implementation details
+- **Checkpoint**: `make build` succeeds
+
+#### Phase 4b: Integration
+- Add `checkChromecastCompatibility()` helper to auto-enable transcode
+- Update `chromecastPlayAction()` for transcoding support
+- Implement Chromecast transcoded seek (stop/restart pattern)
+- Handle subtitles: burn via FFmpeg (transcode) or WebVTT (direct)
+- Rename `flagResults.dmrURL` → `targetURL` (fix DLNA-specific naming)
+- Add CLI `-tc` flag support for Chromecast (currently ignored)
+- Add CLI auto-detect and enable transcoding for incompatible media
+- Add error handling with structured logging
+- **Checkpoint**: Transcoding works for incompatible media on GUI and CLI
 
 > [!NOTE]
 > **FFmpeg Availability**: Existing `utils.CheckFFmpeg()` and transcode checkbox disabling behavior must be preserved. Phase 4 should use this existing pattern for Chromecast compatibility checks - if format is incompatible and ffmpeg unavailable, show appropriate error.
 
-#### 4.1 Chromecast Media Format Specifications
-- Document supported formats:
-  - **Video**: H.264 High Profile, HEVC, VP8, VP9, AV1
-  - **Audio**: AAC, MP3, Vorbis, Opus, FLAC
-  - **Container**: MP4, WebM, MKV/Matroska
-- Define FFmpeg transcoding profiles for Chromecast (when transcoding needed)
-
-#### 4.2 Media Format Detection
-- Extend `ffprobe.go` to extract video/audio codec information
-- Add `GetMediaCodecInfo()` function to parse codec data
-- Add `IsChromecastCompatible()` function to check if transcoding needed
-- Support both Windows and non-Windows platforms
-
-#### 4.3 Conditional Transcoding Logic
-- When media file is selected for Chromecast:
-  - Use ffprobe to detect media format
-  - Check if format is compatible with Chromecast
-  - Auto-enable transcode checkbox if incompatible
-  - Allow user to override if desired
-- For compatible formats: stream directly (no transcoding)
-- For incompatible formats: transcode to H.264/AAC/MP4
-
-#### 4.4 Chromecast FFmpeg Command Builder
-- Create `soapcalls/utils/chromecast_transcode.go`
-- Implement `BuildChromecastFFmpegArgs()`:
-  ```
-  -re
-  -ss <seekSeconds>   # optional, for seek support
-  -copyts             # preserve timestamps when seeking
-  -i input
-  -c:v libx264 -profile:v high -level 4.1
-  -preset fast -crf 23
-  -maxrate 10M -bufsize 20M
-  -c:a aac -b:a 192k -ar 48000 -ac 2
-  -movflags +faststart
-  -f mp4 pipe:1
-  ```
-- Support seek via `-re -ss <seconds> -copyts` (same as DLNA transcoding)
-- Handle subtitle burning (if subtitles provided)
-- Implement adaptive bitrate based on network conditions (future enhancement)
-
-#### 4.5 Integration with HTTP Server
-- Modify `httphandlers/httphandlers.go` to detect device type
-- Route Chromecast requests through conditional transcoding pipeline
-- Ensure DLNA requests use existing pipeline
-- Update `ServeTranscodedStream` to accept transcode profile
-
-#### 4.6 Media URL Generation
-- Chromecast requires accessible HTTP URL for media
-- Ensure HTTP server exposes stream at predictable URL (direct or transcoded)
-- Implement proper MIME type headers for Chromecast
-- Add CORS headers for transcoded media streams (subtitle CORS already in Phase 3f)
+> [!NOTE]
+> **Pre-existing Code**: `GetMediaCodecInfo()` and `IsChromecastCompatible()` already exist in `soapcalls/utils/ffprobe.go`. Phase 4 focuses on integration and transcoding pipeline.
 
 **Dependencies**: Phase 3
 
 **Deliverables**:
-- Media format detection using ffprobe
-- Conditional transcoding (only when needed)
-- Chromecast-specific FFmpeg transcoding profiles
-- Automatic format conversion for incompatible media (H.264 + AAC in MP4 container)
+- `TranscodeOptions` struct with documented fields
+- `ServeChromecastTranscodedStream()` function (fragmented MP4 output)
+- `StartSimpleServerWithTranscode()` HTTP server method
+- Auto-enable transcode for incompatible media (GUI + CLI)
+- Chromecast transcoded seek support
+- CLI `-tc` flag working for Chromecast
+- All existing DLNA functionality unchanged
 
 ---
 

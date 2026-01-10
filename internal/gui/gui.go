@@ -447,6 +447,32 @@ func (p *FyneScreen) resetDeviceState() {
 	})
 }
 
+// checkChromecastCompatibility checks if loaded media needs transcoding for Chromecast.
+// Auto-enables transcode checkbox if media is incompatible and FFmpeg is available.
+func (p *FyneScreen) checkChromecastCompatibility() {
+	if p.selectedDeviceType != devices.DeviceTypeChromecast {
+		return
+	}
+	if p.mediafile == "" {
+		return
+	}
+	if err := utils.CheckFFmpeg(p.ffmpegPath); err != nil {
+		return // Can't transcode anyway
+	}
+
+	info, err := utils.GetMediaCodecInfo(p.ffmpegPath, p.mediafile)
+	if err != nil {
+		return // Can't determine, let user decide
+	}
+
+	if !utils.IsChromecastCompatible(info) {
+		fyne.Do(func() {
+			p.TranscodeCheckBox.SetChecked(true)
+		})
+		p.Transcode = true
+	}
+}
+
 // NewFyneScreen .
 func NewFyneScreen(version string) *FyneScreen {
 	return initFyneNewScreen(version)

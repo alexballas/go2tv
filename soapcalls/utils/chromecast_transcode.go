@@ -27,9 +27,6 @@ func ServeChromecastTranscodedStream(
 	ff *exec.Cmd,
 	opts *TranscodeOptions,
 ) error {
-	// Pipe streaming is not great as explained here
-	// https://video.stackexchange.com/questions/34087/ffmpeg-fails-on-pipe-to-pipe-video-decoding.
-	// That's why if we have the option to pass the file directly to ffmpeg, we should.
 	var in string
 	switch f := input.(type) {
 	case string:
@@ -72,7 +69,9 @@ func ServeChromecastTranscodedStream(
 	// Append format conversion
 	vf = vf + ",format=yuv420p"
 
-	cmd := exec.CommandContext(ctx,
+	// Use regular Command instead of CommandContext to avoid nil pointer crash
+	// when context cancels before process starts
+	cmd := exec.Command(
 		opts.FFmpegPath,
 		"-re",
 		"-ss", strconv.Itoa(opts.SeekSeconds),
@@ -103,5 +102,26 @@ func ServeChromecastTranscodedStream(
 
 	ff.Stdout = w
 
-	return ff.Run()
+	// Start the process first
+	if err := ff.Start(); err != nil {
+		return err
+	}
+
+	// Now handle context cancellation (process is guaranteed to be non-nil)
+	done := make(chan error, 1)
+	go func() {
+		done <- ff.Wait()
+	}()
+
+	select {
+	case <-ctx.Done():
+		// Context cancelled, kill the process
+		if ff.Process != nil {
+			_ = ff.Process.Kill()
+		}
+		<-done // Wait for process to exit
+		return ctx.Err()
+	case err := <-done:
+		return err
+	}
 }

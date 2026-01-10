@@ -130,6 +130,17 @@ func (t *tappedSlider) DragEnd() {
 			}
 
 			seekPos := int((t.screen.SlideBar.Value / t.screen.SlideBar.Max) * float64(status.Duration))
+
+			// Transcoded seek: stop and restart with new position
+			// (Chromecast's native Seek() doesn't work on transcoded streams)
+			if t.screen.Transcode {
+				t.screen.ffmpegSeek = seekPos
+				stopAction(t.screen)
+				playAction(t.screen)
+				return
+			}
+
+			// Non-transcoded seek: use Chromecast's native seek
 			if err := t.screen.chromecastClient.Seek(seekPos); err != nil {
 				return
 			}
@@ -194,6 +205,16 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 			}
 
 			seekPos := int((t.screen.SlideBar.Value / t.screen.SlideBar.Max) * float64(status.Duration))
+
+			// Transcoded seek: stop and restart with new position
+			if t.screen.Transcode {
+				t.screen.ffmpegSeek = seekPos
+				stopAction(t.screen)
+				playAction(t.screen)
+				return
+			}
+
+			// Non-transcoded seek: use Chromecast's native seek
 			if err := t.screen.chromecastClient.Seek(seekPos); err != nil {
 				return
 			}
@@ -481,6 +502,11 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 					s.tvdata.RenderingControlURL = s.renderingControlURL
 				}
 			}
+		}
+
+		// Auto-enable transcoding for incompatible Chromecast media
+		if data[id].deviceType == devices.DeviceTypeChromecast && s.mediafile != "" {
+			s.checkChromecastCompatibility()
 		}
 	}
 

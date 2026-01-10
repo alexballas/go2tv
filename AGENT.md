@@ -23,6 +23,12 @@ This document contains guidelines for agentic coding agents working in this Go2T
 - Use table-driven tests with struct-based test cases
 - Test files include: httphandlers_test.go, soapbuilders_test.go, dlnatools_test.go, etc.
 
+### Mobile Build Verification
+For all phases, verify mobile builds pass:
+```bash
+cd cmd/go2tv && APATH=/home/alex/Downloads/android-ndk-r27d/ && GO386='softfloat' ANDROID_NDK_HOME=$APATH fyne package --os android --name Go2TV --app-id app.go2tv.go2tv --icon ../../assets/go2tv-icon-android.png && mv Go2TV.apk ../.. && cd ../..
+```
+
 ## Code Style Guidelines
 
 ### Imports & Formatting
@@ -43,7 +49,7 @@ This document contains guidelines for agentic coding agents working in this Go2T
 
 ### Control Flow
 - Prefer `switch` over `else if` chains
-- Use stdlib functions (e.g., `strings.IndexByte`, `url.Parse`) over custom implementations
+- Use stdlib functions over custom implementations
 
 ### Error Handling
 - Always handle returned errors
@@ -74,4 +80,3 @@ This document contains guidelines for agentic coding agents working in this Go2T
 
 ### Plans
 - At the end of each plan, give me a list of unresolved questions to answer, if any. Make the questions extremely concise. Sacrifice grammar for the sake of concision.
-
