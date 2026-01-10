@@ -962,8 +962,8 @@ func stopAction(screen *FyneScreen) {
 		_ = screen.chromecastClient.Stop()
 		screen.chromecastClient.Close(false)
 		screen.chromecastClient = nil
-		if screen.cancelServerStop != nil {
-			screen.cancelServerStop()
+		if screen.httpserver != nil {
+			screen.httpserver.StopServer()
 		}
 		return
 	}

@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -23,8 +24,8 @@ const (
 )
 
 // ServeTranscodedStream passes an input file or io.Reader to ffmpeg and writes the output directly
-// to our io.Writer.
-func ServeTranscodedStream(w io.Writer, input any, ff *exec.Cmd, ffmpegPath, subs string, seekSeconds int, subSize SubtitleSize) error {
+// to our io.Writer. The context is used to kill ffmpeg when the HTTP request is cancelled.
+func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec.Cmd, ffmpegPath, subs string, seekSeconds int, subSize SubtitleSize) error {
 	// Pipe streaming is not great as explained here
 	// https://video.stackexchange.com/questions/34087/ffmpeg-fails-on-pipe-to-pipe-video-decoding.
 	// That's why if we have the option to pass the file directly to ffmpeg, we should.
@@ -67,7 +68,7 @@ func ServeTranscodedStream(w io.Writer, input any, ff *exec.Cmd, ffmpegPath, sub
 
 	vf = "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2," + vf
 
-	cmd := exec.Command(
+	cmd := exec.CommandContext(ctx,
 		ffmpegPath,
 		"-re",
 		"-ss", strconv.Itoa(seekSeconds),
