@@ -180,6 +180,9 @@ Add Chromecast V2 (Cast v2) support to Go2TV alongside existing DLNA functionali
 
 ### Tasks
 
+> [!NOTE]
+> **FFmpeg Availability**: Existing `utils.CheckFFmpeg()` and transcode checkbox disabling behavior must be preserved. Phase 4 should use this existing pattern for Chromecast compatibility checks - if format is incompatible and ffmpeg unavailable, show appropriate error.
+
 #### 4.1 Chromecast Media Format Specifications
 - Document supported formats:
   - **Video**: H.264 High Profile, HEVC, VP8, VP9, AV1
