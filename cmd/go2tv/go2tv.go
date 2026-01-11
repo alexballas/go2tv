@@ -23,7 +23,7 @@ import (
 	"github.com/alexballas/go2tv/internal/gui"
 	"github.com/alexballas/go2tv/internal/interactive"
 	"github.com/alexballas/go2tv/soapcalls"
-	"github.com/alexballas/go2tv/soapcalls/utils"
+	"github.com/alexballas/go2tv/utils"
 	tea "github.com/charmbracelet/bubbletea"
 )
 

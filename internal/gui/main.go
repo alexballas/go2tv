@@ -19,7 +19,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/alexballas/go2tv/devices"
 	"github.com/alexballas/go2tv/soapcalls"
-	"github.com/alexballas/go2tv/soapcalls/utils"
+	"github.com/alexballas/go2tv/utils"
 	"golang.org/x/time/rate"
 )
 

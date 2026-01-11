@@ -3,7 +3,7 @@ package soapcalls
 import (
 	"testing"
 
-	"github.com/alexballas/go2tv/soapcalls/utils"
+	"github.com/alexballas/go2tv/utils"
 )
 
 func TestSetAVTransportSoapBuild(t *testing.T) {

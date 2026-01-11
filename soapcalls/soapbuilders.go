@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/alexballas/go2tv/soapcalls/utils"
+	"github.com/alexballas/go2tv/utils"
 	"github.com/pkg/errors"
 )
 
