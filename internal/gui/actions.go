@@ -617,6 +617,11 @@ func chromecastPlayAction(screen *FyneScreen) {
 		// Create TranscodeOptions if transcoding enabled
 		var tcOpts *utils.TranscodeOptions
 		if transcode {
+			// Get actual media duration from ffprobe (Chromecast can't report it for transcoded streams)
+			if duration, err := utils.DurationForMediaSeconds(screen.ffmpegPath, screen.mediafile); err == nil {
+				screen.mediaDuration = duration
+			}
+
 			// Determine subtitle path for burning (only if user selected)
 			subsPath := ""
 			if screen.subsfile != "" {
@@ -632,6 +637,9 @@ func chromecastPlayAction(screen *FyneScreen) {
 			}
 			// Update content type for transcoded output
 			mediaType = "video/mp4"
+		} else {
+			// Clear stored duration for non-transcoded streams (Chromecast reports it correctly)
+			screen.mediaDuration = 0
 		}
 
 		go func() {
@@ -673,7 +681,7 @@ func chromecastPlayAction(screen *FyneScreen) {
 
 	// Load media and update UI on success
 	go func() {
-		if err := client.Load(mediaURL, mediaType, ffmpegSeek, subtitleURL); err != nil {
+		if err := client.Load(mediaURL, mediaType, ffmpegSeek, screen.mediaDuration, subtitleURL); err != nil {
 			check(screen, fmt.Errorf("chromecast load: %w", err))
 			startAfreshPlayButton(screen)
 			return
@@ -681,6 +689,70 @@ func chromecastPlayAction(screen *FyneScreen) {
 	}()
 
 	go chromecastStatusWatcher(serverStoppedCTX, screen)
+}
+
+// chromecastTranscodedSeek performs a seek on transcoded Chromecast streams
+// by restarting the HTTP server with new seek position while keeping the connection open.
+// This is much faster than stopAction+playAction which closes/reopens the connection.
+// Runs fully async to prevent UI freeze during buffering.
+func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
+	// Capture client reference before async operation
+	client := screen.chromecastClient
+	if client == nil || !client.IsConnected() {
+		return
+	}
+	// Update seek position immediately (used by status watcher)
+	screen.ffmpegSeek = seekPos
+	// Run entire seek operation in background to prevent UI freeze
+	go func() {
+		// Stop HTTP server (kills FFmpeg) but keep Chromecast client connected
+		if screen.httpserver != nil {
+			screen.httpserver.StopServer()
+		}
+		// Transcoded streams always output video/mp4
+		mediaType := "video/mp4"
+		whereToListen, err := utils.URLtoListenIPandPort(screen.selectedDevice.addr)
+		if err != nil {
+			check(screen, err)
+			return
+		}
+		// Create new HTTP server with new seek position
+		screen.httpserver = httphandlers.NewServer(whereToListen)
+		serverStarted := make(chan error)
+		serverStoppedCTX, serverCTXStop := context.WithCancel(context.Background())
+		screen.serverStopCTX = serverStoppedCTX
+		screen.cancelServerStop = serverCTXStop
+		// Determine subtitle path for burning
+		subsPath := ""
+		if screen.subsfile != "" {
+			subsPath = screen.subsfile
+		}
+		tcOpts := &utils.TranscodeOptions{
+			FFmpegPath:   screen.ffmpegPath,
+			SubsPath:     subsPath,
+			SeekSeconds:  seekPos,
+			SubtitleSize: utils.SubtitleSizeMedium,
+			LogOutput:    screen.Debug,
+		}
+		go func() {
+			screen.httpserver.StartSimpleServerWithTranscode(serverStarted, screen.mediafile, tcOpts)
+			serverCTXStop()
+		}()
+
+		if err := <-serverStarted; err != nil {
+			check(screen, err)
+			return
+		}
+		mediaURL := "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile)
+		// Load media on existing connection (skips 2-second receiver launch delay)
+		// No subtitles needed since they're burned in during transcoding
+		if err := client.LoadOnExisting(mediaURL, mediaType, 0, screen.mediaDuration, ""); err != nil {
+			check(screen, fmt.Errorf("chromecast seek load: %w", err))
+			return
+		}
+		// Restart status watcher
+		go chromecastStatusWatcher(serverStoppedCTX, screen)
+	}()
 }
 
 // chromecastStatusWatcher polls Chromecast status and updates UI.
@@ -696,25 +768,30 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if screen.chromecastClient == nil || !screen.chromecastClient.IsConnected() {
+			// Capture client once to avoid race with stopAction nilling it
+			client := screen.chromecastClient
+			if client == nil || !client.IsConnected() {
 				return
 			}
 
-			status, err := screen.chromecastClient.GetStatus()
+			status, err := client.GetStatus()
 			if err != nil {
 				continue
 			}
-
 			// Update state based on player state
 			switch status.PlayerState {
 			case "BUFFERING":
-				// Media is loading - mark as started but don't change UI yet
+				// Media is loading - mark as started but don't update slider
+				// (Chromecast reports 0 duration/time during buffering which would zero out slider)
 				mediaStarted = true
 			case "PLAYING":
 				mediaStarted = true
 				if screen.getScreenState() != "Playing" {
-					setPlayPauseView("Pause", screen)
-					screen.updateScreenState("Playing")
+					// Double check to avoid a race condition when clicking the stop button
+					if client.IsConnected() {
+						setPlayPauseView("Pause", screen)
+						screen.updateScreenState("Playing")
+					}
 				}
 			case "PAUSED":
 				mediaStarted = true
@@ -738,23 +815,39 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 				// If we haven't started yet, just ignore IDLE
 			}
 
-			// Update slider position (only if media has started)
-			if mediaStarted && !screen.sliderActive && status.Duration > 0 {
-				progress := (float64(status.CurrentTime) / float64(status.Duration)) * screen.SlideBar.Max
+			// Update slider position (only if media has started and not buffering)
+			// Skip BUFFERING state - Chromecast reports 0 duration/time during buffering
+			if status.PlayerState == "BUFFERING" {
+				continue
+			}
+
+			// For transcoded streams, use stored duration from ffprobe (Chromecast only knows buffered duration)
+			duration := float64(status.Duration)
+			currentTime := float64(status.CurrentTime)
+			// If we have a stored duration (from ffprobe for transcoded streams), always use it
+			// This is more reliable than checking screen.Transcode which might get out of sync
+			if screen.mediaDuration > 0 {
+				duration = screen.mediaDuration
+				// Add seek offset to show correct position in original file
+				currentTime = float64(status.CurrentTime) + float64(screen.ffmpegSeek)
+			}
+
+			if mediaStarted && !screen.sliderActive && duration > 0 {
+				progress := (currentTime / duration) * screen.SlideBar.Max
 				fyne.Do(func() {
 					screen.SlideBar.SetValue(progress)
 				})
 
 				// Update time labels
-				current, _ := utils.SecondsToClockTime(int(status.CurrentTime))
-				total, _ := utils.SecondsToClockTime(int(status.Duration))
+				current, _ := utils.SecondsToClockTime(int(currentTime))
+				total, _ := utils.SecondsToClockTime(int(duration))
 				screen.CurrentPos.Set(current)
 				screen.EndPos.Set(total)
 
 				// Fallback: Detect media completion when CurrentTime reaches Duration
 				// go-chromecast doesn't always report IDLE when media finishes
 				// Using 1.5 second threshold since Chromecast stops updating ~1-2s early
-				if status.CurrentTime >= status.Duration-1.5 && status.Duration > 0 {
+				if currentTime >= duration-1.5 && duration > 0 {
 					screen.Fini()
 					// Only reset UI if not looping or auto-playing next
 					if !screen.Medialoop && !screen.NextMediaCheck.Checked {
@@ -774,6 +867,15 @@ func startAfreshPlayButton(screen *FyneScreen) {
 
 	setPlayPauseView("Play", screen)
 	screen.updateScreenState("Stopped")
+
+	// Reset slider and times (needed for Chromecast which doesn't use sliderUpdate loop)
+	fyne.Do(func() {
+		screen.SlideBar.SetValue(0)
+	})
+	screen.CurrentPos.Set("00:00:00")
+	screen.EndPos.Set("00:00:00")
+	screen.ffmpegSeek = 0
+	screen.mediaDuration = 0
 }
 
 func gaplessMediaWatcher(ctx context.Context, screen *FyneScreen, payload *soapcalls.TVPayload) {
@@ -929,8 +1031,9 @@ func skipNextAction(screen *FyneScreen) {
 		mediaURL := "http://" + screen.httpserver.GetAddr() + "/" + utils.ConvertFilename(screen.mediafile)
 
 		// Load new media on existing connection (async to avoid blocking)
+		// Note: skipNext doesn't support transcoding, so duration is 0
 		go func() {
-			if err := screen.chromecastClient.Load(mediaURL, mediaType, 0, subtitleURL); err != nil {
+			if err := screen.chromecastClient.Load(mediaURL, mediaType, 0, 0, subtitleURL); err != nil {
 				check(screen, fmt.Errorf("chromecast load: %w", err))
 				return
 			}
@@ -984,12 +1087,32 @@ func stopAction(screen *FyneScreen) {
 	screen.updateScreenState("Stopped")
 
 	if screen.chromecastClient != nil && screen.chromecastClient.IsConnected() {
-		_ = screen.chromecastClient.Stop()
-		screen.chromecastClient.Close(false)
+		// Capture references before clearing
+		client := screen.chromecastClient
+		server := screen.httpserver
+
+		// Clear references immediately to prevent status watcher from continuing
 		screen.chromecastClient = nil
-		if screen.httpserver != nil {
-			screen.httpserver.StopServer()
-		}
+		screen.httpserver = nil
+
+		// Reset progress bar and time labels immediately (UI update)
+		fyne.Do(func() {
+			screen.SlideBar.SetValue(0)
+		})
+		screen.CurrentPos.Set("00:00:00")
+		screen.EndPos.Set("00:00:00")
+		// Reset transcoding seek state
+		screen.ffmpegSeek = 0
+		screen.mediaDuration = 0
+
+		// Run blocking network operations in background
+		go func() {
+			_ = client.Stop()
+			client.Close(false)
+			if server != nil {
+				server.StopServer()
+			}
+		}()
 		return
 	}
 

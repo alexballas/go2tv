@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -38,13 +39,25 @@ type MediaCodecInfo struct {
 }
 
 func DurationForMedia(ffmpeg string, f string) (string, error) {
-	_, err := os.Stat(f)
+	seconds, err := DurationForMediaSeconds(ffmpeg, f)
 	if err != nil {
 		return "", err
 	}
 
+	duration := time.Duration(seconds * float64(time.Second))
+	return formatDuration(duration), nil
+}
+
+// DurationForMediaSeconds returns the media duration in seconds.
+// Used for Chromecast transcoded streams where we need the raw duration value.
+func DurationForMediaSeconds(ffmpeg string, f string) (float64, error) {
+	_, err := os.Stat(f)
+	if err != nil {
+		return 0, err
+	}
+
 	if err := CheckFFmpeg(ffmpeg); err != nil {
-		return "", err
+		return 0, err
 	}
 
 	cmd := exec.Command(
@@ -57,21 +70,15 @@ func DurationForMedia(ffmpeg string, f string) (string, error) {
 
 	output, err := cmd.Output()
 	if err != nil {
-		return "", err
+		return 0, err
 	}
 
 	var info ffprobeInfo
 	if err := json.Unmarshal(output, &info); err != nil {
-		return "", err
+		return 0, err
 	}
 
-	ff, err := strconv.ParseFloat(info.Format.Duration, 64)
-	if err != nil {
-		return "", err
-	}
-
-	duration := time.Duration(ff * float64(time.Second))
-	return formatDuration(duration), nil
+	return strconv.ParseFloat(info.Format.Duration, 64)
 }
 
 func GetMediaCodecInfo(ffmpeg string, f string) (*MediaCodecInfo, error) {
@@ -144,6 +151,8 @@ func IsChromecastCompatible(info *MediaCodecInfo) bool {
 
 	supportedContainers := map[string]bool{
 		"mp4":      true,
+		"mov":      true,
+		"m4a":      true,
 		"webm":     true,
 		"matroska": true,
 		"mkv":      true,
@@ -151,7 +160,16 @@ func IsChromecastCompatible(info *MediaCodecInfo) bool {
 
 	videoOK := info.VideoCodec == "" || supportedVideoCodecs[info.VideoCodec]
 	audioOK := info.AudioCodec == "" || supportedAudioCodecs[info.AudioCodec]
-	containerOK := supportedContainers[info.Container]
+
+	// ffprobe returns comma-separated format names (e.g., "matroska,webm" or "mov,mp4,m4a,3gp,3g2,mj2")
+	// Check if any of the formats is supported
+	containerOK := false
+	for _, format := range strings.Split(info.Container, ",") {
+		if supportedContainers[format] {
+			containerOK = true
+			break
+		}
+	}
 
 	return videoOK && audioOK && containerOK
 }

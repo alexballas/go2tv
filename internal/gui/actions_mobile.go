@@ -758,9 +758,9 @@ func chromecastPlayAction(screen *FyneScreen) {
 		}
 	}
 
-	// Load media
+	// Load media (duration=0 since mobile doesn't support transcoding)
 	go func() {
-		if err := client.Load(mediaURL, mediaType, 0, subtitleURL); err != nil {
+		if err := client.Load(mediaURL, mediaType, 0, 0, subtitleURL); err != nil {
 			check(w, fmt.Errorf("chromecast load: %w", err))
 			startAfreshPlayButton(screen)
 			return

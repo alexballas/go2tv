@@ -14,7 +14,7 @@ import (
 type CastClient struct {
 	app       *application.Application
 	conn      cast.Conn // keep reference to connection for custom commands
-	mu        sync.Mutex
+	mu        sync.RWMutex
 	host      string
 	port      int
 	connected bool
@@ -64,41 +64,61 @@ func (c *CastClient) Connect() error {
 
 // Load loads media from URL onto the Chromecast.
 // startTime is the position in seconds to start playback from.
+// duration is the total media duration in seconds (0 to let Chromecast detect).
 // If subtitleURL is provided, uses custom load command with subtitle tracks.
-func (c *CastClient) Load(mediaURL string, contentType string, startTime int, subtitleURL string) error {
-	// If no subtitles, use standard load
-	if subtitleURL == "" {
+func (c *CastClient) Load(mediaURL string, contentType string, startTime int, duration float64, subtitleURL string) error {
+	// If no subtitles and no custom duration needed, use standard load
+	if subtitleURL == "" && duration == 0 {
 		if err := c.app.Load(mediaURL, startTime, contentType, false, false, false); err != nil {
 			return err
 		}
 		return nil
 	}
 
-	// With subtitles: launch the app first WITHOUT loading media, then send custom load
+	// With subtitles or custom duration: launch the app first WITHOUT loading media, then send custom load
 	// This prevents double playback (first without subs, then with subs queued)
 	if err := LaunchDefaultReceiver(c.conn); err != nil {
 		return fmt.Errorf("launch receiver: %w", err)
 	}
 
-	// Wait for app to be ready
-	time.Sleep(2 * time.Second)
-
-	// Update app state to get the transport ID
-	if err := c.app.Update(); err != nil {
-		return fmt.Errorf("update app state: %w", err)
+	// Retry getting app state with backoff (handles "media receiver app not available")
+	var transportId string
+	for i := range 5 {
+		if err := c.app.Update(); err != nil {
+			time.Sleep(time.Duration(i+1) * 500 * time.Millisecond)
+			continue
+		}
+		app := c.app.App()
+		if app != nil && app.TransportId != "" {
+			transportId = app.TransportId
+			break
+		}
+		time.Sleep(time.Duration(i+1) * 500 * time.Millisecond)
 	}
 
-	app := c.app.App()
-	if app == nil {
-		return fmt.Errorf("media receiver app not available")
+	return LoadWithSubtitles(c.conn, transportId, mediaURL, contentType, startTime, duration, subtitleURL)
+}
+
+// LoadOnExisting loads media on an already-running receiver (for seek operations).
+// Unlike Load, this skips launching the receiver and the 2-second wait.
+// Use this when the receiver is already playing media and you want to load new content.
+func (c *CastClient) LoadOnExisting(mediaURL string, contentType string, startTime int, duration float64, subtitleURL string) error {
+	// Retry getting app state with backoff (handles transient errors during seek)
+	var transportId string
+	for i := range 5 {
+		if err := c.app.Update(); err != nil {
+			time.Sleep(time.Duration(i+1) * 500 * time.Millisecond)
+			continue
+		}
+		app := c.app.App()
+		if app != nil && app.TransportId != "" {
+			transportId = app.TransportId
+			break
+		}
+		time.Sleep(time.Duration(i+1) * 500 * time.Millisecond)
 	}
 
-	transportId := app.TransportId
-	if transportId == "" {
-		return fmt.Errorf("no transport ID available")
-	}
-
-	return LoadWithSubtitles(c.conn, transportId, mediaURL, contentType, startTime, subtitleURL)
+	return LoadWithSubtitles(c.conn, transportId, mediaURL, contentType, startTime, duration, subtitleURL)
 }
 
 // Play resumes playback.
@@ -144,23 +164,18 @@ func (c *CastClient) SetMuted(muted bool) error {
 }
 
 // GetStatus returns current playback status.
+// No mutex needed - only reads from underlying library which has its own sync.
 func (c *CastClient) GetStatus() (*CastStatus, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	// Request fresh status from device (Update refreshes the cached status)
 	if err := c.app.Update(); err != nil {
 		return nil, err
 	}
-
 	_, media, vol := c.app.Status()
-
 	status := &CastStatus{}
 	if vol != nil {
 		status.Volume = float32(vol.Level)
 		status.Muted = vol.Muted
 	}
-
 	if media != nil {
 		status.PlayerState = media.PlayerState
 		status.CurrentTime = media.CurrentTime
@@ -172,7 +187,6 @@ func (c *CastClient) GetStatus() (*CastStatus, error) {
 	} else {
 		status.PlayerState = "IDLE"
 	}
-
 	return status, nil
 }
 
@@ -186,8 +200,9 @@ func (c *CastClient) Close(stopMedia bool) error {
 }
 
 // IsConnected returns whether client is connected.
+// Uses RLock for read-only access to avoid blocking on mutex contention.
 func (c *CastClient) IsConnected() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.connected
 }

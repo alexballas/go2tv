@@ -233,7 +233,13 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 
 	// Create TranscodeOptions if transcoding enabled
 	var tcOpts *utils.TranscodeOptions
+	var mediaDuration float64
 	if transcode {
+		// Get actual media duration from ffprobe (Chromecast can't detect it for transcoded streams)
+		if duration, err := utils.DurationForMediaSeconds(ffmpegPath, mediaPath); err == nil {
+			mediaDuration = duration
+		}
+
 		// Determine subtitle path for burning
 		tcSubsPath := ""
 		if subsPath != "" {
@@ -292,7 +298,7 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 
 	// Load media (async)
 	go func() {
-		if err := client.Load(mediaURL, mediaType, 0, subtitleURL); err != nil {
+		if err := client.Load(mediaURL, mediaType, 0, mediaDuration, subtitleURL); err != nil {
 			fmt.Fprintf(os.Stderr, "chromecast load: %v\n", err)
 		}
 	}()

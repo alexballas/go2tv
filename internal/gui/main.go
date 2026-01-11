@@ -73,7 +73,21 @@ func (t *tappedSlider) Dragged(e *fyne.DragEvent) {
 	t.Slider.Dragged(e)
 	t.screen.sliderActive = true
 
+	// Handle Chromecast with stored duration (transcoded streams)
+	if t.screen.mediaDuration > 0 {
+		cur := (t.screen.mediaDuration * t.Slider.Value) / t.Slider.Max
+		reltime, _ := utils.SecondsToClockTime(int(cur))
+		total, _ := utils.SecondsToClockTime(int(t.screen.mediaDuration))
+		t.screen.CurrentPos.Set(reltime)
+		t.screen.EndPos.Set(total)
+		return
+	}
+
+	// DLNA: Get position from device
 	if t.end == "" {
+		if t.screen.tvdata == nil {
+			return
+		}
 		getSliderPos, err := t.screen.tvdata.GetPositionInfo()
 		if err != nil {
 			return
@@ -124,22 +138,24 @@ func (t *tappedSlider) DragEnd() {
 	if t.screen.State == "Playing" || t.screen.State == "Paused" {
 		// Handle Chromecast seeking
 		if t.screen.chromecastClient != nil && t.screen.chromecastClient.IsConnected() {
-			status, err := t.screen.chromecastClient.GetStatus()
-			if err != nil || status.Duration <= 0 {
-				return
+			// For transcoded streams, use stored duration (Chromecast only knows buffered duration)
+			var duration float64
+			if t.screen.mediaDuration > 0 {
+				duration = t.screen.mediaDuration
+			} else {
+				status, err := t.screen.chromecastClient.GetStatus()
+				if err != nil || status.Duration <= 0 {
+					return
+				}
+				duration = float64(status.Duration)
 			}
-
-			seekPos := int((t.screen.SlideBar.Value / t.screen.SlideBar.Max) * float64(status.Duration))
-
-			// Transcoded seek: stop and restart with new position
+			seekPos := int((t.screen.SlideBar.Value / t.screen.SlideBar.Max) * duration)
+			// Transcoded seek: use optimized helper that keeps connection open
 			// (Chromecast's native Seek() doesn't work on transcoded streams)
-			if t.screen.Transcode {
-				t.screen.ffmpegSeek = seekPos
-				stopAction(t.screen)
-				playAction(t.screen)
+			if t.screen.mediaDuration > 0 {
+				chromecastTranscodedSeek(t.screen, seekPos)
 				return
 			}
-
 			// Non-transcoded seek: use Chromecast's native seek
 			if err := t.screen.chromecastClient.Seek(seekPos); err != nil {
 				return
@@ -199,18 +215,29 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 	if t.screen.State == "Playing" || t.screen.State == "Paused" {
 		// Handle Chromecast seeking
 		if t.screen.chromecastClient != nil && t.screen.chromecastClient.IsConnected() {
-			status, err := t.screen.chromecastClient.GetStatus()
-			if err != nil || status.Duration <= 0 {
-				return
+			// For transcoded streams, use stored duration (Chromecast only knows buffered duration)
+			var duration float64
+			if t.screen.mediaDuration > 0 {
+				duration = t.screen.mediaDuration
+			} else {
+				status, err := t.screen.chromecastClient.GetStatus()
+				if err != nil || status.Duration <= 0 {
+					return
+				}
+				duration = float64(status.Duration)
 			}
 
-			seekPos := int((t.screen.SlideBar.Value / t.screen.SlideBar.Max) * float64(status.Duration))
+			seekPos := int((t.screen.SlideBar.Value / t.screen.SlideBar.Max) * duration)
 
-			// Transcoded seek: stop and restart with new position
-			if t.screen.Transcode {
-				t.screen.ffmpegSeek = seekPos
-				stopAction(t.screen)
-				playAction(t.screen)
+			// Update time labels immediately for visual feedback (like DLNA)
+			current, _ := utils.SecondsToClockTime(seekPos)
+			total, _ := utils.SecondsToClockTime(int(duration))
+			t.screen.CurrentPos.Set(current)
+			t.screen.EndPos.Set(total)
+
+			// Transcoded seek: use optimized helper that keeps connection open
+			if t.screen.mediaDuration > 0 {
+				chromecastTranscodedSeek(t.screen, seekPos)
 				return
 			}
 
@@ -481,10 +508,16 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
-		// CRITICAL: Reset all device state when switching between devices
-		// This prevents DLNA state from leaking to Chromecast and vice versa
+		// Only reset DLNA-specific state when switching devices, NOT Chromecast playback.
+		// This allows browsing the device list while Chromecast is playing.
+		// Chromecast connection is only closed via stop button or when starting new playback.
 		if s.selectedDevice.addr != "" && s.selectedDevice.addr != data[id].addr {
-			s.resetDeviceState()
+			// Clear DLNA-specific state only
+			s.controlURL = ""
+			s.eventlURL = ""
+			s.renderingControlURL = ""
+			s.connectionManagerURL = ""
+			s.tvdata = nil
 		}
 
 		s.selectedDevice = data[id]
@@ -767,6 +800,10 @@ func sliderUpdate(s *FyneScreen) {
 		}
 
 		if (s.State == "Stopped" || s.State == "") && s.ffmpegSeek == 0 {
+			// Don't reset slider for Chromecast - it has its own status watcher
+			if s.selectedDeviceType == devices.DeviceTypeChromecast && s.chromecastClient != nil {
+				continue
+			}
 			fyne.Do(func() {
 				s.SlideBar.Slider.SetValue(0)
 				s.CurrentPos.Set("00:00:00")
@@ -775,6 +812,11 @@ func sliderUpdate(s *FyneScreen) {
 		}
 
 		if s.State == "Playing" {
+			// Skip for Chromecast - it has its own status watcher (chromecastStatusWatcher)
+			if s.selectedDeviceType == devices.DeviceTypeChromecast {
+				continue
+			}
+
 			getPos, err := s.tvdata.GetPositionInfo()
 			if err != nil {
 				continue

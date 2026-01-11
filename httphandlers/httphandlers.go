@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -94,7 +95,7 @@ func (s *HTTPserver) StartSimpleServerWithTranscode(
 	tcOpts *utils.TranscodeOptions,
 ) {
 	// Register media handler
-	mediaFilename := "/" + utils.ConvertFilename(mediaPath)
+	mediaFilename := "/" + filepath.Base(mediaPath)
 	s.AddHandler(mediaFilename, nil, tcOpts, mediaPath)
 
 	s.Mux.HandleFunc("/", s.ServeMediaHandler())
@@ -319,6 +320,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 	if tcOpts != nil {
 		isMedia = true
 		transcode = true
+		mediaType = "video/mp4" // Chromecast transcoding outputs fragmented MP4
 	}
 
 	w.Header()["transferMode.dlna.org"] = []string{"Interactive"}

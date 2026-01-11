@@ -47,12 +47,18 @@ func (p *CustomLoadPayload) SetRequestId(id int) {
 // mediaURL: URL of the media to play
 // contentType: MIME type of the media
 // startTime: start position in seconds
+// duration: total media duration in seconds (0 to let Chromecast detect)
 // subtitleURL: URL of the WebVTT subtitle file (or empty for no subtitles)
-func LoadWithSubtitles(conn cast.Conn, transportId string, mediaURL string, contentType string, startTime int, subtitleURL string) error {
+func LoadWithSubtitles(conn cast.Conn, transportId string, mediaURL string, contentType string, startTime int, duration float64, subtitleURL string) error {
 	media := MediaItemWithTracks{
 		ContentId:   mediaURL,
 		ContentType: contentType,
 		StreamType:  "BUFFERED",
+	}
+
+	// Set duration if provided (useful for transcoded streams where Chromecast can't detect it)
+	if duration > 0 {
+		media.Duration = float32(duration)
 	}
 
 	var activeTrackIds []int

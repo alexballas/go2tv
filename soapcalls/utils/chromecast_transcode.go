@@ -8,7 +8,20 @@ import (
 	"io"
 	"os/exec"
 	"strconv"
+	"strings"
 )
+
+// escapeFFmpegPath escapes special characters in paths for FFmpeg filtergraph syntax.
+// FFmpeg filtergraph requires escaping: \ ' : [ ]
+func escapeFFmpegPath(path string) string {
+	// Order matters: escape backslashes first
+	path = strings.ReplaceAll(path, "\\", "\\\\")
+	path = strings.ReplaceAll(path, "'", "'\\''")
+	path = strings.ReplaceAll(path, ":", "\\:")
+	path = strings.ReplaceAll(path, "[", "\\[")
+	path = strings.ReplaceAll(path, "]", "\\]")
+	return path
+}
 
 // ServeChromecastTranscodedStream transcodes media to Chromecast-compatible format.
 // Output: fragmented MP4 with H.264 video and AAC audio for HTTP streaming.
@@ -47,7 +60,12 @@ func ServeChromecastTranscodedStream(
 	// Add subtitle burning if configured
 	if opts.SubsPath != "" {
 		charenc, err := getCharDet(opts.SubsPath)
-		if err == nil {
+		if err != nil {
+			// Log error but continue without subtitles
+			if opts.LogOutput != nil {
+				opts.LogError("ServeChromecastTranscodedStream", "getCharDet failed, continuing without subtitles", err)
+			}
+		} else {
 			fontSize := 24 // Medium (default)
 			switch opts.SubtitleSize {
 			case SubtitleSizeSmall:
@@ -58,10 +76,13 @@ func ServeChromecastTranscodedStream(
 
 			forceStyle := fmt.Sprintf(":force_style='FontSize=%d,Outline=1'", fontSize)
 
+			// Escape special characters for FFmpeg filtergraph syntax
+			escapedPath := escapeFFmpegPath(opts.SubsPath)
+
 			if charenc == "UTF-8" {
-				vf = fmt.Sprintf("subtitles='%s'%s,%s", opts.SubsPath, forceStyle, vf)
+				vf = fmt.Sprintf("subtitles='%s'%s,%s", escapedPath, forceStyle, vf)
 			} else {
-				vf = fmt.Sprintf("subtitles='%s':charenc=%s%s,%s", opts.SubsPath, charenc, forceStyle, vf)
+				vf = fmt.Sprintf("subtitles='%s':charenc=%s%s,%s", escapedPath, charenc, forceStyle, vf)
 			}
 		}
 	}
@@ -80,7 +101,8 @@ func ServeChromecastTranscodedStream(
 		"-c:v", "libx264",
 		"-profile:v", "high",
 		"-level", "4.1",
-		"-preset", "fast",
+		"-preset", "ultrafast",
+		"-tune", "zerolatency",
 		"-crf", "23",
 		"-maxrate", "10M",
 		"-bufsize", "20M",

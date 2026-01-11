@@ -67,6 +67,36 @@ func TestIsChromecastCompatible(t *testing.T) {
 			info:     nil,
 			expected: false,
 		},
+		{
+			name: "Compatible - ffprobe comma-separated format (matroska,webm)",
+			info: &MediaCodecInfo{
+				VideoCodec:   "h264",
+				VideoProfile: "high",
+				AudioCodec:   "aac",
+				Container:    "matroska,webm",
+			},
+			expected: true,
+		},
+		{
+			name: "Compatible - ffprobe comma-separated format (mov,mp4,m4a,3gp,3g2,mj2)",
+			info: &MediaCodecInfo{
+				VideoCodec:   "h264",
+				VideoProfile: "high",
+				AudioCodec:   "aac",
+				Container:    "mov,mp4,m4a,3gp,3g2,mj2",
+			},
+			expected: true,
+		},
+		{
+			name: "Incompatible - ffprobe comma-separated with no matching format",
+			info: &MediaCodecInfo{
+				VideoCodec:   "h264",
+				VideoProfile: "high",
+				AudioCodec:   "aac",
+				Container:    "avi,divx",
+			},
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {

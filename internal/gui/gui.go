@@ -74,6 +74,8 @@ type FyneScreen struct {
 	currentmfolder        string
 	ffmpegPath            string
 	ffmpegSeek            int
+	mediaDuration         float64 // Actual media duration in seconds (from ffprobe, for transcoded streams)
+	chromecastCheckedFile string  // Tracks which file was already auto-checked for Chromecast compatibility
 	systemTheme           fyne.ThemeVariant
 	mediaFormats          []string
 	audioFormats          []string
@@ -449,11 +451,16 @@ func (p *FyneScreen) resetDeviceState() {
 
 // checkChromecastCompatibility checks if loaded media needs transcoding for Chromecast.
 // Auto-enables transcode checkbox if media is incompatible and FFmpeg is available.
+// Only auto-enables once per file - tracks checked file to respect user's manual disable.
 func (p *FyneScreen) checkChromecastCompatibility() {
 	if p.selectedDeviceType != devices.DeviceTypeChromecast {
 		return
 	}
 	if p.mediafile == "" {
+		return
+	}
+	// Skip if we've already auto-checked this file (prevents re-enabling after user disables)
+	if p.chromecastCheckedFile == p.mediafile {
 		return
 	}
 	if err := utils.CheckFFmpeg(p.ffmpegPath); err != nil {
@@ -464,6 +471,9 @@ func (p *FyneScreen) checkChromecastCompatibility() {
 	if err != nil {
 		return // Can't determine, let user decide
 	}
+
+	// Mark this file as checked (even if compatible) to avoid rechecking
+	p.chromecastCheckedFile = p.mediafile
 
 	if !utils.IsChromecastCompatible(info) {
 		fyne.Do(func() {
