@@ -28,8 +28,7 @@ import (
 )
 
 var (
-	//go:embed version.txt
-	version      string
+	version      = "dev"
 	mediaArg     = flag.String("v", "", "Local path to the video/audio file. (Triggers the CLI mode)")
 	urlArg       = flag.String("u", "", "HTTP URL to the media file. URL streaming does not support seek operations. (Triggers the CLI mode)")
 	subsArg      = flag.String("s", "", "Local path to the subtitles file.")

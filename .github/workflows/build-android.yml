@@ -11,7 +11,7 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Set env
-      run: if grep -Fxq "devel" cmd/go2tv/version.txt;then echo "GO2TV_VERSION=$(cat cmd/go2tv/version.txt)";else echo "GO2TV_VERSION=v$(cat cmd/go2tv/version.txt)";fi  >> $GITHUB_ENV
+      run: if grep -Fxq "devel" version.txt;then echo "GO2TV_VERSION=$(cat version.txt)";else echo "GO2TV_VERSION=v$(cat version.txt)";fi  >> $GITHUB_ENV
 
     - uses: actions/setup-go@v6
       with:
@@ -23,8 +23,11 @@ jobs:
     - name: Download Android SDK
       run: wget https://dl.google.com/android/repository/android-ndk-r29-linux.zip && unzip android-ndk-r29-linux.zip
 
+    - name: Update FyneApp.toml version
+      run: sed -i "s/^Version.*/Version = \"${{ env.GO2TV_VERSION }}\"/" cmd/go2tv/FyneApp.toml
+
     - name: Package (Android)
-      run: APATH=$(readlink -e android-ndk-r29) && cd cmd/go2tv && GO386='softfloat' ANDROID_NDK_HOME=$APATH fyne package --os android --name Go2TV --app-id app.go2tv.go2tv --icon ../../assets/go2tv-icon-android.png && mv Go2TV.apk ../../
+      run: export GOFLAGS="-ldflags=-X=main.version=${{ env.GO2TV_VERSION }}" && APATH=$(readlink -e android-ndk-r29) && cd cmd/go2tv && GO386='softfloat' ANDROID_NDK_HOME=$APATH fyne package --os android --name Go2TV --app-id app.go2tv.go2tv --icon ../../assets/go2tv-icon-android.png && mv Go2TV.apk ../../
 
     - uses: actions/upload-artifact@v4
       with:

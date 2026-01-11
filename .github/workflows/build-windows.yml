@@ -11,7 +11,7 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Set env
-      run: if grep -Fxq "devel" cmd/go2tv/version.txt;then echo "GO2TV_VERSION=$(cat cmd/go2tv/version.txt)";else echo "GO2TV_VERSION=v$(cat cmd/go2tv/version.txt)";fi  >> $GITHUB_ENV
+      run: if grep -Fxq "devel" version.txt;then echo "GO2TV_VERSION=$(cat version.txt)";else echo "GO2TV_VERSION=v$(cat version.txt)";fi  >> $GITHUB_ENV
 
     - uses: actions/setup-go@v6
       with:
@@ -23,8 +23,11 @@ jobs:
     - name: Install fyne
       run: go install fyne.io/tools/cmd/fyne@latest
 
+    - name: Update FyneApp.toml version
+      run: sed -i "s/^Version.*/Version = \"${{ env.GO2TV_VERSION }}\"/" cmd/go2tv/FyneApp.toml
+
     - name: Package (Windows)
-      run: cd cmd/go2tv && CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ fyne package --release --app-id app.go2tv.go2tv --os windows --icon  ../../assets/go2tv-icon.png && mv go2tv.exe ../../
+      run: export GOFLAGS="-ldflags=-X=main.version=${{ env.GO2TV_VERSION }}" && cd cmd/go2tv && CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ fyne package --release --app-id app.go2tv.go2tv --os windows --icon  ../../assets/go2tv-icon.png && mv go2tv.exe ../../
 
     - uses: actions/upload-artifact@v4
       with:

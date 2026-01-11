@@ -1,3 +1,5 @@
+//go:build !android
+
 package main
 
 import (
@@ -24,8 +26,7 @@ import (
 )
 
 var (
-	//go:embed version.txt
-	version      string
+	version      = "dev"
 	errNoflag    = errors.New("no flag used")
 	mediaArg     = flag.String("v", "", "Local path to the video/audio file. (Triggers the CLI mode)")
 	urlArg       = flag.String("u", "", "HTTP URL to the media file. URL streaming does not support seek operations. (Triggers the CLI mode)")

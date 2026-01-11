@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -22,9 +20,9 @@ func aboutWindow(s *FyneScreen) fyne.CanvasObject {
 	richhead := widget.NewRichTextFromMarkdown(`
 # Go2TV
 
-Cast your media files to UPnP/DLNA
+Cast media files to Smart TVs
 
-Media Renderers and Smart TVs
+and Chromecast devices
 
 ---
 
@@ -70,10 +68,9 @@ func checkVersion(s *FyneScreen) {
 	errVersioncomp := errors.New(lang.L("failed to get version info") + "\n" + lang.L("you're using a development or a non-compiled version"))
 	errVersionGet := errors.New(lang.L("failed to get version info") + "\n" + lang.L("check your internet connection"))
 
-	str := strings.ReplaceAll(s.version, ".", "")
-	str = strings.TrimSpace(str)
-	currversion, err := strconv.Atoi(str)
-	if err != nil {
+	// Parse current version
+	// Check if current version is valid/parsable (not "dev")
+	if _, err := parseVersion(s.version); err != nil {
 		dialog.ShowError(errVersioncomp, s.Current)
 		return
 	}
@@ -104,17 +101,18 @@ func checkVersion(s *FyneScreen) {
 			dialog.ShowError(errVersionGet, s.Current)
 			return
 		}
-		str := strings.Trim(filepath.Base(url.Path), "v")
-		str = strings.ReplaceAll(str, ".", "")
-		chversion, err := strconv.Atoi(str)
+
+		latestVersionStr := filepath.Base(url.Path)
+
+		cmp, err := compareVersions(latestVersionStr, s.version)
 		if err != nil {
 			dialog.ShowError(errVersionGet, s.Current)
 			return
 		}
 
 		switch {
-		case chversion > currversion:
-			dialog.ShowInformation(lang.L("Version checker"), lang.L("New version")+": "+strings.Trim(filepath.Base(url.Path), "v"), s.Current)
+		case cmp == 1: // latest > current
+			dialog.ShowInformation(lang.L("Version checker"), lang.L("New version")+": "+latestVersionStr, s.Current)
 			return
 		default:
 			dialog.ShowInformation(lang.L("Version checker"), lang.L("No new version"), s.Current)
