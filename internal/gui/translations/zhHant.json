@@ -64,5 +64,8 @@
     "Extracting Subtitles": "提取字幕",
     "Drag and Drop is not supported in Flatpak builds.\nPlease use the 'Select Media File' button instead.": "Flatpak 構建不支援拖放操作。\n請使用「選擇媒體檔案」按鈕。",
     "Show Hidden Files": "顯示隱藏檔案",
-    "chromecast not connected": "Chromecast 未連接"
+    "chromecast not connected": "Chromecast 未連接",
+    "Download": "下載",
+    "Current": "目前的",
+    "New": "新"
 }
