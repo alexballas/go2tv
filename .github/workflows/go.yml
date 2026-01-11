@@ -8,10 +8,9 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - uses: WillAbides/setup-go-faster@v1.14.0
-      id: setup-go-faster
+    - uses: actions/setup-go@v6
       with:
-        go-version: "*"
+        go-version: 'stable'
 
     - name: Install xorg-dev
       run: sudo apt update && sudo apt install xorg-dev
