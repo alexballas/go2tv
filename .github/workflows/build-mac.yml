@@ -21,7 +21,7 @@ jobs:
       run: go install fyne.io/tools/cmd/fyne@latest
 
     - name: Update FyneApp.toml version
-      run: sed -i "s/^Version.*/Version = \"${{ env.GO2TV_VERSION }}\"/" cmd/go2tv/FyneApp.toml
+      run: sed -i '' "s/^Version.*/Version = \"${{ env.GO2TV_VERSION }}\"/" cmd/go2tv/FyneApp.toml
 
     - name: Package (macOS)
       run:  export GOFLAGS="-ldflags=-X=main.version=${{ env.GO2TV_VERSION }}" && cd cmd/go2tv && GOARCH=arm64 fyne package --release --os darwin --icon  ../../assets/go2tv-icon.png  && mv go2tv.app ../../
