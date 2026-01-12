@@ -587,10 +587,68 @@ func chromecastPlayAction(screen *FyneScreen) {
 			transcode = false
 		}
 
-		var cancel context.CancelFunc
-		serverStoppedCTX, cancel = context.WithCancel(context.Background())
-		screen.serverStopCTX = serverStoppedCTX
-		go func() { <-serverStoppedCTX.Done(); cancel() }()
+		if transcode {
+			whereToListen, err := utils.URLtoListenIPandPort(screen.selectedDevice.addr)
+			if err != nil {
+				check(screen, err)
+				startAfreshPlayButton(screen)
+				return
+			}
+
+			if screen.httpserver != nil {
+				screen.httpserver.StopServer()
+			}
+
+			screen.httpserver = httphandlers.NewServer(whereToListen)
+			serverStarted := make(chan error)
+			var serverCTXStop context.CancelFunc
+			serverStoppedCTX, serverCTXStop = context.WithCancel(context.Background())
+			screen.serverStopCTX = serverStoppedCTX
+			screen.cancelServerStop = serverCTXStop
+
+			stream, err := utils.StreamURL(context.Background(), mediaURL)
+			if err != nil {
+				check(screen, err)
+				startAfreshPlayButton(screen)
+				return
+			}
+
+			subsPath := ""
+			if screen.subsfile != "" {
+				subsPath = screen.subsfile
+			}
+
+			tcOpts := &utils.TranscodeOptions{
+				FFmpegPath:   screen.ffmpegPath,
+				SubsPath:     subsPath,
+				SeekSeconds:  0,
+				SubtitleSize: utils.SubtitleSizeMedium,
+				LogOutput:    screen.Debug,
+			}
+
+			screen.mediaDuration = 0
+			mediaFilename := "/" + utils.ConvertFilename(mediaURL)
+			screen.httpserver.AddHandler(mediaFilename, nil, tcOpts, stream)
+
+			go func() {
+				screen.httpserver.StartServing(serverStarted)
+				serverCTXStop()
+			}()
+
+			if err := <-serverStarted; err != nil {
+				check(screen, err)
+				startAfreshPlayButton(screen)
+				return
+			}
+
+			mediaURL = "http://" + whereToListen + mediaFilename
+			mediaType = "video/mp4"
+		} else {
+			var cancel context.CancelFunc
+			serverStoppedCTX, cancel = context.WithCancel(context.Background())
+			screen.serverStopCTX = serverStoppedCTX
+			go func() { <-serverStoppedCTX.Done(); cancel() }()
+		}
 
 	} else {
 		// LOCAL FILE: Serve via internal HTTP server
