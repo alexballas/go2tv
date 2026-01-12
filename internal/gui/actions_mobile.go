@@ -602,6 +602,9 @@ func chromecastPlayAction(screen *FyneScreen) {
 			return
 		}
 
+		// Enable debug logging (same pattern as TVPayload)
+		client.LogOutput = screen.Debug
+
 		if err := client.Connect(); err != nil {
 			check(w, fmt.Errorf("chromecast connect: %w", err))
 			startAfreshPlayButton(screen)
