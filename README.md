@@ -44,7 +44,7 @@ No need to copy files to a USB drive or set up a media server. Just select your 
 - **Windows**: Download `go2tv-windows.zip`, extract, and run `go2tv.exe`
 - **macOS**: Download `go2tv-macos.zip`, extract, and run the app
 - **Linux**: Download `go2tv-linux.zip`, extract, and run `go2tv`
-- **Android**: Download the APK or install from [Google Play](https://play.google.com/store/apps/details?id=com.alexballas.go2tv)
+- **Android**: Download the APK
 
 Go2TV is a single executable with no installation required. Just download and run.
 
@@ -112,9 +112,11 @@ go2tv -v video.avi -tc -t http://192.168.1.100:8060/
 # Cast to Chromecast
 go2tv -v movie.mp4 -t http://192.168.1.50:8009
 
-# Stream audio from stdin
-cat music.mp3 | go2tv -t http://192.168.1.50:8009
-go2tv -v - -t http://192.168.1.50:8009 < music.mp3
+# Stream from stdin
+cat video.mp4 | go2tv -t http://192.168.1.50:8009
+
+# Stream from command output
+yt-dlp -o - "https://youtu.be/..." | go2tv -t http://192.168.1.50:8009
 ```
 
 ---
