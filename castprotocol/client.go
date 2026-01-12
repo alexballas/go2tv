@@ -112,15 +112,32 @@ func isTimeoutError(err error) bool {
 func (c *CastClient) Load(mediaURL string, contentType string, startTime int, duration float64, subtitleURL string) error {
 	c.Log().Debug().Str("Method", "Load").Str("URL", mediaURL).Str("ContentType", contentType).Int("StartTime", startTime).Float64("Duration", duration).Bool("HasSubs", subtitleURL != "").Msg("loading media")
 
+	// Check if connection is still active, reconnect if needed
+	// This handles cases where Close() was called but the client is being reused
+	if !c.IsConnected() {
+		c.Log().Debug().Str("Method", "Load").Msg("connection closed, reconnecting")
+		if err := c.Connect(); err != nil {
+			return fmt.Errorf("reconnect before load: %w", err)
+		}
+	}
+
 	// If no subtitles and no custom duration needed, use standard load
 	if subtitleURL == "" && duration == 0 {
 		// Retry loop for TV wake-up scenarios (timeout errors)
 		var lastErr error
 		for attempt := range 3 {
+			if !c.IsConnected() {
+				c.Log().Debug().Str("Method", "Load").Msg("connection closed during load, aborting silently")
+				return nil
+			}
 			if err := c.app.Load(mediaURL, startTime, contentType, false, false, false); err != nil {
 				lastErr = err
 				if isTimeoutError(err) && attempt < 3 {
 					c.Log().Debug().Str("Method", "Load").Int("Attempt", attempt).Err(err).Msg("timeout, TV may be waking up, retrying...")
+					if !c.IsConnected() {
+						c.Log().Debug().Str("Method", "Load").Msg("connection closed during retry wait, aborting silently")
+						return nil
+					}
 					time.Sleep(3 * time.Second) // Wait for TV to wake up
 					continue
 				}
@@ -138,11 +155,20 @@ func (c *CastClient) Load(mediaURL string, contentType string, startTime int, du
 	// Retry loop for TV wake-up scenarios
 	var lastErr error
 	for attempt := range 3 {
+		if !c.IsConnected() {
+			c.Log().Debug().Str("Method", "Load").Msg("connection closed during load, aborting silently")
+			return nil
+		}
+
 		c.Log().Debug().Str("Method", "Load").Int("Attempt", attempt).Msg("launching default receiver")
 		if err := LaunchDefaultReceiver(c.conn); err != nil {
 			lastErr = err
 			if isTimeoutError(err) && attempt < 3 {
 				c.Log().Debug().Str("Method", "Load").Int("Attempt", attempt).Err(err).Msg("timeout, TV may be waking up, retrying...")
+				if !c.IsConnected() {
+					c.Log().Debug().Str("Method", "Load").Msg("connection closed during retry wait, aborting silently")
+					return nil
+				}
 				time.Sleep(3 * time.Second)
 				continue
 			}
@@ -153,6 +179,11 @@ func (c *CastClient) Load(mediaURL string, contentType string, startTime int, du
 		// Retry getting app state with backoff (handles "media receiver app not available")
 		var transportId string
 		for i := range 8 {
+			if !c.IsConnected() {
+				c.Log().Debug().Str("Method", "Load").Msg("connection closed during app update, aborting silently")
+				return nil
+			}
+
 			if err := c.app.Update(); err != nil {
 				c.Log().Debug().Str("Method", "Load").Int("Attempt", i+1).Err(err).Msg("app.Update retry")
 				time.Sleep(time.Duration(i+1) * 500 * time.Millisecond)
@@ -171,6 +202,10 @@ func (c *CastClient) Load(mediaURL string, contentType string, startTime int, du
 			lastErr = fmt.Errorf("failed to get transport ID after retries")
 			if attempt < 3 {
 				c.Log().Debug().Str("Method", "Load").Int("Attempt", attempt).Msg("no transport ID, TV may be waking up, retrying...")
+				if !c.IsConnected() {
+					c.Log().Debug().Str("Method", "Load").Msg("connection closed during retry wait, aborting silently")
+					return nil
+				}
 				time.Sleep(3 * time.Second)
 				continue
 			}
@@ -183,6 +218,10 @@ func (c *CastClient) Load(mediaURL string, contentType string, startTime int, du
 			lastErr = err
 			if isTimeoutError(err) && attempt < 3 {
 				c.Log().Debug().Str("Method", "Load").Int("Attempt", attempt).Err(err).Msg("timeout, TV may be waking up, retrying...")
+				if !c.IsConnected() {
+					c.Log().Debug().Str("Method", "Load").Msg("connection closed during retry wait, aborting silently")
+					return nil
+				}
 				time.Sleep(3 * time.Second)
 				continue
 			}
@@ -196,14 +235,25 @@ func (c *CastClient) Load(mediaURL string, contentType string, startTime int, du
 }
 
 // LoadOnExisting loads media on an already-running receiver (for seek operations).
-// Unlike Load, this skips launching the receiver and the 2-second wait.
+// Unlike Load, this skips launching the receiver.
 // Use this when the receiver is already playing media and you want to load new content.
 func (c *CastClient) LoadOnExisting(mediaURL string, contentType string, startTime int, duration float64, subtitleURL string) error {
 	c.Log().Debug().Str("Method", "LoadOnExisting").Str("URL", mediaURL).Str("ContentType", contentType).Int("StartTime", startTime).Float64("Duration", duration).Bool("HasSubs", subtitleURL != "").Msg("loading media on existing receiver")
 
+	// LoadOnExisting requires an active connection (it's designed for already-running receivers)
+	// Unlike Load(), we don't auto-reconnect because that would defeat the optimization purpose
+	if !c.IsConnected() {
+		return fmt.Errorf("not connected (LoadOnExisting requires active connection)")
+	}
+
 	// Retry getting app state with backoff (handles transient errors during seek)
 	var transportId string
 	for i := range 5 {
+		if !c.IsConnected() {
+			c.Log().Debug().Str("Method", "LoadOnExisting").Msg("connection closed during app update, aborting silently")
+			return nil
+		}
+
 		if err := c.app.Update(); err != nil {
 			c.Log().Debug().Str("Method", "LoadOnExisting").Int("Attempt", i+1).Err(err).Msg("app.Update retry")
 			time.Sleep(time.Duration(i+1) * 500 * time.Millisecond)

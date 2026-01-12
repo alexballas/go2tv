@@ -67,5 +67,10 @@
     "chromecast not connected": "Chromecast not connected",
     "Download": "Download",
     "Current": "Current",
-    "New": "New"
+    "New": "New",
+    "No": "No",
+    "Yes": "Yes",
+    "New Folder": "New Folder",
+    "Create Folder": "Create Folder",
+    "file.name": "Name"
 }

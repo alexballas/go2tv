@@ -511,6 +511,9 @@ func chromecastPlayAction(screen *FyneScreen) {
 		return
 	}
 
+	// Reset seek position for fresh playback (auto-play next file needs this)
+	screen.ffmpegSeek = 0
+
 	transcode := screen.Transcode
 	ffmpegSeek := screen.ffmpegSeek
 
@@ -578,6 +581,12 @@ func chromecastPlayAction(screen *FyneScreen) {
 			return
 		}
 
+		// Chromecast handles images and audio natively - never transcode these
+		mediaTypeSlice := strings.Split(mediaType, "/")
+		if len(mediaTypeSlice) > 0 && (mediaTypeSlice[0] == "image" || mediaTypeSlice[0] == "audio") {
+			transcode = false
+		}
+
 		var cancel context.CancelFunc
 		serverStoppedCTX, cancel = context.WithCancel(context.Background())
 		screen.serverStopCTX = serverStoppedCTX
@@ -597,6 +606,12 @@ func chromecastPlayAction(screen *FyneScreen) {
 			check(screen, err)
 			startAfreshPlayButton(screen)
 			return
+		}
+
+		// Chromecast handles images and audio natively - never transcode these
+		mediaTypeSlice := strings.Split(mediaType, "/")
+		if len(mediaTypeSlice) > 0 && (mediaTypeSlice[0] == "image" || mediaTypeSlice[0] == "audio") {
+			transcode = false
 		}
 
 		whereToListen, err := utils.URLtoListenIPandPort(screen.selectedDevice.addr)
@@ -1008,39 +1023,122 @@ func skipNextAction(screen *FyneScreen) {
 			return
 		}
 
-		// Get subtitle URL if needed (remove old handler first)
-		subtitleURL := ""
-		screen.httpserver.RemoveHandler("/subtitles.vtt")
-		if screen.subsfile != "" {
-			ext := strings.ToLower(filepath.Ext(screen.subsfile))
-			switch ext {
-			case ".srt":
-				webvttData, err := utils.ConvertSRTtoWebVTT(screen.subsfile)
-				if err == nil {
-					screen.httpserver.AddHandler("/subtitles.vtt", nil, nil, webvttData)
-					subtitleURL = "http://" + screen.httpserver.GetAddr() + "/subtitles.vtt"
-				}
-			case ".vtt":
-				screen.httpserver.AddHandler("/subtitles.vtt", nil, nil, screen.subsfile)
-				subtitleURL = "http://" + screen.httpserver.GetAddr() + "/subtitles.vtt"
-			}
+		// Determine if transcoding is enabled
+		transcode := screen.Transcode
+
+		// Chromecast handles images and audio natively - never transcode these
+		mediaTypeSlice := strings.Split(mediaType, "/")
+		if len(mediaTypeSlice) > 0 && (mediaTypeSlice[0] == "image" || mediaTypeSlice[0] == "audio") {
+			transcode = false
 		}
 
-		// Remove old media handler and add new one
-		screen.httpserver.RemoveHandler("/" + utils.ConvertFilename(oldMediaPath))
-		screen.httpserver.AddHandler("/"+utils.ConvertFilename(screen.mediafile), nil, nil, screen.mediafile)
+		// Get server address
+		whereToListen := screen.httpserver.GetAddr()
 
-		// Build media URL using the actual HTTP server address
-		mediaURL := "http://" + screen.httpserver.GetAddr() + "/" + utils.ConvertFilename(screen.mediafile)
+		var mediaURL string
+		var subtitleURL string
+		var serverStoppedCTX context.Context
+
+		if transcode {
+			// TRANSCODING PATH: Stop server and restart with new file and transcode options
+			if screen.httpserver != nil {
+				screen.httpserver.StopServer()
+			}
+
+			// Get actual media duration from ffprobe (Chromecast can't report it for transcoded streams)
+			if duration, err := utils.DurationForMediaSeconds(screen.ffmpegPath, screen.mediafile); err == nil {
+				screen.mediaDuration = duration
+			}
+
+			// Reset seek position for new file
+			screen.ffmpegSeek = 0
+
+			// Determine subtitle path for burning (only if user selected)
+			subsPath := ""
+			if screen.subsfile != "" {
+				subsPath = screen.subsfile
+			}
+
+			tcOpts := &utils.TranscodeOptions{
+				FFmpegPath:   screen.ffmpegPath,
+				SubsPath:     subsPath,
+				SeekSeconds:  0,
+				SubtitleSize: utils.SubtitleSizeMedium,
+				LogOutput:    screen.Debug,
+			}
+
+			// Create new HTTP server with transcoding
+			screen.httpserver = httphandlers.NewServer(whereToListen)
+			serverStarted := make(chan error)
+			var serverCTXStop context.CancelFunc
+			serverStoppedCTX, serverCTXStop = context.WithCancel(context.Background())
+			screen.serverStopCTX = serverStoppedCTX
+			screen.cancelServerStop = serverCTXStop
+
+			go func() {
+				screen.httpserver.StartSimpleServerWithTranscode(serverStarted, screen.mediafile, tcOpts)
+				serverCTXStop()
+			}()
+
+			if err := <-serverStarted; err != nil {
+				check(screen, err)
+				return
+			}
+
+			// Transcoded output is always video/mp4
+			mediaType = "video/mp4"
+			mediaURL = "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile)
+			// Subtitles are burned in during transcoding, no separate URL needed
+
+		} else {
+			// NON-TRANSCODING PATH: Just update handlers on existing server
+			// Clear stored duration for non-transcoded streams (Chromecast reports it correctly)
+			screen.mediaDuration = 0
+
+			// Get subtitle URL if needed (remove old handler first)
+			screen.httpserver.RemoveHandler("/subtitles.vtt")
+			if screen.subsfile != "" {
+				ext := strings.ToLower(filepath.Ext(screen.subsfile))
+				switch ext {
+				case ".srt":
+					webvttData, err := utils.ConvertSRTtoWebVTT(screen.subsfile)
+					if err == nil {
+						screen.httpserver.AddHandler("/subtitles.vtt", nil, nil, webvttData)
+						subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
+					}
+				case ".vtt":
+					screen.httpserver.AddHandler("/subtitles.vtt", nil, nil, screen.subsfile)
+					subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
+				}
+			}
+
+			// Remove old media handler and add new one
+			// Handler paths use filepath.Base (decoded) because r.URL.Path is decoded by Go's HTTP server
+			// URL uses ConvertFilename (encoded) for valid HTTP URL with special characters
+			oldHandlerPath := "/" + filepath.Base(oldMediaPath)
+			newHandlerPath := "/" + filepath.Base(screen.mediafile)
+			screen.httpserver.RemoveHandler(oldHandlerPath)
+			screen.httpserver.AddHandler(newHandlerPath, nil, nil, screen.mediafile)
+
+			// Build media URL using URL-encoded filename (for special chars like brackets)
+			mediaURL = "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile)
+
+			// Use existing server context
+			serverStoppedCTX = screen.serverStopCTX
+		}
 
 		// Load new media on existing connection (async to avoid blocking)
-		// Note: skipNext doesn't support transcoding, so duration is 0
 		go func() {
-			if err := screen.chromecastClient.Load(mediaURL, mediaType, 0, 0, subtitleURL); err != nil {
+			if err := screen.chromecastClient.Load(mediaURL, mediaType, 0, screen.mediaDuration, subtitleURL); err != nil {
 				check(screen, fmt.Errorf("chromecast load: %w", err))
 				return
 			}
 		}()
+
+		// Restart status watcher if transcoding (server was restarted)
+		if transcode && serverStoppedCTX != nil {
+			go chromecastStatusWatcher(serverStoppedCTX, screen)
+		}
 
 		return
 	}

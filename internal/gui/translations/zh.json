@@ -67,5 +67,10 @@
     "chromecast not connected": "Chromecast 未连接",
     "Download": "下载",
     "Current": "当前",
-    "New": "新"
+    "New": "新",
+    "No": "否",
+    "Yes": "是",
+    "New Folder": "新建文件夹",
+    "Create Folder": "创建文件夹",
+    "file.name": "名称"
 }

@@ -95,6 +95,7 @@ func (s *HTTPserver) StartSimpleServerWithTranscode(
 	tcOpts *utils.TranscodeOptions,
 ) {
 	// Register media handler
+	// Use filepath.Base because r.URL.Path is already URL-decoded by Go's HTTP server
 	mediaFilename := "/" + filepath.Base(mediaPath)
 	s.AddHandler(mediaFilename, nil, tcOpts, mediaPath)
 

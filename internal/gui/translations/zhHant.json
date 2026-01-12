@@ -67,5 +67,10 @@
     "chromecast not connected": "Chromecast 未連接",
     "Download": "下載",
     "Current": "目前的",
-    "New": "新"
+    "New": "新",
+    "No": "否",
+    "Yes": "是",
+    "New Folder": "新建資料夾",
+    "Create Folder": "建立資料夾",
+    "file.name": "名稱"
 }

@@ -467,6 +467,13 @@ func (p *FyneScreen) checkChromecastCompatibility() {
 		return // Can't transcode anyway
 	}
 
+	// Only auto-enable transcoding for video files
+	// Images and audio are natively supported by Chromecast
+	ext := strings.ToLower(filepath.Ext(p.mediafile))
+	if !slices.Contains(p.videoFormats, ext) {
+		return // Not a video file, no need to check compatibility
+	}
+
 	info, err := utils.GetMediaCodecInfo(p.ffmpegPath, p.mediafile)
 	if err != nil {
 		return // Can't determine, let user decide
