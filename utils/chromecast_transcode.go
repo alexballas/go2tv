@@ -90,13 +90,19 @@ func ServeChromecastTranscodedStream(
 	// Append format conversion
 	vf = vf + ",format=yuv420p"
 
-	// Use regular Command instead of CommandContext to avoid nil pointer crash
-	// when context cancels before process starts
-	cmd := exec.Command(
-		opts.FFmpegPath,
-		"-re",
-		"-ss", strconv.Itoa(opts.SeekSeconds),
-		"-copyts",
+	// Build ffmpeg arguments
+	// For piped input, skip -ss parameter entirely (even -ss 0) as it can cause issues
+	// Also skip -re for piped input as it interacts badly with streams
+	args := []string{opts.FFmpegPath}
+	if in != "pipe:0" {
+		args = append(args, "-re")
+	}
+
+	if in != "pipe:0" && opts.SeekSeconds > 0 {
+		args = append(args, "-ss", strconv.Itoa(opts.SeekSeconds), "-copyts")
+	}
+
+	args = append(args,
 		"-i", in,
 		"-c:v", "libx264",
 		"-profile:v", "high",
@@ -115,6 +121,10 @@ func ServeChromecastTranscodedStream(
 		"-f", "mp4",
 		"pipe:1",
 	)
+
+	// Use regular Command instead of CommandContext to avoid nil pointer crash
+	// when context cancels before process starts
+	cmd := exec.Command(args[0], args[1:]...)
 
 	*ff = *cmd
 

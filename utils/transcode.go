@@ -69,13 +69,15 @@ func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec
 
 	vf = "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2," + vf
 
-	// Use regular Command instead of CommandContext to avoid nil pointer crash
-	// when context cancels before process starts
-	cmd := exec.Command(
-		ffmpegPath,
-		"-re",
-		"-ss", strconv.Itoa(seekSeconds),
-		"-copyts",
+	// Build ffmpeg arguments
+	// For piped input, skip -ss parameter entirely (even -ss 0) as it can cause issues
+	args := []string{ffmpegPath, "-re"}
+
+	if in != "pipe:0" && seekSeconds > 0 {
+		args = append(args, "-ss", strconv.Itoa(seekSeconds), "-copyts")
+	}
+
+	args = append(args,
 		"-i", in,
 		"-vcodec", "h264",
 		"-acodec", "aac",
@@ -93,6 +95,10 @@ func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec
 		"-f", "mpegts",
 		"pipe:1",
 	)
+
+	// Use regular Command instead of CommandContext to avoid nil pointer crash
+	// when context cancels before process starts
+	cmd := exec.Command(args[0], args[1:]...)
 
 	*ff = *cmd
 

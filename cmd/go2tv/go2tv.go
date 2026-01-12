@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"flag"
@@ -77,6 +78,34 @@ func run() error {
 		mediaFile = *mediaArg
 	}
 
+	if checkStdin() && *mediaArg == "" {
+		*mediaArg = "-"
+	}
+
+	if *mediaArg == "-" {
+		head := make([]byte, 512)
+		n, err := io.ReadFull(os.Stdin, head)
+		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+			return err
+		}
+
+		mediaType, err = utils.GetMimeDetailsFromBytes(head[:n])
+		if err != nil {
+			return err
+		}
+
+		mediaFile = struct {
+			io.Reader
+			io.Closer
+		}{
+			Reader: io.MultiReader(bytes.NewReader(head[:n]), os.Stdin),
+			Closer: os.Stdin,
+		}
+
+		// Use a valid path-like identifier for URL construction
+		absMediaFile = "stdin.stream"
+	}
+
 	if *mediaArg == "" && *urlArg != "" {
 		mediaURL, err := utils.StreamURL(context.Background(), *urlArg)
 		if err != nil {
@@ -133,7 +162,10 @@ func run() error {
 			isSeek = true
 		}
 	case io.ReadCloser, []byte:
-		absMediaFile = *urlArg
+		// Only set absMediaFile if not already set (stdin case already set it to "stdin.stream")
+		if absMediaFile == "" {
+			absMediaFile = *urlArg
+		}
 	}
 
 	absSubtitlesFile, err := filepath.Abs(*subsArg)
@@ -146,7 +178,7 @@ func run() error {
 
 	// Branch based on device type
 	if devices.IsChromecastURL(flagRes.targetURL) {
-		return runChromecastCLI(exitCTX, cancel, flagRes.targetURL, absMediaFile, mediaType, absSubtitlesFile, ffmpegPath, *transcodePtr)
+		return runChromecastCLI(exitCTX, cancel, flagRes.targetURL, absMediaFile, mediaFile, mediaType, absSubtitlesFile, ffmpegPath, *transcodePtr)
 	}
 
 	scr, err := interactive.InitTcellNewScreen(cancel)
@@ -155,12 +187,15 @@ func run() error {
 	}
 
 	tvdata, err := soapcalls.NewTVPayload(&soapcalls.Options{
-		DMR:       flagRes.targetURL,
-		Media:     absMediaFile,
-		Subs:      absSubtitlesFile,
-		Mtype:     mediaType,
-		Transcode: *transcodePtr,
-		Seek:      isSeek,
+		DMR:            flagRes.targetURL,
+		Media:          absMediaFile,
+		Subs:           absSubtitlesFile,
+		Mtype:          mediaType,
+		Transcode:      *transcodePtr,
+		Seek:           isSeek,
+		FFmpegPath:     ffmpegPath,
+		FFmpegSubsPath: absSubtitlesFile,
+		FFmpegSeek:     0,
 	})
 	if err != nil {
 		return err
@@ -192,19 +227,22 @@ func run() error {
 	return nil
 }
 
-func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL, mediaPath, mediaType, subsPath, ffmpegPath string, transcode bool) error {
-	// Auto-enable transcoding if media is incompatible and ffmpeg available
+func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL, mediaPath string, mediaFile any, mediaType, subsPath, ffmpegPath string, transcode bool) error {
+	// Auto-enable transcoding if media is incompatible and ffmpeg available (only for file paths)
 	if !transcode && ffmpegPath != "" {
-		info, err := utils.GetMediaCodecInfo(ffmpegPath, mediaPath)
-		switch {
-		case err != nil:
-			// Can't determine compatibility, proceed without transcoding
-		case !utils.IsChromecastCompatible(info):
-			if utils.CheckFFmpeg(ffmpegPath) == nil {
-				transcode = true
-				fmt.Println("Media format incompatible with Chromecast, transcoding enabled")
-			} else {
-				fmt.Println("Warning: Media may not play (incompatible format, ffmpeg not available)")
+		// Only check codec info for file paths, not streams
+		if _, isStream := mediaFile.(io.ReadCloser); !isStream {
+			info, err := utils.GetMediaCodecInfo(ffmpegPath, mediaPath)
+			switch {
+			case err != nil:
+				// Can't determine compatibility, proceed without transcoding
+			case !utils.IsChromecastCompatible(info):
+				if utils.CheckFFmpeg(ffmpegPath) == nil {
+					transcode = true
+					fmt.Println("Media format incompatible with Chromecast, transcoding enabled")
+				} else {
+					fmt.Println("Warning: Media may not play (incompatible format, ffmpeg not available)")
+				}
 			}
 		}
 	}
@@ -235,8 +273,11 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 	var mediaDuration float64
 	if transcode {
 		// Get actual media duration from ffprobe (Chromecast can't detect it for transcoded streams)
-		if duration, err := utils.DurationForMediaSeconds(ffmpegPath, mediaPath); err == nil {
-			mediaDuration = duration
+		// Only works for file paths, not streams
+		if _, isStream := mediaFile.(io.ReadCloser); !isStream {
+			if duration, err := utils.DurationForMediaSeconds(ffmpegPath, mediaPath); err == nil {
+				mediaDuration = duration
+			}
 		}
 
 		// Determine subtitle path for burning
@@ -258,16 +299,28 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 		mediaType = "video/mp4"
 	}
 
-	go func() {
-		httpServer.StartSimpleServerWithTranscode(serverStarted, mediaPath, tcOpts)
-	}()
+	// Build media URL
+	mediaURL := "http://" + whereToListen + "/" + utils.ConvertFilename(mediaPath)
+
+	// Handle streams (stdin) vs file paths differently
+	if stream, isStream := mediaFile.(io.ReadCloser); isStream {
+		// For streams: manually add handler then start serving
+		mediaFilename := "/" + utils.ConvertFilename(mediaPath)
+		httpServer.AddHandler(mediaFilename, nil, tcOpts, stream)
+
+		go func() {
+			httpServer.StartServing(serverStarted)
+		}()
+	} else {
+		// For file paths: use the existing simple server with transcode
+		go func() {
+			httpServer.StartSimpleServerWithTranscode(serverStarted, mediaPath, tcOpts)
+		}()
+	}
 
 	if err := <-serverStarted; err != nil {
 		return fmt.Errorf("chromecast server: %w", err)
 	}
-
-	// Build media URL
-	mediaURL := "http://" + whereToListen + "/" + utils.ConvertFilename(mediaPath)
 
 	// Handle subtitles (WebVTT side-loading - only when NOT transcoding)
 	subtitleURL := ""
@@ -430,7 +483,7 @@ func processflags() (*flagResults, error) {
 
 func checkVflag() error {
 	if !*listPtr && *urlArg == "" {
-		if _, err := os.Stat(*mediaArg); os.IsNotExist(err) {
+		if _, err := os.Stat(*mediaArg); os.IsNotExist(err) && !checkStdin() && *mediaArg != "-" {
 			return fmt.Errorf("checkVflags error: %w", err)
 		}
 
@@ -504,5 +557,10 @@ func checkVerflag() bool {
 }
 
 func checkGUI() bool {
-	return *mediaArg == "" && !*listPtr && *urlArg == ""
+	return *mediaArg == "" && !*listPtr && *urlArg == "" && !checkStdin()
+}
+
+func checkStdin() bool {
+	stat, _ := os.Stdin.Stat()
+	return (stat.Mode() & os.ModeCharDevice) == 0
 }

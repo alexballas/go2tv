@@ -114,6 +114,16 @@ func GetMimeDetailsFromFile(f io.ReadCloser) (string, error) {
 	return fmt.Sprintf("%s/%s", kind.MIME.Type, kind.MIME.Subtype), nil
 }
 
+// GetMimeDetailsFromBytes returns the media mime details from a byte slice.
+func GetMimeDetailsFromBytes(data []byte) (string, error) {
+	kind, err := filetype.Match(data)
+	if err != nil {
+		return "", fmt.Errorf("getMimeDetailsFromBytes error: %w", err)
+	}
+
+	return fmt.Sprintf("%s/%s", kind.MIME.Type, kind.MIME.Subtype), nil
+}
+
 // GetMimeDetailsFromStream returns the media URL mime details.
 func GetMimeDetailsFromStream(s io.ReadCloser) (string, error) {
 	defer s.Close()

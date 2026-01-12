@@ -164,7 +164,7 @@ func IsChromecastCompatible(info *MediaCodecInfo) bool {
 	// ffprobe returns comma-separated format names (e.g., "matroska,webm" or "mov,mp4,m4a,3gp,3g2,mj2")
 	// Check if any of the formats is supported
 	containerOK := false
-	for _, format := range strings.Split(info.Container, ",") {
+	for format := range strings.SplitSeq(info.Container, ",") {
 		if supportedContainers[format] {
 			containerOK = true
 			break

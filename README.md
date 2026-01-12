@@ -111,6 +111,10 @@ go2tv -v video.avi -tc -t http://192.168.1.100:8060/
 
 # Cast to Chromecast
 go2tv -v movie.mp4 -t http://192.168.1.50:8009
+
+# Stream audio from stdin
+cat music.mp3 | go2tv -t http://192.168.1.50:8009
+go2tv -v - -t http://192.168.1.50:8009 < music.mp3
 ```
 
 ---
