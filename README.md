@@ -117,6 +117,12 @@ cat video.mp4 | go2tv -t http://192.168.1.50:8009
 
 # Stream from command output
 yt-dlp -o - "https://youtu.be/..." | go2tv -t http://192.168.1.50:8009
+
+# Stream from stdin with transcoding
+cat video.mkv | go2tv -tc -t http://192.168.1.50:8009
+
+# Stream from command output with transcoding
+yt-dlp -o - "https://youtu.be/..." | go2tv -tc -t http://192.168.1.50:8009
 ```
 
 ---
