@@ -6,6 +6,7 @@ import (
 	"container/ring"
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -16,6 +17,8 @@ import (
 	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/alexballas/go2tv/castprotocol"
+	"github.com/alexballas/go2tv/devices"
 	"github.com/alexballas/go2tv/httphandlers"
 	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/pkg/errors"
@@ -27,20 +30,25 @@ type FyneScreen struct {
 	Debug                *debugWriter
 	Current              fyne.Window
 	tvdata               *soapcalls.TVPayload
+	chromecastClient     *castprotocol.CastClient
 	Stop                 *widget.Button
 	MuteUnmute           *widget.Button
 	CheckVersion         *widget.Button
 	CustomSubsCheck      *widget.Check
 	ExternalMediaURL     *widget.Check
 	cancelEnablePlay     context.CancelFunc
+	serverStopCTX        context.Context
+	cancelServerStop     context.CancelFunc
 	MediaText            *widget.Entry
 	SubsText             *widget.Entry
 	DeviceList           *deviceList
 	httpserver           *httphandlers.HTTPserver
 	PlayPause            *widget.Button
+	TranscodeCheckBox    *widget.Check
 	mediafile            fyne.URI
 	subsfile             fyne.URI
 	selectedDevice       devType
+	selectedDeviceType   string
 	NextMediaCheck       *widget.Check
 	State                string
 	controlURL           string
@@ -49,6 +57,8 @@ type FyneScreen struct {
 	connectionManagerURL string
 	version              string
 	mediaFormats         []string
+	tempMediaFile        string // Temp file path for mobile media serving (cleanup on stop)
+	Transcode            bool
 	Medialoop            bool
 }
 
@@ -57,8 +67,9 @@ type debugWriter struct {
 }
 
 type devType struct {
-	name string
-	addr string
+	name       string
+	addr       string
+	deviceType string
 }
 
 type mainButtonsLayout struct {
@@ -75,6 +86,16 @@ func (f *debugWriter) Write(b []byte) (int, error) {
 // Start .
 func Start(ctx context.Context, s *FyneScreen) {
 	w := s.Current
+
+	// Clean up orphaned temp files from previous crashes
+	if files, err := filepath.Glob(filepath.Join(os.TempDir(), "go2tv-*")); err == nil {
+		for _, f := range files {
+			os.Remove(f)
+		}
+	}
+
+	// Start Chromecast discovery in background
+	go devices.StartChromecastDiscoveryLoop(ctx)
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Go2TV", container.NewVScroll(container.NewPadded(mainWindow(s)))),

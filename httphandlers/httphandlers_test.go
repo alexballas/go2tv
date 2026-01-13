@@ -64,7 +64,7 @@ func TestServeContent(t *testing.T) {
 
 			r.Header.Add("getcontentFeatures.dlna.org", "1")
 
-			serveContent(w, r, tc.tvdata, tc.input, new(exec.Cmd))
+			serveContent(w, r, tc.tvdata, nil, tc.input, new(exec.Cmd))
 
 			if w.Result().StatusCode != http.StatusOK {
 				t.Fatalf("%s: got: %s.", tc.name, w.Result().Status)

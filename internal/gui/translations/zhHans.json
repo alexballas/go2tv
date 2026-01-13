@@ -30,7 +30,7 @@
     "Version": "版本",
     "Author": "作者",
     "License": "许可证",
-    "Cast your media files to UPnP/DLNA Media Renderers and Smart TVs": "将媒体文件投放到 UPnP/DLNA 媒体渲染器和智能电视。",
+    "Cast your media files to UPnP/DLNA Media Renderers and Smart TVs": "将媒体文件投放到智能电视和 Chromecast 设备",
     "Check version": "检查版本",
     "Github page": "Github 页面",
     "Version checker": "版本检查器",
@@ -63,5 +63,14 @@
     "Same File Types Only": "仅相同文件类型",
     "Extracting Subtitles": "提取字幕",
     "Drag and Drop is not supported in Flatpak builds.\nPlease use the 'Select Media File' button instead.": "Flatpak 构建不支持拖放操作。\n请使用“选择媒体文件”按钮。",
-    "Show Hidden Files": "显示隐藏文件"
+    "Show Hidden Files": "显示隐藏文件",
+    "chromecast not connected": "Chromecast 未连接",
+    "Download": "下载",
+    "Current": "当前",
+    "New": "新",
+    "No": "否",
+    "Yes": "是",
+    "New Folder": "新建文件夹",
+    "Create Folder": "创建文件夹",
+    "file.name": "名称"
 }

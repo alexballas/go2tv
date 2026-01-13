@@ -11,18 +11,17 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Set env
-      run: if grep -Fxq "devel" cmd/go2tv/version.txt;then echo "GO2TV_VERSION=$(cat cmd/go2tv/version.txt)";else echo "GO2TV_VERSION=v$(cat cmd/go2tv/version.txt)";fi  >> $GITHUB_ENV
-
-    - uses: WillAbides/setup-go-faster@v1.14.0
-      id: setup-go-faster
+      run: if grep -Fxq "devel" version.txt;then echo "GO2TV_VERSION=$(cat version.txt)";else echo "GO2TV_VERSION=v$(cat version.txt)";fi  >> $GITHUB_ENV
+   
+    - uses: actions/setup-go@v6
       with:
-        go-version: "*"
+        go-version: 'stable'
 
     - name: Get dependencies
       run: sudo apt update && sudo apt install xorg-dev
 
     - name: Package (Linux)
-      run: go build -tags migrated_fynedo -ldflags "-s -w" -o go2tv cmd/go2tv/go2tv.go
+      run: go build -tags migrated_fynedo -ldflags "-s -w -X main.version=${{ env.GO2TV_VERSION }}" -o go2tv cmd/go2tv/go2tv.go
 
     - uses: actions/upload-artifact@v4
       with:

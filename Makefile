@@ -1,5 +1,6 @@
-LDFLAGS="-s -w"
-LDFLAGS_WINDOWS="-s -w -H=windowsgui"
+VERSION=$(shell cat version.txt)
+LDFLAGS="-s -w -X main.version=$(VERSION)"
+LDFLAGS_WINDOWS="-s -w -H=windowsgui -X main.version=$(VERSION)"
 TAGS?=migrated_fynedo
 
 BUILD_DIR=build

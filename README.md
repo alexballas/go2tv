@@ -19,100 +19,170 @@
 [![Build for MacOS Apple Silicon](https://github.com/alexballas/go2tv/actions/workflows/build-mac.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-mac.yml)
 [![Build for Windows](https://github.com/alexballas/go2tv/actions/workflows/build-windows.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-windows.yml)
 </p>
-Cast your media files to UPnP/DLNA Media Renderers and Smart TVs.
+Cast media files to Smart TVs and Chromecast devices.
 </div>
 
 ---
-GUI mode
------
+
+## What is Go2TV?
+
+Go2TV lets you play video, audio, and image files on your TV or streaming device directly from your computer or phone. It works with:
+
+- **Smart TVs** - Samsung, LG, Sony, and others that support DLNA/UPnP
+- **Chromecast** - Google Chromecast, Chromecast with Google TV, and compatible devices
+- **Streaming boxes** - Roku, Fire TV, Android TV boxes with DLNA support
+- **Apps** - BubbleUPnP, VLC, and other media receiver apps
+
+No need to copy files to a USB drive or set up a media server. Just select your file, pick your device, and play.
+
+---
+
+## Installation
+
+**Download the latest release** from the [releases page](https://github.com/alexballas/Go2TV/releases/latest).
+
+- **Windows**: Download `go2tv-windows.zip`, extract, and run `go2tv.exe`
+- **macOS**: Download `go2tv-macos.zip`, extract, and run the app
+- **Linux**: Download `go2tv-linux.zip`, extract, and run `go2tv`
+- **Android**: Download the APK
+
+Go2TV is a single executable with no installation required. Just download and run.
+
+### Optional: FFmpeg for Transcoding
+
+For maximum compatibility with all devices and file formats, install [FFmpeg](https://ffmpeg.org/download.html). Go2TV will automatically use it when needed.
+
+- **Linux**: `sudo apt install ffmpeg` or equivalent for your distro
+- **macOS**: `brew install ffmpeg`
+- **Windows**: Download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to PATH
+- **Flatpak**: FFmpeg is bundled automatically
+
+---
+
+## Screenshots
+
+**GUI Mode**
+
 ![](https://i.imgur.com/Ga3hLJM.gif)
 
 ![](https://i.imgur.com/Pw44BYD.png)
 ![](https://i.imgur.com/JeUxGGd.png)
 
-CLI mode
------
+**CLI Mode**
+
 ![](https://i.imgur.com/BsMevHi.gif)
 
-Parameters
------
+---
+
+## CLI Usage
+
 ``` console
 $ go2tv -h
 Usage of go2tv:
-  -l    List all available UPnP/DLNA Media Renderer models and URLs.
+  -l    List available devices (Smart TVs and Chromecasts).
   -s string
-        Local path to the subtitles file.
+        Path to subtitles file (.srt or .vtt).
   -t string
-        Cast to a specific UPnP/DLNA Media Renderer URL.
+        Device URL to cast to (from -l output).
   -tc
-        Use ffmpeg to transcode input video file.
+        Force transcoding with ffmpeg.
   -u string
-        HTTP URL to the media file. URL streaming does not support seek operations. (Triggers the CLI mode)
+        URL to media file (triggers CLI mode).
   -v string
-        Local path to the video/audio file. (Triggers the CLI mode)
+        Path to video/audio file (triggers CLI mode).
   -version
         Print version.
 ```
 
-Allowed media files in the GUI
------
-- mp4, avi, mkv, mpeg, mov, webm, m4v, mpv, mp3, flac, wav, jpg, jpeg, png
+**Examples**
 
-This is a GUI only limitation.
-
-Build requirements and dependencies
------
-- Go v1.23+
-- ffmpeg (optional)
-
-**Build using Docker**
-
-Since the repo provides a [Dockerfile](./Dockerfile), you can build a Go2TV Docker image and run it with just Docker installed (no build requirements and deps above needed). Also, no Git repo cloning is needed (Docker will do it behind the scenes). Just issue:
 ``` console
-$ docker build --force-rm [--pull] -t go2tv github.com/alexballas/go2tv#main
+# List available devices
+go2tv -l
+
+# Play a video on your TV
+go2tv -v movie.mp4 -t http://192.168.1.100:8060/
+
+# Play with subtitles
+go2tv -v movie.mp4 -s movie.srt -t http://192.168.1.100:8060/
+
+# Force transcoding for incompatible formats
+go2tv -v video.avi -tc -t http://192.168.1.100:8060/
+
+# Cast to Chromecast
+go2tv -v movie.mp4 -t http://192.168.1.50:8009
+
+# Stream from stdin
+cat video.mp4 | go2tv -t http://192.168.1.50:8009
+
+# Stream from command output
+yt-dlp -o - "https://youtu.be/..." | go2tv -t http://192.168.1.50:8009
+
+# Stream from stdin with transcoding
+cat video.mkv | go2tv -tc -t http://192.168.1.50:8009
+
+# Stream from command output with transcoding
+yt-dlp -o - "https://youtu.be/..." | go2tv -tc -t http://192.168.1.50:8009
 ```
-Notice the branch name after the `#`, as the above will build `main`. You can also build `devel` if you want to build the latest code. Usage under Docker is outside this document's scope, check Docker docs for more information, specially volume mounts and networking.
 
-**Running using Docker**
+---
 
-Example:
+## Features
+
+- **Auto-discovery** - Automatically finds Smart TVs and Chromecast devices on your network
+- **Transcoding** - Converts incompatible video formats on-the-fly (requires FFmpeg)
+- **Subtitles** - Supports external SRT/VTT files and embedded MKV subtitles
+- **Seek support** - Jump to any position in the video
+- **Loop and auto-play** - Loop a single file or auto-play the next file in folder
+- **GUI and CLI** - Use the graphical interface or command line
+
+### Supported File Types (GUI)
+
+mp4, avi, mkv, mpeg, mov, webm, m4v, mpv, mp3, flac, wav, jpg, jpeg, png
+
+The CLI accepts any file type.
+
+---
+
+## Notes
+
+**Firewall Configuration**
+
+Go2TV uses ports 3339-3438 for device discovery. If you're behind a firewall, allow inbound UDP traffic on these ports.
+
+**macOS Security**
+
+If you see "cannot be opened because the developer cannot be verified":
+1. Control-click the app, then choose Open from the menu
+2. Click Open
+
+If you see "go2tv is damaged and can't be opened":
+- Run: `xattr -cr /path/to/go2tv.app`
+
+---
+
+## Building from Source
+
+**Requirements**: Go 1.23+
+
 ``` console
-$ xhost +local:docker  # Allows Docker containers to connect to the X server
-$ docker run -it --network host -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix go2tv go2tv
+git clone https://github.com/alexballas/go2tv
+cd go2tv
+make build
 ```
 
-Quick Start
------
-Download the app here https://github.com/alexballas/Go2TV/releases/latest. A single executable. No installation or external dependencies.
+**Using Docker**
 
-**Transcoding (ffmpeg required)**
+``` console
+docker build --force-rm -t go2tv github.com/alexballas/go2tv#main
+```
 
-Go2TV supports live video transcoding, if ffmpeg is installed. When transcoding, SEEK operations are not available. Transcoding offers the maximum compatibility with the various file formats and devices. Only works with video files. *Note:* The Flatpak version of Go2TV bundles ffmpeg.
+---
 
-**MKV/MP4 Subtitle Selection Support (ffmpeg required)**
-
-Go2TV also supports selecting subtitles for video files that have embedded subtitle tracks. This functionality requires ffmpeg to be installed. You can choose the desired subtitle track when casting your media files, enhancing your viewing experience on UPnP/DLNA Media Renderers and Smart TVs.
-
-**SSDP Listen Port Range (for firewall configurations)**
-
-Go2TV now binds the SSDP listener to a port within the fixed range 3339-3438, instead of relying on the system's automatic port assignment. The application will automatically select the first available port from this range. If you are running Go2TV behind a firewall, ensure that inbound UDP traffic is allowed on ports 3339-3438 to enable proper SSDP discovery and device communication.
-
-**MacOS potential issues**
-
-If you get the "cannot be opened because the developer cannot be verified" error, you can apply the following workaround.
-- Control-click the app icon, then choose Open from the shortcut menu.
-- Click Open.
-
-If you get the "go2tv is damaged and can't be opened. You should move it to the Bin." error you can apply the following workaround.
-- Launch Terminal and then issue the following command: `xattr -cr /path/to/go2tv.app`.
-
-Tested on
------
-- Samsung UE50JU6400
-- Samsung UE65KS7000
-- Android - BubbleUPnP app
-
-Author
-------
+## Author
 
 Alexandros Ballas <alex@ballas.org>
+
+## License
+
+MIT

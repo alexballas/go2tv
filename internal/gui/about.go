@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -78,10 +76,14 @@ func checkVersion(s *FyneScreen) {
 	errVersioncomp := errors.New(lang.L("failed to get version info") + " - " + lang.L("you're using a development or a non-compiled version"))
 	errVersionGet := errors.New(lang.L("failed to get version info") + " - " + lang.L("check your internet connection"))
 
-	str := strings.ReplaceAll(s.version, ".", "")
-	str = strings.TrimSpace(str)
-	currversion, err := strconv.Atoi(str)
-	if err != nil {
+	// Parse current version
+	// We don't need to manually strip/replace, compareVersions handles it
+	// But we do need to check if it's "dev" or invalid first to fail fast if we want,
+	// or just let compareVersions return an error.
+	// The original code did atoi check early.
+
+	// Check if current version is valid/parsable (not "dev")
+	if _, err := parseVersion(s.version); err != nil {
 		dialog.ShowError(errVersioncomp, s.Current)
 		return
 	}
@@ -112,17 +114,33 @@ func checkVersion(s *FyneScreen) {
 			dialog.ShowError(errVersionGet, s.Current)
 			return
 		}
-		str := strings.Trim(filepath.Base(responceUrl.Path), "v")
-		str = strings.ReplaceAll(str, ".", "")
-		chversion, err := strconv.Atoi(str)
+
+		latestVersionStr := filepath.Base(responceUrl.Path)
+
+		cmp, err := compareVersions(latestVersionStr, s.version)
 		if err != nil {
 			dialog.ShowError(errVersionGet, s.Current)
 			return
 		}
 
-		switch {
-		case chversion > currversion:
-			dialog.ShowInformation(lang.L("Version checker"), lang.L("New version")+": "+strings.Trim(filepath.Base(responceUrl.Path), "v"), s.Current)
+		switch cmp {
+		case 1:
+			lbl := widget.NewLabel(lang.L("Current") + ": v" + s.version + " → " + lang.L("New") + ": " + latestVersionStr)
+			lbl.Alignment = fyne.TextAlignCenter
+			cnf := dialog.NewCustomConfirm(
+				lang.L("Version checker"),
+				lang.L("Download"),
+				lang.L("Cancel"),
+				lbl,
+				func(b bool) {
+					if b {
+						u, _ := url.Parse("https://github.com/alexballas/go2tv/releases/latest")
+						_ = fyne.CurrentApp().OpenURL(u)
+					}
+				},
+				s.Current,
+			)
+			cnf.Show()
 			return
 		default:
 			dialog.ShowInformation(lang.L("Version checker"), lang.L("No new version"), s.Current)

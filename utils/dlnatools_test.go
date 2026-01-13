@@ -18,6 +18,13 @@ func TestGetMimeDetailsFromStream(t *testing.T) {
 	}
 }
 
+func TestGetMimeDetailsFromBytes(t *testing.T) {
+	_, err := GetMimeDetailsFromBytes(videoBytes)
+	if err != nil {
+		t.Fatalf("TestGetMimeDetailsFromBytes failed with error %s", err.Error())
+	}
+}
+
 func TestGetMimeDetailsFromFile(t *testing.T) {
 	fs := fstest.MapFS{
 		"video.mp4": {
