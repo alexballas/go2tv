@@ -30,13 +30,14 @@ import (
 
 var (
 	version      = "dev"
-	mediaArg     = flag.String("v", "", "Local path to the video/audio file. (Triggers the CLI mode)")
-	urlArg       = flag.String("u", "", "HTTP URL to the media file. URL streaming does not support seek operations. (Triggers the CLI mode)")
-	subsArg      = flag.String("s", "", "Local path to the subtitles file.")
-	targetPtr    = flag.String("t", "", "Cast to a specific UPnP/DLNA Media Renderer URL.")
-	transcodePtr = flag.Bool("tc", false, "Use ffmpeg to transcode input video file.")
-	listPtr      = flag.Bool("l", false, "List all available UPnP/DLNA Media Renderer models and URLs.")
-	versionPtr   = flag.Bool("version", false, "Print version.")
+	mediaArg     = flag.String("v", "", "Path to video/audio file (triggers CLI mode).")
+	urlArg       = flag.String("u", "", "URL to media file (triggers CLI mode).")
+	subsArg      = flag.String("s", "", "Path to subtitles file (.srt or .vtt).")
+	targetPtr    = flag.String("t", "", "Device URL to cast to (from -l output).")
+	transcodePtr = flag.Bool("tc", false, "Force transcoding with ffmpeg.")
+	listPtr      = flag.Bool("l", false, "List available devices (Smart TVs and Chromecasts).")
+
+	versionPtr = flag.Bool("version", false, "Print version.")
 
 	errNoCombi = errors.New("can't combine -l with other flags")
 )
