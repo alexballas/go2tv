@@ -4,7 +4,7 @@
 
   <name>Go2TV</name>
   <developer_name>Alexandros Ballas</developer_name>
-  <summary>Stream media to TVs and devices</summary>
+  <summary>Cast media files to Smart TVs and Chromecast devices</summary>
 
   <metadata_license>MIT</metadata_license>
   <project_license>MIT</project_license>
@@ -15,7 +15,7 @@
   </supports>
 
   <description>
-   <p>Go2TV is a lightweight app designed to cast media files from your device directly to a Smart TV or any DLNA-compatible device on the same network. It supports various file formats and allows seamless streaming of videos, music, or images without the need for complicated setups or additional hardware. With its intuitive interface, Go2TV makes it simple to browse and select files, enabling users to enjoy their favorite content on the big screen with just a few taps. Perfect for casual media sharing or presentations, it's a convenient tool for enhancing your home entertainment experience.</p>
+   <p>Go2TV lets you play video, audio, and image files on your Smart TV or Chromecast device directly from your computer. It works with Smart TVs (Samsung, LG, Sony via DLNA/UPnP), Chromecast devices, BubbleUPnP, and GMediaRender. No need to copy files to a USB drive or set up a media server. Just select your file, pick your device, and play. Supports auto-discovery, transcoding for incompatible formats, external and embedded subtitles, seek support, and both GUI and CLI modes.</p>
   </description>
 
   <launchable type="desktop-id">app.go2tv.go2tv.desktop</launchable>
@@ -47,6 +47,19 @@
   </branding>
 
   <releases>
+        <release version="2.0.0" date="2026-01-15" type="stable">
+        <description>
+          <ul>
+            <li>Added full Chromecast V2 support with mDNS discovery, playback controls, and subtitle support.</li>
+            <li>Implemented stdin piping support for streaming directly from tools like yt-dlp.</li>
+            <li>Introduced on-the-fly transcoding infrastructure for Chromecast compatibility.</li>
+            <li>Fixed critical Android crash by updating Fyne dependencies and JNI interactions.</li>
+            <li>Improved mDNS recovery after mobile devices wake from sleep mode.</li>
+            <li>Optimized mobile streaming with temporary file caching for seeking support.</li>
+          </ul>
+        </description>
+        <url type="details">https://github.com/alexballas/go2tv/releases/tag/v2.0.0</url>
+      </release>
         <release version="1.19.0" date="2025-10-13" type="stable">
         <description>
           <ul>

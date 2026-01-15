@@ -26,12 +26,11 @@ Cast media files to Smart TVs and Chromecast devices.
 
 ## What is Go2TV?
 
-Go2TV lets you play video, audio, and image files on your TV or streaming device directly from your computer or phone. It works with:
+Go2TV lets you play video, audio, and image files on your Smart TV or Chromecast device directly from your computer or phone. It works with:
 
 - **Smart TVs** - Samsung, LG, Sony, and others that support DLNA/UPnP
 - **Chromecast** - Google Chromecast, Chromecast with Google TV, and compatible devices
-- **Streaming boxes** - Roku, Fire TV, Android TV boxes with DLNA support
-- **Apps** - BubbleUPnP, VLC, and other media receiver apps
+- **Apps** - BubbleUPnP, GMediaRender, and other media receiver apps
 
 No need to copy files to a USB drive or set up a media server. Just select your file, pick your device, and play.
 
@@ -41,10 +40,10 @@ No need to copy files to a USB drive or set up a media server. Just select your 
 
 **Download the latest release** from the [releases page](https://github.com/alexballas/Go2TV/releases/latest).
 
-- **Windows**: Download `go2tv-windows.zip`, extract, and run `go2tv.exe`
-- **macOS**: Download `go2tv-macos.zip`, extract, and run the app
-- **Linux**: Download `go2tv-linux.zip`, extract, and run `go2tv`
-- **Android**: Download the APK
+- **Windows**: Download `go2tv_vX.Y.Z_windows_amd64.zip`, extract, and run `go2tv.exe`
+- **macOS**: Download `go2tv_vX.Y.Z_macOS_amd64.zip` (Intel) or `go2tv_vX.Y.Z_macOS_arm64.zip` (Apple Silicon), extract, and run the app
+- **Linux**: Download `go2tv_vX.Y.Z_linux_amd64.zip` (or appropriate arch), extract, and run `go2tv`
+- **Android**: Download the APK (`go2tv_vX.Y.Z.apk`) or zip (`go2tv_vX.Y.Z_android.zip`)
 
 Go2TV is a single executable with no installation required. Just download and run.
 
@@ -134,6 +133,7 @@ yt-dlp -o - "https://youtu.be/..." | go2tv -tc -t http://192.168.1.50:8009
 - **Subtitles** - Supports external SRT/VTT files and embedded MKV subtitles
 - **Seek support** - Jump to any position in the video
 - **Loop and auto-play** - Loop a single file or auto-play the next file in folder
+- **Gapless playback** - Supported for DLNA devices
 - **GUI and CLI** - Use the graphical interface or command line
 
 ### Supported File Types (GUI)
@@ -173,8 +173,15 @@ make build
 
 **Using Docker**
 
+Build the image:
 ``` console
-docker build --force-rm -t go2tv github.com/alexballas/go2tv#main
+docker build --force-rm -t go2tv .
+```
+
+Run the container (Linux with X11):
+``` console
+xhost +local:docker
+docker run -it --network host -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix go2tv go2tv
 ```
 
 ---
