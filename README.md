@@ -163,7 +163,7 @@ If you see "go2tv is damaged and can't be opened":
 
 ## Building from Source
 
-**Requirements**: Go 1.23+
+**Requirements**: Go 1.25
 
 ``` console
 git clone https://github.com/alexballas/go2tv
