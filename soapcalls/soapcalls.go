@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/alexballas/go2tv/utils"
+	"github.com/alexballas/go2tv/v2/utils"
 )
 
 type Options struct {

@@ -17,10 +17,10 @@ import (
 	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/alexballas/go2tv/castprotocol"
-	"github.com/alexballas/go2tv/devices"
-	"github.com/alexballas/go2tv/httphandlers"
-	"github.com/alexballas/go2tv/soapcalls"
+	"github.com/alexballas/go2tv/v2/castprotocol"
+	"github.com/alexballas/go2tv/v2/devices"
+	"github.com/alexballas/go2tv/v2/httphandlers"
+	"github.com/alexballas/go2tv/v2/soapcalls"
 	"github.com/pkg/errors"
 )
 

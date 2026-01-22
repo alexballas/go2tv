@@ -14,9 +14,9 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/alexballas/go2tv/devices"
-	"github.com/alexballas/go2tv/soapcalls"
-	"github.com/alexballas/go2tv/utils"
+	"github.com/alexballas/go2tv/v2/devices"
+	"github.com/alexballas/go2tv/v2/soapcalls"
+	"github.com/alexballas/go2tv/v2/utils"
 )
 
 type deviceList struct {

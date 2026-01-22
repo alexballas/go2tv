@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alexballas/go2tv/soapcalls"
+	"github.com/alexballas/go2tv/v2/soapcalls"
 	"github.com/gdamore/tcell/v2"
 	"github.com/mattn/go-runewidth"
 )

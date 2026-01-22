@@ -1,4 +1,4 @@
-module github.com/alexballas/go2tv
+module github.com/alexballas/go2tv/v2
 
 go 1.25
 
@@ -46,7 +46,7 @@ require (
 	github.com/go-gl/gl v0.0.0-20231021071112-07e5d0ea2e71 // indirect
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20250301202403-da16c1255728 // indirect
 	github.com/go-text/render v0.2.0 // indirect
-	github.com/go-text/typesetting v0.3.0 // indirect
+	github.com/go-text/typesetting v0.3.3-0.20260117213729-06c64e10eb0b // indirect
 	github.com/godbus/dbus/v5 v5.2.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/hack-pad/go-indexeddb v0.3.2 // indirect
@@ -85,4 +85,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace fyne.io/fyne/v2 => github.com/fyne-io/fyne/v2 v2.7.3-0.20260113230036-561446b11284
+replace fyne.io/fyne/v2 => github.com/alexballas/fyne/v2 v2.3.3-0.20260119231210-feff58846c92

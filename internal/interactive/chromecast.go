@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alexballas/go2tv/castprotocol"
+	"github.com/alexballas/go2tv/v2/castprotocol"
 	"github.com/gdamore/tcell/v2"
 	"github.com/mattn/go-runewidth"
 )

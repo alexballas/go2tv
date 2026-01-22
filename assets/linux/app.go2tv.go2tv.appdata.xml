@@ -56,6 +56,7 @@
             <li>Fixed critical Android crash by updating Fyne dependencies and JNI interactions.</li>
             <li>Improved mDNS recovery after mobile devices wake from sleep mode.</li>
             <li>Optimized mobile streaming with temporary file caching for seeking support.</li>
+            <li>Fixed Chinese character rendering in flatpak builds.</li>
           </ul>
         </description>
         <url type="details">https://github.com/alexballas/go2tv/releases/tag/v2.0.0</url>
