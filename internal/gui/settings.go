@@ -3,6 +3,7 @@
 package gui
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 
@@ -13,6 +14,8 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/pkg/errors"
+	nativedialog "github.com/sqweek/dialog"
 )
 
 func settingsWindow(s *FyneScreen) fyne.CanvasObject {
@@ -50,22 +53,18 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	})
 
 	ffmpegFolderSelect := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
-		fd := dialog.NewFolderOpen(func(lu fyne.ListableURI, err error) {
-			if err != nil {
-				dialog.ShowError(err, w)
-				return
-			}
-			if lu == nil {
-				return
-			}
+		directory, err := showFolderDialog("", "Select FFmpeg Directory")
 
-			p := filepath.ToSlash(lu.Path() + string(filepath.Separator) + "ffmpeg")
-			ffmpegTextEntry.SetText(p)
-		}, w)
+		if errors.Is(err, nativedialog.ErrCancelled) {
+			return
+		}
+		if err != nil {
+			dialog.ShowError(err, w)
+			return
+		}
 
-		fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
-		fd.Show()
-
+		p := filepath.ToSlash(directory + string(filepath.Separator) + "ffmpeg")
+		ffmpegTextEntry.SetText(p)
 	})
 
 	ffmpegRightButtons := container.NewHBox(ffmpegFolderSelect, ffmpegFolderReset)
@@ -104,20 +103,23 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 			return
 		}
 
-		fd := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
-			if err != nil {
-				dialog.ShowError(err, s.Current)
-				return
-			}
-			if writer == nil {
-				return
-			}
+		filename, err := showSaveDialog("", []string{"log", "txt"}, "Log Files", "Export Debug Logs")
 
-			saveDebugLogs(writer, s)
-		}, s.Current)
+		if errors.Is(err, nativedialog.ErrCancelled) {
+			return
+		}
+		if err != nil {
+			dialog.ShowError(err, s.Current)
+			return
+		}
 
-		fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
-		fd.Show()
+		file, err := os.Create(filename)
+		if err != nil {
+			dialog.ShowError(err, s.Current)
+			return
+		}
+
+		saveDebugLogs(&fileWriteCloser{file}, s)
 	})
 
 	gaplessText := widget.NewLabel(lang.L("Gapless Playback"))
