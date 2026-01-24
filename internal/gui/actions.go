@@ -17,7 +17,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
@@ -27,6 +26,7 @@ import (
 	"github.com/alexballas/go2tv/soapcalls/utils"
 	"github.com/pkg/errors"
 	"github.com/skratchdot/open-golang/open"
+	nativedialog "github.com/sqweek/dialog"
 )
 
 func muteAction(screen *FyneScreen) {
@@ -131,57 +131,44 @@ func selectSubsFile(screen *FyneScreen, f fyne.URI) {
 }
 
 func mediaAction(screen *FyneScreen) {
-	w := screen.Current
-	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+	extensions := translateExtensions(screen.mediaFormats)
+	filename, err := showFileDialog(screen.currentmfolder, extensions, "Media Files")
+
+	if errors.Is(err, nativedialog.ErrCancelled) {
+		return
+	}
+	if err != nil {
 		check(screen, err)
-
-		if reader == nil {
-			return
-		}
-		defer reader.Close()
-
-		selectMediaFile(screen, reader.URI())
-	}, w)
-
-	fd.SetFilter(storage.NewExtensionFileFilter(screen.mediaFormats))
-
-	if screen.currentmfolder != "" {
-		mfileURI := storage.NewFileURI(screen.currentmfolder)
-		mfileLister, err := storage.ListerForURI(mfileURI)
-		check(screen, err)
-		fd.SetLocation(mfileLister)
+		return
 	}
 
-	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
-	fd.Show()
+	furi, err := storage.ParseURI("file://" + filename)
+	if err != nil {
+		check(screen, err)
+		return
+	}
+
+	selectMediaFile(screen, furi)
 }
 
 func subsAction(screen *FyneScreen) {
-	w := screen.Current
-	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-		check(screen, err)
+	filename, err := showFileDialog(screen.currentmfolder, []string{"srt"}, "Subtitles Files")
 
-		if reader == nil {
-			return
-		}
-		defer reader.Close()
-
-		selectSubsFile(screen, reader.URI())
-	}, w)
-	fd.SetFilter(storage.NewExtensionFileFilter([]string{".srt"}))
-
-	if screen.currentmfolder != "" {
-		mfileURI := storage.NewFileURI(screen.currentmfolder)
-		mfileLister, err := storage.ListerForURI(mfileURI)
-		check(screen, err)
-		if err != nil {
-			return
-		}
-		fd.SetLocation(mfileLister)
+	if errors.Is(err, nativedialog.ErrCancelled) {
+		return
 	}
-	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
+	if err != nil {
+		check(screen, err)
+		return
+	}
 
-	fd.Show()
+	furi, err := storage.ParseURI("file://" + filename)
+	if err != nil {
+		check(screen, err)
+		return
+	}
+
+	selectSubsFile(screen, furi)
 }
 
 func playAction(screen *FyneScreen) {
