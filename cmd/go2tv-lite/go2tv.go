@@ -19,12 +19,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/alexballas/go2tv/v2/castprotocol"
-	"github.com/alexballas/go2tv/v2/devices"
-	"github.com/alexballas/go2tv/v2/httphandlers"
-	"github.com/alexballas/go2tv/v2/soapcalls"
-	"github.com/alexballas/go2tv/v2/utils"
 	tea "github.com/charmbracelet/bubbletea"
+	"go2tv.app/go2tv/v2/castprotocol"
+	"go2tv.app/go2tv/v2/devices"
+	"go2tv.app/go2tv/v2/httphandlers"
+	"go2tv.app/go2tv/v2/soapcalls"
+	"go2tv.app/go2tv/v2/utils"
 )
 
 var (
@@ -421,11 +421,12 @@ func (m listDevicesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m listDevicesModel) View() string {
-	s := "Scanning devices... (q to quit)\n\n"
+	var s strings.Builder
+	s.WriteString("Scanning devices... (q to quit)\n\n")
 	for _, dev := range m.devices {
-		s += "• " + dev.Model + " [" + dev.URL + "] " + "\n"
+		s.WriteString("• " + dev.Model + " [" + dev.URL + "] " + "\n")
 	}
-	return s
+	return s.String()
 }
 
 func listFlagFunction() error {

@@ -21,7 +21,7 @@ func aboutWindow(s *FyneScreen) fyne.CanvasObject {
 	sr := fyne.NewStaticResource("Go2TV Icon", go2TVIcon512)
 	go2tvImage := canvas.NewImageFromResource(sr)
 	richhead := widget.NewRichTextFromMarkdown(`
-` + lang.L("Cast your media files to UPnP/DLNA Media Renderers and Smart TVs") + `
+` + lang.L("Cast your media files to Smart TVs and Chromecast devices") + `
 
 ---
 
@@ -43,9 +43,9 @@ MIT
 			seg.Alignment = fyne.TextAlignCenter
 		}
 	}
-	githubbutton := widget.NewButton(lang.L("Github page"), func() {
+	githubbutton := widget.NewButton(lang.L("Website"), func() {
 		go func() {
-			u, _ := url.Parse("https://github.com/alexballas/go2tv")
+			u, _ := url.Parse("https://go2tv.app/")
 			_ = fyne.CurrentApp().OpenURL(u)
 		}()
 	})
@@ -72,7 +72,6 @@ MIT
 func checkVersion(s *FyneScreen) {
 	s.CheckVersion.Disable()
 	defer s.CheckVersion.Enable()
-	errRedirectChecker := errors.New("redirect")
 	errVersioncomp := errors.New(lang.L("failed to get version info") + " - " + lang.L("you're using a development or a non-compiled version"))
 	errVersionGet := errors.New(lang.L("failed to get version info") + " - " + lang.L("check your internet connection"))
 
@@ -88,65 +87,53 @@ func checkVersion(s *FyneScreen) {
 		return
 	}
 
-	req, err := http.NewRequest("GET", "https://github.com/alexballas/Go2TV/releases/latest", nil)
+	req, err := http.NewRequest("GET", "https://go2tv.app/latest", nil)
 	if err != nil {
-		dialog.ShowError(errVersionGet, s.Current)
-	}
-
-	client := &http.Client{
-		Timeout: 3 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return errRedirectChecker
-		},
-	}
-
-	response, err := client.Do(req)
-	if err != nil && !errors.Is(err, errRedirectChecker) {
 		dialog.ShowError(errVersionGet, s.Current)
 		return
 	}
 
-	defer response.Body.Close()
-
-	if errors.Is(err, errRedirectChecker) {
-		responceUrl, err := response.Location()
-		if err != nil {
-			dialog.ShowError(errVersionGet, s.Current)
-			return
-		}
-
-		latestVersionStr := filepath.Base(responceUrl.Path)
-
-		cmp, err := compareVersions(latestVersionStr, s.version)
-		if err != nil {
-			dialog.ShowError(errVersionGet, s.Current)
-			return
-		}
-
-		switch cmp {
-		case 1:
-			lbl := widget.NewLabel(lang.L("Current") + ": v" + s.version + " → " + lang.L("New") + ": " + latestVersionStr)
-			lbl.Alignment = fyne.TextAlignCenter
-			cnf := dialog.NewCustomConfirm(
-				lang.L("Version checker"),
-				lang.L("Download"),
-				lang.L("Cancel"),
-				lbl,
-				func(b bool) {
-					if b {
-						u, _ := url.Parse("https://github.com/alexballas/go2tv/releases/latest")
-						_ = fyne.CurrentApp().OpenURL(u)
-					}
-				},
-				s.Current,
-			)
-			cnf.Show()
-			return
-		default:
-			dialog.ShowInformation(lang.L("Version checker"), lang.L("No new version"), s.Current)
-			return
-		}
+	// We want to follow the redirects to the final URL which contains the version tag.
+	// client.Do handles following redirects by default up to a limit (10).
+	client := &http.Client{
+		Timeout: 3 * time.Second,
 	}
 
-	dialog.ShowError(errVersionGet, s.Current)
+	resp, err := client.Do(req)
+	if err != nil {
+		dialog.ShowError(errVersionGet, s.Current)
+		return
+	}
+	defer resp.Body.Close()
+
+	latestVersionStr := filepath.Base(resp.Request.URL.Path)
+	cmp, err := compareVersions(latestVersionStr, s.version)
+	if err != nil {
+		dialog.ShowError(errVersionGet, s.Current)
+		return
+	}
+
+	switch cmp {
+	case 1:
+		lbl := widget.NewLabel(lang.L("Current") + ": v" + s.version + " → " + lang.L("New") + ": " + latestVersionStr)
+		lbl.Alignment = fyne.TextAlignCenter
+		cnf := dialog.NewCustomConfirm(
+			lang.L("Version checker"),
+			lang.L("Download"),
+			lang.L("Cancel"),
+			lbl,
+			func(b bool) {
+				if b {
+					u, _ := url.Parse("https://go2tv.app/latest")
+					_ = fyne.CurrentApp().OpenURL(u)
+				}
+			},
+			s.Current,
+		)
+		cnf.Show()
+		return
+	default:
+		dialog.ShowInformation(lang.L("Version checker"), lang.L("No new version"), s.Current)
+		return
+	}
 }

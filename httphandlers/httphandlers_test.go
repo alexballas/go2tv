@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexballas/go2tv/v2/soapcalls"
+	"go2tv.app/go2tv/v2/soapcalls"
 )
 
 func TestServeContent(t *testing.T) {

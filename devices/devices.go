@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/alexballas/go-ssdp"
-	"github.com/alexballas/go2tv/v2/soapcalls"
 	"github.com/pkg/errors"
+	"go2tv.app/go2tv/v2/soapcalls"
 )
 
 const (

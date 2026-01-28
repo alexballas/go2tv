@@ -1,4 +1,4 @@
-module github.com/alexballas/go2tv/v2
+module go2tv.app/go2tv/v2
 
 go 1.25
 
