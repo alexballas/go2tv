@@ -5,7 +5,7 @@ Website = "https://go2tv.app"
   Name = "go2tv"
   ID = "app.go2tv.go2tv"
   Version = "1.19.0"
-  Build = 18
+  Build = 20
 
 [Migrations]
   fyneDo = true
