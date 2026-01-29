@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"flag"
@@ -11,40 +12,40 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"runtime"
-	"sort"
 	"strings"
 	"syscall"
+	"time"
 
 	"errors"
 
-	"github.com/alexballas/go2tv/devices"
-	"github.com/alexballas/go2tv/httphandlers"
-	"github.com/alexballas/go2tv/internal/gui"
-	"github.com/alexballas/go2tv/internal/interactive"
-	"github.com/alexballas/go2tv/soapcalls"
-	"github.com/alexballas/go2tv/soapcalls/utils"
+	tea "github.com/charmbracelet/bubbletea"
+	"go2tv.app/go2tv/v2/castprotocol"
+	"go2tv.app/go2tv/v2/devices"
+	"go2tv.app/go2tv/v2/httphandlers"
+	"go2tv.app/go2tv/v2/internal/gui"
+	"go2tv.app/go2tv/v2/internal/interactive"
+	"go2tv.app/go2tv/v2/soapcalls"
+	"go2tv.app/go2tv/v2/utils"
 )
 
 var (
-	//go:embed version.txt
-	version      string
-	mediaArg     = flag.String("v", "", "Local path to the video/audio file. (Triggers the CLI mode)")
-	urlArg       = flag.String("u", "", "HTTP URL to the media file. URL streaming does not support seek operations. (Triggers the CLI mode)")
-	subsArg      = flag.String("s", "", "Local path to the subtitles file.")
-	targetPtr    = flag.String("t", "", "Cast to a specific UPnP/DLNA Media Renderer URL.")
-	transcodePtr = flag.Bool("tc", false, "Use ffmpeg to transcode input video file.")
-	listPtr      = flag.Bool("l", false, "List all available UPnP/DLNA Media Renderer models and URLs.")
-	versionPtr   = flag.Bool("version", false, "Print version.")
+	version      = "dev"
+	mediaArg     = flag.String("v", "", "Path to video/audio file (triggers CLI mode).")
+	urlArg       = flag.String("u", "", "URL to media file (triggers CLI mode).")
+	subsArg      = flag.String("s", "", "Path to subtitles file (.srt or .vtt).")
+	targetPtr    = flag.String("t", "", "Device URL to cast to (from -l output).")
+	transcodePtr = flag.Bool("tc", false, "Force transcoding with ffmpeg.")
+	listPtr      = flag.Bool("l", false, "List available devices (Smart TVs and Chromecasts).")
 
-	errNoCombi    = errors.New("can't combine -l with other flags")
-	errFailtoList = errors.New("failed to list devices")
+	versionPtr = flag.Bool("version", false, "Print version.")
+
+	errNoCombi = errors.New("can't combine -l with other flags")
 )
 
 type flagResults struct {
-	dmrURL string
-	exit   bool
-	gui    bool
+	targetURL string // Device URL (DLNA renderer or Chromecast)
+	exit      bool
+	gui       bool
 }
 
 func main() {
@@ -65,7 +66,6 @@ func run() error {
 	defer cancel()
 
 	flag.Parse()
-
 	flagRes, err := processflags()
 	if err != nil {
 		return err
@@ -77,6 +77,34 @@ func run() error {
 
 	if *mediaArg != "" {
 		mediaFile = *mediaArg
+	}
+
+	if checkStdin() && *mediaArg == "" {
+		*mediaArg = "-"
+	}
+
+	if *mediaArg == "-" {
+		head := make([]byte, 512)
+		n, err := io.ReadFull(os.Stdin, head)
+		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+			return err
+		}
+
+		mediaType, err = utils.GetMimeDetailsFromBytes(head[:n])
+		if err != nil {
+			return err
+		}
+
+		mediaFile = struct {
+			io.Reader
+			io.Closer
+		}{
+			Reader: io.MultiReader(bytes.NewReader(head[:n]), os.Stdin),
+			Closer: os.Stdin,
+		}
+
+		// Use a valid path-like identifier for URL construction
+		absMediaFile = "stdin.stream"
 	}
 
 	if *mediaArg == "" && *urlArg != "" {
@@ -135,12 +163,23 @@ func run() error {
 			isSeek = true
 		}
 	case io.ReadCloser, []byte:
-		absMediaFile = *urlArg
+		// Only set absMediaFile if not already set (stdin case already set it to "stdin.stream")
+		if absMediaFile == "" {
+			absMediaFile = *urlArg
+		}
 	}
 
 	absSubtitlesFile, err := filepath.Abs(*subsArg)
 	if err != nil {
 		return err
+	}
+
+	// Get ffmpeg path for transcoding
+	ffmpegPath, _ := exec.LookPath("ffmpeg")
+
+	// Branch based on device type
+	if devices.IsChromecastURL(flagRes.targetURL) {
+		return runChromecastCLI(exitCTX, cancel, flagRes.targetURL, absMediaFile, mediaFile, mediaType, absSubtitlesFile, ffmpegPath, *transcodePtr)
 	}
 
 	scr, err := interactive.InitTcellNewScreen(cancel)
@@ -149,12 +188,15 @@ func run() error {
 	}
 
 	tvdata, err := soapcalls.NewTVPayload(&soapcalls.Options{
-		DMR:       flagRes.dmrURL,
-		Media:     absMediaFile,
-		Subs:      absSubtitlesFile,
-		Mtype:     mediaType,
-		Transcode: *transcodePtr,
-		Seek:      isSeek,
+		DMR:            flagRes.targetURL,
+		Media:          absMediaFile,
+		Subs:           absSubtitlesFile,
+		Mtype:          mediaType,
+		Transcode:      *transcodePtr,
+		Seek:           isSeek,
+		FFmpegPath:     ffmpegPath,
+		FFmpegSubsPath: absSubtitlesFile,
+		FFmpegSeek:     0,
 	})
 	if err != nil {
 		return err
@@ -186,6 +228,204 @@ func run() error {
 	return nil
 }
 
+func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL, mediaPath string, mediaFile any, mediaType, subsPath, ffmpegPath string, transcode bool) error {
+	// Auto-enable transcoding if media is incompatible and ffmpeg available (only for file paths)
+	if !transcode && ffmpegPath != "" {
+		// Only check codec info for file paths, not streams
+		if _, isStream := mediaFile.(io.ReadCloser); !isStream {
+			info, err := utils.GetMediaCodecInfo(ffmpegPath, mediaPath)
+			switch {
+			case err != nil:
+				// Can't determine compatibility, proceed without transcoding
+			case !utils.IsChromecastCompatible(info):
+				if utils.CheckFFmpeg(ffmpegPath) == nil {
+					transcode = true
+					fmt.Println("Media format incompatible with Chromecast, transcoding enabled")
+				} else {
+					fmt.Println("Warning: Media may not play (incompatible format, ffmpeg not available)")
+				}
+			}
+		}
+	}
+
+	// Create Chromecast client
+	client, err := castprotocol.NewCastClient(deviceURL)
+	if err != nil {
+		return fmt.Errorf("chromecast init: %w", err)
+	}
+
+	if err := client.Connect(); err != nil {
+		return fmt.Errorf("chromecast connect: %w", err)
+	}
+	defer client.Close(true)
+
+	// Get listen address from device URL
+	whereToListen, err := utils.URLtoListenIPandPort(deviceURL)
+	if err != nil {
+		return fmt.Errorf("chromecast listen addr: %w", err)
+	}
+
+	// Start HTTP server for media
+	httpServer := httphandlers.NewServer(whereToListen)
+	serverStarted := make(chan error)
+
+	// Create TranscodeOptions if transcoding enabled
+	var tcOpts *utils.TranscodeOptions
+	var mediaDuration float64
+	if transcode {
+		// Get actual media duration from ffprobe (Chromecast can't detect it for transcoded streams)
+		// Only works for file paths, not streams
+		if _, isStream := mediaFile.(io.ReadCloser); !isStream {
+			if duration, err := utils.DurationForMediaSeconds(ffmpegPath, mediaPath); err == nil {
+				mediaDuration = duration
+			}
+		}
+
+		// Determine subtitle path for burning
+		tcSubsPath := ""
+		if subsPath != "" {
+			if _, err := os.Stat(subsPath); err == nil {
+				tcSubsPath = subsPath
+			}
+		}
+
+		tcOpts = &utils.TranscodeOptions{
+			FFmpegPath:   ffmpegPath,
+			SubsPath:     tcSubsPath,
+			SeekSeconds:  0,
+			SubtitleSize: utils.SubtitleSizeMedium,
+			LogOutput:    nil, // CLI uses stdout
+		}
+		// Update content type for transcoded output
+		mediaType = "video/mp4"
+	}
+
+	// Build media URL
+	mediaURL := "http://" + whereToListen + "/" + utils.ConvertFilename(mediaPath)
+
+	// Handle streams (stdin) vs file paths differently
+	if stream, isStream := mediaFile.(io.ReadCloser); isStream {
+		// For streams: manually add handler then start serving
+		mediaFilename := "/" + utils.ConvertFilename(mediaPath)
+		httpServer.AddHandler(mediaFilename, nil, tcOpts, stream)
+
+		go func() {
+			httpServer.StartServing(serverStarted)
+		}()
+	} else {
+		// For file paths: use the existing simple server with transcode
+		go func() {
+			httpServer.StartSimpleServerWithTranscode(serverStarted, mediaPath, tcOpts)
+		}()
+	}
+
+	if err := <-serverStarted; err != nil {
+		return fmt.Errorf("chromecast server: %w", err)
+	}
+
+	// Handle subtitles (WebVTT side-loading - only when NOT transcoding)
+	subtitleURL := ""
+	if subsPath != "" && !transcode {
+		if _, err := os.Stat(subsPath); err == nil {
+			ext := strings.ToLower(filepath.Ext(subsPath))
+			switch ext {
+			case ".srt":
+				webvttData, err := utils.ConvertSRTtoWebVTT(subsPath)
+				if err == nil {
+					httpServer.AddHandler("/subtitles.vtt", nil, nil, webvttData)
+					subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
+				}
+			case ".vtt":
+				httpServer.AddHandler("/subtitles.vtt", nil, nil, subsPath)
+				subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
+			}
+		}
+	}
+
+	// Init interactive screen
+	scr, err := interactive.InitChromecastScreen(cancel)
+	if err != nil {
+		return err
+	}
+	scr.Client = client
+
+	// Load media (async)
+	go func() {
+		if err := client.Load(mediaURL, mediaType, 0, mediaDuration, subtitleURL); err != nil {
+			fmt.Fprintf(os.Stderr, "chromecast load: %v\n", err)
+		}
+	}()
+
+	interExit := make(chan error)
+	go scr.InterInit(mediaPath, interExit)
+
+	select {
+	case e := <-interExit:
+		return e
+	case <-ctx.Done():
+	}
+
+	return nil
+}
+
+type Device struct {
+	Model string
+	URL   string
+}
+
+type refreshMsg []Device
+
+type listDevicesModel struct {
+	devices []Device
+}
+
+func checkDevices() tea.Cmd {
+	return func() tea.Msg {
+		deviceList, _ := devices.LoadAllDevices(2)
+
+		var rMsg refreshMsg
+		for _, dev := range deviceList {
+			rMsg = append(rMsg, Device{
+				Model: dev.Name,
+				URL:   dev.Addr,
+			})
+		}
+
+		return rMsg
+	}
+}
+
+func (m listDevicesModel) Init() tea.Cmd {
+	devices.StartChromecastDiscoveryLoop(context.Background())
+	return checkDevices()
+}
+
+func (m listDevicesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		if msg.String() == "q" {
+			return m, tea.Quit
+		}
+
+	case refreshMsg:
+		m.devices = msg
+		return m, tea.Tick(time.Second*2, func(t time.Time) tea.Msg {
+			return checkDevices()()
+		})
+	}
+
+	return m, nil
+}
+
+func (m listDevicesModel) View() string {
+	var s strings.Builder
+	s.WriteString("Scanning devices... (q to quit)\n\n")
+	for _, dev := range m.devices {
+		s.WriteString("• " + dev.Model + " [" + dev.URL + "] " + "\n")
+	}
+	return s.String()
+}
+
 func listFlagFunction() error {
 	flagsEnabled := 0
 	flag.Visit(func(*flag.Flag) {
@@ -196,43 +436,14 @@ func listFlagFunction() error {
 		return errNoCombi
 	}
 
-	deviceList, err := devices.LoadSSDPservices(1)
-	if err != nil {
-		return errFailtoList
-	}
+	p := tea.NewProgram(listDevicesModel{})
+	_, err := p.Run()
 
-	fmt.Println()
-
-	// We loop through this map twice as we need to maintain
-	// the correct order.
-	var keys []string
-	for k := range deviceList {
-		keys = append(keys, k)
-	}
-
-	sort.Strings(keys)
-
-	for q, k := range keys {
-		boldStart := ""
-		boldEnd := ""
-
-		if runtime.GOOS == "linux" {
-			boldStart = "\033[1m"
-			boldEnd = "\033[0m"
-		}
-		fmt.Printf("%sDevice %v%s\n", boldStart, q+1, boldEnd)
-		fmt.Printf("%s--------%s\n", boldStart, boldEnd)
-		fmt.Printf("%sModel:%s %s\n", boldStart, boldEnd, k)
-		fmt.Printf("%sURL:%s   %s\n", boldStart, boldEnd, deviceList[k])
-		fmt.Println()
-	}
-
-	return nil
+	return err
 }
 
 func processflags() (*flagResults, error) {
 	res := &flagResults{}
-
 	if checkVerflag() {
 		res.exit = true
 		return res, nil
@@ -274,8 +485,12 @@ func processflags() (*flagResults, error) {
 
 func checkVflag() error {
 	if !*listPtr && *urlArg == "" {
-		if _, err := os.Stat(*mediaArg); os.IsNotExist(err) {
+		if _, err := os.Stat(*mediaArg); os.IsNotExist(err) && !checkStdin() && *mediaArg != "-" {
 			return fmt.Errorf("checkVflags error: %w", err)
+		}
+
+		if *targetPtr == "" {
+			return fmt.Errorf("checkVflags error: %w", errors.New("no target device specified with -t flag"))
 		}
 	}
 
@@ -318,18 +533,7 @@ func checkTflag(res *flagResults) error {
 			return fmt.Errorf("checkTflag parse error: %w", err)
 		}
 
-		res.dmrURL = *targetPtr
-		return nil
-	}
-
-	deviceList, err := devices.LoadSSDPservices(1)
-	if err != nil {
-		return fmt.Errorf("checkTflag service loading error: %w", err)
-	}
-
-	res.dmrURL, err = devices.DevicePicker(deviceList, 1)
-	if err != nil {
-		return fmt.Errorf("checkTflag device picker error: %w", err)
+		res.targetURL = *targetPtr
 	}
 
 	return nil
@@ -355,5 +559,10 @@ func checkVerflag() bool {
 }
 
 func checkGUI() bool {
-	return *mediaArg == "" && !*listPtr && *urlArg == ""
+	return *mediaArg == "" && !*listPtr && *urlArg == "" && !checkStdin()
+}
+
+func checkStdin() bool {
+	stat, _ := os.Stdin.Stat()
+	return (stat.Mode() & os.ModeCharDevice) == 0
 }

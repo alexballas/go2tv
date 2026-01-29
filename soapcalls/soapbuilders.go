@@ -8,8 +8,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/alexballas/go2tv/soapcalls/utils"
 	"github.com/pkg/errors"
+	"go2tv.app/go2tv/v2/utils"
 )
 
 var (

@@ -1,2 +1,7 @@
 build
 .vscode
+.claude
+.agent
+dev_docs
+CLAUDE.md
+AGENTS.md

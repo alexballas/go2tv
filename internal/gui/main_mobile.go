@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"net/url"
-	"sort"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -15,9 +14,9 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/alexballas/go2tv/devices"
-	"github.com/alexballas/go2tv/soapcalls"
-	"github.com/alexballas/go2tv/soapcalls/utils"
+	"go2tv.app/go2tv/v2/devices"
+	"go2tv.app/go2tv/v2/soapcalls"
+	"go2tv.app/go2tv/v2/utils"
 )
 
 type deviceList struct {
@@ -61,10 +60,6 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		if err != nil {
 			data = nil
 		}
-
-		sort.Slice(data, func(i, j int) bool {
-			return (data)[i].name < (data)[j].name
-		})
 
 		fyne.Do(func() {
 			list.Refresh()
@@ -164,17 +159,35 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
 		playpause.Enable()
-		t, err := soapcalls.DMRextractor(context.Background(), data[id].addr)
-		check(w, err)
-		if err == nil {
-			s.selectedDevice = data[id]
-			s.controlURL = t.AvtransportControlURL
-			s.eventlURL = t.AvtransportEventSubURL
-			s.renderingControlURL = t.RenderingControlURL
-			s.connectionManagerURL = t.ConnectionManagerURL
-			if s.tvdata != nil {
-				s.tvdata.RenderingControlURL = s.renderingControlURL
+
+		s.selectedDevice = data[id]
+		s.selectedDeviceType = data[id].deviceType
+
+		// Reset device state when switching
+		if s.chromecastClient != nil {
+			s.chromecastClient.Close(false)
+			s.chromecastClient = nil
+		}
+
+		switch data[id].deviceType {
+		case devices.DeviceTypeDLNA:
+			t, err := soapcalls.DMRextractor(context.Background(), data[id].addr)
+			check(w, err)
+			if err == nil {
+				s.controlURL = t.AvtransportControlURL
+				s.eventlURL = t.AvtransportEventSubURL
+				s.renderingControlURL = t.RenderingControlURL
+				s.connectionManagerURL = t.ConnectionManagerURL
+				if s.tvdata != nil {
+					s.tvdata.RenderingControlURL = s.renderingControlURL
+				}
 			}
+		case devices.DeviceTypeChromecast:
+			// Clear DLNA-specific state when selecting Chromecast
+			s.controlURL = ""
+			s.eventlURL = ""
+			s.renderingControlURL = ""
+			s.connectionManagerURL = ""
 		}
 	}
 
@@ -255,40 +268,52 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 			if utils.HostPortIsAlive(oldAddress.Host) {
 				datanew = append(datanew, old)
 			}
-
-			sort.Slice(datanew, func(i, j int) bool {
-				return (datanew)[i].name < (datanew)[j].name
-			})
 		}
 
 		// check to see if the new refresh includes
 		// one of the already selected devices
 		var includes bool
-		u, _ := url.Parse(s.controlURL)
-		for _, d := range datanew {
-			n, _ := url.Parse(d.addr)
-			if n.Host == u.Host {
-				includes = true
+		selectedAddr := s.controlURL
+		if s.selectedDeviceType == devices.DeviceTypeChromecast {
+			selectedAddr = s.selectedDevice.addr
+		}
+		if selectedAddr != "" {
+			u, _ := url.Parse(selectedAddr)
+			for _, d := range datanew {
+				n, _ := url.Parse(d.addr)
+				if n.Host == u.Host {
+					includes = true
+				}
 			}
 		}
 
 		*data = datanew
 
-		if !includes && !utils.HostPortIsAlive(u.Host) {
-			s.controlURL = ""
-			s.DeviceList.UnselectAll()
+		if selectedAddr != "" && !includes {
+			u, _ := url.Parse(selectedAddr)
+			if !utils.HostPortIsAlive(u.Host) {
+				s.controlURL = ""
+				s.selectedDevice = devType{}
+				fyne.Do(func() {
+					s.DeviceList.UnselectAll()
+				})
+			}
 		}
 
 		var found bool
 		for n, a := range *data {
 			if s.selectedDevice.addr == a.addr {
 				found = true
-				s.DeviceList.Select(n)
+				fyne.Do(func() {
+					s.DeviceList.Select(n)
+				})
 			}
 		}
 
 		if !found {
-			s.DeviceList.UnselectAll()
+			fyne.Do(func() {
+				s.DeviceList.UnselectAll()
+			})
 		}
 
 		fyne.Do(func() {
@@ -302,7 +327,24 @@ func checkMutefunc(s *FyneScreen) {
 
 	var checkMuteCounter int
 	for range checkMute.C {
+		// Handle Chromecast mute status
+		if s.selectedDeviceType == devices.DeviceTypeChromecast {
+			if s.chromecastClient == nil || !s.chromecastClient.IsConnected() {
+				continue
+			}
+			status, err := s.chromecastClient.GetStatus()
+			if err != nil {
+				continue
+			}
+			if status.Muted {
+				setMuteUnmuteView("Unmute", s)
+			} else {
+				setMuteUnmuteView("Mute", s)
+			}
+			continue
+		}
 
+		// Handle DLNA mute status
 		// Stop trying after 5 failures
 		// to get the mute status
 		if checkMuteCounter == 5 {

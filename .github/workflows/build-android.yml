@@ -11,21 +11,42 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Set env
-      run: if grep -Fxq "devel" cmd/go2tv/version.txt;then echo "GO2TV_VERSION=$(cat cmd/go2tv/version.txt)";else echo "GO2TV_VERSION=v$(cat cmd/go2tv/version.txt)";fi  >> $GITHUB_ENV
+      run: echo "GO2TV_VERSION=$(cat version.txt)" >> $GITHUB_ENV
 
-    - uses: WillAbides/setup-go-faster@v1.14.0
-      id: setup-go-faster
+    - uses: actions/setup-go@v5
       with:
-        go-version: "*"
+        go-version: 'stable'
 
     - name: Install fyne
       run: go install fyne.io/tools/cmd/fyne@latest
 
     - name: Download Android SDK
-      run: wget https://dl.google.com/android/repository/android-ndk-r29-linux.zip && unzip android-ndk-r29-linux.zip
+      run: |
+        wget https://dl.google.com/android/repository/android-ndk-r26b-linux.zip
+        unzip android-ndk-r26b-linux.zip
 
     - name: Package (Android)
-      run: APATH=$(readlink -e android-ndk-r29) && cd cmd/go2tv && GO386='softfloat' ANDROID_NDK_HOME=$APATH fyne package --os android --name Go2TV --app-id app.go2tv.go2tv --icon ../../assets/go2tv-icon-android.png && mv Go2TV.apk ../../
+      run: |
+        # Resolve the absolute path for the NDK
+        APATH=$(readlink -f android-ndk-r26b)
+
+        cd cmd/go2tv
+
+        # 1. Use --app-version for the Android Manifest
+        # 2. Use GOFLAGS to inject the version into your Go code variables
+        # 3. Use --release for a production-ready build
+        export GOFLAGS="-ldflags=-X=main.version=${{ env.GO2TV_VERSION }}"
+
+        ANDROID_NDK_HOME=$APATH fyne package \
+          --os android \
+          --name Go2TV \
+          --app-id app.go2tv.go2tv \
+          --icon ../../assets/go2tv-icon-android.png \
+          --app-version "${{ env.GO2TV_VERSION }}" \
+          --app-build 1 \
+          --release
+
+        mv Go2TV.apk ../../
 
     - uses: actions/upload-artifact@v4
       with:

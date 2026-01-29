@@ -22,9 +22,11 @@ import (
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/alexballas/go2tv/httphandlers"
-	"github.com/alexballas/go2tv/soapcalls"
-	"github.com/alexballas/go2tv/soapcalls/utils"
+	"go2tv.app/go2tv/v2/castprotocol"
+	"go2tv.app/go2tv/v2/devices"
+	"go2tv.app/go2tv/v2/httphandlers"
+	"go2tv.app/go2tv/v2/soapcalls"
+	"go2tv.app/go2tv/v2/utils"
 )
 
 // FyneScreen .
@@ -34,6 +36,7 @@ type FyneScreen struct {
 	CurrentPos            binding.String
 	EndPos                binding.String
 	serverStopCTX         context.Context
+	cancelServerStop      context.CancelFunc
 	Current               fyne.Window
 	cancelEnablePlay      context.CancelFunc
 	PlayPause             *widget.Button
@@ -58,6 +61,8 @@ type FyneScreen struct {
 	MuteUnmute            *widget.Button
 	VolumeDown            *widget.Button
 	selectedDevice        devType
+	selectedDeviceType    string
+	chromecastClient      *castprotocol.CastClient // Active Chromecast connection
 	State                 string
 	mediafile             string
 	version               string
@@ -69,6 +74,8 @@ type FyneScreen struct {
 	currentmfolder        string
 	ffmpegPath            string
 	ffmpegSeek            int
+	mediaDuration         float64 // Actual media duration in seconds (from ffprobe, for transcoded streams)
+	chromecastCheckedFile string  // Tracks which file was already auto-checked for Chromecast compatibility
 	systemTheme           fyne.ThemeVariant
 	mediaFormats          []string
 	audioFormats          []string
@@ -89,8 +96,9 @@ type debugWriter struct {
 }
 
 type devType struct {
-	name string
-	addr string
+	name       string
+	addr       string
+	deviceType string
 }
 
 type mainButtonsLayout struct {
@@ -163,6 +171,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 	}
 
 	s.ffmpegPathChanged = false
+
 	if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
 		s.TranscodeCheckBox.Disable()
 	}
@@ -173,6 +182,9 @@ func Start(ctx context.Context, s *FyneScreen) {
 	w.Resize(fyne.NewSize(w.Canvas().Size().Width, w.Canvas().Size().Height*1.2))
 	w.CenterOnScreen()
 	w.SetMaster()
+
+	// Start Chromecast discovery in background
+	go devices.StartChromecastDiscoveryLoop(ctx)
 
 	go func() {
 		<-ctx.Done()
@@ -207,7 +219,15 @@ func (p *FyneScreen) EmitMsg(a string) {
 func (p *FyneScreen) Fini() {
 	gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
 
-	if p.NextMediaCheck.Checked && gaplessOption == "Disabled" {
+	// For Chromecast, ignore gapless setting (it's DLNA-specific)
+	isChromecast := p.selectedDeviceType == devices.DeviceTypeChromecast
+
+	// For Chromecast, reset state to Stopped so playAction doesn't interpret as pause
+	if isChromecast {
+		p.updateScreenState("Stopped")
+	}
+
+	if p.NextMediaCheck.Checked && (isChromecast || gaplessOption == "Disabled") {
 		p.MediaText.Text, p.mediafile = getNextMedia(p)
 		fyne.Do(func() {
 			p.MediaText.Refresh()
@@ -218,6 +238,7 @@ func (p *FyneScreen) Fini() {
 		}
 
 		playAction(p)
+		return
 	}
 	// Main media loop logic
 	if p.Medialoop {
@@ -239,9 +260,9 @@ func initFyneNewScreen(version string) *FyneScreen {
 
 	if content != nil {
 		name := lang.SystemLocale().LanguageString()
-		lang.AddTranslations(fyne.NewStaticResource(name+".json", content))
+		_ = lang.AddTranslations(fyne.NewStaticResource(name+".json", content))
 	} else {
-		lang.AddTranslationsFS(translations, "translations")
+		_ = lang.AddTranslationsFS(translations, "translations")
 	}
 
 	go2tv.SetIcon(fyne.NewStaticResource("icon", go2TVIcon512))
@@ -396,6 +417,77 @@ func (p *FyneScreen) getScreenState() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.State
+}
+
+// resetDeviceState clears all protocol-specific state when switching devices.
+// This prevents DLNA parameters from leaking to Chromecast operations.
+// Note: Does NOT stop the HTTP server - that should only happen via stop button or device signal.
+func (p *FyneScreen) resetDeviceState() {
+	// Clear DLNA-specific state
+	p.controlURL = ""
+	p.eventlURL = ""
+	p.renderingControlURL = ""
+	p.connectionManagerURL = ""
+	p.tvdata = nil
+
+	// Close any active Chromecast connection
+	if p.chromecastClient != nil {
+		p.chromecastClient.Close(true)
+		p.chromecastClient = nil
+	}
+
+	// Reset playback state
+	p.State = ""
+	p.ffmpegSeek = 0
+
+	// Reset UI state
+	fyne.Do(func() {
+		p.CurrentPos.Set("00:00:00")
+		p.EndPos.Set("00:00:00")
+		p.SlideBar.Slider.SetValue(0)
+		setPlayPauseView("Play", p)
+	})
+}
+
+// checkChromecastCompatibility checks if loaded media needs transcoding for Chromecast.
+// Auto-enables transcode checkbox if media is incompatible and FFmpeg is available.
+// Only auto-enables once per file - tracks checked file to respect user's manual disable.
+func (p *FyneScreen) checkChromecastCompatibility() {
+	if p.selectedDeviceType != devices.DeviceTypeChromecast {
+		return
+	}
+	if p.mediafile == "" {
+		return
+	}
+	// Skip if we've already auto-checked this file (prevents re-enabling after user disables)
+	if p.chromecastCheckedFile == p.mediafile {
+		return
+	}
+	if err := utils.CheckFFmpeg(p.ffmpegPath); err != nil {
+		return // Can't transcode anyway
+	}
+
+	// Only auto-enable transcoding for video files
+	// Images and audio are natively supported by Chromecast
+	ext := strings.ToLower(filepath.Ext(p.mediafile))
+	if !slices.Contains(p.videoFormats, ext) {
+		return // Not a video file, no need to check compatibility
+	}
+
+	info, err := utils.GetMediaCodecInfo(p.ffmpegPath, p.mediafile)
+	if err != nil {
+		return // Can't determine, let user decide
+	}
+
+	// Mark this file as checked (even if compatible) to avoid rechecking
+	p.chromecastCheckedFile = p.mediafile
+
+	if !utils.IsChromecastCompatible(info) {
+		fyne.Do(func() {
+			p.TranscodeCheckBox.SetChecked(true)
+		})
+		p.Transcode = true
+	}
 }
 
 // NewFyneScreen .
