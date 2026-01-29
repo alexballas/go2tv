@@ -47,6 +47,16 @@
   </branding>
 
   <releases>
+        <release version="2.0.1" date="2026-01-29" type="stable">
+        <description>
+          <ul>
+            <li>Fixed Chromecast discovery on Windows systems with multiple network adapters (VPN, Hyper-V, Docker).</li>
+            <li>Fixed "context deadline exceeded" error on slow TVs by increasing retry attempts and delays.</li>
+            <li>Added screen blanking prevention on mobile to keep display on during playback.</li>
+          </ul>
+        </description>
+        <url type="details">https://github.com/alexballas/go2tv/releases/tag/v2.0.1</url>
+      </release>
         <release version="2.0.0" date="2026-01-15" type="stable">
         <description>
           <ul>
