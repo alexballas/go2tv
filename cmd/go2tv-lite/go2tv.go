@@ -241,23 +241,8 @@ func run() error {
 }
 
 func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL, mediaPath string, mediaFile any, mediaType, subsPath, ffmpegPath string, transcode bool) error {
-	// Auto-enable transcoding if media is incompatible and ffmpeg available (only for file paths)
-	if !transcode && ffmpegPath != "" {
-		// Only check codec info for file paths, not streams
-		if _, isStream := mediaFile.(io.ReadCloser); !isStream {
-			info, err := utils.GetMediaCodecInfo(ffmpegPath, mediaPath)
-			switch {
-			case err != nil:
-				// Can't determine compatibility, proceed without transcoding
-			case !utils.IsChromecastCompatible(info):
-				if utils.CheckFFmpeg(ffmpegPath) == nil {
-					transcode = true
-					fmt.Println("Media format incompatible with Chromecast, transcoding enabled")
-				} else {
-					fmt.Println("Warning: Media may not play (incompatible format, ffmpeg not available)")
-				}
-			}
-		}
+	if !strings.Contains(mediaType, "video") {
+		transcode = false
 	}
 
 	// Create Chromecast client
