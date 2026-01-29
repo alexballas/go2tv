@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -563,6 +564,9 @@ func checkGUI() bool {
 }
 
 func checkStdin() bool {
+	if runtime.GOOS == "windows" {
+		return false
+	}
 	stat, _ := os.Stdin.Stat()
 	return (stat.Mode() & os.ModeCharDevice) == 0
 }
