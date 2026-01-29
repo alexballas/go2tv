@@ -57,7 +57,7 @@ func NewCastClient(deviceAddr string) (*CastClient, error) {
 	// Create application with our connection and retry configuration
 	app := application.NewApplication(
 		application.WithConnection(conn),
-		application.WithConnectionRetries(3), // Retry up to 3 times on connection failures
+		application.WithConnectionRetries(5), // Retry up to 5 times on connection failures (slow TVs need time to wake)
 	)
 
 	return &CastClient{
@@ -129,20 +129,20 @@ func (c *CastClient) Load(mediaURL string, contentType string, startTime int, du
 	if subtitleURL == "" && duration == 0 {
 		// Retry loop for TV wake-up scenarios (timeout errors)
 		var lastErr error
-		for attempt := range 3 {
+		for attempt := range 5 {
 			if !c.IsConnected() {
 				c.Log().Debug().Str("Method", "Load").Msg("connection closed during load, aborting silently")
 				return nil
 			}
 			if err := c.app.Load(mediaURL, startTime, contentType, false, false, false); err != nil {
 				lastErr = err
-				if isTimeoutError(err) && attempt < 3 {
+				if isTimeoutError(err) && attempt < 5 {
 					c.Log().Debug().Str("Method", "Load").Int("Attempt", attempt).Err(err).Msg("timeout, TV may be waking up, retrying...")
 					if !c.IsConnected() {
 						c.Log().Debug().Str("Method", "Load").Msg("connection closed during retry wait, aborting silently")
 						return nil
 					}
-					time.Sleep(3 * time.Second) // Wait for TV to wake up
+					time.Sleep(4 * time.Second) // Wait for TV to wake up
 					continue
 				}
 				c.Log().Error().Str("Method", "Load").Err(err).Msg("standard load failed")
@@ -158,7 +158,7 @@ func (c *CastClient) Load(mediaURL string, contentType string, startTime int, du
 	// This prevents double playback (first without subs, then with subs queued)
 	// Retry loop for TV wake-up scenarios
 	var lastErr error
-	for attempt := range 3 {
+	for attempt := range 5 {
 		if !c.IsConnected() {
 			c.Log().Debug().Str("Method", "Load").Msg("connection closed during load, aborting silently")
 			return nil
@@ -167,13 +167,13 @@ func (c *CastClient) Load(mediaURL string, contentType string, startTime int, du
 		c.Log().Debug().Str("Method", "Load").Int("Attempt", attempt).Msg("launching default receiver")
 		if err := LaunchDefaultReceiver(c.conn); err != nil {
 			lastErr = err
-			if isTimeoutError(err) && attempt < 3 {
+			if isTimeoutError(err) && attempt < 5 {
 				c.Log().Debug().Str("Method", "Load").Int("Attempt", attempt).Err(err).Msg("timeout, TV may be waking up, retrying...")
 				if !c.IsConnected() {
 					c.Log().Debug().Str("Method", "Load").Msg("connection closed during retry wait, aborting silently")
 					return nil
 				}
-				time.Sleep(3 * time.Second)
+				time.Sleep(4 * time.Second)
 				continue
 			}
 			c.Log().Error().Str("Method", "Load").Err(err).Msg("launch receiver failed")
@@ -204,13 +204,13 @@ func (c *CastClient) Load(mediaURL string, contentType string, startTime int, du
 
 		if transportId == "" {
 			lastErr = fmt.Errorf("failed to get transport ID after retries")
-			if attempt < 3 {
+			if attempt < 5 {
 				c.Log().Debug().Str("Method", "Load").Int("Attempt", attempt).Msg("no transport ID, TV may be waking up, retrying...")
 				if !c.IsConnected() {
 					c.Log().Debug().Str("Method", "Load").Msg("connection closed during retry wait, aborting silently")
 					return nil
 				}
-				time.Sleep(3 * time.Second)
+				time.Sleep(4 * time.Second)
 				continue
 			}
 			c.Log().Error().Str("Method", "Load").Msg("failed to get transport ID")
@@ -220,13 +220,13 @@ func (c *CastClient) Load(mediaURL string, contentType string, startTime int, du
 		err := LoadWithSubtitles(c.conn, transportId, mediaURL, contentType, startTime, duration, subtitleURL)
 		if err != nil {
 			lastErr = err
-			if isTimeoutError(err) && attempt < 3 {
+			if isTimeoutError(err) && attempt < 5 {
 				c.Log().Debug().Str("Method", "Load").Int("Attempt", attempt).Err(err).Msg("timeout, TV may be waking up, retrying...")
 				if !c.IsConnected() {
 					c.Log().Debug().Str("Method", "Load").Msg("connection closed during retry wait, aborting silently")
 					return nil
 				}
-				time.Sleep(3 * time.Second)
+				time.Sleep(4 * time.Second)
 				continue
 			}
 			c.Log().Error().Str("Method", "Load").Err(err).Msg("LoadWithSubtitles failed")

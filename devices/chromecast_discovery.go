@@ -29,9 +29,11 @@ func StartChromecastDiscoveryLoop(ctx context.Context) {
 	go healthCheckChromecastDevices(ctx)
 }
 
-// discoverChromecastDevices continuously browses for Chromecast devices using mDNS
+// discoverChromecastDevices continuously browses for Chromecast devices using mDNS.
+// It queries on all active network interfaces to handle Windows systems with multiple
+// adapters (VPN, Hyper-V, Docker, etc.) where the OS default interface may not be
+// the one connected to the Chromecast network.
 func discoverChromecastDevices(ctx context.Context) {
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -39,8 +41,11 @@ func discoverChromecastDevices(ctx context.Context) {
 		default:
 		}
 
-		// Create channel for results
-		entriesCh := make(chan *mdns.ServiceEntry, 10)
+		// Get all active network interfaces
+		interfaces := getActiveNetworkInterfaces()
+
+		// Create channel for results (sized for multiple interfaces)
+		entriesCh := make(chan *mdns.ServiceEntry, 10*len(interfaces)+10)
 
 		// Start a goroutine to process results
 		go func() {
@@ -76,14 +81,32 @@ func discoverChromecastDevices(ctx context.Context) {
 			}
 		}()
 
-		// Lookup Chromecast devices (blocking call with timeout)
-		params := mdns.DefaultParams("_googlecast._tcp")
-		params.Entries = entriesCh
-		params.Timeout = 2 * time.Second
-		params.DisableIPv6 = true
-		params.Logger = log.New(io.Discard, "", 0)
-
-		_ = mdns.Query(params)
+		// Query on each interface to handle multi-interface Windows systems
+		if len(interfaces) > 0 {
+			var wg sync.WaitGroup
+			for _, iface := range interfaces {
+				wg.Add(1)
+				go func(iface net.Interface) {
+					defer wg.Done()
+					params := mdns.DefaultParams("_googlecast._tcp")
+					params.Entries = entriesCh
+					params.Timeout = 2 * time.Second
+					params.DisableIPv6 = true
+					params.Logger = log.New(io.Discard, "", 0)
+					params.Interface = &iface
+					_ = mdns.Query(params)
+				}(iface)
+			}
+			wg.Wait()
+		} else {
+			// Fallback: no specific interfaces found, use OS default
+			params := mdns.DefaultParams("_googlecast._tcp")
+			params.Entries = entriesCh
+			params.Timeout = 2 * time.Second
+			params.DisableIPv6 = true
+			params.Logger = log.New(io.Discard, "", 0)
+			_ = mdns.Query(params)
+		}
 		close(entriesCh)
 
 		// Small delay before next scan
@@ -93,6 +116,46 @@ func discoverChromecastDevices(ctx context.Context) {
 		case <-time.After(500 * time.Millisecond):
 		}
 	}
+}
+
+// getActiveNetworkInterfaces returns all network interfaces that are up,
+// not loopback, and have an IPv4 address. This is used to query mDNS on
+// all possible interfaces where Chromecast devices might be reachable.
+func getActiveNetworkInterfaces() []net.Interface {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+
+	var active []net.Interface
+	for _, iface := range interfaces {
+		// Skip down or loopback interfaces
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+
+		// Check if interface has an IPv4 address
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+
+		hasIPv4 := false
+		for _, addr := range addrs {
+			if ipnet, ok := addr.(*net.IPNet); ok {
+				if ipnet.IP.To4() != nil && !ipnet.IP.IsLoopback() {
+					hasIPv4 = true
+					break
+				}
+			}
+		}
+
+		if hasIPv4 {
+			active = append(active, iface)
+		}
+	}
+
+	return active
 }
 
 // healthCheckChromecastDevices periodically checks if cached Chromecast devices are still alive

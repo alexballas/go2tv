@@ -144,6 +144,7 @@ func (p *FyneScreen) Fini() {
 func initFyneNewScreen(v string) *FyneScreen {
 	go2tv := app.NewWithID("app.go2tv.go2tv")
 	go2tv.Settings().SetTheme(go2tvTheme{"Dark"})
+	go2tv.Driver().SetDisableScreenBlanking(true)
 
 	w := go2tv.NewWindow("Go2TV")
 
