@@ -602,8 +602,8 @@ func chromecastPlayAction(screen *FyneScreen) {
 			return
 		}
 
-		// Enable debug logging (same pattern as TVPayload)
-		client.LogOutput = screen.Debug
+		// Note: Debug logging disabled on mobile - zerolog crashes on Android
+		// client.LogOutput = screen.Debug
 
 		if err := client.Connect(); err != nil {
 			check(w, fmt.Errorf("chromecast connect: %w", err))
@@ -785,11 +785,13 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if screen.chromecastClient == nil || !screen.chromecastClient.IsConnected() {
+			// Capture client once to avoid race with stopAction nilling it
+			client := screen.chromecastClient
+			if client == nil || !client.IsConnected() {
 				return
 			}
 
-			status, err := screen.chromecastClient.GetStatus()
+			status, err := client.GetStatus()
 			if err != nil {
 				continue
 			}
@@ -800,8 +802,11 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 			case "PLAYING":
 				mediaStarted = true
 				if screen.getScreenState() != "Playing" {
-					setPlayPauseView("Pause", screen)
-					screen.updateScreenState("Playing")
+					// Double check to avoid a race condition when clicking the stop button
+					if client.IsConnected() {
+						setPlayPauseView("Pause", screen)
+						screen.updateScreenState("Playing")
+					}
 				}
 			case "PAUSED":
 				mediaStarted = true

@@ -22,27 +22,27 @@ jobs:
 
     - name: Download Android SDK
       run: |
-        wget https://dl.google.com/android/repository/android-ndk-r26b-linux.zip
-        unzip android-ndk-r26b-linux.zip
+        wget https://dl.google.com/android/repository/android-ndk-r27d-linux.zip
+        unzip android-ndk-r27d-linux.zip
 
     - name: Package (Android)
       run: |
         # Resolve the absolute path for the NDK
-        APATH=$(readlink -f android-ndk-r26b)
+        APATH=$(readlink -f android-ndk-r27d)
 
         cd cmd/go2tv
 
         # 1. Use --app-version for the Android Manifest
         # 2. Use GOFLAGS to inject the version into your Go code variables
         # 3. Use --release for a production-ready build
-        export GOFLAGS="-ldflags=-X=main.version=$(echo ${{ env.GO2TV_VERSION }} | sed 's/^v//')"
+        sed -i "s/version      = \"dev\"/version      = \"$(echo ${{ env.GO2TV_VERSION }} | sed 's/^v//')\"/" go2tv.go
 
         ANDROID_NDK_HOME=$APATH fyne package \
           --os android \
           --name Go2TV \
           --app-id app.go2tv.go2tv \
           --icon ../../assets/go2tv-icon-android.png \
-          --app-version "${{ env.GO2TV_VERSION }}" \
+          --app-version "$(echo ${{ env.GO2TV_VERSION }} | sed 's/^v//')" \
           --app-build 1 \
           --release
 
