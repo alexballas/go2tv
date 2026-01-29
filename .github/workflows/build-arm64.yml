@@ -21,7 +21,7 @@ jobs:
       run: sudo apt update && sudo apt install xorg-dev
 
     - name: Package (Linux)
-      run: go build -tags migrated_fynedo -ldflags "-s -w -X main.version=${{ env.GO2TV_VERSION }}" -o go2tv cmd/go2tv/go2tv.go
+      run: go build -tags migrated_fynedo -ldflags "-s -w -X main.version=$(echo ${{ env.GO2TV_VERSION }} | sed 's/^v//')" -o go2tv cmd/go2tv/go2tv.go
 
     - uses: actions/upload-artifact@v4
       with:

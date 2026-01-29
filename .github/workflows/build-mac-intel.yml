@@ -24,7 +24,7 @@ jobs:
       run: sed -i '' "s/^Version.*/Version = \"${{ env.GO2TV_VERSION }}\"/" cmd/go2tv/FyneApp.toml
 
     - name: Package (macOS)
-      run:  export GOFLAGS="-ldflags=-X=main.version=${{ env.GO2TV_VERSION }}" && cd cmd/go2tv && fyne package --release --os darwin --icon  ../../assets/go2tv-icon.png  && mv go2tv.app ../../
+      run:  export GOFLAGS="-ldflags=-X=main.version=$(echo ${{ env.GO2TV_VERSION }} | sed 's/^v//')" && cd cmd/go2tv && fyne package --release --os darwin --icon  ../../assets/go2tv-icon.png  && mv go2tv.app ../../
 
     - uses: actions/upload-artifact@v4
       with:

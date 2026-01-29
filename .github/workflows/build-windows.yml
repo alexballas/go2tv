@@ -27,7 +27,7 @@ jobs:
       run: sed -i "s/^Version.*/Version = \"${{ env.GO2TV_VERSION }}\"/" cmd/go2tv/FyneApp.toml
 
     - name: Package (Windows)
-      run: export GOFLAGS="-ldflags=-X=main.version=${{ env.GO2TV_VERSION }}" && cd cmd/go2tv && CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ fyne package --release --app-id app.go2tv.go2tv --os windows --icon  ../../assets/go2tv-icon.png && mv go2tv.exe ../../
+      run: export GOFLAGS="-ldflags=-X=main.version=$(echo ${{ env.GO2TV_VERSION }} | sed 's/^v//')" && cd cmd/go2tv && CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ fyne package --release --app-id app.go2tv.go2tv --os windows --icon  ../../assets/go2tv-icon.png && mv go2tv.exe ../../
 
     - uses: actions/upload-artifact@v4
       with:
