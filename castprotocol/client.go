@@ -74,6 +74,10 @@ func (c *CastClient) Connect() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	if c.app == nil {
+		return fmt.Errorf("chromecast connect: app is nil")
+	}
+
 	c.Log().Debug().Str("Method", "Connect").Str("Host", c.host).Int("Port", c.port).Msg("connecting")
 	if err := c.app.Start(c.host, c.port); err != nil {
 		c.Log().Error().Str("Method", "Connect").Err(err).Msg("connection failed")
