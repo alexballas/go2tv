@@ -294,15 +294,17 @@ func check(s *FyneScreen, err error) {
 	s.muError.Lock()
 	defer s.muError.Unlock()
 
-	if err != nil && !s.ErrorVisible {
-		s.ErrorVisible = true
-		cleanErr := strings.ReplaceAll(err.Error(), ": ", "\n")
-		e := dialog.NewError(errors.New(cleanErr), s.Current)
-		e.Show()
-		e.SetOnClosed(func() {
-			s.ErrorVisible = false
-		})
-	}
+	fyne.Do(func() {
+		if err != nil && !s.ErrorVisible {
+			s.ErrorVisible = true
+			cleanErr := strings.ReplaceAll(err.Error(), ": ", "\n")
+			e := dialog.NewError(errors.New(cleanErr), s.Current)
+			e.Show()
+			e.SetOnClosed(func() {
+				s.ErrorVisible = false
+			})
+		}
+	})
 }
 
 func getNextMedia(screen *FyneScreen) (string, string) {
@@ -375,18 +377,14 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 
 	fyne.Do(func() {
 		screen.PlayPause.Enable()
-	})
-
-	switch s {
-	case "Play":
-		screen.PlayPause.Text = lang.L("Play")
-		screen.PlayPause.Icon = theme.MediaPlayIcon()
-	case "Pause":
-		screen.PlayPause.Text = lang.L("Pause")
-		screen.PlayPause.Icon = theme.MediaPauseIcon()
-	}
-
-	fyne.Do(func() {
+		switch s {
+		case "Play":
+			screen.PlayPause.Text = lang.L("Play")
+			screen.PlayPause.Icon = theme.MediaPlayIcon()
+		case "Pause":
+			screen.PlayPause.Text = lang.L("Pause")
+			screen.PlayPause.Icon = theme.MediaPauseIcon()
+		}
 		screen.PlayPause.Refresh()
 	})
 }
@@ -418,36 +416,6 @@ func (p *FyneScreen) getScreenState() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.State
-}
-
-// resetDeviceState clears all protocol-specific state when switching devices.
-// This prevents DLNA parameters from leaking to Chromecast operations.
-// Note: Does NOT stop the HTTP server - that should only happen via stop button or device signal.
-func (p *FyneScreen) resetDeviceState() {
-	// Clear DLNA-specific state
-	p.controlURL = ""
-	p.eventlURL = ""
-	p.renderingControlURL = ""
-	p.connectionManagerURL = ""
-	p.tvdata = nil
-
-	// Close any active Chromecast connection
-	if p.chromecastClient != nil {
-		p.chromecastClient.Close(true)
-		p.chromecastClient = nil
-	}
-
-	// Reset playback state
-	p.State = ""
-	p.ffmpegSeek = 0
-
-	// Reset UI state
-	fyne.Do(func() {
-		p.CurrentPos.Set("00:00:00")
-		p.EndPos.Set("00:00:00")
-		p.SlideBar.Slider.SetValue(0)
-		setPlayPauseView("Play", p)
-	})
 }
 
 // checkChromecastCompatibility checks if loaded media needs transcoding for Chromecast.

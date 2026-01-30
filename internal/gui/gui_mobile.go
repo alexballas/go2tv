@@ -159,7 +159,9 @@ func initFyneNewScreen(v string) *FyneScreen {
 func check(win fyne.Window, err error) {
 	if err != nil {
 		cleanErr := strings.ReplaceAll(err.Error(), ": ", "\n")
-		dialog.ShowError(errors.New(cleanErr), win)
+		fyne.Do(func() {
+			dialog.ShowError(errors.New(cleanErr), win)
+		})
 	}
 }
 
@@ -186,31 +188,26 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 
 	fyne.Do(func() {
 		screen.PlayPause.Enable()
-	})
-
-	switch s {
-	case "Play":
-		screen.PlayPause.Text = lang.L("Play")
-		screen.PlayPause.Icon = theme.MediaPlayIcon()
-	case "Pause":
-		screen.PlayPause.Text = lang.L("Pause")
-		screen.PlayPause.Icon = theme.MediaPauseIcon()
-	}
-
-	fyne.Do(func() {
+		switch s {
+		case "Play":
+			screen.PlayPause.Text = lang.L("Play")
+			screen.PlayPause.Icon = theme.MediaPlayIcon()
+		case "Pause":
+			screen.PlayPause.Text = lang.L("Pause")
+			screen.PlayPause.Icon = theme.MediaPauseIcon()
+		}
 		screen.PlayPause.Refresh()
 	})
 }
 
 func setMuteUnmuteView(s string, screen *FyneScreen) {
-	switch s {
-	case "Mute":
-		screen.MuteUnmute.Icon = theme.VolumeUpIcon()
-	case "Unmute":
-		screen.MuteUnmute.Icon = theme.VolumeMuteIcon()
-	}
-
 	fyne.Do(func() {
+		switch s {
+		case "Mute":
+			screen.MuteUnmute.Icon = theme.VolumeUpIcon()
+		case "Unmute":
+			screen.MuteUnmute.Icon = theme.VolumeMuteIcon()
+		}
 		screen.MuteUnmute.Refresh()
 	})
 }

@@ -85,45 +85,31 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	sfiletext.Disable()
 
 	playpause := widget.NewButtonWithIcon(lang.L("Play"), theme.MediaPlayIcon(), func() {
-		go fyne.Do(func() {
-			playAction(s)
-		})
+		playAction(s)
 	})
 
 	stop := widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
-		go fyne.Do(func() {
-			stopAction(s)
-		})
+		stopAction(s)
 	})
 
 	volumeup := widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
-		go fyne.Do(func() {
-			volumeAction(s, true)
-		})
+		volumeAction(s, true)
 	})
 
 	muteunmute := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() {
-		go fyne.Do(func() {
-			muteAction(s)
-		})
+		muteAction(s)
 	})
 
 	volumedown := widget.NewButtonWithIcon("", theme.ContentRemoveIcon(), func() {
-		go fyne.Do(func() {
-			volumeAction(s, false)
-		})
+		volumeAction(s, false)
 	})
 
 	clearmedia := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		go fyne.Do(func() {
-			clearmediaAction(s)
-		})
+		clearmediaAction(s)
 	})
 
 	clearsubs := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		go fyne.Do(func() {
-			clearsubsAction(s)
-		})
+		clearsubsAction(s)
 	})
 
 	externalmedia := widget.NewCheck(lang.L("Media from URL"), func(b bool) {})

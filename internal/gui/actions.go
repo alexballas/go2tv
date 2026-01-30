@@ -38,15 +38,17 @@ func muteAction(screen *FyneScreen) {
 
 	// Handle Chromecast mute
 	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
-		if screen.chromecastClient == nil || !screen.chromecastClient.IsConnected() {
-			check(screen, errors.New(lang.L("chromecast not connected")))
-			return
-		}
-		if err := screen.chromecastClient.SetMuted(true); err != nil {
-			check(screen, errors.New(lang.L("could not send mute action")))
-			return
-		}
-		setMuteUnmuteView("Unmute", screen)
+		go func() {
+			if screen.chromecastClient == nil || !screen.chromecastClient.IsConnected() {
+				check(screen, errors.New(lang.L("chromecast not connected")))
+				return
+			}
+			if err := screen.chromecastClient.SetMuted(true); err != nil {
+				check(screen, errors.New(lang.L("could not send mute action")))
+				return
+			}
+			setMuteUnmuteView("Unmute", screen)
+		}()
 		return
 	}
 
@@ -56,33 +58,37 @@ func muteAction(screen *FyneScreen) {
 		return
 	}
 
-	if screen.tvdata == nil {
-		// If tvdata is nil, we just need to set RenderingControlURL if we want
-		// to control the sound. We should still rely on the play action to properly
-		// populate our tvdata type.
-		screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
-	}
+	go func() {
+		if screen.tvdata == nil {
+			// If tvdata is nil, we just need to set RenderingControlURL if we want
+			// to control the sound. We should still rely on the play action to properly
+			// populate our tvdata type.
+			screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
+		}
 
-	if err := screen.tvdata.SetMuteSoapCall("1"); err != nil {
-		check(screen, errors.New(lang.L("could not send mute action")))
-		return
-	}
+		if err := screen.tvdata.SetMuteSoapCall("1"); err != nil {
+			check(screen, errors.New(lang.L("could not send mute action")))
+			return
+		}
 
-	setMuteUnmuteView("Unmute", screen)
+		setMuteUnmuteView("Unmute", screen)
+	}()
 }
 
 func unmuteAction(screen *FyneScreen) {
 	// Handle Chromecast unmute
 	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
-		if screen.chromecastClient == nil || !screen.chromecastClient.IsConnected() {
-			check(screen, errors.New(lang.L("chromecast not connected")))
-			return
-		}
-		if err := screen.chromecastClient.SetMuted(false); err != nil {
-			check(screen, errors.New(lang.L("could not send mute action")))
-			return
-		}
-		setMuteUnmuteView("Mute", screen)
+		go func() {
+			if screen.chromecastClient == nil || !screen.chromecastClient.IsConnected() {
+				check(screen, errors.New(lang.L("chromecast not connected")))
+				return
+			}
+			if err := screen.chromecastClient.SetMuted(false); err != nil {
+				check(screen, errors.New(lang.L("could not send mute action")))
+				return
+			}
+			setMuteUnmuteView("Mute", screen)
+		}()
 		return
 	}
 
@@ -92,20 +98,22 @@ func unmuteAction(screen *FyneScreen) {
 		return
 	}
 
-	if screen.tvdata == nil {
-		// If tvdata is nil, we just need to set RenderingControlURL if we want
-		// to control the sound. We should still rely on the play action to properly
-		// populate our tvdata type.
-		screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
-	}
+	go func() {
+		if screen.tvdata == nil {
+			// If tvdata is nil, we just need to set RenderingControlURL if we want
+			// to control the sound. We should still rely on the play action to properly
+			// populate our tvdata type.
+			screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
+		}
 
-	// isMuted, _ := screen.tvdata.GetMuteSoapCall()
-	if err := screen.tvdata.SetMuteSoapCall("0"); err != nil {
-		check(screen, errors.New(lang.L("could not send mute action")))
-		return
-	}
+		// isMuted, _ := screen.tvdata.GetMuteSoapCall()
+		if err := screen.tvdata.SetMuteSoapCall("0"); err != nil {
+			check(screen, errors.New(lang.L("could not send mute action")))
+			return
+		}
 
-	setMuteUnmuteView("Mute", screen)
+		setMuteUnmuteView("Mute", screen)
+	}()
 }
 
 func selectMediaFile(screen *FyneScreen, f fyne.URI) {
@@ -223,14 +231,12 @@ func subsAction(screen *FyneScreen) {
 func playAction(screen *FyneScreen) {
 	var mediaFile any
 
-	fyne.Do(func() {
-		screen.PlayPause.Disable()
-	})
+	screen.PlayPause.Disable()
 
 	// Branch based on device type - MUST be first, before any DLNA-specific logic
 	// Chromecast has its own status watcher, doesn't need the DLNA timeout mechanism
 	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
-		chromecastPlayAction(screen)
+		go chromecastPlayAction(screen)
 		return
 	}
 
@@ -521,11 +527,15 @@ func chromecastPlayAction(screen *FyneScreen) {
 	if screen.SelectInternalSubs.Selected != "" {
 		for n, opt := range screen.SelectInternalSubs.Options {
 			if opt == screen.SelectInternalSubs.Selected {
-				screen.PlayPause.Text = lang.L("Extracting Subtitles")
-				screen.PlayPause.Refresh()
+				fyne.Do(func() {
+					screen.PlayPause.Text = lang.L("Extracting Subtitles")
+					screen.PlayPause.Refresh()
+				})
 				tempSubsPath, err := utils.ExtractSub(screen.ffmpegPath, n, screen.mediafile)
-				screen.PlayPause.Text = lang.L("Play")
-				screen.PlayPause.Refresh()
+				fyne.Do(func() {
+					screen.PlayPause.Text = lang.L("Play")
+					screen.PlayPause.Refresh()
+				})
 				if err != nil {
 					break
 				}
@@ -769,7 +779,9 @@ func chromecastPlayAction(screen *FyneScreen) {
 
 	// Load media and update UI on success
 	go func() {
-		if err := client.Load(mediaURL, mediaType, ffmpegSeek, screen.mediaDuration, subtitleURL); err != nil {
+		// Use LIVE stream type for URL streams (DMR shows LIVE badge, but buffer unchanged)
+		live := screen.ExternalMediaURL.Checked
+		if err := client.Load(mediaURL, mediaType, ffmpegSeek, screen.mediaDuration, subtitleURL, live); err != nil {
 			check(screen, fmt.Errorf("chromecast load: %w", err))
 			startAfreshPlayButton(screen)
 			return
@@ -834,7 +846,8 @@ func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
 		mediaURL := "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile)
 		// Load media on existing connection (skips 2-second receiver launch delay)
 		// No subtitles needed since they're burned in during transcoding
-		if err := client.LoadOnExisting(mediaURL, mediaType, 0, screen.mediaDuration, ""); err != nil {
+		// live=false because this is local file playback (seeking)
+		if err := client.LoadOnExisting(mediaURL, mediaType, 0, screen.mediaDuration, "", false); err != nil {
 			check(screen, fmt.Errorf("chromecast seek load: %w", err))
 			return
 		}
@@ -1093,123 +1106,126 @@ func skipNextAction(screen *FyneScreen) {
 			return
 		}
 
-		// Determine if transcoding is enabled
-		transcode := screen.Transcode
+		go func() {
+			// Determine if transcoding is enabled
+			transcode := screen.Transcode
 
-		// Chromecast handles images and audio natively - never transcode these
-		mediaTypeSlice := strings.Split(mediaType, "/")
-		if len(mediaTypeSlice) > 0 && (mediaTypeSlice[0] == "image" || mediaTypeSlice[0] == "audio") {
-			transcode = false
-		}
-
-		// Get server address
-		whereToListen := screen.httpserver.GetAddr()
-
-		var mediaURL string
-		var subtitleURL string
-		var serverStoppedCTX context.Context
-
-		if transcode {
-			// TRANSCODING PATH: Stop server and restart with new file and transcode options
-			if screen.httpserver != nil {
-				screen.httpserver.StopServer()
+			// Chromecast handles images and audio natively - never transcode these
+			mediaTypeSlice := strings.Split(mediaType, "/")
+			if len(mediaTypeSlice) > 0 && (mediaTypeSlice[0] == "image" || mediaTypeSlice[0] == "audio") {
+				transcode = false
 			}
 
-			// Get actual media duration from ffprobe (Chromecast can't report it for transcoded streams)
-			if duration, err := utils.DurationForMediaSeconds(screen.ffmpegPath, screen.mediafile); err == nil {
-				screen.mediaDuration = duration
-			}
+			// Get server address
+			whereToListen := screen.httpserver.GetAddr()
 
-			// Reset seek position for new file
-			screen.ffmpegSeek = 0
+			var mediaURL string
+			var subtitleURL string
+			var serverStoppedCTX context.Context
 
-			// Determine subtitle path for burning (only if user selected)
-			subsPath := ""
-			if screen.subsfile != "" {
-				subsPath = screen.subsfile
-			}
+			if transcode {
+				// TRANSCODING PATH: Stop server and restart with new file and transcode options
+				if screen.httpserver != nil {
+					screen.httpserver.StopServer()
+				}
 
-			tcOpts := &utils.TranscodeOptions{
-				FFmpegPath:   screen.ffmpegPath,
-				SubsPath:     subsPath,
-				SeekSeconds:  0,
-				SubtitleSize: utils.SubtitleSizeMedium,
-				LogOutput:    screen.Debug,
-			}
+				// Get actual media duration from ffprobe (Chromecast can't report it for transcoded streams)
+				if duration, err := utils.DurationForMediaSeconds(screen.ffmpegPath, screen.mediafile); err == nil {
+					screen.mediaDuration = duration
+				}
 
-			// Create new HTTP server with transcoding
-			screen.httpserver = httphandlers.NewServer(whereToListen)
-			serverStarted := make(chan error)
-			var serverCTXStop context.CancelFunc
-			serverStoppedCTX, serverCTXStop = context.WithCancel(context.Background())
-			screen.serverStopCTX = serverStoppedCTX
-			screen.cancelServerStop = serverCTXStop
+				// Reset seek position for new file
+				screen.ffmpegSeek = 0
 
-			go func() {
-				screen.httpserver.StartSimpleServerWithTranscode(serverStarted, screen.mediafile, tcOpts)
-				serverCTXStop()
-			}()
+				// Determine subtitle path for burning (only if user selected)
+				subsPath := ""
+				if screen.subsfile != "" {
+					subsPath = screen.subsfile
+				}
 
-			if err := <-serverStarted; err != nil {
-				check(screen, err)
-				return
-			}
+				tcOpts := &utils.TranscodeOptions{
+					FFmpegPath:   screen.ffmpegPath,
+					SubsPath:     subsPath,
+					SeekSeconds:  0,
+					SubtitleSize: utils.SubtitleSizeMedium,
+					LogOutput:    screen.Debug,
+				}
 
-			// Transcoded output is always video/mp4
-			mediaType = "video/mp4"
-			mediaURL = "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile)
-			// Subtitles are burned in during transcoding, no separate URL needed
+				// Create new HTTP server with transcoding
+				screen.httpserver = httphandlers.NewServer(whereToListen)
+				serverStarted := make(chan error)
+				var serverCTXStop context.CancelFunc
+				serverStoppedCTX, serverCTXStop = context.WithCancel(context.Background())
+				screen.serverStopCTX = serverStoppedCTX
+				screen.cancelServerStop = serverCTXStop
 
-		} else {
-			// NON-TRANSCODING PATH: Just update handlers on existing server
-			// Clear stored duration for non-transcoded streams (Chromecast reports it correctly)
-			screen.mediaDuration = 0
+				go func() {
+					screen.httpserver.StartSimpleServerWithTranscode(serverStarted, screen.mediafile, tcOpts)
+					serverCTXStop()
+				}()
 
-			// Get subtitle URL if needed (remove old handler first)
-			screen.httpserver.RemoveHandler("/subtitles.vtt")
-			if screen.subsfile != "" {
-				ext := strings.ToLower(filepath.Ext(screen.subsfile))
-				switch ext {
-				case ".srt":
-					webvttData, err := utils.ConvertSRTtoWebVTT(screen.subsfile)
-					if err == nil {
-						screen.httpserver.AddHandler("/subtitles.vtt", nil, nil, webvttData)
+				if err := <-serverStarted; err != nil {
+					check(screen, err)
+					return
+				}
+
+				// Transcoded output is always video/mp4
+				mediaType = "video/mp4"
+				mediaURL = "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile)
+				// Subtitles are burned in during transcoding, no separate URL needed
+
+			} else {
+				// NON-TRANSCODING PATH: Just update handlers on existing server
+				// Clear stored duration for non-transcoded streams (Chromecast reports it correctly)
+				screen.mediaDuration = 0
+
+				// Get subtitle URL if needed (remove old handler first)
+				screen.httpserver.RemoveHandler("/subtitles.vtt")
+				if screen.subsfile != "" {
+					ext := strings.ToLower(filepath.Ext(screen.subsfile))
+					switch ext {
+					case ".srt":
+						webvttData, err := utils.ConvertSRTtoWebVTT(screen.subsfile)
+						if err == nil {
+							screen.httpserver.AddHandler("/subtitles.vtt", nil, nil, webvttData)
+							subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
+						}
+					case ".vtt":
+						screen.httpserver.AddHandler("/subtitles.vtt", nil, nil, screen.subsfile)
 						subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
 					}
-				case ".vtt":
-					screen.httpserver.AddHandler("/subtitles.vtt", nil, nil, screen.subsfile)
-					subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
 				}
+
+				// Remove old media handler and add new one
+				// Handler paths use filepath.Base (decoded) because r.URL.Path is decoded by Go's HTTP server
+				// URL uses ConvertFilename (encoded) for valid HTTP URL with special characters
+				oldHandlerPath := "/" + filepath.Base(oldMediaPath)
+				newHandlerPath := "/" + filepath.Base(screen.mediafile)
+				screen.httpserver.RemoveHandler(oldHandlerPath)
+				screen.httpserver.AddHandler(newHandlerPath, nil, nil, screen.mediafile)
+
+				// Build media URL using URL-encoded filename (for special chars like brackets)
+				mediaURL = "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile)
+
+				// Use existing server context
+				serverStoppedCTX = screen.serverStopCTX
 			}
 
-			// Remove old media handler and add new one
-			// Handler paths use filepath.Base (decoded) because r.URL.Path is decoded by Go's HTTP server
-			// URL uses ConvertFilename (encoded) for valid HTTP URL with special characters
-			oldHandlerPath := "/" + filepath.Base(oldMediaPath)
-			newHandlerPath := "/" + filepath.Base(screen.mediafile)
-			screen.httpserver.RemoveHandler(oldHandlerPath)
-			screen.httpserver.AddHandler(newHandlerPath, nil, nil, screen.mediafile)
+			// Load new media on existing connection (async to avoid blocking)
+			// live=false for skip-next (local files don't need LIVE stream type)
+			go func() {
+				if err := screen.chromecastClient.Load(mediaURL, mediaType, 0, screen.mediaDuration, subtitleURL, false); err != nil {
+					check(screen, fmt.Errorf("chromecast load: %w", err))
+					return
+				}
+			}()
 
-			// Build media URL using URL-encoded filename (for special chars like brackets)
-			mediaURL = "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile)
-
-			// Use existing server context
-			serverStoppedCTX = screen.serverStopCTX
-		}
-
-		// Load new media on existing connection (async to avoid blocking)
-		go func() {
-			if err := screen.chromecastClient.Load(mediaURL, mediaType, 0, screen.mediaDuration, subtitleURL); err != nil {
-				check(screen, fmt.Errorf("chromecast load: %w", err))
-				return
+			// Restart status watcher if transcoding (server was restarted)
+			if transcode && serverStoppedCTX != nil {
+				go chromecastStatusWatcher(serverStoppedCTX, screen)
 			}
+
 		}()
-
-		// Restart status watcher if transcoding (server was restarted)
-		if transcode && serverStoppedCTX != nil {
-			go chromecastStatusWatcher(serverStoppedCTX, screen)
-		}
-
 		return
 	}
 
@@ -1291,14 +1307,23 @@ func stopAction(screen *FyneScreen) {
 		return
 	}
 
-	_ = screen.tvdata.SendtoTV("Stop")
+	// Run network stop in background
+	go func() {
+		// Capture references for safety within goroutine
+		tvdata := screen.tvdata
+		if tvdata != nil && tvdata.ControlURL != "" {
+			_ = tvdata.SendtoTV("Stop")
+		}
 
-	if screen.httpserver != nil {
-		screen.httpserver.StopServer()
-	}
+		if server := screen.httpserver; server != nil {
+			server.StopServer()
+		}
 
-	screen.tvdata = nil
-	screen.EmitMsg("Stopped")
+		// Clear references logic
+		// We're clearing tvdata in the struct but we used a local copy for the stop action
+		screen.tvdata = nil
+		screen.EmitMsg("Stopped")
+	}()
 }
 
 func getDevices(delay int) ([]devType, error) {
@@ -1321,74 +1346,76 @@ func getDevices(delay int) ([]devType, error) {
 }
 
 func volumeAction(screen *FyneScreen, up bool) {
-	// Handle Chromecast volume
-	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
-		if screen.chromecastClient == nil || !screen.chromecastClient.IsConnected() {
-			check(screen, errors.New(lang.L("chromecast not connected")))
+	go func() {
+		// Handle Chromecast volume
+		if screen.selectedDeviceType == devices.DeviceTypeChromecast {
+			if screen.chromecastClient == nil || !screen.chromecastClient.IsConnected() {
+				check(screen, errors.New(lang.L("chromecast not connected")))
+				return
+			}
+
+			// Get current volume from status
+			status, err := screen.chromecastClient.GetStatus()
+			if err != nil {
+				check(screen, errors.New(lang.L("could not get the volume levels")))
+				return
+			}
+
+			// Volume is 0.0 to 1.0, step by 0.05 (5%)
+			newVolume := status.Volume - 0.05
+			if up {
+				newVolume = status.Volume + 0.05
+			}
+
+			// Clamp to valid range
+			if newVolume < 0 {
+				newVolume = 0
+			}
+			if newVolume > 1 {
+				newVolume = 1
+			}
+
+			if err := screen.chromecastClient.SetVolume(newVolume); err != nil {
+				check(screen, errors.New(lang.L("could not send volume action")))
+			}
 			return
 		}
 
-		// Get current volume from status
-		status, err := screen.chromecastClient.GetStatus()
+		// Handle DLNA volume
+		if screen.renderingControlURL == "" {
+			check(screen, errors.New(lang.L("please select a device")))
+			return
+		}
+
+		if screen.tvdata == nil {
+			// If tvdata is nil, we just need to set RenderingControlURL if we want
+			// to control the sound. We should still rely on the play action to properly
+			// populate our tvdata type.
+			screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
+		}
+
+		currentVolume, err := screen.tvdata.GetVolumeSoapCall()
 		if err != nil {
 			check(screen, errors.New(lang.L("could not get the volume levels")))
 			return
 		}
 
-		// Volume is 0.0 to 1.0, step by 0.05 (5%)
-		newVolume := status.Volume - 0.05
+		setVolume := currentVolume - 1
+
 		if up {
-			newVolume = status.Volume + 0.05
+			setVolume = currentVolume + 1
 		}
 
-		// Clamp to valid range
-		if newVolume < 0 {
-			newVolume = 0
-		}
-		if newVolume > 1 {
-			newVolume = 1
+		if setVolume < 0 {
+			setVolume = 0
 		}
 
-		if err := screen.chromecastClient.SetVolume(newVolume); err != nil {
+		stringVolume := strconv.Itoa(setVolume)
+
+		if err := screen.tvdata.SetVolumeSoapCall(stringVolume); err != nil {
 			check(screen, errors.New(lang.L("could not send volume action")))
 		}
-		return
-	}
-
-	// Handle DLNA volume
-	if screen.renderingControlURL == "" {
-		check(screen, errors.New(lang.L("please select a device")))
-		return
-	}
-
-	if screen.tvdata == nil {
-		// If tvdata is nil, we just need to set RenderingControlURL if we want
-		// to control the sound. We should still rely on the play action to properly
-		// populate our tvdata type.
-		screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
-	}
-
-	currentVolume, err := screen.tvdata.GetVolumeSoapCall()
-	if err != nil {
-		check(screen, errors.New(lang.L("could not get the volume levels")))
-		return
-	}
-
-	setVolume := currentVolume - 1
-
-	if up {
-		setVolume = currentVolume + 1
-	}
-
-	if setVolume < 0 {
-		setVolume = 0
-	}
-
-	stringVolume := strconv.Itoa(setVolume)
-
-	if err := screen.tvdata.SetVolumeSoapCall(stringVolume); err != nil {
-		check(screen, errors.New(lang.L("could not send volume action")))
-	}
+	}()
 }
 
 func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {

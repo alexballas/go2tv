@@ -40,8 +40,7 @@ var (
 
 	versionPtr = flag.Bool("version", false, "Print version.")
 
-	errNoCombi    = errors.New("can't combine -l with other flags")
-	errFailtoList = errors.New("failed to list devices")
+	errNoCombi = errors.New("can't combine -l with other flags")
 )
 
 type dummyScreen struct {
@@ -345,7 +344,9 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 
 	// Load media (async)
 	go func() {
-		if err := client.Load(mediaURL, mediaType, 0, mediaDuration, subtitleURL); err != nil {
+		// Use LIVE stream type for URL/stdin streams (DMR shows LIVE badge, but buffer unchanged)
+		_, isStream := mediaFile.(io.ReadCloser)
+		if err := client.Load(mediaURL, mediaType, 0, mediaDuration, subtitleURL, isStream); err != nil {
 			fmt.Fprintf(os.Stderr, "chromecast load: %v\n", err)
 		}
 	}()

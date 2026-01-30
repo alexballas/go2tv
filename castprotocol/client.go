@@ -113,8 +113,9 @@ func isTimeoutError(err error) bool {
 // startTime is the position in seconds to start playback from.
 // duration is the total media duration in seconds (0 to let Chromecast detect).
 // If subtitleURL is provided, uses custom load command with subtitle tracks.
-func (c *CastClient) Load(mediaURL string, contentType string, startTime int, duration float64, subtitleURL string) error {
-	c.Log().Debug().Str("Method", "Load").Str("URL", mediaURL).Str("ContentType", contentType).Int("StartTime", startTime).Float64("Duration", duration).Bool("HasSubs", subtitleURL != "").Msg("loading media")
+// If live is true, uses StreamType "LIVE" to identify as live stream.
+func (c *CastClient) Load(mediaURL string, contentType string, startTime int, duration float64, subtitleURL string, live bool) error {
+	c.Log().Debug().Str("Method", "Load").Str("URL", mediaURL).Str("ContentType", contentType).Int("StartTime", startTime).Float64("Duration", duration).Bool("HasSubs", subtitleURL != "").Bool("Live", live).Msg("loading media")
 
 	// Check if connection is still active, reconnect if needed
 	// This handles cases where Close() was called but the client is being reused
@@ -125,8 +126,10 @@ func (c *CastClient) Load(mediaURL string, contentType string, startTime int, du
 		}
 	}
 
-	// If no subtitles and no custom duration needed, use standard load
-	if subtitleURL == "" && duration == 0 {
+	// If no subtitles, no custom duration, and NOT a live stream: use standard app.Load()
+	// For live streams, we MUST use custom LoadWithSubtitles to set StreamType "LIVE"
+	// (go-chromecast library hardcodes StreamType "BUFFERED" so we need custom path for LIVE)
+	if subtitleURL == "" && duration == 0 && !live {
 		// Retry loop for TV wake-up scenarios (timeout errors)
 		var lastErr error
 		for attempt := range 5 {
@@ -217,7 +220,10 @@ func (c *CastClient) Load(mediaURL string, contentType string, startTime int, du
 			return lastErr
 		}
 
-		err := LoadWithSubtitles(c.conn, transportId, mediaURL, contentType, startTime, duration, subtitleURL)
+		// For live streams: load PAUSED then immediately send PLAY command
+		// This simulates a "fast click" which avoids the 20-30s buffer that autoplay=true triggers
+		autoplay := !live // Only autoplay if NOT a live stream
+		err := LoadWithSubtitles(c.conn, transportId, mediaURL, contentType, startTime, duration, subtitleURL, live, autoplay)
 		if err != nil {
 			lastErr = err
 			if isTimeoutError(err) && attempt < 5 {
@@ -232,6 +238,27 @@ func (c *CastClient) Load(mediaURL string, contentType string, startTime int, du
 			c.Log().Error().Str("Method", "Load").Err(err).Msg("LoadWithSubtitles failed")
 			return err
 		}
+
+		// For live streams: immediately send PLAY command after loading paused
+		// This "fast play" behavior avoids the aggressive buffering that autoplay=true causes
+		if live {
+			c.Log().Debug().Str("Method", "Load").Msg("live stream loaded paused, sending immediate PLAY to simulate fast click")
+			// Refresh app state to get the mediaSessionId from the LOAD response
+			// The library stores this in a.media.MediaSessionId which Unpause() needs
+			if err := c.app.Update(); err != nil {
+				c.Log().Warn().Str("Method", "Load").Err(err).Msg("failed to update app state before play")
+			}
+			// Use app.Unpause() instead of standalone Play() because:
+			// 1. The PLAY command requires mediaSessionId which comes from LOAD response
+			// 2. app.Unpause() has access to this (stored in a.media.MediaSessionId)
+			// 3. Standalone Play() was missing mediaSessionId, causing command to be ignored
+			if err := c.app.Unpause(); err != nil {
+				c.Log().Warn().Str("Method", "Load").Err(err).Msg("play command failed")
+			} else {
+				c.Log().Debug().Str("Method", "Load").Msg("play command sent successfully")
+			}
+		}
+
 		c.Log().Debug().Str("Method", "Load").Msg("load with subtitles/duration success")
 		return nil
 	}
@@ -241,8 +268,9 @@ func (c *CastClient) Load(mediaURL string, contentType string, startTime int, du
 // LoadOnExisting loads media on an already-running receiver (for seek operations).
 // Unlike Load, this skips launching the receiver.
 // Use this when the receiver is already playing media and you want to load new content.
-func (c *CastClient) LoadOnExisting(mediaURL string, contentType string, startTime int, duration float64, subtitleURL string) error {
-	c.Log().Debug().Str("Method", "LoadOnExisting").Str("URL", mediaURL).Str("ContentType", contentType).Int("StartTime", startTime).Float64("Duration", duration).Bool("HasSubs", subtitleURL != "").Msg("loading media on existing receiver")
+// If live is true, uses StreamType "LIVE" to identify as live stream.
+func (c *CastClient) LoadOnExisting(mediaURL string, contentType string, startTime int, duration float64, subtitleURL string, live bool) error {
+	c.Log().Debug().Str("Method", "LoadOnExisting").Str("URL", mediaURL).Str("ContentType", contentType).Int("StartTime", startTime).Float64("Duration", duration).Bool("HasSubs", subtitleURL != "").Bool("Live", live).Msg("loading media on existing receiver")
 
 	// LoadOnExisting requires an active connection (it's designed for already-running receivers)
 	// Unlike Load(), we don't auto-reconnect because that would defeat the optimization purpose
@@ -272,7 +300,8 @@ func (c *CastClient) LoadOnExisting(mediaURL string, contentType string, startTi
 		time.Sleep(time.Duration(i+1) * 500 * time.Millisecond)
 	}
 
-	err := LoadWithSubtitles(c.conn, transportId, mediaURL, contentType, startTime, duration, subtitleURL)
+	// For LoadOnExisting, always autoplay since it's for seek operations on active content
+	err := LoadWithSubtitles(c.conn, transportId, mediaURL, contentType, startTime, duration, subtitleURL, live, true)
 	if err != nil {
 		c.Log().Error().Str("Method", "LoadOnExisting").Err(err).Msg("failed")
 	} else {

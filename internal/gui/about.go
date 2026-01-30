@@ -50,9 +50,7 @@ MIT
 		}()
 	})
 	checkversion := widget.NewButton(lang.L("Check version"), func() {
-		go fyne.Do(func() {
-			checkVersion(s)
-		})
+		go checkVersion(s)
 	})
 
 	s.CheckVersion = checkversion
@@ -70,8 +68,12 @@ MIT
 }
 
 func checkVersion(s *FyneScreen) {
-	s.CheckVersion.Disable()
-	defer s.CheckVersion.Enable()
+	fyne.Do(func() {
+		s.CheckVersion.Disable()
+	})
+	defer fyne.Do(func() {
+		s.CheckVersion.Enable()
+	})
 	errVersioncomp := errors.New(lang.L("failed to get version info") + " - " + lang.L("you're using a development or a non-compiled version"))
 	errVersionGet := errors.New(lang.L("failed to get version info") + " - " + lang.L("check your internet connection"))
 
@@ -83,13 +85,17 @@ func checkVersion(s *FyneScreen) {
 
 	// Check if current version is valid/parsable (not "dev")
 	if _, err := parseVersion(s.version); err != nil {
-		dialog.ShowError(errVersioncomp, s.Current)
+		fyne.Do(func() {
+			dialog.ShowError(errVersioncomp, s.Current)
+		})
 		return
 	}
 
 	req, err := http.NewRequest("GET", "https://go2tv.app/latest", nil)
 	if err != nil {
-		dialog.ShowError(errVersionGet, s.Current)
+		fyne.Do(func() {
+			dialog.ShowError(errVersionGet, s.Current)
+		})
 		return
 	}
 
@@ -101,7 +107,9 @@ func checkVersion(s *FyneScreen) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		dialog.ShowError(errVersionGet, s.Current)
+		fyne.Do(func() {
+			dialog.ShowError(errVersionGet, s.Current)
+		})
 		return
 	}
 	defer resp.Body.Close()
@@ -109,31 +117,37 @@ func checkVersion(s *FyneScreen) {
 	latestVersionStr := filepath.Base(resp.Request.URL.Path)
 	cmp, err := compareVersions(latestVersionStr, s.version)
 	if err != nil {
-		dialog.ShowError(errVersionGet, s.Current)
+		fyne.Do(func() {
+			dialog.ShowError(errVersionGet, s.Current)
+		})
 		return
 	}
 
 	switch cmp {
 	case 1:
-		lbl := widget.NewLabel(lang.L("Current") + ": v" + s.version + " → " + lang.L("New") + ": " + latestVersionStr)
-		lbl.Alignment = fyne.TextAlignCenter
-		cnf := dialog.NewCustomConfirm(
-			lang.L("Version checker"),
-			lang.L("Download"),
-			lang.L("Cancel"),
-			lbl,
-			func(b bool) {
-				if b {
-					u, _ := url.Parse("https://go2tv.app/latest")
-					_ = fyne.CurrentApp().OpenURL(u)
-				}
-			},
-			s.Current,
-		)
-		cnf.Show()
+		fyne.Do(func() {
+			lbl := widget.NewLabel(lang.L("Current") + ": v" + s.version + " → " + lang.L("New") + ": " + latestVersionStr)
+			lbl.Alignment = fyne.TextAlignCenter
+			cnf := dialog.NewCustomConfirm(
+				lang.L("Version checker"),
+				lang.L("Download"),
+				lang.L("Cancel"),
+				lbl,
+				func(b bool) {
+					if b {
+						u, _ := url.Parse("https://go2tv.app/latest")
+						_ = fyne.CurrentApp().OpenURL(u)
+					}
+				},
+				s.Current,
+			)
+			cnf.Show()
+		})
 		return
 	default:
-		dialog.ShowInformation(lang.L("Version checker"), lang.L("No new version"), s.Current)
+		fyne.Do(func() {
+			dialog.ShowInformation(lang.L("Version checker"), lang.L("No new version"), s.Current)
+		})
 		return
 	}
 }

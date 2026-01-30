@@ -24,7 +24,6 @@ type TextTrackStyle struct {
 	FontScale       float32 `json:"fontScale,omitempty"`       // Font size multiplier
 }
 
-// CustomLoadPayload is a LoadMediaCommand with tracks support.
 // This extends the standard cast.LoadMediaCommand to include subtitle tracks.
 type CustomLoadPayload struct {
 	Type           string              `json:"type"`
@@ -49,11 +48,18 @@ func (p *CustomLoadPayload) SetRequestId(id int) {
 // startTime: start position in seconds
 // duration: total media duration in seconds (0 to let Chromecast detect)
 // subtitleURL: URL of the WebVTT subtitle file (or empty for no subtitles)
-func LoadWithSubtitles(conn cast.Conn, transportId string, mediaURL string, contentType string, startTime int, duration float64, subtitleURL string) error {
+// live: if true, sets StreamType to "LIVE" to identify as live stream (DMR will show LIVE badge)
+// autoplay: if true, starts playback immediately; if false, waits for PLAY command
+func LoadWithSubtitles(conn cast.Conn, transportId string, mediaURL string, contentType string, startTime int, duration float64, subtitleURL string, live bool, autoplay bool) error {
+	streamType := "BUFFERED"
+	if live {
+		streamType = "LIVE"
+	}
+
 	media := MediaItemWithTracks{
 		ContentId:   mediaURL,
 		ContentType: contentType,
-		StreamType:  "BUFFERED",
+		StreamType:  streamType,
 	}
 
 	// Set duration if provided (useful for transcoded streams where Chromecast can't detect it)
@@ -83,7 +89,7 @@ func LoadWithSubtitles(conn cast.Conn, transportId string, mediaURL string, cont
 		Type:           "LOAD",
 		Media:          media,
 		CurrentTime:    float64(startTime),
-		Autoplay:       true,
+		Autoplay:       autoplay,
 		ActiveTrackIds: activeTrackIds,
 	}
 
