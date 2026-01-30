@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -375,18 +376,24 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 		screen.cancelEnablePlay()
 	}
 
-	fyne.Do(func() {
-		screen.PlayPause.Enable()
-		switch s {
-		case "Play":
-			screen.PlayPause.Text = lang.L("Play")
-			screen.PlayPause.Icon = theme.MediaPlayIcon()
-		case "Pause":
-			screen.PlayPause.Text = lang.L("Pause")
-			screen.PlayPause.Icon = theme.MediaPauseIcon()
-		}
-		screen.PlayPause.Refresh()
-	})
+	// Delay the update to avoid conflict with button tap animation.
+	// Fyne's button tap animation doesn't synchronize with Refresh() calls,
+	// causing visual artifacts. Delay by 300ms to let animation complete.
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		fyne.Do(func() {
+			screen.PlayPause.Enable()
+			switch s {
+			case "Play":
+				screen.PlayPause.Text = lang.L("Play")
+				screen.PlayPause.Icon = theme.MediaPlayIcon()
+			case "Pause":
+				screen.PlayPause.Text = lang.L("Pause")
+				screen.PlayPause.Icon = theme.MediaPauseIcon()
+			}
+			screen.PlayPause.Refresh()
+		})
+	}()
 }
 
 func setMuteUnmuteView(s string, screen *FyneScreen) {
