@@ -149,8 +149,11 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		s.selectedDevice = data[id]
 		s.selectedDeviceType = data[id].deviceType
 
-		// Reset device state when switching
-		if s.chromecastClient != nil {
+		// Reset device state when switching, but preserve active Chromecast session
+		// so user can still control it while browsing other devices
+		currentState := s.getScreenState()
+		isActivePlayback := currentState == "Playing" || currentState == "Paused"
+		if s.chromecastClient != nil && !isActivePlayback {
 			s.chromecastClient.Close(false)
 			s.chromecastClient = nil
 		}

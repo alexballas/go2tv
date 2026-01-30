@@ -166,6 +166,48 @@ func playAction(screen *FyneScreen) {
 		screen.PlayPause.Disable()
 	})
 
+	// Check if there's an active playback session (DLNA or Chromecast) that should be
+	// controlled even when browsing other devices. This takes priority over starting
+	// new playback on the currently selected device.
+	currentState := screen.getScreenState()
+	isActivePlayback := currentState == "Playing" || currentState == "Paused"
+
+	// Active DLNA session: tvdata exists and has control URL
+	if screen.tvdata != nil && screen.tvdata.ControlURL != "" && isActivePlayback {
+		if currentState == "Paused" {
+			err := screen.tvdata.SendtoTV("Play")
+			check(w, err)
+			return
+		}
+		if screen.PlayPause.Text == "Pause" {
+			err := screen.tvdata.SendtoTV("Pause")
+			check(w, err)
+			return
+		}
+	}
+
+	// Active Chromecast session: client connected and playing/paused
+	if screen.chromecastClient != nil && screen.chromecastClient.IsConnected() && isActivePlayback {
+		if currentState == "Paused" {
+			if err := screen.chromecastClient.Play(); err != nil {
+				check(w, err)
+				return
+			}
+			setPlayPauseView("Pause", screen)
+			screen.updateScreenState("Playing")
+			return
+		}
+		if screen.PlayPause.Text == "Pause" {
+			if err := screen.chromecastClient.Pause(); err != nil {
+				check(w, err)
+				return
+			}
+			setPlayPauseView("Play", screen)
+			screen.updateScreenState("Paused")
+			return
+		}
+	}
+
 	// Branch based on device type - MUST be first, before any DLNA-specific logic
 	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
 		go chromecastPlayAction(screen)
@@ -204,16 +246,11 @@ func playAction(screen *FyneScreen) {
 		}
 	}()
 
-	currentState := screen.getScreenState()
-
+	// DLNA pause/resume handling for new playback sessions
+	// (active sessions are handled above before device type check)
 	if currentState == "Paused" {
 		err := screen.tvdata.SendtoTV("Play")
 		check(w, err)
-		return
-	}
-
-	if screen.PlayPause.Text == "Pause" {
-		pauseAction(screen)
 		return
 	}
 

@@ -495,7 +495,11 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		// Only reset DLNA-specific state when switching devices, NOT Chromecast playback.
 		// This allows browsing the device list while Chromecast is playing.
 		// Chromecast connection is only closed via stop button or when starting new playback.
-		if s.selectedDevice.addr != "" && s.selectedDevice.addr != data[id].addr {
+		// Also don't reset tvdata if something is currently playing - user should be able
+		// to pause/resume the active session even when browsing other devices.
+		currentState := s.getScreenState()
+		isActivePlayback := currentState == "Playing" || currentState == "Paused"
+		if s.selectedDevice.addr != "" && s.selectedDevice.addr != data[id].addr && !isActivePlayback {
 			// Clear DLNA-specific state only
 			s.controlURL = ""
 			s.eventlURL = ""
