@@ -466,9 +466,10 @@ func getDevices(delay int) ([]devType, error) {
 	var guiDeviceList []devType
 	for _, dev := range deviceList {
 		guiDeviceList = append(guiDeviceList, devType{
-			name:       dev.Name,
-			addr:       dev.Addr,
-			deviceType: dev.Type,
+			name:        dev.Name,
+			addr:        dev.Addr,
+			deviceType:  dev.Type,
+			isAudioOnly: dev.IsAudioOnly,
 		})
 	}
 
@@ -635,6 +636,12 @@ func chromecastPlayAction(screen *FyneScreen) {
 			return
 		}
 
+		if screen.selectedDevice.isAudioOnly && (strings.Contains(mediaType, "video") || strings.Contains(mediaType, "image")) {
+			check(w, errors.New(lang.L("Video/Image file not supported by audio-only device")))
+			startAfreshPlayButton(screen)
+			return
+		}
+
 		var cancel context.CancelFunc
 		serverStoppedCTX, cancel = context.WithCancel(context.Background())
 		screen.serverStopCTX = serverStoppedCTX
@@ -656,6 +663,12 @@ func chromecastPlayAction(screen *FyneScreen) {
 		mediaReader.Close()
 		if err != nil {
 			check(w, err)
+			startAfreshPlayButton(screen)
+			return
+		}
+
+		if screen.selectedDevice.isAudioOnly && (strings.Contains(mediaType, "video") || strings.Contains(mediaType, "image")) {
+			check(w, errors.New(lang.L("Video/Image file not supported by audio-only device")))
 			startAfreshPlayButton(screen)
 			return
 		}

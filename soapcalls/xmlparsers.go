@@ -16,21 +16,28 @@ var (
 	ErrWrongDMR = errors.New("something broke somewhere - wrong DMR URL?")
 )
 
+type serviceNode struct {
+	Type        string `xml:"serviceType"`
+	ID          string `xml:"serviceId"`
+	ControlURL  string `xml:"controlURL"`
+	EventSubURL string `xml:"eventSubURL"`
+}
+
+type serviceListNode struct {
+	Services []serviceNode `xml:"service"`
+}
+
+type deviceNode struct {
+	DeviceType   string          `xml:"deviceType"`
+	FriendlyName string          `xml:"friendlyName"`
+	UDN          string          `xml:"UDN"`
+	ServiceList  serviceListNode `xml:"serviceList"`
+	DeviceList   []deviceNode    `xml:"deviceList>device"`
+}
+
 type rootNode struct {
-	XMLName xml.Name `xml:"root"`
-	Device  struct {
-		XMLName     xml.Name `xml:"device"`
-		ServiceList struct {
-			XMLName  xml.Name `xml:"serviceList"`
-			Services []struct {
-				XMLName     xml.Name `xml:"service"`
-				Type        string   `xml:"serviceType"`
-				ID          string   `xml:"serviceId"`
-				ControlURL  string   `xml:"controlURL"`
-				EventSubURL string   `xml:"eventSubURL"`
-			} `xml:"service"`
-		} `xml:"serviceList"`
-	} `xml:"device"`
+	XMLName xml.Name   `xml:"root"`
+	Device  deviceNode `xml:"device"`
 }
 
 type eventPropertySet struct {
@@ -47,19 +54,18 @@ type eventPropertySet struct {
 	} `xml:"property>LastChange>Event>InstanceID"`
 }
 
-// DMRextracted stored the services urls
+// DMRextracted stores the services urls and device identification
 type DMRextracted struct {
 	AvtransportControlURL  string
 	AvtransportEventSubURL string
 	RenderingControlURL    string
 	ConnectionManagerURL   string
+	FriendlyName           string
+	UDN                    string
 }
 
 // DMRextractor extracts the services URLs from the main DMR xml.
 func DMRextractor(ctx context.Context, dmrurl string) (*DMRextracted, error) {
-	var root rootNode
-	ex := &DMRextracted{}
-
 	parsedURL, err := url.Parse(dmrurl)
 	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
 		return nil, fmt.Errorf("DMRextractor parse error: %w", err)
@@ -84,59 +90,168 @@ func DMRextractor(ctx context.Context, dmrurl string) (*DMRextracted, error) {
 		return nil, fmt.Errorf("DMRextractor read error: %w", err)
 	}
 
-	err = xml.Unmarshal(xmlbody, &root)
+	return ParseDMRFromXML(xmlbody, parsedURL)
+}
+
+// LoadDevicesFromLocation fetches XML from a UPnP location URL and returns
+// all devices that have AVTransport service (for multi-device setups).
+func LoadDevicesFromLocation(ctx context.Context, dmrurl string) ([]*DMRextracted, error) {
+	parsedURL, err := url.Parse(dmrurl)
+	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
+		return nil, fmt.Errorf("LoadDevicesFromLocation parse error: %w", err)
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequestWithContext(ctx, "GET", dmrurl, nil)
 	if err != nil {
-		return nil, fmt.Errorf("DMRextractor unmarshal error: %w", err)
+		return nil, fmt.Errorf("LoadDevicesFromLocation GET error: %w", err)
 	}
 
-	for i := 0; i < len(root.Device.ServiceList.Services); i++ {
-		service := root.Device.ServiceList.Services[i]
-		if !strings.HasPrefix(service.EventSubURL, "/") {
-			service.EventSubURL = "/" + service.EventSubURL
-		}
-		if !strings.HasPrefix(service.ControlURL, "/") {
-			service.ControlURL = "/" + service.ControlURL
-		}
+	req.Header.Set("Connection", "close")
 
-		if service.ID == "urn:upnp-org:serviceId:AVTransport" {
-			ex.AvtransportControlURL = parsedURL.Scheme + "://" + parsedURL.Host + service.ControlURL
-			ex.AvtransportEventSubURL = parsedURL.Scheme + "://" + parsedURL.Host + service.EventSubURL
+	xmlresp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("LoadDevicesFromLocation Do GET error: %w", err)
+	}
+	defer xmlresp.Body.Close()
 
-			_, err := url.ParseRequestURI(ex.AvtransportControlURL)
-			if err != nil {
-				return nil, fmt.Errorf("DMRextractor invalid AvtransportControlURL: %w", err)
-			}
-
-			_, err = url.ParseRequestURI(ex.AvtransportEventSubURL)
-			if err != nil {
-				return nil, fmt.Errorf("DMRextractor invalid AvtransportEventSubURL: %w", err)
-			}
-		}
-
-		if service.ID == "urn:upnp-org:serviceId:RenderingControl" {
-			ex.RenderingControlURL = parsedURL.Scheme + "://" + parsedURL.Host + service.ControlURL
-
-			_, err = url.ParseRequestURI(ex.RenderingControlURL)
-			if err != nil {
-				return nil, fmt.Errorf("DMRextractor invalid RenderingControlURL: %w", err)
-			}
-		}
-
-		if service.ID == "urn:upnp-org:serviceId:ConnectionManager" {
-			ex.ConnectionManagerURL = parsedURL.Scheme + "://" + parsedURL.Host + service.ControlURL
-
-			_, err = url.ParseRequestURI(ex.ConnectionManagerURL)
-			if err != nil {
-				return nil, fmt.Errorf("DMRextractor invalid ConnectionManagerURL: %w", err)
-			}
-		}
+	xmlbody, err := io.ReadAll(xmlresp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("LoadDevicesFromLocation read error: %w", err)
 	}
 
-	if ex.AvtransportControlURL != "" {
+	return ParseAllDMRFromXML(xmlbody, parsedURL)
+}
+
+// ParseDMRFromXML parses DMR XML data and extracts service URLs.
+// It searches the root device and all embedded devices recursively
+// to find the device with AVTransport service.
+func ParseDMRFromXML(xmlbody []byte, baseURL *url.URL) (*DMRextracted, error) {
+	var root rootNode
+	err := xml.Unmarshal(xmlbody, &root)
+	if err != nil {
+		return nil, fmt.Errorf("ParseDMRFromXML unmarshal error: %w", err)
+	}
+
+	ex := extractServicesFromDevice(&root.Device, baseURL)
+	if ex != nil && ex.AvtransportControlURL != "" {
 		return ex, nil
 	}
 
 	return nil, ErrWrongDMR
+}
+
+// ParseAllDMRFromXML parses DMR XML data and extracts service URLs from ALL
+// devices that have AVTransport service. This handles multi-device setups
+// where a single UPnP root may expose multiple MediaRenderers.
+func ParseAllDMRFromXML(xmlbody []byte, baseURL *url.URL) ([]*DMRextracted, error) {
+	var root rootNode
+	err := xml.Unmarshal(xmlbody, &root)
+	if err != nil {
+		return nil, fmt.Errorf("ParseAllDMRFromXML unmarshal error: %w", err)
+	}
+
+	var results []*DMRextracted
+	extractAllServicesFromDevice(&root.Device, baseURL, &results)
+
+	if len(results) == 0 {
+		return nil, ErrWrongDMR
+	}
+
+	return results, nil
+}
+
+// extractServicesFromDevice recursively searches a device and its embedded
+// devices for AVTransport, RenderingControl, and ConnectionManager services.
+// It returns the first device's services that has AVTransport.
+func extractServicesFromDevice(device *deviceNode, baseURL *url.URL) *DMRextracted {
+	ex := buildDMRExtracted(device, baseURL)
+	if ex != nil {
+		return ex
+	}
+
+	// Recursively check embedded devices
+	for i := range device.DeviceList {
+		if result := extractServicesFromDevice(&device.DeviceList[i], baseURL); result != nil {
+			return result
+		}
+	}
+
+	return nil
+}
+
+// extractAllServicesFromDevice recursively searches a device and its embedded
+// devices for ALL devices with AVTransport service, appending them to results.
+func extractAllServicesFromDevice(device *deviceNode, baseURL *url.URL, results *[]*DMRextracted) {
+	ex := buildDMRExtracted(device, baseURL)
+	if ex != nil {
+		*results = append(*results, ex)
+	}
+
+	// Recursively check ALL embedded devices
+	for i := range device.DeviceList {
+		extractAllServicesFromDevice(&device.DeviceList[i], baseURL, results)
+	}
+}
+
+// buildDMRExtracted extracts service URLs from a single device if it has AVTransport.
+// Returns nil if the device doesn't have AVTransport service.
+func buildDMRExtracted(device *deviceNode, baseURL *url.URL) *DMRextracted {
+	ex := &DMRextracted{
+		FriendlyName: device.FriendlyName,
+		UDN:          device.UDN,
+	}
+	hasAVTransport := false
+
+	// Check this device's services
+	for _, service := range device.ServiceList.Services {
+		eventSubURL := service.EventSubURL
+		controlURL := service.ControlURL
+
+		if !strings.HasPrefix(eventSubURL, "/") {
+			eventSubURL = "/" + eventSubURL
+		}
+		if !strings.HasPrefix(controlURL, "/") {
+			controlURL = "/" + controlURL
+		}
+
+		switch service.ID {
+		case "urn:upnp-org:serviceId:AVTransport":
+			ex.AvtransportControlURL = baseURL.Scheme + "://" + baseURL.Host + controlURL
+			ex.AvtransportEventSubURL = baseURL.Scheme + "://" + baseURL.Host + eventSubURL
+			hasAVTransport = true
+
+		case "urn:upnp-org:serviceId:RenderingControl":
+			ex.RenderingControlURL = baseURL.Scheme + "://" + baseURL.Host + controlURL
+
+		case "urn:upnp-org:serviceId:ConnectionManager":
+			ex.ConnectionManagerURL = baseURL.Scheme + "://" + baseURL.Host + controlURL
+		}
+	}
+
+	// If this device has AVTransport, validate and return its services
+	if hasAVTransport {
+		// Validate URLs
+		if _, err := url.ParseRequestURI(ex.AvtransportControlURL); err != nil {
+			return nil
+		}
+		if _, err := url.ParseRequestURI(ex.AvtransportEventSubURL); err != nil {
+			return nil
+		}
+		if ex.RenderingControlURL != "" {
+			if _, err := url.ParseRequestURI(ex.RenderingControlURL); err != nil {
+				return nil
+			}
+		}
+		if ex.ConnectionManagerURL != "" {
+			if _, err := url.ParseRequestURI(ex.ConnectionManagerURL); err != nil {
+				return nil
+			}
+		}
+		return ex
+	}
+
+	return nil
 }
 
 // EventNotifyParser parses the Notify messages from the DMR device.

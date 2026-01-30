@@ -67,9 +67,10 @@ type debugWriter struct {
 }
 
 type devType struct {
-	name       string
-	addr       string
-	deviceType string
+	name        string
+	addr        string
+	deviceType  string
+	isAudioOnly bool
 }
 
 type mainButtonsLayout struct {

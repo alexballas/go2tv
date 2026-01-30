@@ -407,7 +407,7 @@ func (m listDevicesModel) View() string {
 	var s strings.Builder
 	s.WriteString("Scanning devices... (q to quit)\n\n")
 	for _, dev := range m.devices {
-		s.WriteString("• " + dev.Model + " [" + dev.URL + "] " + "\n")
+		s.WriteString("• " + dev.Model + " [" + dev.URL + "]\n")
 	}
 	return s.String()
 }

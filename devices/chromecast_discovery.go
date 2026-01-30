@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,12 +14,22 @@ import (
 	"github.com/hashicorp/mdns"
 )
 
+const (
+	// CapabilityVideoOut is the bitmask for video output capability (bit 0)
+	CapabilityVideoOut = 1
+)
+
 var (
 	// chromeCastDevices caches discovered Chromecast devices
-	// map key: "host:port" address, value: friendly device name
-	chromeCastDevices = make(map[string]string)
+	// map key: "host:port" address, value: castDevice struct
+	chromeCastDevices = make(map[string]castDevice)
 	ccMu              sync.Mutex
 )
+
+type castDevice struct {
+	Name        string
+	IsAudioOnly bool
+}
 
 // StartChromecastDiscoveryLoop continuously discovers Chromecast devices on the local network using mDNS.
 // It runs indefinitely until the provided context is canceled, searching for devices every 2 seconds.
@@ -75,8 +86,20 @@ func discoverChromecastDevices(ctx context.Context) {
 					friendlyName = friendlyName[:idx]
 				}
 
+				// Check if device is audio-only
+				isAudioOnly := false
+				for _, txt := range entry.InfoFields {
+					if after, ok := strings.CutPrefix(txt, "ca="); ok {
+						isAudioOnly = isChromecastAudioOnly(after)
+						break
+					}
+				}
+
 				ccMu.Lock()
-				chromeCastDevices[address] = friendlyName
+				chromeCastDevices[address] = castDevice{
+					Name:        friendlyName,
+					IsAudioOnly: isAudioOnly,
+				}
 				ccMu.Unlock()
 			}
 		}()
@@ -187,15 +210,20 @@ func GetChromecastDevices() []Device {
 	defer ccMu.Unlock()
 
 	result := make([]Device, 0, len(chromeCastDevices))
-	for address, name := range chromeCastDevices {
+	for address, device := range chromeCastDevices {
 		// Convert to URL format to match DLNA (GUI expects URLs)
 		addressURL := "http://" + address
 		// Add suffix to distinguish Chromecast devices in the UI
-		friendlyName := name + " (Chromecast)"
+		friendlyName := device.Name + " (Chromecast)"
+		if device.IsAudioOnly {
+			friendlyName = device.Name + " (Chromecast Audio)"
+		}
+
 		result = append(result, Device{
-			Name: friendlyName,
-			Addr: addressURL,
-			Type: DeviceTypeChromecast,
+			Name:        friendlyName,
+			Addr:        addressURL,
+			Type:        DeviceTypeChromecast,
+			IsAudioOnly: device.IsAudioOnly,
 		})
 	}
 
@@ -211,4 +239,18 @@ func HostPortIsAlive(address string) bool {
 	}
 	conn.Close()
 	return true
+}
+
+// isChromecastAudioOnly checks if a device is audio-only based on the "ca" capability field.
+// The "ca" field in mDNS TXT records is a bitmask where bit 0 (value 1) indicates Video Out support.
+// If bit 0 is NOT set, the device is considered audio-only (e.g. Chromecast Audio, Google Home speakers).
+// Returns true if audio-only, false if it supports video or if parsing fails.
+func isChromecastAudioOnly(caField string) bool {
+	ca, err := strconv.Atoi(caField)
+	if err != nil {
+		// If parsing fails, we default to false (assume it's a standard video device)
+		// to avoid restricting functionality unnecessarily.
+		return false
+	}
+	return (ca & CapabilityVideoOut) == 0
 }

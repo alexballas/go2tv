@@ -19,9 +19,10 @@ const (
 )
 
 type Device struct {
-	Name string
-	Addr string
-	Type string
+	Name        string
+	Addr        string
+	Type        string
+	IsAudioOnly bool
 }
 
 var (
@@ -42,8 +43,8 @@ func IsChromecastURL(deviceURL string) bool {
 // LoadSSDPservices returns a slice of DLNA devices that support the
 // AVTransport service.
 func LoadSSDPservices(delay int) ([]Device, error) {
-	// Reset device list every time we call this.
-	urlList := make(map[string]string)
+	// Collect unique locations (a single location may have multiple embedded devices)
+	locations := make(map[string]struct{})
 
 	port := 3339
 
@@ -82,25 +83,44 @@ func LoadSSDPservices(delay int) ([]Device, error) {
 		// (stop,play,pause). If we need support other functionalities
 		// like volume control we need to use the RenderingControl service.
 		if srv.Type == "urn:schemas-upnp-org:service:AVTransport:1" {
-			friendlyName, err := soapcalls.GetFriendlyName(context.Background(), srv.Location)
-			if err != nil {
-				continue
-			}
-
-			urlList[srv.Location] = friendlyName
+			locations[srv.Location] = struct{}{}
 		}
 	}
 
+	// Extract all devices from each unique location
+	type deviceEntry struct {
+		name string
+		addr string
+	}
+	var allDevices []deviceEntry
+
+	for loc := range locations {
+		devices, err := soapcalls.LoadDevicesFromLocation(context.Background(), loc)
+		if err != nil {
+			continue
+		}
+
+		for _, dev := range devices {
+			name := dev.FriendlyName
+			if name == "" {
+				name = "Unknown Device"
+			}
+			allDevices = append(allDevices, deviceEntry{name: name, addr: loc})
+		}
+	}
+
+	// Handle duplicate names
 	deviceList := make(map[string]string)
 	dupNames := make(map[string]int)
-	for loc, fn := range urlList {
+	for _, dev := range allDevices {
+		fn := dev.name
 		_, exists := dupNames[fn]
 		dupNames[fn]++
 		if exists {
-			fn = fn + " (" + loc + ")"
+			fn = fn + " (" + dev.addr + ")"
 		}
 
-		deviceList[fn] = loc
+		deviceList[fn] = dev.addr
 	}
 
 	for fn, c := range dupNames {

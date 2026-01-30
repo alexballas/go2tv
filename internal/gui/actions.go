@@ -587,6 +587,12 @@ func chromecastPlayAction(screen *FyneScreen) {
 			transcode = false
 		}
 
+		if screen.selectedDevice.isAudioOnly && (strings.Contains(mediaType, "video") || strings.Contains(mediaType, "image")) {
+			check(screen, errors.New(lang.L("Video/Image file not supported by audio-only device")))
+			startAfreshPlayButton(screen)
+			return
+		}
+
 		if transcode {
 			whereToListen, err := utils.URLtoListenIPandPort(screen.selectedDevice.addr)
 			if err != nil {
@@ -670,6 +676,12 @@ func chromecastPlayAction(screen *FyneScreen) {
 		mediaTypeSlice := strings.Split(mediaType, "/")
 		if len(mediaTypeSlice) > 0 && (mediaTypeSlice[0] == "image" || mediaTypeSlice[0] == "audio") {
 			transcode = false
+		}
+
+		if screen.selectedDevice.isAudioOnly && (strings.Contains(mediaType, "video") || strings.Contains(mediaType, "image")) {
+			check(screen, errors.New(lang.L("Video/Image file not supported by audio-only device")))
+			startAfreshPlayButton(screen)
+			return
 		}
 
 		whereToListen, err := utils.URLtoListenIPandPort(screen.selectedDevice.addr)
@@ -1298,9 +1310,10 @@ func getDevices(delay int) ([]devType, error) {
 	var guiDeviceList []devType
 	for _, dev := range deviceList {
 		guiDeviceList = append(guiDeviceList, devType{
-			name:       dev.Name,
-			addr:       dev.Addr,
-			deviceType: dev.Type,
+			name:        dev.Name,
+			addr:        dev.Addr,
+			deviceType:  dev.Type,
+			isAudioOnly: dev.IsAudioOnly,
 		})
 	}
 
