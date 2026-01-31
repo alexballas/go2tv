@@ -474,6 +474,9 @@ func stopAction(screen *FyneScreen) {
 	setPlayPauseView("Play", screen)
 	screen.updateScreenState("Stopped")
 
+	// Clear casting media type immediately
+	screen.SetMediaType("")
+
 	// Clean up temp media file
 	if screen.tempMediaFile != "" {
 		os.Remove(screen.tempMediaFile)

@@ -1166,6 +1166,9 @@ func skipNextAction(screen *FyneScreen) {
 				transcode = false
 			}
 
+			// Set casting media type
+			screen.SetMediaType(mediaType)
+
 			// Get server address
 			whereToListen := screen.httpserver.GetAddr()
 
@@ -1280,6 +1283,7 @@ func skipNextAction(screen *FyneScreen) {
 	}
 
 	// For DLNA or if Chromecast client not ready: use stop+play
+
 	stopAction(screen)
 	playAction(screen)
 }
@@ -1322,6 +1326,9 @@ func previewmedia(screen *FyneScreen) {
 func stopAction(screen *FyneScreen) {
 	setPlayPauseView("Play", screen)
 	screen.updateScreenState("Stopped")
+
+	// Clear casting media type immediately
+	screen.SetMediaType("")
 
 	if screen.chromecastClient != nil && screen.chromecastClient.IsConnected() {
 		// Capture references before clearing
