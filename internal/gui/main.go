@@ -5,12 +5,14 @@ package gui
 import (
 	"context"
 	"errors"
+	"image/color"
 	"math"
 	"net/url"
 	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/lang"
@@ -36,7 +38,7 @@ type deviceList struct {
 
 func (c *deviceList) FocusGained() {}
 
-func newDeviceList(dd *[]devType) *deviceList {
+func newDeviceList(s *FyneScreen, dd *[]devType) *deviceList {
 	list := &deviceList{}
 
 	list.Length = func() int {
@@ -44,14 +46,105 @@ func newDeviceList(dd *[]devType) *deviceList {
 	}
 
 	list.CreateItem = func() fyne.CanvasObject {
-		intListCont := container.NewHBox(widget.NewIcon(theme.NavigateNextIcon()), widget.NewLabel(""))
-		return intListCont
+		label := widget.NewLabel("Device Name")
+		statusIndicator := widget.NewIcon(theme.MediaPlayIcon())
+		statusIndicator.Hidden = true
+
+		// Create a transparent spacer that forces the container to keep its size
+		// even when the icon is hidden.
+		spacer := canvas.NewRectangle(color.Transparent)
+		spacer.SetMinSize(fyne.NewSize(theme.IconInlineSize(), theme.IconInlineSize()))
+
+		iconContainer := container.NewStack(spacer, statusIndicator)
+
+		return container.NewBorder(nil, nil, iconContainer, nil, label)
 	}
 
 	list.UpdateItem = func(i widget.ListItemID, o fyne.CanvasObject) {
-		fyne.Do(func() {
-			o.(*fyne.Container).Objects[1].(*widget.Label).SetText((*dd)[i].name)
-		})
+		container := o.(*fyne.Container)
+		// Border layout: [0] is usually the center (label), [1] is the side?
+		// Actually NewBorder: Left is usually first if present?
+		// NewBorder(top, bottom, left, right, center)
+		// Objects order: left, right, top, bottom, center (skipping nils)
+		// Here: left=iconContainer, center=label.
+		// So Objects[0] = iconContainer, Objects[1] = label.
+
+		var indicator *widget.Icon
+		var txtLabel *widget.Label
+
+		for _, obj := range container.Objects {
+			if l, ok := obj.(*widget.Label); ok {
+				txtLabel = l
+			}
+			// The icon is inside a Stack (iconContainer)
+			if stack, ok := obj.(*fyne.Container); ok {
+				if len(stack.Objects) > 1 {
+					if icon, ok := stack.Objects[1].(*widget.Icon); ok {
+						indicator = icon
+					}
+				}
+			}
+		}
+
+		item := (*dd)[i]
+
+		if txtLabel != nil {
+			txtLabel.SetText(item.name)
+		}
+
+		// Determine if this device is active
+		isActive := false
+		currentState := s.getScreenState()
+		isActivePlayback := currentState == "Playing" || currentState == "Paused"
+
+		if isActivePlayback {
+			// Prioritize Chromecast if connected
+			// The app logic generally effectively locks to one active session type
+			if s.chromecastClient != nil && s.chromecastClient.IsConnected() {
+				// Check Chromecast
+				if item.deviceType == devices.DeviceTypeChromecast {
+
+					// Chromecast items in list are URLs "http://host:port"
+					// s.chromecastClient.Host() returns just host (IP/hostname)
+
+					// Parse URL using net/url
+					u, err := url.Parse(item.addr)
+					if err == nil {
+						if u.Hostname() == s.chromecastClient.Host() {
+							isActive = true
+						}
+					}
+				}
+			} else if s.tvdata != nil {
+				// Fallback to DLNA if Chromecast is not active
+				// Check DLNA
+				if item.deviceType == devices.DeviceTypeDLNA {
+					// Parse ControlURL to get host
+					u, err := url.Parse(s.tvdata.ControlURL)
+
+					if err == nil {
+						// Parse item address
+						itemURL, err2 := url.Parse(item.addr)
+						if err2 == nil && u.Host == itemURL.Host {
+							isActive = true
+						}
+					}
+				}
+			}
+		}
+
+		// We remove the font style changes as per user request
+		if isActive {
+			if indicator != nil {
+				indicator.Hidden = false
+				indicator.Refresh()
+			}
+		} else {
+			if indicator != nil {
+				indicator.Hidden = true
+				indicator.Refresh()
+			}
+		}
 	}
 
 	list.ExtendBaseWidget(list)
@@ -293,7 +386,7 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	w := s.Current
 	var data []devType
-	list := newDeviceList(&data)
+	list := newDeviceList(s, &data)
 
 	fynePE := &fyne.PointEvent{
 		AbsolutePosition: fyne.Position{

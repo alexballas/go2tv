@@ -448,6 +448,10 @@ func (p *FyneScreen) updateScreenState(a string) {
 	p.mu.Lock()
 	p.State = a
 	p.mu.Unlock()
+
+	if p.DeviceList != nil {
+		p.DeviceList.Refresh()
+	}
 }
 
 // getScreenState returns the current screen state

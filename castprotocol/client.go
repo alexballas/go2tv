@@ -431,3 +431,10 @@ func (c *CastClient) IsConnected() bool {
 	defer c.mu.RUnlock()
 	return c.connected
 }
+
+// Host returns the hostname of the connected Chromecast device.
+func (c *CastClient) Host() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.host
+}
