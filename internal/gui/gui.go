@@ -49,6 +49,7 @@ type FyneScreen struct {
 	SubsText              *widget.Entry
 	CustomSubsCheck       *widget.Check
 	NextMediaCheck        *widget.Check
+	LoopSelectedCheck     *widget.Check
 	TranscodeCheckBox     *widget.Check
 	Stop                  *widget.Button
 	DeviceList            *deviceList
@@ -90,6 +91,10 @@ type FyneScreen struct {
 	Transcode             bool
 	ErrorVisible          bool
 	Hotkeys               bool
+	MediaBrowse           *widget.Button
+	SubsBrowse            *widget.Button
+	ActiveDeviceLabel     *widget.Label
+	ActiveDeviceCard      *widget.Card
 }
 
 type debugWriter struct {
@@ -179,7 +184,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 	s.tabs = tabs
 
 	w.SetContent(tabs)
-	w.Resize(fyne.NewSize(w.Canvas().Size().Width, w.Canvas().Size().Height*1.2))
+	w.Resize(fyne.NewSize(1000, 0))
 	w.CenterOnScreen()
 	w.SetMaster()
 
@@ -438,10 +443,32 @@ func (p *FyneScreen) updateScreenState(a string) {
 	p.State = a
 	p.mu.Unlock()
 
-	if p.DeviceList != nil {
-		fyne.Do(func() {
+	fyne.Do(func() {
+		if p.DeviceList != nil {
 			p.DeviceList.Refresh()
-		})
+		}
+		p.updateActiveDeviceView()
+	})
+}
+
+func (p *FyneScreen) updateActiveDeviceView() {
+	if p.ActiveDeviceCard == nil || p.ActiveDeviceLabel == nil {
+		return
+	}
+
+	state := p.getScreenState()
+	isActivePlayback := state == "Playing" || state == "Paused"
+
+	if !isActivePlayback {
+		p.ActiveDeviceCard.Hide()
+		return
+	}
+
+	if p.selectedDevice.name != "" {
+		p.ActiveDeviceLabel.SetText(p.selectedDevice.name)
+		p.ActiveDeviceCard.Show()
+	} else {
+		p.ActiveDeviceCard.Hide()
 	}
 }
 

@@ -437,17 +437,17 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	mfiletext := widget.NewEntry()
 	sfiletext := widget.NewEntry()
 
-	mfile := widget.NewButton(lang.L("Select Media File"), func() {
+	mbrowse := widget.NewButtonWithIcon(lang.L("Browse"), theme.FolderOpenIcon(), func() {
 		mediaAction(s)
 	})
 
 	mfiletext.Disable()
 
-	sfile := widget.NewButton(lang.L("Select Subtitles File"), func() {
+	sbrowse := widget.NewButtonWithIcon(lang.L("Browse"), theme.FolderOpenIcon(), func() {
 		subsAction(s)
 	})
 
-	sfile.Disable()
+	sbrowse.Disable()
 	sfiletext.Disable()
 
 	playpause := widget.NewButtonWithIcon(lang.L("Play"), theme.MediaPlayIcon(), func() {
@@ -458,15 +458,15 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		stopAction(s)
 	})
 
-	volumeup := widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
+	volumeup := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() {
 		volumeAction(s, true)
 	})
 
-	muteunmute := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() {
+	muteunmute := widget.NewButtonWithIcon("", theme.VolumeMuteIcon(), func() {
 		muteAction(s)
 	})
 
-	volumedown := widget.NewButtonWithIcon("", theme.ContentRemoveIcon(), func() {
+	volumedown := widget.NewButtonWithIcon("", theme.VolumeDownIcon(), func() {
 		volumeAction(s, false)
 	})
 
@@ -478,7 +478,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		clearsubsAction(s)
 	})
 
-	skipNext := widget.NewButtonWithIcon("", theme.MediaSkipNextIcon(), func() {
+	skipNext := widget.NewButtonWithIcon("Next", theme.MediaSkipNextIcon(), func() {
 		skipNextAction(s)
 	})
 	sliderBar := newTappableSlider(s)
@@ -502,9 +502,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	nextmedia := widget.NewCheck(lang.L("Auto-Play Next File"), func(b bool) {})
 	transcode := widget.NewCheck(lang.L("Transcode"), func(b bool) {})
 
-	mediafilelabel := widget.NewLabel(lang.L("File") + ":")
+	mediafilelabel := widget.NewLabel(lang.L("Media File") + ":")
 	subsfilelabel := widget.NewLabel(lang.L("Subtitles") + ":")
-	devicelabel := widget.NewLabel(lang.L("Select Device") + ":")
 
 	selectInternalSubs := widget.NewSelect([]string{}, func(item string) {
 		if item == "" {
@@ -515,7 +514,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		s.SubsText.Refresh()
 		sfilecheck.Checked = false
 		sfilecheck.Refresh()
-		sfile.Disable()
+		s.SubsBrowse.Disable()
 	})
 
 	selectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
@@ -541,28 +540,48 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.EndPos = endPos
 	s.SelectInternalSubs = selectInternalSubs
 	s.TranscodeCheckBox = transcode
+	s.LoopSelectedCheck = medialoop
+	s.MediaBrowse = mbrowse
+	s.SubsBrowse = sbrowse
 
 	curPos.Set("00:00:00")
 	endPos.Set("00:00:00")
 
 	sliderArea := container.NewBorder(nil, nil, widget.NewLabelWithData(curPos), widget.NewLabelWithData(endPos), sliderBar)
-	actionbuttons := container.New(&mainButtonsLayout{buttonHeight: 1.0, buttonPadding: theme.Padding()},
+	actionbuttons := container.NewHBox(
 		playpause,
+		stop,
+		skipNext,
+		layout.NewSpacer(),
 		volumedown,
 		muteunmute,
-		volumeup,
-		stop)
+		volumeup)
 
-	mrightwidgets := container.NewHBox(skipNext, previewmedia, clearmedia)
-	srightwidgets := container.NewHBox(selectInternalSubs, clearsubs)
+	mrightwidgets := container.NewHBox(previewmedia, clearmedia, mbrowse)
+	srightwidgets := container.NewHBox(selectInternalSubs, clearsubs, sbrowse)
 
-	checklists := container.NewHBox(externalmedia, sfilecheck, medialoop, nextmedia, transcode)
-	mediasubsbuttons := container.New(layout.NewGridLayout(2), mfile, sfile)
 	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, mrightwidgets), mrightwidgets, mfiletext)
 	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, srightwidgets), srightwidgets, sfiletext)
 	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
-	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, sliderArea, actionbuttons, container.NewPadded(devicelabel))
-	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
+
+	mediaCard := widget.NewCard(lang.L("Media"), "", viewfilescont)
+
+	commonCard := widget.NewCard(lang.L("Common Options"), "", container.NewVBox(medialoop, nextmedia))
+	advancedCard := widget.NewCard(lang.L("Advanced Options"), "", container.NewVBox(externalmedia, sfilecheck, transcode))
+
+	playCard := widget.NewCard(lang.L("Playback"), "", container.NewVBox(sliderArea, actionbuttons))
+
+	deviceHeader := widget.NewLabelWithStyle(lang.L("(auto refreshing)"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+
+	s.ActiveDeviceLabel = widget.NewLabel("")
+	s.ActiveDeviceCard = widget.NewCard(lang.L("Active Device"), "",
+		container.NewHBox(widget.NewIcon(theme.MediaPlayIcon()), s.ActiveDeviceLabel))
+	s.ActiveDeviceCard.Hide()
+
+	deviceCard := widget.NewCard(lang.L("Devices"), "", container.NewBorder(deviceHeader, s.ActiveDeviceCard, nil, nil, list))
+
+	leftColumn := container.NewVBox(mediaCard, playCard, commonCard, advancedCard)
+	content := container.New(&RatioLayout{LeftRatio: 0.66}, leftColumn, deviceCard)
 
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
@@ -611,11 +630,11 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	sfilecheck.OnChanged = func(b bool) {
 		if b {
-			sfile.Enable()
+			sbrowse.Enable()
 			return
 		}
 
-		sfile.Disable()
+		sbrowse.Disable()
 	}
 
 	var mediafileOld, mediafileOldText string
@@ -624,7 +643,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		if b {
 			nextmedia.SetChecked(false)
 			nextmedia.Disable()
-			mfile.Disable()
+			mbrowse.Disable()
 			previewmedia.Disable()
 			skipNext.Disable()
 
@@ -658,7 +677,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			nextmedia.Enable()
 		}
 
-		mfile.Enable()
+		mbrowse.Enable()
 		previewmedia.Enable()
 		skipNext.Enable()
 		mediafilelabel.Text = lang.L("File") + ":"

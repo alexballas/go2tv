@@ -19,7 +19,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	w := s.Current
 
 	themeText := widget.NewLabel(lang.L("Theme"))
-	dropdownTheme := widget.NewSelect([]string{lang.L("System Default"), lang.L("Light"), lang.L("Dark")}, parseTheme)
+	dropdownTheme := widget.NewSelect([]string{lang.L("System Default"), lang.L("Light"), lang.L("Dark")}, parseTheme(s))
 
 	languageText := widget.NewLabel(lang.L("Language"))
 	dropdownLanguage := widget.NewSelect([]string{lang.L("System Default"), "English", "中文(简体)"}, parseLanguage(s))
@@ -33,7 +33,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 
 	themeName := lang.L(fyne.CurrentApp().Preferences().StringWithFallback("Theme", "System Default"))
 	dropdownTheme.PlaceHolder = themeName
-	parseTheme(themeName)
+	parseTheme(s)(themeName)
 
 	s.systemTheme = fyne.CurrentApp().Settings().ThemeVariant()
 
@@ -191,17 +191,39 @@ func saveDebugLogs(f fyne.URIWriteCloser, s *FyneScreen) {
 	dialog.ShowInformation(lang.L("Debug"), lang.L("Saved to")+"... "+f.URI().String(), w)
 }
 
-func parseTheme(t string) {
-	switch t {
-	case lang.L("Light"):
-		fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Light"})
-		fyne.CurrentApp().Preferences().SetString("Theme", "Light")
-	case lang.L("Dark"):
-		fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Dark"})
-		fyne.CurrentApp().Preferences().SetString("Theme", "Dark")
-	default:
-		fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"System Default"})
-		fyne.CurrentApp().Preferences().SetString("Theme", "System Default")
+func parseTheme(s *FyneScreen) func(string) {
+	return func(t string) {
+		switch t {
+		case lang.L("Light"):
+			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Light"})
+			fyne.CurrentApp().Preferences().SetString("Theme", "Light")
+		case lang.L("Dark"):
+			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Dark"})
+			fyne.CurrentApp().Preferences().SetString("Theme", "Dark")
+		default:
+			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"System Default"})
+			fyne.CurrentApp().Preferences().SetString("Theme", "System Default")
+		}
+		if s != nil {
+			if s.Current != nil {
+				s.Current.Content().Refresh()
+			}
+			if s.NextMediaCheck != nil {
+				s.NextMediaCheck.Refresh()
+			}
+			if s.LoopSelectedCheck != nil {
+				s.LoopSelectedCheck.Refresh()
+			}
+			if s.TranscodeCheckBox != nil {
+				s.TranscodeCheckBox.Refresh()
+			}
+			if s.ExternalMediaURL != nil {
+				s.ExternalMediaURL.Refresh()
+			}
+			if s.CustomSubsCheck != nil {
+				s.CustomSubsCheck.Refresh()
+			}
+		}
 	}
 }
 
