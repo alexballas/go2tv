@@ -1021,6 +1021,9 @@ func startAfreshPlayButton(screen *FyneScreen) {
 
 	// Reset slider and times (needed for Chromecast which doesn't use sliderUpdate loop)
 	fyne.Do(func() {
+		if !screen.ExternalMediaURL.Checked {
+			screen.SkipNextButton.Enable()
+		}
 		screen.SlideBar.SetValue(0)
 	})
 	screen.CurrentPos.Set("00:00:00")
@@ -1126,6 +1129,11 @@ func skipNextAction(screen *FyneScreen) {
 		check(screen, errors.New(lang.L("please select a media file")))
 		return
 	}
+
+	fyne.Do(func() {
+		screen.PlayPause.Disable()
+		screen.SkipNextButton.Disable()
+	})
 
 	// Capture old path for handler cleanup
 	oldMediaPath := screen.mediafile
@@ -1264,11 +1272,15 @@ func skipNextAction(screen *FyneScreen) {
 				serverStoppedCTX = screen.serverStopCTX
 			}
 
+			// Set state to Waiting to ensure status watcher triggers UI update when playing starts
+			screen.updateScreenState("Waiting")
+
 			// Load new media on existing connection (async to avoid blocking)
 			// live=false for skip-next (local files don't need LIVE stream type)
 			go func() {
 				if err := screen.chromecastClient.Load(mediaURL, mediaType, 0, screen.mediaDuration, subtitleURL, false); err != nil {
 					check(screen, fmt.Errorf("chromecast load: %w", err))
+					startAfreshPlayButton(screen)
 					return
 				}
 			}()
@@ -1286,19 +1298,13 @@ func skipNextAction(screen *FyneScreen) {
 	// We need to stop synchronously to avoid race conditions with PlayAction
 	// which might be cancelled by the async StopAction or conflict with it.
 
-	setPlayPauseView("Play", screen)
-	screen.updateScreenState("Stopped")
-	screen.SetMediaType("")
+	fyne.Do(func() {
+		screen.PlayPause.SetText(lang.L("Play"))
+		screen.PlayPause.SetIcon(theme.MediaPlayIcon())
+		screen.PlayPause.Refresh()
+	})
 
-	if screen.tvdata != nil && screen.tvdata.ControlURL != "" {
-		_ = screen.tvdata.SendtoTV("Stop")
-	}
-
-	if screen.httpserver != nil {
-		screen.httpserver.StopServer()
-	}
-
-	screen.tvdata = nil
+	stopAction(screen)
 	playAction(screen)
 }
 
@@ -1379,22 +1385,22 @@ func stopAction(screen *FyneScreen) {
 	}
 
 	// Run network stop in background
-	go func() {
-		// Capture references for safety within goroutine
-		tvdata := screen.tvdata
-		if tvdata != nil && tvdata.ControlURL != "" {
-			_ = tvdata.SendtoTV("Stop")
-		}
 
-		if server := screen.httpserver; server != nil {
-			server.StopServer()
-		}
+	// Capture references for safety within goroutine
+	tvdata := screen.tvdata
+	if tvdata != nil && tvdata.ControlURL != "" {
+		_ = tvdata.SendtoTV("Stop")
+	}
 
-		// Clear references logic
-		// We're clearing tvdata in the struct but we used a local copy for the stop action
-		screen.tvdata = nil
-		screen.EmitMsg("Stopped")
-	}()
+	if server := screen.httpserver; server != nil {
+		server.StopServer()
+	}
+
+	// Clear references logic
+	// We're clearing tvdata in the struct but we used a local copy for the stop action
+	screen.tvdata = nil
+	screen.EmitMsg("Stopped")
+
 }
 
 func getDevices(delay int) ([]devType, error) {

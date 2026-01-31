@@ -422,6 +422,10 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 				}
 			}
 			screen.PlayPause.Refresh()
+
+			if !screen.ExternalMediaURL.Checked {
+				screen.SkipNextButton.Enable()
+			}
 		})
 	}()
 }
