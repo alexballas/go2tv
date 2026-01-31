@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -201,7 +200,6 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 	// Fyne's button tap animation doesn't synchronize with Refresh() calls,
 	// causing visual artifacts. Delay by 300ms to let animation complete.
 	go func() {
-		time.Sleep(300 * time.Millisecond)
 		fyne.Do(func() {
 			// Check if we are casting an image
 			isImage := false

@@ -1,11 +1,11 @@
+fyne.io/fyne/v2 v2.7.3-0.20260131162633-80f2081b7904 h1:6Ay5HSq4dtLNUe3Hc57ESDJg9lvDw6dR8tbdPGFGGcs=
+fyne.io/fyne/v2 v2.7.3-0.20260131162633-80f2081b7904/go.mod h1:kjf8HBnGLLykRyRX1mAHLYAfuBaY0oSx6XKCr/dzkOg=
 fyne.io/systray v1.12.0 h1:CA1Kk0e2zwFlxtc02L3QFSiIbxJ/P0n582YrZHT7aTM=
 fyne.io/systray v1.12.0/go.mod h1:RVwqP9nYMo7h5zViCBHri2FgjXF7H2cub7MAq4NSoLs=
 github.com/BurntSushi/toml v1.5.0 h1:W5quZX/G/csjUnuI8SUYlsHs9M38FC7znL0lIO+DvMg=
 github.com/BurntSushi/toml v1.5.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
 github.com/FyshOS/fancyfs v0.0.0-20251025194026-1f03098ff624 h1:ryzrudl71BPWW9jalH/6qSXOmj/B96lunzJEi6zuuR4=
 github.com/FyshOS/fancyfs v0.0.0-20251025194026-1f03098ff624/go.mod h1:oLKntpN0BPY75aajV735V/14CnSF/GEHCa6mKNDhOjw=
-github.com/alexballas/fyne/v2 v2.3.3-0.20260119231210-feff58846c92 h1:f89NtXDehLf2bxWHjGrvQo828Sz2j/+2XtrmHH+LRRY=
-github.com/alexballas/fyne/v2 v2.3.3-0.20260119231210-feff58846c92/go.mod h1:kjf8HBnGLLykRyRX1mAHLYAfuBaY0oSx6XKCr/dzkOg=
 github.com/alexballas/go-ssdp v0.0.3 h1:wTtHib45NtrkYZ/saCaB/2qJ9ci6EWeQFl6imaW4gPg=
 github.com/alexballas/go-ssdp v0.0.3/go.mod h1:jUwvJl32BZxBQiRbW5Q0h1QrDGMuA+HRg5qTQvIquJE=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=

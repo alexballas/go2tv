@@ -3,7 +3,7 @@ module go2tv.app/go2tv/v2
 go 1.25
 
 require (
-	fyne.io/fyne/v2 v2.7.1
+	fyne.io/fyne/v2 v2.7.3-0.20260131162633-80f2081b7904
 	github.com/alexballas/go-ssdp v0.0.3
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/gdamore/tcell/v2 v2.9.0
@@ -84,5 +84,3 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace fyne.io/fyne/v2 => github.com/alexballas/fyne/v2 v2.3.3-0.20260119231210-feff58846c92
