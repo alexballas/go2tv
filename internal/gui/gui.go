@@ -239,12 +239,12 @@ func (p *FyneScreen) Fini() {
 			autoSelectNextSubs(p.mediafile, p)
 		}
 
-		playAction(p)
+		go playAction(p)
 		return
 	}
 	// Main media loop logic
 	if p.Medialoop {
-		playAction(p)
+		go playAction(p)
 	}
 }
 

@@ -231,7 +231,9 @@ func subsAction(screen *FyneScreen) {
 func playAction(screen *FyneScreen) {
 	var mediaFile any
 
-	screen.PlayPause.Disable()
+	fyne.Do(func() {
+		screen.PlayPause.Disable()
+	})
 
 	// Check if there's an active playback session (DLNA or Chromecast) that should be
 	// controlled even when browsing other devices. This takes priority over starting
