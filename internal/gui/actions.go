@@ -1314,6 +1314,7 @@ func previewmedia(screen *FyneScreen) {
 	if err != nil {
 		return
 	}
+	defer mfile.Close()
 
 	mediaType, err := utils.GetMimeDetailsFromFile(mfile)
 	check(screen, err)
@@ -1324,17 +1325,21 @@ func previewmedia(screen *FyneScreen) {
 	mediaTypeSlice := strings.Split(mediaType, "/")
 	switch mediaTypeSlice[0] {
 	case "image":
-		img := canvas.NewImageFromFile(screen.mediafile)
-		img.FillMode = canvas.ImageFillContain
-		img.ScaleMode = canvas.ImageScaleFastest
-		imgw := fyne.CurrentApp().NewWindow(filepath.Base(screen.mediafile))
-		imgw.SetContent(img)
-		imgw.Resize(fyne.NewSize(800, 600))
-		imgw.CenterOnScreen()
-		imgw.Show()
+		fyne.Do(func() {
+			img := canvas.NewImageFromFile(screen.mediafile)
+			img.FillMode = canvas.ImageFillContain
+			img.ScaleMode = canvas.ImageScaleFastest
+			imgw := fyne.CurrentApp().NewWindow(filepath.Base(screen.mediafile))
+			imgw.SetContent(img)
+			imgw.Resize(fyne.NewSize(800, 600))
+			imgw.CenterOnScreen()
+			imgw.Show()
+		})
 	default:
-		err := open.Run(screen.mediafile)
-		check(screen, err)
+		go func() {
+			err := open.Run(screen.mediafile)
+			check(screen, err)
+		}()
 	}
 }
 
@@ -1357,9 +1362,9 @@ func stopAction(screen *FyneScreen) {
 		// Reset progress bar and time labels immediately (UI update)
 		fyne.Do(func() {
 			screen.SlideBar.SetValue(0)
+			screen.CurrentPos.Set("00:00:00")
+			screen.EndPos.Set("00:00:00")
 		})
-		screen.CurrentPos.Set("00:00:00")
-		screen.EndPos.Set("00:00:00")
 		// Reset transcoding seek state
 		screen.ffmpegSeek = 0
 		screen.mediaDuration = 0
@@ -1379,22 +1384,23 @@ func stopAction(screen *FyneScreen) {
 		return
 	}
 
-	// Run network stop in background
-
-	// Capture references for safety within goroutine
+	// Capture references before clearing
 	tvdata := screen.tvdata
-	if tvdata != nil && tvdata.ControlURL != "" {
-		_ = tvdata.SendtoTV("Stop")
-	}
+	server := screen.httpserver
 
-	if server := screen.httpserver; server != nil {
-		server.StopServer()
-	}
-
-	// Clear references logic
-	// We're clearing tvdata in the struct but we used a local copy for the stop action
+	// Clear references immediately
 	screen.tvdata = nil
-	screen.EmitMsg("Stopped")
+	screen.httpserver = nil
+
+	// Run blocking network operations in background
+	go func() {
+		if tvdata != nil && tvdata.ControlURL != "" {
+			_ = tvdata.SendtoTV("Stop")
+		}
+		if server != nil {
+			server.StopServer()
+		}
+	}()
 
 }
 

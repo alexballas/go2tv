@@ -38,9 +38,7 @@ func newDeviceList(dd *[]devType) *deviceList {
 	}
 
 	list.UpdateItem = func(i widget.ListItemID, o fyne.CanvasObject) {
-		fyne.Do(func() {
-			o.(*fyne.Container).Objects[1].(*widget.Label).SetText((*dd)[i].name)
-		})
+		o.(*fyne.Container).Objects[1].(*widget.Label).SetText((*dd)[i].name)
 	}
 
 	list.ExtendBaseWidget(list)
@@ -55,13 +53,13 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	// Avoid parallel execution of getDevices.
 	blockGetDevices := make(chan struct{})
 	go func() {
-		var err error
-		data, err = getDevices(1)
+		datanew, err := getDevices(1)
 		if err != nil {
-			data = nil
+			datanew = nil
 		}
 
-		fyne.Do(func() {
+		fyne.DoAndWait(func() {
+			data = datanew
 			list.Refresh()
 		})
 
@@ -244,8 +242,20 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 	for range refreshDevices.C {
 		datanew, _ := getDevices(2)
 
+		var oldDevices []devType
+		var selectedAddr string
+		var selectedDeviceAddr string
+		fyne.DoAndWait(func() {
+			oldDevices = append([]devType(nil), (*data)...)
+			selectedDeviceAddr = s.selectedDevice.addr
+			selectedAddr = s.controlURL
+			if s.selectedDeviceType == devices.DeviceTypeChromecast {
+				selectedAddr = selectedDeviceAddr
+			}
+		})
+
 	outer:
-		for _, old := range *data {
+		for _, old := range oldDevices {
 			oldAddress, _ := url.Parse(old.addr)
 			for _, new := range datanew {
 				newAddress, _ := url.Parse(new.addr)
@@ -262,10 +272,6 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 		// check to see if the new refresh includes
 		// one of the already selected devices
 		var includes bool
-		selectedAddr := s.controlURL
-		if s.selectedDeviceType == devices.DeviceTypeChromecast {
-			selectedAddr = s.selectedDevice.addr
-		}
 		if selectedAddr != "" {
 			u, _ := url.Parse(selectedAddr)
 			for _, d := range datanew {
@@ -276,36 +282,37 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 			}
 		}
 
-		*data = datanew
-
+		clearSelection := false
 		if selectedAddr != "" && !includes {
 			u, _ := url.Parse(selectedAddr)
 			if !utils.HostPortIsAlive(u.Host) {
+				clearSelection = true
+			}
+		}
+
+		foundIdx := -1
+		if selectedDeviceAddr != "" {
+			for n, a := range datanew {
+				if selectedDeviceAddr == a.addr {
+					foundIdx = n
+					break
+				}
+			}
+		}
+
+		fyne.DoAndWait(func() {
+			*data = datanew
+
+			if clearSelection {
 				s.controlURL = ""
 				s.selectedDevice = devType{}
-				fyne.Do(func() {
-					s.DeviceList.UnselectAll()
-				})
-			}
-		}
-
-		var found bool
-		for n, a := range *data {
-			if s.selectedDevice.addr == a.addr {
-				found = true
-				fyne.Do(func() {
-					s.DeviceList.Select(n)
-				})
-			}
-		}
-
-		if !found {
-			fyne.Do(func() {
 				s.DeviceList.UnselectAll()
-			})
-		}
+			} else if foundIdx >= 0 {
+				s.DeviceList.Select(foundIdx)
+			} else {
+				s.DeviceList.UnselectAll()
+			}
 
-		fyne.Do(func() {
 			s.DeviceList.Refresh()
 		})
 	}

@@ -192,19 +192,17 @@ func saveDebugLogs(f fyne.URIWriteCloser, s *FyneScreen) {
 }
 
 func parseTheme(t string) {
-	go fyne.DoAndWait(func() {
-		switch t {
-		case lang.L("Light"):
-			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Light"})
-			fyne.CurrentApp().Preferences().SetString("Theme", "Light")
-		case lang.L("Dark"):
-			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Dark"})
-			fyne.CurrentApp().Preferences().SetString("Theme", "Dark")
-		default:
-			fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"System Default"})
-			fyne.CurrentApp().Preferences().SetString("Theme", "System Default")
-		}
-	})
+	switch t {
+	case lang.L("Light"):
+		fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Light"})
+		fyne.CurrentApp().Preferences().SetString("Theme", "Light")
+	case lang.L("Dark"):
+		fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"Dark"})
+		fyne.CurrentApp().Preferences().SetString("Theme", "Dark")
+	default:
+		fyne.CurrentApp().Settings().SetTheme(go2tvTheme{"System Default"})
+		fyne.CurrentApp().Preferences().SetString("Theme", "System Default")
+	}
 }
 
 func parseLanguage(s *FyneScreen) func(string) {

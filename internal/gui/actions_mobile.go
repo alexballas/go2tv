@@ -478,12 +478,19 @@ func stopAction(screen *FyneScreen) {
 
 	// Handle Chromecast stop
 	if screen.chromecastClient != nil && screen.chromecastClient.IsConnected() {
-		_ = screen.chromecastClient.Stop()
-		screen.chromecastClient.Close(false)
+		client := screen.chromecastClient
+		server := screen.httpserver
+
 		screen.chromecastClient = nil
-		if screen.httpserver != nil {
-			screen.httpserver.StopServer()
-		}
+		screen.httpserver = nil
+
+		go func() {
+			_ = client.Stop()
+			client.Close(false)
+			if server != nil {
+				server.StopServer()
+			}
+		}()
 		return
 	}
 
@@ -496,15 +503,16 @@ func stopAction(screen *FyneScreen) {
 	go func() {
 		// Capture references for safety within goroutine
 		tvdata := screen.tvdata
+		server := screen.httpserver
+		screen.tvdata = nil
+		screen.httpserver = nil
+
 		if tvdata != nil && tvdata.ControlURL != "" {
 			_ = tvdata.SendtoTV("Stop")
 		}
-
-		if server := screen.httpserver; server != nil {
+		if server != nil {
 			server.StopServer()
 		}
-
-		screen.tvdata = nil
 	}()
 }
 

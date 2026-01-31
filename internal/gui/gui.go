@@ -160,9 +160,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 			if s.ffmpegPathChanged {
 				furi, err := storage.ParseURI("file://" + s.mediafile)
 				if err == nil {
-					go fyne.Do(func() {
-						selectMediaFile(s, furi)
-					})
+					selectMediaFile(s, furi)
 				}
 				s.ffmpegPathChanged = false
 			}
@@ -199,28 +197,20 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 // EmitMsg Method to implement the screen interface
 func (p *FyneScreen) EmitMsg(a string) {
-	switch a {
-	case "Playing":
-		setPlayPauseView("Pause", p)
-		p.updateScreenState("Playing")
-	case "Paused":
-		setPlayPauseView("Play", p)
-		p.updateScreenState("Paused")
-	case "Stopped":
-		setPlayPauseView("Play", p)
-		p.updateScreenState("Stopped")
-
-		// Clear casting media type and reset controls
-		p.SetMediaType("")
-
-		// Reset slider and times (needed for Chromecast which doesn't use sliderUpdate loop)
-		fyne.Do(func() {
-			p.SlideBar.SetValue(0)
-		})
-		stopAction(p)
-	default:
-		dialog.ShowInformation("?", "Unknown callback value", p.Current)
-	}
+	fyne.Do(func() {
+		switch a {
+		case "Playing":
+			setPlayPauseView("Pause", p)
+			p.updateScreenState("Playing")
+		case "Paused":
+			setPlayPauseView("Play", p)
+			p.updateScreenState("Paused")
+		case "Stopped":
+			stopAction(p)
+		default:
+			dialog.ShowInformation("?", "Unknown callback value", p.Current)
+		}
+	})
 }
 
 // SetMediaType Method to implement the screen interface
@@ -234,33 +224,33 @@ func (p *FyneScreen) SetMediaType(mediaType string) {
 // Will only be executed when we receive a callback message,
 // not when we explicitly click the Stop button.
 func (p *FyneScreen) Fini() {
-	gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
+	fyne.Do(func() {
+		gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
 
-	// For Chromecast, ignore gapless setting (it's DLNA-specific)
-	isChromecast := p.selectedDeviceType == devices.DeviceTypeChromecast
+		// For Chromecast, ignore gapless setting (it's DLNA-specific)
+		isChromecast := p.selectedDeviceType == devices.DeviceTypeChromecast
 
-	// For Chromecast, reset state to Stopped so playAction doesn't interpret as pause
-	if isChromecast {
-		p.updateScreenState("Stopped")
-	}
-
-	if p.NextMediaCheck.Checked && (isChromecast || gaplessOption == "Disabled") {
-		p.MediaText.Text, p.mediafile = getNextMedia(p)
-		fyne.Do(func() {
-			p.MediaText.Refresh()
-		})
-
-		if !p.CustomSubsCheck.Checked {
-			autoSelectNextSubs(p.mediafile, p)
+		// For Chromecast, reset state to Stopped so playAction doesn't interpret as pause
+		if isChromecast {
+			p.updateScreenState("Stopped")
 		}
 
-		go playAction(p)
-		return
-	}
-	// Main media loop logic
-	if p.Medialoop {
-		go playAction(p)
-	}
+		if p.NextMediaCheck.Checked && (isChromecast || gaplessOption == "Disabled") {
+			p.MediaText.Text, p.mediafile = getNextMedia(p)
+			p.MediaText.Refresh()
+
+			if !p.CustomSubsCheck.Checked {
+				autoSelectNextSubs(p.mediafile, p)
+			}
+
+			go playAction(p)
+			return
+		}
+		// Main media loop logic
+		if p.Medialoop {
+			go playAction(p)
+		}
+	})
 }
 
 func initFyneNewScreen(version string) *FyneScreen {
@@ -429,14 +419,13 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 }
 
 func setMuteUnmuteView(s string, screen *FyneScreen) {
-	switch s {
-	case "Mute":
-		screen.MuteUnmute.Icon = theme.VolumeUpIcon()
-	case "Unmute":
-		screen.MuteUnmute.Icon = theme.VolumeMuteIcon()
-	}
-
 	fyne.Do(func() {
+		switch s {
+		case "Mute":
+			screen.MuteUnmute.Icon = theme.VolumeUpIcon()
+		case "Unmute":
+			screen.MuteUnmute.Icon = theme.VolumeMuteIcon()
+		}
 		screen.MuteUnmute.Refresh()
 	})
 }
@@ -450,7 +439,9 @@ func (p *FyneScreen) updateScreenState(a string) {
 	p.mu.Unlock()
 
 	if p.DeviceList != nil {
-		p.DeviceList.Refresh()
+		fyne.Do(func() {
+			p.DeviceList.Refresh()
+		})
 	}
 }
 
