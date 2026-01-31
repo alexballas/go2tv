@@ -46,6 +46,7 @@ type handler struct {
 type Screen interface {
 	EmitMsg(string)
 	Fini()
+	SetMediaType(string)
 }
 
 // We use this type to be able to test
@@ -268,6 +269,10 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 
 		switch newstate {
 		case "PLAYING":
+			// Handle gapless transition: update media type if changed
+			if tv != nil && tv.MediaType != "" {
+				screen.SetMediaType(tv.MediaType)
+			}
 			screen.EmitMsg("Playing")
 			tv.SetProcessStopTrue(uuid)
 		case "PAUSED_PLAYBACK":

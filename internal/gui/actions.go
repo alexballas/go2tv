@@ -378,6 +378,9 @@ func playAction(screen *FyneScreen) {
 			return
 		}
 
+		// Set casting media type
+		screen.SetMediaType(mediaType)
+
 		if !screen.Transcode {
 			isSeek = true
 		}
@@ -423,6 +426,9 @@ func playAction(screen *FyneScreen) {
 			startAfreshPlayButton(screen)
 			return
 		}
+
+		// Set casting media type
+		screen.SetMediaType(mediaType)
 
 		mediaFile = mediaURL
 		if strings.Contains(mediaType, "image") {
@@ -635,6 +641,9 @@ func chromecastPlayAction(screen *FyneScreen) {
 			transcode = false
 		}
 
+		// Set casting media type
+		screen.SetMediaType(mediaType)
+
 		if screen.selectedDevice.isAudioOnly && (strings.Contains(mediaType, "video") || strings.Contains(mediaType, "image")) {
 			check(screen, errors.New(lang.L("Video/Image file not supported by audio-only device")))
 			startAfreshPlayButton(screen)
@@ -725,6 +734,9 @@ func chromecastPlayAction(screen *FyneScreen) {
 		if len(mediaTypeSlice) > 0 && (mediaTypeSlice[0] == "image" || mediaTypeSlice[0] == "audio") {
 			transcode = false
 		}
+
+		// Set casting media type
+		screen.SetMediaType(mediaType)
 
 		if screen.selectedDevice.isAudioOnly && (strings.Contains(mediaType, "video") || strings.Contains(mediaType, "image")) {
 			check(screen, errors.New(lang.L("Video/Image file not supported by audio-only device")))

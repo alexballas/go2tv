@@ -75,6 +75,7 @@ type FyneScreen struct {
 	currentmfolder        string
 	ffmpegPath            string
 	ffmpegSeek            int
+	castingMediaType      string  // MIME type of currently casting media (e.g., "image/jpeg", "video/mp4")
 	mediaDuration         float64 // Actual media duration in seconds (from ffprobe, for transcoded streams)
 	chromecastCheckedFile string  // Tracks which file was already auto-checked for Chromecast compatibility
 	systemTheme           fyne.ThemeVariant
@@ -209,10 +210,25 @@ func (p *FyneScreen) EmitMsg(a string) {
 	case "Stopped":
 		setPlayPauseView("Play", p)
 		p.updateScreenState("Stopped")
+
+		// Clear casting media type and reset controls
+		p.SetMediaType("")
+
+		// Reset slider and times (needed for Chromecast which doesn't use sliderUpdate loop)
+		fyne.Do(func() {
+			p.SlideBar.SetValue(0)
+		})
 		stopAction(p)
 	default:
 		dialog.ShowInformation("?", "Unknown callback value", p.Current)
 	}
+}
+
+// SetMediaType Method to implement the screen interface
+func (p *FyneScreen) SetMediaType(mediaType string) {
+	p.mu.Lock()
+	p.castingMediaType = mediaType
+	p.mu.Unlock()
 }
 
 // Fini Method to implement the screen interface.
@@ -382,14 +398,28 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 	go func() {
 		time.Sleep(300 * time.Millisecond)
 		fyne.Do(func() {
-			screen.PlayPause.Enable()
-			switch s {
-			case "Play":
-				screen.PlayPause.Text = lang.L("Play")
-				screen.PlayPause.Icon = theme.MediaPlayIcon()
-			case "Pause":
-				screen.PlayPause.Text = lang.L("Pause")
-				screen.PlayPause.Icon = theme.MediaPauseIcon()
+			// Check if we are casting an image
+			isImage := false
+			screen.mu.RLock()
+			if strings.HasPrefix(screen.castingMediaType, "image/") {
+				isImage = true
+			}
+			screen.mu.RUnlock()
+
+			if isImage {
+				screen.PlayPause.Disable()
+				screen.PlayPause.SetIcon(theme.FileImageIcon())
+				screen.PlayPause.SetText("Image Casting")
+			} else {
+				screen.PlayPause.Enable()
+				switch s {
+				case "Play":
+					screen.PlayPause.Text = lang.L("Play")
+					screen.PlayPause.Icon = theme.MediaPlayIcon()
+				case "Pause":
+					screen.PlayPause.Text = lang.L("Pause")
+					screen.PlayPause.Icon = theme.MediaPauseIcon()
+				}
 			}
 			screen.PlayPause.Refresh()
 		})

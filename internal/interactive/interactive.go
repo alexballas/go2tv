@@ -206,6 +206,11 @@ func (p *NewScreen) Fini() {
 	p.exitCTXfunc()
 }
 
+// SetMediaType Method to implement the screen interface
+func (p *NewScreen) SetMediaType(mediaType string) {
+	// No-op for interactive mode
+}
+
 // InitTcellNewScreen .
 func InitTcellNewScreen(ctxCancel context.CancelFunc) (*NewScreen, error) {
 	s, err := tcell.NewScreen()

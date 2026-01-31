@@ -310,6 +310,9 @@ func playAction(screen *FyneScreen) {
 			return
 		}
 
+		// Set casting media type
+		screen.SetMediaType(mediaType)
+
 		// Images: read to byte buffer (small, no seeking needed)
 		if strings.Contains(mediaType, "image") {
 			mediaReader, err := storage.Reader(screen.mediafile)

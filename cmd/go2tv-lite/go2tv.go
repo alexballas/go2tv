@@ -560,6 +560,10 @@ func (s *dummyScreen) Fini() {
 	s.ctxCancel()
 }
 
+func (s *dummyScreen) SetMediaType(mediaType string) {
+	// No-op for CLI mode
+}
+
 func checkStdin() bool {
 	stat, _ := os.Stdin.Stat()
 	return (stat.Mode() & os.ModeCharDevice) == 0

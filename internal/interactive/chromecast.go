@@ -214,6 +214,11 @@ func (p *ChromecastScreen) Fini() {
 	p.exitCTXfunc()
 }
 
+// SetMediaType Method to implement the screen interface
+func (p *ChromecastScreen) SetMediaType(mediaType string) {
+	// No-op for interactive mode
+}
+
 // InitChromecastScreen creates a new Chromecast interactive screen.
 func InitChromecastScreen(ctxCancel context.CancelFunc) (*ChromecastScreen, error) {
 	s, err := tcell.NewScreen()
