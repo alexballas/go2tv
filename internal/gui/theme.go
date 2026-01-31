@@ -61,3 +61,8 @@ func (m go2tvTheme) Font(style fyne.TextStyle) fyne.Resource {
 func (m go2tvTheme) Size(name fyne.ThemeSizeName) float32 {
 	return theme.DefaultTheme().Size(name)
 }
+
+func castIcon() fyne.Resource {
+	return fyne.NewStaticResource("cast.svg", []byte(`
+	`))
+}

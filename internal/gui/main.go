@@ -5,14 +5,12 @@ package gui
 import (
 	"context"
 	"errors"
-	"image/color"
 	"math"
 	"net/url"
 	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/lang"
@@ -47,42 +45,27 @@ func newDeviceList(s *FyneScreen, dd *[]devType) *deviceList {
 
 	list.CreateItem = func() fyne.CanvasObject {
 		label := widget.NewLabel("Device Name")
-		statusIndicator := widget.NewIcon(theme.MediaPlayIcon())
-		statusIndicator.Hidden = true
 
-		// Create a transparent spacer that forces the container to keep its size
-		// even when the icon is hidden.
-		spacer := canvas.NewRectangle(color.Transparent)
-		spacer.SetMinSize(fyne.NewSize(theme.IconInlineSize(), theme.IconInlineSize()))
+		// Persistent icon for the device (Left side)
+		// This will be swapped to a Play icon when active
+		icon := widget.NewIcon(castIcon())
 
-		iconContainer := container.NewStack(spacer, statusIndicator)
-
-		return container.NewBorder(nil, nil, iconContainer, nil, label)
+		return container.NewBorder(nil, nil, icon, nil, label)
 	}
 
 	list.UpdateItem = func(i widget.ListItemID, o fyne.CanvasObject) {
 		container := o.(*fyne.Container)
-		// Border layout: [0] is usually the center (label), [1] is the side?
-		// Actually NewBorder: Left is usually first if present?
-		// NewBorder(top, bottom, left, right, center)
-		// Objects order: left, right, top, bottom, center (skipping nils)
-		// Here: left=iconContainer, center=label.
-		// So Objects[0] = iconContainer, Objects[1] = label.
 
-		var indicator *widget.Icon
+		var navIcon *widget.Icon
 		var txtLabel *widget.Label
 
 		for _, obj := range container.Objects {
 			if l, ok := obj.(*widget.Label); ok {
 				txtLabel = l
 			}
-			// The icon is inside a Stack (iconContainer)
-			if stack, ok := obj.(*fyne.Container); ok {
-				if len(stack.Objects) > 1 {
-					if icon, ok := stack.Objects[1].(*widget.Icon); ok {
-						indicator = icon
-					}
-				}
+			// Standalone icon is the main indicator (Left)
+			if icon, ok := obj.(*widget.Icon); ok {
+				navIcon = icon
 			}
 		}
 
@@ -133,16 +116,16 @@ func newDeviceList(s *FyneScreen, dd *[]devType) *deviceList {
 			}
 		}
 
-		// We remove the font style changes as per user request
+		// Swap icon based on state
 		if isActive {
-			if indicator != nil {
-				indicator.Hidden = false
-				indicator.Refresh()
+			if navIcon != nil {
+				navIcon.SetResource(theme.MediaPlayIcon())
+				navIcon.Refresh()
 			}
 		} else {
-			if indicator != nil {
-				indicator.Hidden = true
-				indicator.Refresh()
+			if navIcon != nil {
+				navIcon.SetResource(castIcon())
+				navIcon.Refresh()
 			}
 		}
 	}
