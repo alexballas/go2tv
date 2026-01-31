@@ -1283,8 +1283,22 @@ func skipNextAction(screen *FyneScreen) {
 	}
 
 	// For DLNA or if Chromecast client not ready: use stop+play
+	// We need to stop synchronously to avoid race conditions with PlayAction
+	// which might be cancelled by the async StopAction or conflict with it.
 
-	stopAction(screen)
+	setPlayPauseView("Play", screen)
+	screen.updateScreenState("Stopped")
+	screen.SetMediaType("")
+
+	if screen.tvdata != nil && screen.tvdata.ControlURL != "" {
+		_ = screen.tvdata.SendtoTV("Stop")
+	}
+
+	if screen.httpserver != nil {
+		screen.httpserver.StopServer()
+	}
+
+	screen.tvdata = nil
 	playAction(screen)
 }
 
