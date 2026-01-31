@@ -1096,11 +1096,6 @@ out:
 	}
 }
 
-func pauseAction(screen *FyneScreen) {
-	err := screen.tvdata.SendtoTV("Pause")
-	check(screen, err)
-}
-
 func clearmediaAction(screen *FyneScreen) {
 	screen.MediaText.Text = ""
 	screen.mediafile = ""

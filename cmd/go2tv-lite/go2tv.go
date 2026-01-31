@@ -351,6 +351,41 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 		}
 	}()
 
+	// Poll for status updates
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		var previousState string
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if !client.IsConnected() {
+					continue
+				}
+				status, err := client.GetStatus()
+				if err != nil {
+					continue
+				}
+				if status.PlayerState != previousState {
+					previousState = status.PlayerState
+					switch status.PlayerState {
+					case "PLAYING":
+						scr.EmitMsg("Playing")
+					case "PAUSED":
+						scr.EmitMsg("Paused")
+					case "BUFFERING":
+						scr.EmitMsg("Buffering")
+					case "IDLE":
+						scr.EmitMsg("Idle")
+					}
+				}
+			}
+		}
+	}()
+
 	// Wait for exit signal
 	<-ctx.Done()
 
