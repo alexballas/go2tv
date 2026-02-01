@@ -201,16 +201,20 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	go func() {
 		<-ctx.Done()
+		s.rtmpMu.Lock()
 		if s.rtmpServer != nil {
 			s.rtmpServer.Stop()
 		}
+		s.rtmpMu.Unlock()
 		os.Exit(0)
 	}()
 
 	w.SetOnClosed(func() {
+		s.rtmpMu.Lock()
 		if s.rtmpServer != nil {
 			s.rtmpServer.Stop()
 		}
+		s.rtmpMu.Unlock()
 	})
 
 	w.ShowAndRun()
