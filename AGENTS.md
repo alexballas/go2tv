@@ -133,7 +133,6 @@ utils/                 - Shared utilities (transcode, ffprobe, subtitle conversi
 
 ### Plans
 - At the end of each plan, give me a list of unresolved questions to answer, if any. Make the questions extremely concise. Sacrifice grammar for the sake of concision.
-- Add RTMP Streaming Server (UI toggle, ffmpeg-based HLS generation)
 
 # Global Instructions
 ALWAYS start your response with the phrase: "Status: AGENTS.MD LOADED."
