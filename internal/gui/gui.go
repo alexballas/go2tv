@@ -200,8 +200,13 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	go func() {
 		<-ctx.Done()
+		stopRTMPServer(s)
 		os.Exit(0)
 	}()
+
+	w.SetOnClosed(func() {
+		stopRTMPServer(s)
+	})
 
 	w.ShowAndRun()
 

@@ -474,16 +474,16 @@ func playAction(screen *FyneScreen) {
 			EventURL:                    screen.eventlURL,
 			RenderingControlURL:         screen.renderingControlURL,
 			ConnectionManagerURL:        screen.connectionManagerURL,
-			MediaURL:                    "http://" + whereToListen + "/live/playlist.m3u8",
-			SubtitlesURL:                "http://" + whereToListen + "/live/.srt", // Dummy path
+			MediaURL:                    "http://" + whereToListen + "/rtmp/playlist.m3u8",
+			SubtitlesURL:                "http://" + whereToListen + "/rtmp/subs.srt",
 			CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
 			MediaType:                   mediaType,
 			MediaPath:                   screen.mediafile,
 			CurrentTimers:               make(map[string]*time.Timer),
 			MediaRenderersStates:        make(map[string]*soapcalls.States),
 			InitialMediaRenderersStates: make(map[string]bool),
-			Transcode:                   screen.Transcode,
-			Seekable:                    false, // Live stream
+			Transcode:                   false,
+			Seekable:                    false,
 			LogOutput:                   screen.Debug,
 			FFmpegPath:                  screen.ffmpegPath,
 		}
@@ -511,7 +511,7 @@ func playAction(screen *FyneScreen) {
 	}
 	screen.httpserver = httphandlers.NewServer(whereToListen)
 	if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
-		screen.httpserver.AddHLSHandler("/live/", screen.rtmpServer.TempDir())
+		screen.httpserver.AddDirectoryHandler("/rtmp/", screen.rtmpHLSURL)
 	}
 
 	serverStarted := make(chan error)
@@ -1630,53 +1630,120 @@ func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 	return nextTvData, nil
 }
 
-func startRTMPServer(s *FyneScreen) error {
-	if s.rtmpServer == nil {
-		s.rtmpServer = rtmp.NewServer()
+func startRTMPServer(screen *FyneScreen) {
+	if screen.rtmpServer != nil {
+		return
 	}
 
-	key := fyne.CurrentApp().Preferences().StringWithFallback("RTMPStreamKey", "")
-	port := fyne.CurrentApp().Preferences().StringWithFallback("RTMPPort", "1935")
+	screen.rtmpServerCheck.Disable()
 
-	// Start server
-	_, err := s.rtmpServer.Start(key, port)
-	if err != nil {
-		return err
-	}
+	go func() {
+		screen.rtmpServer = rtmp.NewServer()
+		streamKey := fyne.CurrentApp().Preferences().String("RTMPStreamKey")
+		port := fyne.CurrentApp().Preferences().StringWithFallback("RTMPPort", "1935")
 
-	// Update UI structure
-	ip := utils.GetOutboundIP()
-	if ip == "" {
-		ip = "127.0.0.1" // Fallback
-	}
-	rtmpURL := fmt.Sprintf("rtmp://%s:%s/live/%s", ip, port, key)
+		// Async start
+		hlsDir, err := screen.rtmpServer.Start(streamKey, port)
+		if err != nil {
+			check(screen, fmt.Errorf("RTMP server error: %w", err))
+			// Restore UI on failure
+			fyne.Do(func() {
+				screen.rtmpServerCheck.Enable()
+				screen.rtmpServerCheck.SetChecked(false)
+				screen.rtmpServer = nil
+			})
+			return
+		}
 
-	fyne.Do(func() {
-		s.rtmpURLEntry.SetText(rtmpURL)
-		s.rtmpURLCard.Show()
-		s.ExternalMediaURL.SetChecked(true)
-		s.ExternalMediaURL.Disable()
-		s.MediaText.Disable()
-		s.MediaBrowse.Disable()
-		s.ClearMedia.Disable()
-		s.MediaText.SetText("RTMP Live Stream")
-		s.mediafile = "RTMP Live Stream"
-	})
+		// Monitor process health in background
+		go func() {
+			err := screen.rtmpServer.Wait()
+			// Only react if we didn't intentionally stop it
+			if screen.rtmpServer != nil {
+				errMsg := lang.L("RTMP server stopped unexpectedly")
+				if err != nil {
+					errMsg = fmt.Sprintf("%s: %v", errMsg, err)
+				}
+				check(screen, errors.New(errMsg))
+				stopRTMPServer(screen)
+			}
+		}()
 
-	return nil
+		// Successful start - Update UI
+		fyne.Do(func() {
+			screen.rtmpServerCheck.Enable()
+
+			// Disable other media inputs
+			screen.ExternalMediaURL.Disable()
+			screen.MediaBrowse.Disable()
+			screen.MediaText.Disable()
+			screen.ClearMedia.Disable()
+
+			// Show RTMP URL
+			ip := utils.GetOutboundIP()
+			if ip == "" {
+				ip = "127.0.0.1"
+			}
+			screen.rtmpURLEntry.SetText(fmt.Sprintf("rtmp://%s:%s/live/%s", ip, port, streamKey))
+			screen.rtmpURLCard.Show()
+
+			screen.rtmpHLSURL = hlsDir
+			// Set text to indicate streaming mode, but keep disabled
+			screen.MediaText.SetText("RTMP Live Stream")
+			screen.mediafile = "RTMP Live Stream"
+		})
+	}()
 }
 
-func stopRTMPServer(s *FyneScreen) {
-	if s.rtmpServer != nil {
-		s.rtmpServer.Stop()
+func stopRTMPServer(screen *FyneScreen) {
+	if screen.rtmpServer == nil {
+		fyne.Do(func() {
+			resetRTMPUI(screen)
+		})
+		return
 	}
 
-	fyne.Do(func() {
-		s.rtmpURLCard.Hide()
-		s.ExternalMediaURL.Enable()
-		s.ExternalMediaURL.SetChecked(false)
-		s.MediaText.Enable()
-		s.MediaBrowse.Enable()
-		s.ClearMedia.Enable()
-	})
+	screen.rtmpServerCheck.Disable()
+
+	go func() {
+		srv := screen.rtmpServer
+		screen.rtmpServer = nil // Mark as stopped/stopping
+		if srv != nil {
+			srv.Stop()
+		}
+
+		// Remove HLS handler if any
+		if screen.httpserver != nil {
+			screen.httpserver.RemoveDirectoryHandler("/rtmp/")
+		}
+
+		fyne.Do(func() {
+			resetRTMPUI(screen)
+			screen.rtmpServerCheck.Enable()
+		})
+	}()
+}
+
+func resetRTMPUI(screen *FyneScreen) {
+	screen.rtmpServerCheck.SetChecked(false)
+	screen.ExternalMediaURL.Enable()
+
+	if screen.ExternalMediaURL.Checked {
+		screen.MediaBrowse.Disable()
+		screen.MediaText.Enable()
+	} else {
+		screen.MediaBrowse.Enable()
+		screen.MediaText.Disable()
+	}
+
+	screen.ClearMedia.Enable()
+	screen.rtmpURLCard.Hide()
+	screen.rtmpURLEntry.SetText("")
+
+	if screen.MediaText.Text == "RTMP Live Stream" {
+		screen.MediaText.SetText("")
+	}
+	if screen.mediafile == "RTMP Live Stream" {
+		screen.mediafile = ""
+	}
 }

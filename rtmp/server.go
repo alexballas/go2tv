@@ -77,6 +77,15 @@ func (s *Server) Start(streamKey, port string) (string, error) {
 	return tempDir, nil
 }
 
+// Wait blocks until the FFmpeg process exits and returns the error
+func (s *Server) Wait() error {
+	if s.cmd == nil {
+		return fmt.Errorf("server not started")
+	}
+	// Wait should not hold the lock for the entire duration as it blocks
+	return s.cmd.Wait()
+}
+
 // Stop terminates the RTMP server
 func (s *Server) Stop() {
 	s.mu.Lock()
@@ -87,40 +96,22 @@ func (s *Server) Stop() {
 	}
 
 	if s.cmd != nil && s.cmd.Process != nil {
-		// Kill the process.
-		// Note: os.Process.Kill() forces a kill.
-		// Ideally we might want to send SIGTERM first, but for now force kill is safer to ensure port release.
 		_ = s.cmd.Process.Kill()
-
-		// Wait for it to exit to avoid zombies, but don't block forever?
-		// exec.Command.Wait() handles this.
-		// Since we're in Stop(), we probably don't want to block too long.
-		// But we should clean up.
-		// Let's launch a goroutine to wait?
-		// Actually, if we just Kill, the OS handles it.
-		// We should call Wait() to release resources.
-		go func() {
-			_ = s.cmd.Wait()
-		}()
 	}
 
 	s.running = false
-	s.Cleanup()
+	s.internalCleanup()
 }
 
 // Cleanup removes temporary files
 func (s *Server) Cleanup() {
-	// Note: We don't lock here because Stop calls us.
-	// But if called from Start's error path, we are locked.
-	// This is a bit risky if called from outside without lock.
-	// But Cleanup is unexported? No, it's exported.
-	// Let's make it safe.
-	// But Stop() holds the lock. Recursive lock? Go sync.Mutex is not reentrant.
-	// Let's make an internal cleanup.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.internalCleanup()
+}
 
+func (s *Server) internalCleanup() {
 	if s.tempDir != "" {
 		_ = os.RemoveAll(s.tempDir)
-		// We don't clear s.tempDir here immediately if we want to be safe,
-		// but effectively it's gone.
 	}
 }

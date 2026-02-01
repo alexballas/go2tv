@@ -13,7 +13,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
@@ -502,47 +501,22 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
 	nextmedia := widget.NewCheck(lang.L("Auto-Play Next File"), func(b bool) {})
 	transcode := widget.NewCheck(lang.L("Transcode"), func(b bool) {})
-	rtmpServerCheck := widget.NewCheck("Enable RTMP Server", func(b bool) {})
+	rtmpServerCheck := widget.NewCheck(lang.L("Enable RTMP Server"), func(b bool) {
+		if b {
+			startRTMPServer(s)
+		} else {
+			stopRTMPServer(s)
+		}
+	})
 	s.rtmpServerCheck = rtmpServerCheck
 
 	s.rtmpURLEntry = widget.NewEntry()
+	s.rtmpURLEntry.Disable()
 	copyBtn := widget.NewButtonWithIcon(lang.L("Copy"), theme.ContentCopyIcon(), func() {
 		w.Clipboard().SetContent(s.rtmpURLEntry.Text)
 	})
-	s.rtmpURLCard = widget.NewCard("RTMP URL", "", container.NewBorder(nil, nil, nil, copyBtn, s.rtmpURLEntry))
+	s.rtmpURLCard = widget.NewCard(lang.L("RTMP Stream URL"), "", container.NewBorder(nil, nil, nil, copyBtn, s.rtmpURLEntry))
 	s.rtmpURLCard.Hide()
-
-	rtmpServerCheck.OnChanged = func(b bool) {
-		if b {
-			if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
-				rtmpServerCheck.SetChecked(false)
-				dialog.ShowError(errors.New("FFmpeg not found. Cannot start RTMP server."), s.Current)
-				return
-			}
-			rtmpServerCheck.Disable()
-			go func() {
-				if err := startRTMPServer(s); err != nil {
-					check(s, err)
-					fyne.Do(func() {
-						s.rtmpServerCheck.SetChecked(false)
-						s.rtmpServerCheck.Enable()
-					})
-					return
-				}
-				fyne.Do(func() {
-					s.rtmpServerCheck.Enable()
-				})
-			}()
-		} else {
-			rtmpServerCheck.Disable()
-			go func() {
-				stopRTMPServer(s)
-				fyne.Do(func() {
-					s.rtmpServerCheck.Enable()
-				})
-			}()
-		}
-	}
 
 	mediafilelabel := widget.NewLabel(lang.L("Media File") + ":")
 	subsfilelabel := widget.NewLabel(lang.L("Subtitles") + ":")

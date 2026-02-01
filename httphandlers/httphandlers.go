@@ -26,9 +26,10 @@ type HTTPserver struct {
 	Mux  *http.ServeMux
 	// We only need to run one ffmpeg
 	// command at a time, per server instance
-	ffmpeg   *exec.Cmd
-	handlers map[string]handler
-	mu       sync.Mutex
+	ffmpeg      *exec.Cmd
+	handlers    map[string]handler
+	dirHandlers map[string]string // Handlers for serving entire directories (e.g. HLS)
+	mu          sync.Mutex
 }
 
 // handler holds the configuration for a registered media path.
@@ -73,6 +74,21 @@ func (s *HTTPserver) AddHandler(path string, payload *soapcalls.TVPayload, trans
 func (s *HTTPserver) RemoveHandler(path string) {
 	s.mu.Lock()
 	delete(s.handlers, path)
+	s.mu.Unlock()
+}
+
+// AddDirectoryHandler registers a directory to be served under a URL prefix.
+// Used for HLS serving where multiple .ts files are requested.
+func (s *HTTPserver) AddDirectoryHandler(urlPrefix, fsPath string) {
+	s.mu.Lock()
+	s.dirHandlers[urlPrefix] = fsPath
+	s.mu.Unlock()
+}
+
+// RemoveDirectoryHandler removes a directory handler.
+func (s *HTTPserver) RemoveDirectoryHandler(urlPrefix string) {
+	s.mu.Lock()
+	delete(s.dirHandlers, urlPrefix)
 	s.mu.Unlock()
 }
 
@@ -189,11 +205,37 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 
 		s.mu.Lock()
 		out, exists := s.handlers[r.URL.Path]
+		if !exists {
+			// Check for directory handlers
+			for prefix, dirPath := range s.dirHandlers {
+				if strings.HasPrefix(r.URL.Path, prefix) {
+					// Found a match
+					relPath := strings.TrimPrefix(r.URL.Path, prefix)
+					// Clean path to prevent directory traversal
+					relPath = filepath.Clean("/" + relPath)
+					fullPath := filepath.Join(dirPath, relPath)
+
+					// Basic security check to ensure we're still in the base directory
+					if strings.HasPrefix(fullPath, dirPath) {
+						out = handler{media: fullPath}
+						exists = true
+						break
+					}
+				}
+			}
+		}
 		s.mu.Unlock()
 
 		if !exists {
 			http.Error(w, "not exists", http.StatusNotFound)
 			return
+		}
+
+		// Explicitly set Content-Type for HLS files
+		if strings.HasSuffix(r.URL.Path, ".m3u8") {
+			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		} else if strings.HasSuffix(r.URL.Path, ".ts") {
+			w.Header().Set("Content-Type", "video/mp2t")
 		}
 
 		switch f := out.media.(type) {
@@ -324,10 +366,11 @@ func (s *HTTPserver) StopServer() {
 func NewServer(a string) *HTTPserver {
 	mux := http.NewServeMux()
 	srv := HTTPserver{
-		http:     &http.Server{Addr: a, Handler: mux},
-		Mux:      mux,
-		ffmpeg:   new(exec.Cmd),
-		handlers: make(map[string]handler),
+		http:        &http.Server{Addr: a, Handler: mux},
+		Mux:         mux,
+		ffmpeg:      new(exec.Cmd),
+		handlers:    make(map[string]handler),
+		dirHandlers: make(map[string]string),
 	}
 
 	return &srv
