@@ -102,6 +102,7 @@ type FyneScreen struct {
 	rtmpURLCard           *widget.Card
 	rtmpURLEntry          *widget.Entry
 	rtmpHLSURL            string // The local HLS HLS URL
+	rtmpMu                sync.Mutex
 }
 
 type debugWriter struct {
@@ -200,12 +201,16 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	go func() {
 		<-ctx.Done()
-		stopRTMPServer(s)
+		if s.rtmpServer != nil {
+			s.rtmpServer.Stop()
+		}
 		os.Exit(0)
 	}()
 
 	w.SetOnClosed(func() {
-		stopRTMPServer(s)
+		if s.rtmpServer != nil {
+			s.rtmpServer.Stop()
+		}
 	})
 
 	w.ShowAndRun()

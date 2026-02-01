@@ -1631,6 +1631,9 @@ func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 }
 
 func startRTMPServer(screen *FyneScreen) {
+	screen.rtmpMu.Lock()
+	defer screen.rtmpMu.Unlock()
+
 	if screen.rtmpServer != nil {
 		return
 	}
@@ -1638,6 +1641,7 @@ func startRTMPServer(screen *FyneScreen) {
 	screen.rtmpServerCheck.Disable()
 
 	go func() {
+		screen.rtmpMu.Lock()
 		screen.rtmpServer = rtmp.NewServer()
 		streamKey := fyne.CurrentApp().Preferences().String("RTMPStreamKey")
 		port := fyne.CurrentApp().Preferences().StringWithFallback("RTMPPort", "1935")
@@ -1647,10 +1651,11 @@ func startRTMPServer(screen *FyneScreen) {
 		if err != nil {
 			check(screen, fmt.Errorf("RTMP server error: %w", err))
 			// Restore UI on failure
+			screen.rtmpServer = nil
+			screen.rtmpMu.Unlock()
 			fyne.Do(func() {
 				screen.rtmpServerCheck.Enable()
 				screen.rtmpServerCheck.SetChecked(false)
-				screen.rtmpServer = nil
 			})
 			return
 		}
@@ -1692,10 +1697,14 @@ func startRTMPServer(screen *FyneScreen) {
 			screen.MediaText.SetText("RTMP Live Stream")
 			screen.mediafile = "RTMP Live Stream"
 		})
+		screen.rtmpMu.Unlock()
 	}()
 }
 
 func stopRTMPServer(screen *FyneScreen) {
+	screen.rtmpMu.Lock()
+	defer screen.rtmpMu.Unlock()
+
 	if screen.rtmpServer == nil {
 		fyne.Do(func() {
 			resetRTMPUI(screen)
@@ -1706,6 +1715,7 @@ func stopRTMPServer(screen *FyneScreen) {
 	screen.rtmpServerCheck.Disable()
 
 	go func() {
+		screen.rtmpMu.Lock()
 		srv := screen.rtmpServer
 		screen.rtmpServer = nil // Mark as stopped/stopping
 		if srv != nil {
@@ -1721,6 +1731,7 @@ func stopRTMPServer(screen *FyneScreen) {
 			resetRTMPUI(screen)
 			screen.rtmpServerCheck.Enable()
 		})
+		screen.rtmpMu.Unlock()
 	}()
 }
 

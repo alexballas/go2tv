@@ -64,6 +64,7 @@ func (s *Server) Start(streamKey, port string) (string, error) {
 
 	// We assume "ffmpeg" is in the PATH. The GUI should have validated this.
 	cmd := exec.Command("ffmpeg", args...)
+	setSysProcAttr(cmd)
 
 	// Start the command
 	if err := cmd.Start(); err != nil {
@@ -95,9 +96,7 @@ func (s *Server) Stop() {
 		return
 	}
 
-	if s.cmd != nil && s.cmd.Process != nil {
-		_ = s.cmd.Process.Kill()
-	}
+	killProcess(s.cmd)
 
 	s.running = false
 	s.internalCleanup()
