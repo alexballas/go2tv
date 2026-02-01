@@ -75,7 +75,6 @@
     "file.name": "Name",
     "Enable RTMP Server": "Enable RTMP Server",
     "RTMP Stream URL": "RTMP Stream URL",
-    "Stream Key": "Stream Key",
     "RTMP Server": "RTMP Server",
     "RTMP Live Stream": "RTMP Live Stream",
     "Common Options": "Common Options",
@@ -84,5 +83,13 @@
     "Active Device": "Active Device",
     "Devices": "Devices",
     "Copy": "Copy",
-    "RTMP server stopped unexpectedly": "RTMP server stopped unexpectedly"
+    "RTMP server stopped unexpectedly": "RTMP server stopped unexpectedly",
+    "Browse": "Browse",
+    "Media File": "Media File",
+    "Media": "Media",
+    "(auto refreshing)": "(auto refreshing)",
+    "RTMP Port": "RTMP Port",
+    "RTMP Stream Key": "RTMP Stream Key",
+    "Regenerate": "Regenerate",
+    "Website": "Website"
 }
