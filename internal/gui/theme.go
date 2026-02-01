@@ -40,7 +40,9 @@ func (m go2tvTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) c
 		case theme.ColorNameDisabled:
 			return color.NRGBA{R: 0xab, G: 0xab, B: 0xab, A: 0xff}
 		case theme.ColorNameInputBorder:
-			return color.NRGBA{R: 0xf3, G: 0xf3, B: 0xf3, A: 0xff}
+			return color.NRGBA{R: 0xd0, G: 0xd0, B: 0xd0, A: 0xff}
+		case theme.ColorNameInputBackground:
+			return color.NRGBA{R: 0xe8, G: 0xe8, B: 0xe8, A: 0xff}
 		case theme.ColorNameDisabledButton:
 			return color.NRGBA{R: 0xe5, G: 0xe5, B: 0xe5, A: 0xff}
 		}
