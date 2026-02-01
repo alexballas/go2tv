@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"go2tv.app/go2tv/v2/rtmp"
 )
 
 func settingsWindow(s *FyneScreen) fyne.CanvasObject {
@@ -173,7 +174,34 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	sameTypeAutoNextOption := fyne.CurrentApp().Preferences().BoolWithFallback("AutoPlaySameTypes", true)
 	sameTypeAutoNextCheck.SetChecked(sameTypeAutoNextOption)
 
-	return container.New(layout.NewFormLayout(), themeText, dropdownTheme, languageText, dropdownLanguage, gaplessText, gaplessdropdown, ffmpegText, ffmpegPathControls, sameTypeAutoNext, sameTypeAutoNextCheck, debugText, debugExport)
+	rtmpPortLabel := widget.NewLabel(lang.L("RTMP Port"))
+	rtmpPortEntry := widget.NewEntry()
+	rtmpPortEntry.Text = fyne.CurrentApp().Preferences().StringWithFallback("RTMPPort", "1935")
+	rtmpPortEntry.OnChanged = func(s string) {
+		fyne.CurrentApp().Preferences().SetString("RTMPPort", s)
+	}
+
+	rtmpKeyLabel := widget.NewLabel(lang.L("RTMP Stream Key"))
+	streamKeyEntry := widget.NewEntry()
+	streamKeyEntry.Password = true
+	streamKeyEntry.Text = fyne.CurrentApp().Preferences().StringWithFallback("RTMPStreamKey", "")
+	if streamKeyEntry.Text == "" {
+		streamKeyEntry.Text = rtmp.GenerateKey()
+		fyne.CurrentApp().Preferences().SetString("RTMPStreamKey", streamKeyEntry.Text)
+	}
+	streamKeyEntry.OnChanged = func(s string) {
+		fyne.CurrentApp().Preferences().SetString("RTMPStreamKey", s)
+	}
+
+	regenKeyBtn := widget.NewButton(lang.L("Regenerate"), func() {
+		newKey := rtmp.GenerateKey()
+		streamKeyEntry.SetText(newKey)
+		fyne.CurrentApp().Preferences().SetString("RTMPStreamKey", newKey)
+	})
+
+	rtmpKeyContainer := container.NewBorder(nil, nil, nil, regenKeyBtn, streamKeyEntry)
+
+	return container.New(layout.NewFormLayout(), themeText, dropdownTheme, languageText, dropdownLanguage, gaplessText, gaplessdropdown, ffmpegText, ffmpegPathControls, sameTypeAutoNext, sameTypeAutoNextCheck, debugText, debugExport, rtmpPortLabel, rtmpPortEntry, rtmpKeyLabel, rtmpKeyContainer)
 }
 
 func saveDebugLogs(f fyne.URIWriteCloser, s *FyneScreen) {

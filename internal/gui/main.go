@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
@@ -501,6 +502,47 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
 	nextmedia := widget.NewCheck(lang.L("Auto-Play Next File"), func(b bool) {})
 	transcode := widget.NewCheck(lang.L("Transcode"), func(b bool) {})
+	rtmpServerCheck := widget.NewCheck("Enable RTMP Server", func(b bool) {})
+	s.rtmpServerCheck = rtmpServerCheck
+
+	s.rtmpURLEntry = widget.NewEntry()
+	copyBtn := widget.NewButtonWithIcon(lang.L("Copy"), theme.ContentCopyIcon(), func() {
+		w.Clipboard().SetContent(s.rtmpURLEntry.Text)
+	})
+	s.rtmpURLCard = widget.NewCard("RTMP URL", "", container.NewBorder(nil, nil, nil, copyBtn, s.rtmpURLEntry))
+	s.rtmpURLCard.Hide()
+
+	rtmpServerCheck.OnChanged = func(b bool) {
+		if b {
+			if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
+				rtmpServerCheck.SetChecked(false)
+				dialog.ShowError(errors.New("FFmpeg not found. Cannot start RTMP server."), s.Current)
+				return
+			}
+			rtmpServerCheck.Disable()
+			go func() {
+				if err := startRTMPServer(s); err != nil {
+					check(s, err)
+					fyne.Do(func() {
+						s.rtmpServerCheck.SetChecked(false)
+						s.rtmpServerCheck.Enable()
+					})
+					return
+				}
+				fyne.Do(func() {
+					s.rtmpServerCheck.Enable()
+				})
+			}()
+		} else {
+			rtmpServerCheck.Disable()
+			go func() {
+				stopRTMPServer(s)
+				fyne.Do(func() {
+					s.rtmpServerCheck.Enable()
+				})
+			}()
+		}
+	}
 
 	mediafilelabel := widget.NewLabel(lang.L("Media File") + ":")
 	subsfilelabel := widget.NewLabel(lang.L("Subtitles") + ":")
@@ -542,6 +584,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.TranscodeCheckBox = transcode
 	s.LoopSelectedCheck = medialoop
 	s.MediaBrowse = mbrowse
+	s.ClearMedia = clearmedia
 	s.SubsBrowse = sbrowse
 
 	curPos.Set("00:00:00")
@@ -567,7 +610,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	mediaCard := widget.NewCard(lang.L("Media"), "", viewfilescont)
 
 	commonCard := widget.NewCard(lang.L("Common Options"), "", container.NewVBox(medialoop, nextmedia))
-	advancedCard := widget.NewCard(lang.L("Advanced Options"), "", container.NewVBox(externalmedia, sfilecheck, transcode))
+	advancedCard := widget.NewCard(lang.L("Advanced Options"), "", container.NewVBox(externalmedia, sfilecheck, transcode, rtmpServerCheck))
 
 	playCard := widget.NewCard(lang.L("Playback"), "", container.NewVBox(sliderArea, actionbuttons))
 
@@ -578,7 +621,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		container.NewHBox(widget.NewIcon(theme.MediaPlayIcon()), s.ActiveDeviceLabel))
 	s.ActiveDeviceCard.Hide()
 
-	deviceCard := widget.NewCard(lang.L("Devices"), "", container.NewBorder(deviceHeader, s.ActiveDeviceCard, nil, nil, list))
+	deviceTop := container.NewVBox(s.ActiveDeviceCard, s.rtmpURLCard)
+	deviceCard := widget.NewCard(lang.L("Devices"), "", container.NewBorder(deviceHeader, deviceTop, nil, nil, list))
 
 	leftColumn := container.NewVBox(mediaCard, playCard, commonCard, advancedCard)
 	content := container.New(&RatioLayout{LeftRatio: 0.66}, leftColumn, deviceCard)

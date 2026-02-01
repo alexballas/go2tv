@@ -285,6 +285,32 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 	}
 }
 
+// AddHLSHandler configures the server to serve HLS content from a directory
+func (s *HTTPserver) AddHLSHandler(urlPrefix, dir string) {
+	fileServer := http.FileServer(http.Dir(dir))
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		if strings.HasSuffix(r.URL.Path, ".m3u8") {
+			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		} else if strings.HasSuffix(r.URL.Path, ".ts") {
+			w.Header().Set("Content-Type", "video/MP2T")
+		}
+
+		fileServer.ServeHTTP(w, r)
+	})
+
+	s.Mux.Handle(urlPrefix, http.StripPrefix(urlPrefix, handler))
+}
+
 // StopServer forcefully closes the HTTP server.
 func (s *HTTPserver) StopServer() {
 	if s.ffmpeg != nil && s.ffmpeg.Process != nil {

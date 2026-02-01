@@ -25,6 +25,7 @@ import (
 	"go2tv.app/go2tv/v2/castprotocol"
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
+	"go2tv.app/go2tv/v2/rtmp"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
 )
@@ -92,9 +93,15 @@ type FyneScreen struct {
 	ErrorVisible          bool
 	Hotkeys               bool
 	MediaBrowse           *widget.Button
+	ClearMedia            *widget.Button
 	SubsBrowse            *widget.Button
 	ActiveDeviceLabel     *widget.Label
 	ActiveDeviceCard      *widget.Card
+	rtmpServer            *rtmp.Server
+	rtmpServerCheck       *widget.Check
+	rtmpURLCard           *widget.Card
+	rtmpURLEntry          *widget.Entry
+	rtmpHLSURL            string // The local HLS HLS URL
 }
 
 type debugWriter struct {

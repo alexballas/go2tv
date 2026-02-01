@@ -25,6 +25,7 @@ import (
 	"go2tv.app/go2tv/v2/castprotocol"
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
+	"go2tv.app/go2tv/v2/rtmp"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
 )
@@ -399,46 +400,53 @@ func playAction(screen *FyneScreen) {
 		// as this is the core item in our structure
 		// that defines that something is being streamed.
 		// We use its value for many checks in our code.
+		// We use its value for many checks in our code.
 		screen.mediafile = screen.MediaText.Text
 
-		// We're not using any context here. The reason is
-		// that when the webserver shuts down it causes the
-		// the io.Copy operation to fail with "broken pipe".
-		// That's good enough for us since right after that
-		// we close the io.ReadCloser.
-		mediaURL, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
-		check(screen, err)
-		if err != nil {
-			startAfreshPlayButton(screen)
-			return
-		}
-
-		mediaURLinfo, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
-		check(screen, err)
-		if err != nil {
-			startAfreshPlayButton(screen)
-			return
-		}
-
-		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
-		check(screen, err)
-		if err != nil {
-			startAfreshPlayButton(screen)
-			return
-		}
-
-		// Set casting media type
-		screen.SetMediaType(mediaType)
-
-		mediaFile = mediaURL
-		if strings.Contains(mediaType, "image") {
-			readerToBytes, err := io.ReadAll(mediaURL)
-			mediaURL.Close()
+		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
+			mediaType = "application/vnd.apple.mpegurl"
+			screen.SetMediaType(mediaType)
+			mediaFile = screen.mediafile
+		} else {
+			// We're not using any context here. The reason is
+			// that when the webserver shuts down it causes the
+			// the io.Copy operation to fail with "broken pipe".
+			// That's good enough for us since right after that
+			// we close the io.ReadCloser.
+			mediaURL, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
+			check(screen, err)
 			if err != nil {
 				startAfreshPlayButton(screen)
 				return
 			}
-			mediaFile = readerToBytes
+
+			mediaURLinfo, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
+			check(screen, err)
+			if err != nil {
+				startAfreshPlayButton(screen)
+				return
+			}
+
+			mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
+			check(screen, err)
+			if err != nil {
+				startAfreshPlayButton(screen)
+				return
+			}
+
+			// Set casting media type
+			screen.SetMediaType(mediaType)
+
+			mediaFile = mediaURL
+			if strings.Contains(mediaType, "image") {
+				readerToBytes, err := io.ReadAll(mediaURL)
+				mediaURL.Close()
+				if err != nil {
+					startAfreshPlayButton(screen)
+					return
+				}
+				mediaFile = readerToBytes
+			}
 		}
 	}
 
@@ -460,28 +468,52 @@ func playAction(screen *FyneScreen) {
 		}
 	}
 
-	screen.tvdata = &soapcalls.TVPayload{
-		ControlURL:                  screen.controlURL,
-		EventURL:                    screen.eventlURL,
-		RenderingControlURL:         screen.renderingControlURL,
-		ConnectionManagerURL:        screen.connectionManagerURL,
-		MediaURL:                    "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile),
-		SubtitlesURL:                "http://" + whereToListen + "/" + utils.ConvertFilename(screen.subsfile),
-		CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
-		MediaType:                   mediaType,
-		MediaPath:                   screen.mediafile,
-		CurrentTimers:               make(map[string]*time.Timer),
-		MediaRenderersStates:        make(map[string]*soapcalls.States),
-		InitialMediaRenderersStates: make(map[string]bool),
-		Transcode:                   screen.Transcode,
-		Seekable:                    isSeek,
-		LogOutput:                   screen.Debug,
-		FFmpegPath:                  screen.ffmpegPath,
-		FFmpegSeek:                  screen.ffmpegSeek,
-		FFmpegSubsPath:              screen.subsfile,
+	if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
+		screen.tvdata = &soapcalls.TVPayload{
+			ControlURL:                  screen.controlURL,
+			EventURL:                    screen.eventlURL,
+			RenderingControlURL:         screen.renderingControlURL,
+			ConnectionManagerURL:        screen.connectionManagerURL,
+			MediaURL:                    "http://" + whereToListen + "/live/playlist.m3u8",
+			SubtitlesURL:                "http://" + whereToListen + "/live/.srt", // Dummy path
+			CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
+			MediaType:                   mediaType,
+			MediaPath:                   screen.mediafile,
+			CurrentTimers:               make(map[string]*time.Timer),
+			MediaRenderersStates:        make(map[string]*soapcalls.States),
+			InitialMediaRenderersStates: make(map[string]bool),
+			Transcode:                   screen.Transcode,
+			Seekable:                    false, // Live stream
+			LogOutput:                   screen.Debug,
+			FFmpegPath:                  screen.ffmpegPath,
+		}
+	} else {
+		screen.tvdata = &soapcalls.TVPayload{
+			ControlURL:                  screen.controlURL,
+			EventURL:                    screen.eventlURL,
+			RenderingControlURL:         screen.renderingControlURL,
+			ConnectionManagerURL:        screen.connectionManagerURL,
+			MediaURL:                    "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile),
+			SubtitlesURL:                "http://" + whereToListen + "/" + utils.ConvertFilename(screen.subsfile),
+			CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
+			MediaType:                   mediaType,
+			MediaPath:                   screen.mediafile,
+			CurrentTimers:               make(map[string]*time.Timer),
+			MediaRenderersStates:        make(map[string]*soapcalls.States),
+			InitialMediaRenderersStates: make(map[string]bool),
+			Transcode:                   screen.Transcode,
+			Seekable:                    isSeek,
+			LogOutput:                   screen.Debug,
+			FFmpegPath:                  screen.ffmpegPath,
+			FFmpegSeek:                  screen.ffmpegSeek,
+			FFmpegSubsPath:              screen.subsfile,
+		}
+	}
+	screen.httpserver = httphandlers.NewServer(whereToListen)
+	if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
+		screen.httpserver.AddHLSHandler("/live/", screen.rtmpServer.TempDir())
 	}
 
-	screen.httpserver = httphandlers.NewServer(whereToListen)
 	serverStarted := make(chan error)
 	serverStoppedCTX, serverCTXStop := context.WithCancel(context.Background())
 	screen.serverStopCTX = serverStoppedCTX
@@ -621,33 +653,39 @@ func chromecastPlayAction(screen *FyneScreen) {
 		mediaURL = screen.MediaText.Text
 		screen.mediafile = mediaURL
 
-		mediaURLinfo, err := utils.StreamURL(context.Background(), mediaURL)
-		if err != nil {
-			check(screen, err)
-			startAfreshPlayButton(screen)
-			return
-		}
-		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
-		mediaURLinfo.Close()
-		if err != nil {
-			check(screen, err)
-			startAfreshPlayButton(screen)
-			return
-		}
+		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
+			mediaType = "application/vnd.apple.mpegurl"
+			screen.SetMediaType(mediaType)
+			transcode = true
+		} else {
+			mediaURLinfo, err := utils.StreamURL(context.Background(), mediaURL)
+			if err != nil {
+				check(screen, err)
+				startAfreshPlayButton(screen)
+				return
+			}
+			mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
+			mediaURLinfo.Close()
+			if err != nil {
+				check(screen, err)
+				startAfreshPlayButton(screen)
+				return
+			}
 
-		// Chromecast handles images and audio natively - never transcode these
-		mediaTypeSlice := strings.Split(mediaType, "/")
-		if len(mediaTypeSlice) > 0 && (mediaTypeSlice[0] == "image" || mediaTypeSlice[0] == "audio") {
-			transcode = false
-		}
+			// Chromecast handles images and audio natively - never transcode these
+			mediaTypeSlice := strings.Split(mediaType, "/")
+			if len(mediaTypeSlice) > 0 && (mediaTypeSlice[0] == "image" || mediaTypeSlice[0] == "audio") {
+				transcode = false
+			}
 
-		// Set casting media type
-		screen.SetMediaType(mediaType)
+			// Set casting media type
+			screen.SetMediaType(mediaType)
 
-		if screen.selectedDevice.isAudioOnly && (strings.Contains(mediaType, "video") || strings.Contains(mediaType, "image")) {
-			check(screen, errors.New(lang.L("Video/Image file not supported by audio-only device")))
-			startAfreshPlayButton(screen)
-			return
+			if screen.selectedDevice.isAudioOnly && (strings.Contains(mediaType, "video") || strings.Contains(mediaType, "image")) {
+				check(screen, errors.New(lang.L("Video/Image file not supported by audio-only device")))
+				startAfreshPlayButton(screen)
+				return
+			}
 		}
 
 		if transcode {
@@ -669,11 +707,16 @@ func chromecastPlayAction(screen *FyneScreen) {
 			screen.serverStopCTX = serverStoppedCTX
 			screen.cancelServerStop = serverCTXStop
 
-			stream, err := utils.StreamURL(context.Background(), mediaURL)
-			if err != nil {
-				check(screen, err)
-				startAfreshPlayButton(screen)
-				return
+			var stream io.ReadCloser
+			if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
+				// No need to stream URL for RTMP, we serve HLS from temp dir
+			} else {
+				stream, err = utils.StreamURL(context.Background(), mediaURL)
+				if err != nil {
+					check(screen, err)
+					startAfreshPlayButton(screen)
+					return
+				}
 			}
 
 			subsPath := ""
@@ -691,7 +734,13 @@ func chromecastPlayAction(screen *FyneScreen) {
 
 			screen.mediaDuration = 0
 			mediaFilename := "/" + utils.ConvertFilename(mediaURL)
-			screen.httpserver.AddHandler(mediaFilename, nil, tcOpts, stream)
+			if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
+				screen.httpserver.AddHLSHandler("/live/", screen.rtmpServer.TempDir())
+				mediaURL = "http://" + whereToListen + "/live/playlist.m3u8"
+			} else {
+				screen.httpserver.AddHandler(mediaFilename, nil, tcOpts, stream)
+				mediaURL = "http://" + whereToListen + mediaFilename
+			}
 
 			go func() {
 				screen.httpserver.StartServing(serverStarted)
@@ -704,7 +753,7 @@ func chromecastPlayAction(screen *FyneScreen) {
 				return
 			}
 
-			mediaURL = "http://" + whereToListen + mediaFilename
+			// mediaURL is already set correctly above
 			mediaType = "video/mp4"
 		} else {
 			var cancel context.CancelFunc
@@ -1071,8 +1120,10 @@ out:
 					screen.httpserver.RemoveHandler(mPath.Path)
 					screen.httpserver.RemoveHandler(sPath.Path)
 
-					screen.MediaText.Text, screen.mediafile = getNextMedia(screen)
+					mediaName, mediaPath := getNextMedia(screen)
+					screen.mediafile = mediaPath
 					fyne.Do(func() {
+						screen.MediaText.Text = mediaName
 						screen.MediaText.Refresh()
 					})
 
@@ -1577,4 +1628,55 @@ func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 	}
 
 	return nextTvData, nil
+}
+
+func startRTMPServer(s *FyneScreen) error {
+	if s.rtmpServer == nil {
+		s.rtmpServer = rtmp.NewServer()
+	}
+
+	key := fyne.CurrentApp().Preferences().StringWithFallback("RTMPStreamKey", "")
+	port := fyne.CurrentApp().Preferences().StringWithFallback("RTMPPort", "1935")
+
+	// Start server
+	_, err := s.rtmpServer.Start(key, port)
+	if err != nil {
+		return err
+	}
+
+	// Update UI structure
+	ip := utils.GetOutboundIP()
+	if ip == "" {
+		ip = "127.0.0.1" // Fallback
+	}
+	rtmpURL := fmt.Sprintf("rtmp://%s:%s/live/%s", ip, port, key)
+
+	fyne.Do(func() {
+		s.rtmpURLEntry.SetText(rtmpURL)
+		s.rtmpURLCard.Show()
+		s.ExternalMediaURL.SetChecked(true)
+		s.ExternalMediaURL.Disable()
+		s.MediaText.Disable()
+		s.MediaBrowse.Disable()
+		s.ClearMedia.Disable()
+		s.MediaText.SetText("RTMP Live Stream")
+		s.mediafile = "RTMP Live Stream"
+	})
+
+	return nil
+}
+
+func stopRTMPServer(s *FyneScreen) {
+	if s.rtmpServer != nil {
+		s.rtmpServer.Stop()
+	}
+
+	fyne.Do(func() {
+		s.rtmpURLCard.Hide()
+		s.ExternalMediaURL.Enable()
+		s.ExternalMediaURL.SetChecked(false)
+		s.MediaText.Enable()
+		s.MediaBrowse.Enable()
+		s.ClearMedia.Enable()
+	})
 }
