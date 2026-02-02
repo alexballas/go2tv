@@ -509,6 +509,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		}
 	})
 	s.rtmpServerCheck = rtmpServerCheck
+	if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
+		s.rtmpServerCheck.Disable()
+	}
 
 	s.rtmpURLEntry = widget.NewEntry()
 	s.rtmpURLEntry.Disable()

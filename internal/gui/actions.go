@@ -1671,7 +1671,7 @@ func startRTMPServer(screen *FyneScreen) {
 		port := fyne.CurrentApp().Preferences().StringWithFallback("RTMPPort", "1935")
 
 		// Async start
-		hlsDir, err := screen.rtmpServer.Start(streamKey, port)
+		hlsDir, err := screen.rtmpServer.Start(screen.ffmpegPath, streamKey, port)
 		if err != nil {
 			check(screen, fmt.Errorf("RTMP server error: %w", err))
 			// Restore UI on failure

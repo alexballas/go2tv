@@ -175,6 +175,15 @@ func Start(ctx context.Context, s *FyneScreen) {
 				s.SelectInternalSubs.Disable()
 			}
 
+			if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
+				s.rtmpServerCheck.SetChecked(false)
+				s.rtmpServerCheck.Disable()
+			} else {
+				if s.rtmpServer == nil {
+					s.rtmpServerCheck.Enable()
+				}
+			}
+
 			if s.ffmpegPathChanged {
 				furi, err := storage.ParseURI("file://" + s.mediafile)
 				if err == nil {
@@ -192,6 +201,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
 		s.TranscodeCheckBox.Disable()
+		s.rtmpServerCheck.Disable()
 	}
 
 	s.tabs = tabs

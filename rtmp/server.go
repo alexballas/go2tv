@@ -41,7 +41,7 @@ func NewServer() *Server {
 }
 
 // Start launches the RTMP server
-func (s *Server) Start(streamKey, port string) (string, error) {
+func (s *Server) Start(ffmpegPath, streamKey, port string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -62,8 +62,7 @@ func (s *Server) Start(streamKey, port string) (string, error) {
 		return "", fmt.Errorf("failed to build command: %w", err)
 	}
 
-	// We assume "ffmpeg" is in the PATH. The GUI should have validated this.
-	cmd := exec.Command("ffmpeg", args...)
+	cmd := exec.Command(ffmpegPath, args...)
 	setSysProcAttr(cmd)
 
 	// Start the command
