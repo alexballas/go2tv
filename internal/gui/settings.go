@@ -3,8 +3,10 @@
 package gui
 
 import (
+	"errors"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -16,7 +18,24 @@ import (
 	"go2tv.app/go2tv/v2/rtmp"
 )
 
+type numericalEntry struct {
+	widget.Entry
+}
+
+func newNumericalEntry() *numericalEntry {
+	e := &numericalEntry{}
+	e.ExtendBaseWidget(e)
+	return e
+}
+
+func (e *numericalEntry) TypedRune(r rune) {
+	if r >= '0' && r <= '9' {
+		e.Entry.TypedRune(r)
+	}
+}
+
 func settingsWindow(s *FyneScreen) fyne.CanvasObject {
+
 	w := s.Current
 
 	themeText := widget.NewLabel(lang.L("Theme"))
@@ -175,10 +194,22 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	sameTypeAutoNextCheck.SetChecked(sameTypeAutoNextOption)
 
 	rtmpPortLabel := widget.NewLabel(lang.L("RTMP Port"))
-	rtmpPortEntry := widget.NewEntry()
+	rtmpPortEntry := newNumericalEntry()
 	rtmpPortEntry.Text = fyne.CurrentApp().Preferences().StringWithFallback("RTMPPort", "1935")
+	rtmpPortEntry.Validator = func(s string) error {
+		port, err := strconv.Atoi(s)
+		if err != nil {
+			return errors.New("invalid port")
+		}
+		if port < 1024 || port > 65535 {
+			return errors.New("port out of range (1024-65535)")
+		}
+		return nil
+	}
 	rtmpPortEntry.OnChanged = func(s string) {
-		fyne.CurrentApp().Preferences().SetString("RTMPPort", s)
+		if err := rtmpPortEntry.Validate(); err == nil {
+			fyne.CurrentApp().Preferences().SetString("RTMPPort", s)
+		}
 	}
 
 	rtmpKeyLabel := widget.NewLabel(lang.L("RTMP Stream Key"))
