@@ -118,11 +118,6 @@ type devType struct {
 	isAudioOnly bool
 }
 
-type mainButtonsLayout struct {
-	buttonHeight  float32
-	buttonPadding float32
-}
-
 func (f *debugWriter) Write(b []byte) (int, error) {
 	f.ring.Value = string(b)
 	f.ring = f.ring.Next()
