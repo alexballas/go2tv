@@ -277,6 +277,17 @@ func playAction(screen *FyneScreen) {
 			return
 		}
 	}
+	if screen.mediafile == "" && screen.MediaText.Text == "" {
+		check(screen, errors.New(lang.L("please select a media file or enter a media URL")))
+		startAfreshPlayButton(screen)
+		return
+	}
+
+	if screen.selectedDevice.addr == "" {
+		check(screen, errors.New(lang.L("please select a device")))
+		startAfreshPlayButton(screen)
+		return
+	}
 
 	// Branch based on device type - MUST be first, before any DLNA-specific logic
 	// Chromecast has its own status watcher, doesn't need the DLNA timeout mechanism
@@ -308,18 +319,6 @@ func playAction(screen *FyneScreen) {
 		if currentState == "Paused" {
 			err := screen.tvdata.SendtoTV("Play")
 			check(screen, err)
-			return
-		}
-
-		if screen.mediafile == "" && screen.MediaText.Text == "" {
-			check(screen, errors.New(lang.L("please select a media file or enter a media URL")))
-			startAfreshPlayButton(screen)
-			return
-		}
-
-		if screen.selectedDevice.addr == "" {
-			check(screen, errors.New(lang.L("please select a device")))
-			startAfreshPlayButton(screen)
 			return
 		}
 
@@ -599,13 +598,6 @@ func chromecastPlayAction(screen *FyneScreen) {
 			screen.updateScreenState("Paused")
 			return
 		}
-	}
-
-	// Validate media file or URL
-	if screen.mediafile == "" && screen.MediaText.Text == "" {
-		check(screen, errors.New(lang.L("please select a media file or enter a media URL")))
-		startAfreshPlayButton(screen)
-		return
 	}
 
 	// RTMP wait mechanism
