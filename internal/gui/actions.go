@@ -753,6 +753,7 @@ func chromecastPlayAction(screen *FyneScreen) {
 			if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
 				screen.httpserver.AddHLSHandler("/live/", screen.rtmpServer.TempDir())
 				mediaURL = "http://" + whereToListen + "/live/playlist.m3u8"
+				mediaType = "application/vnd.apple.mpegurl"
 			} else {
 				screen.httpserver.AddHandler(mediaFilename, nil, tcOpts, stream)
 				mediaURL = "http://" + whereToListen + mediaFilename
@@ -770,7 +771,9 @@ func chromecastPlayAction(screen *FyneScreen) {
 			}
 
 			// mediaURL is already set correctly above
-			mediaType = "video/mp4"
+			if screen.rtmpServerCheck == nil || !screen.rtmpServerCheck.Checked {
+				mediaType = "video/mp4"
+			}
 		} else {
 			var cancel context.CancelFunc
 			serverStoppedCTX, cancel = context.WithCancel(context.Background())
@@ -875,7 +878,8 @@ func chromecastPlayAction(screen *FyneScreen) {
 
 	// Handle subtitles
 	var subtitleURL string
-	if screen.subsfile != "" && !transcode && screen.httpserver != nil {
+	isRTMP := screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked
+	if screen.subsfile != "" && screen.httpserver != nil && (!transcode || isRTMP) {
 		// Extract host:port from mediaURL to ensure subtitle uses same server
 		mediaURLParsed, err := url.Parse(mediaURL)
 		if err == nil && mediaURLParsed.Host != "" {
