@@ -21,15 +21,15 @@
   <launchable type="desktop-id">app.go2tv.go2tv.desktop</launchable>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/alexballas/go2tv/devel/assets/screenshots/Screenshot_light.png</image>
+      <image>https://i.imgur.com/AUxZBte.png</image>
       <caption>Main window (light mode)</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/alexballas/go2tv/devel/assets/screenshots/Screenshot_dark.png</image>
+      <image>https://i.imgur.com/RaaVh40.png</image>
       <caption>Main window (dark mode)</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/alexballas/go2tv/devel/assets/screenshots/Screenshot_settings_dark.png</image>
+      <image>https://i.imgur.com/LW97U9t.png</image>
       <caption>Settings window (dark mode)</caption>
     </screenshot>
   </screenshots>
