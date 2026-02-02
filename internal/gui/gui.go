@@ -161,7 +161,10 @@ func Start(ctx context.Context, s *FyneScreen) {
 	tabs.OnSelected = func(t *container.TabItem) {
 		if t.Text == "Go2TV" {
 			s.Hotkeys = true
-			s.TranscodeCheckBox.Enable()
+			if s.rtmpServer == nil {
+				s.TranscodeCheckBox.Enable()
+				s.SlideBar.Enable()
+			}
 
 			if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
 				s.TranscodeCheckBox.SetChecked(false)

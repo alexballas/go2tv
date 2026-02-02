@@ -1709,6 +1709,9 @@ func startRTMPServer(screen *FyneScreen) {
 			screen.MediaBrowse.Disable()
 			screen.MediaText.Disable()
 			screen.ClearMedia.Disable()
+			screen.TranscodeCheckBox.SetChecked(false)
+			screen.TranscodeCheckBox.Disable()
+			screen.SlideBar.Disable()
 
 			// Show RTMP URL
 			ip := utils.GetOutboundIP()
@@ -1776,6 +1779,10 @@ func resetRTMPUI(screen *FyneScreen) {
 	}
 
 	screen.ClearMedia.Enable()
+	if err := utils.CheckFFmpeg(screen.ffmpegPath); err == nil {
+		screen.TranscodeCheckBox.Enable()
+	}
+	screen.SlideBar.Enable()
 	screen.rtmpURLCard.Hide()
 	screen.rtmpURLEntry.SetText("")
 	screen.rtmpKeyEntry.SetText("")
