@@ -1695,6 +1695,7 @@ func startRTMPServer(screen *FyneScreen) {
 				}
 				check(screen, errors.New(errMsg))
 				stopRTMPServer(screen)
+				stopAction(screen)
 			}
 		}()
 

@@ -636,10 +636,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	commonCard := widget.NewCard(lang.L("Common Options"), "", container.NewVBox(medialoop, nextmedia))
 
-	advancedAccordion := widget.NewAccordion(
-		widget.NewAccordionItem(lang.L("Advanced Options"), container.NewVBox(externalmedia, sfilecheck, transcode, rtmpServerCheck)),
-	)
-	advancedCard := widget.NewCard("", "", advancedAccordion)
+	advancedCard := widget.NewCard(lang.L("Advanced Options"), "", container.NewVBox(externalmedia, sfilecheck, transcode, rtmpServerCheck))
 
 	playCard := widget.NewCard(lang.L("Playback"), "", container.NewVBox(sliderArea, actionbuttons))
 
