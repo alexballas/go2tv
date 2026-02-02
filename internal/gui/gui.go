@@ -8,6 +8,7 @@ import (
 	"embed"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -322,9 +323,19 @@ func initFyneNewScreen(version string) *FyneScreen {
 		ring: ring.New(1000),
 	}
 
+	ffmpegPath := func() string {
+		if go2tv.Preferences().String("ffmpeg") != "" {
+			return go2tv.Preferences().String("ffmpeg")
+		}
+
+		path, _ := exec.LookPath("ffmpeg")
+		return path
+	}()
+
 	return &FyneScreen{
 		Current:        w,
 		currentmfolder: currentDir,
+		ffmpegPath:     ffmpegPath,
 		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".m4a", ".jpg", ".jpeg", ".png"},
 		imageFormats:   []string{".jpg", ".jpeg", ".png"},
 		videoFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv"},

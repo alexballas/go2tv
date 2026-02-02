@@ -91,15 +91,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	ffmpegRightButtons := container.NewHBox(ffmpegFolderSelect, ffmpegFolderReset)
 	ffmpegPathControls := container.New(layout.NewBorderLayout(nil, nil, nil, ffmpegRightButtons), ffmpegRightButtons, ffmpegTextEntry)
 
-	ffmpegTextEntry.Text = func() string {
-		if fyne.CurrentApp().Preferences().String("ffmpeg") != "" {
-			return fyne.CurrentApp().Preferences().String("ffmpeg")
-		}
-
-		path, _ := exec.LookPath("ffmpeg")
-		return path
-
-	}()
+	ffmpegTextEntry.Text = s.ffmpegPath
 	ffmpegTextEntry.Refresh()
 
 	s.ffmpegPath = ffmpegTextEntry.Text

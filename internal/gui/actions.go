@@ -1189,14 +1189,14 @@ func clearsubsAction(screen *FyneScreen) {
 }
 
 func skipNextAction(screen *FyneScreen) {
-	// Check if any device is selected (DLNA uses controlURL, Chromecast uses selectedDevice)
-	if screen.controlURL == "" && screen.selectedDeviceType != devices.DeviceTypeChromecast {
-		check(screen, errors.New(lang.L("please select a device")))
+	if screen.mediafile == "" {
+		check(screen, errors.New(lang.L("please select a media file")))
 		return
 	}
 
-	if screen.mediafile == "" {
-		check(screen, errors.New(lang.L("please select a media file")))
+	// Check if any device is selected (DLNA uses controlURL, Chromecast uses selectedDevice)
+	if screen.controlURL == "" && screen.selectedDeviceType != devices.DeviceTypeChromecast {
+		check(screen, errors.New(lang.L("please select a device")))
 		return
 	}
 
