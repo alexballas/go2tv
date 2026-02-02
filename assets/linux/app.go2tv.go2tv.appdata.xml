@@ -47,6 +47,26 @@
   </branding>
 
   <releases>
+        <release version="2.1.0" date="2026-02-02" type="stable">
+        <description>
+          <ul>
+            <li>Added built-in RTMP Server for OBS-to-Chromecast live streaming (requires FFmpeg).</li>
+            <li>Revamped UI with refreshed styling, modern checkbox designs, and active device indicators.</li>
+            <li>Optimized Chromecast live casting for lower latency and improved responsiveness.</li>
+            <li>Enhanced DLNA protocol compatibility and smart sensing for audio-only devices.</li>
+            <li>Refactored UI threading (Fyne.Do) for improved stability and eliminated potential race conditions.</li>
+          </ul>
+        </description>
+        <url type="details">https://github.com/alexballas/go2tv/releases/tag/v2.1.0</url>
+      </release>
+        <release version="2.0.2" date="2026-01-30" type="stable">
+        <description>
+          <ul>
+            <li>Fixed broken media detection causing transcoding to be forced on images and audio.</li>
+          </ul>
+        </description>
+        <url type="details">https://github.com/alexballas/go2tv/releases/tag/v2.0.2</url>
+      </release>
         <release version="2.0.1" date="2026-01-29" type="stable">
         <description>
           <ul>
