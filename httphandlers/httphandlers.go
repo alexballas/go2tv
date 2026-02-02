@@ -236,6 +236,8 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		} else if strings.HasSuffix(r.URL.Path, ".ts") {
 			w.Header().Set("Content-Type", "video/mp2t")
+		} else if strings.HasSuffix(r.URL.Path, ".mp4") || strings.HasSuffix(r.URL.Path, ".m4s") {
+			w.Header().Set("Content-Type", "video/mp4")
 		}
 
 		switch f := out.media.(type) {
@@ -345,6 +347,8 @@ func (s *HTTPserver) AddHLSHandler(urlPrefix, dir string) {
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		} else if strings.HasSuffix(r.URL.Path, ".ts") {
 			w.Header().Set("Content-Type", "video/MP2T")
+		} else if strings.HasSuffix(r.URL.Path, ".mp4") || strings.HasSuffix(r.URL.Path, ".m4s") {
+			w.Header().Set("Content-Type", "video/mp4")
 		}
 
 		fileServer.ServeHTTP(w, r)

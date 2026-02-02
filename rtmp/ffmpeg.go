@@ -7,21 +7,24 @@ import (
 
 // BuildCLICommand constructs the ffmpeg command arguments for the RTMP server
 func BuildCLICommand(streamKey, port, tempDir string) ([]string, error) {
-	segmentPath := filepath.Join(tempDir, "segment_%03d.ts")
 	playlistPath := filepath.Join(tempDir, "playlist.m3u8")
 	rtmpURL := fmt.Sprintf("rtmp://0.0.0.0:%s/live/%s", port, streamKey)
 
 	return []string{
 		"-listen", "1",
 		"-timeout", "30000000",
+		"-fflags", "nobuffer",
+		"-flags", "low_delay",
+		"-probesize", "32",
+		"-analyzeduration", "0",
 		"-i", rtmpURL,
-		"-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-g", "30",
+		"-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-g", "30", "-sc_threshold", "0",
 		"-c:a", "aac", "-ar", "48000", "-ac", "2",
 		"-f", "hls",
-		"-hls_time", "2",
-		"-hls_list_size", "5",
-		"-hls_flags", "delete_segments+append_list",
-		"-hls_segment_filename", segmentPath,
+		"-hls_time", "1",
+		"-hls_list_size", "3",
+		"-hls_flags", "delete_segments+append_list+independent_segments",
+		"-hls_segment_filename", filepath.Join(tempDir, "segment_%03d.ts"),
 		playlistPath,
 	}, nil
 }
