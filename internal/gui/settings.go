@@ -199,7 +199,19 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		fyne.CurrentApp().Preferences().SetString("RTMPStreamKey", newKey)
 	})
 
-	rtmpKeyContainer := container.NewBorder(nil, nil, nil, regenKeyBtn, streamKeyEntry)
+	var toggleKeyBtn *widget.Button
+	toggleKeyBtn = widget.NewButtonWithIcon("", theme.VisibilityIcon(), func() {
+		if streamKeyEntry.Password {
+			streamKeyEntry.Password = false
+			toggleKeyBtn.SetIcon(theme.VisibilityOffIcon())
+		} else {
+			streamKeyEntry.Password = true
+			toggleKeyBtn.SetIcon(theme.VisibilityIcon())
+		}
+		streamKeyEntry.Refresh()
+	})
+
+	rtmpKeyContainer := container.NewBorder(nil, nil, nil, container.NewHBox(toggleKeyBtn, regenKeyBtn), streamKeyEntry)
 
 	return container.New(layout.NewFormLayout(), themeText, dropdownTheme, languageText, dropdownLanguage, gaplessText, gaplessdropdown, ffmpegText, ffmpegPathControls, sameTypeAutoNext, sameTypeAutoNextCheck, debugText, debugExport, rtmpPortLabel, rtmpPortEntry, rtmpKeyLabel, rtmpKeyContainer)
 }

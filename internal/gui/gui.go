@@ -32,77 +32,79 @@ import (
 
 // FyneScreen .
 type FyneScreen struct {
-	tempFiles             []string
-	SelectInternalSubs    *widget.Select
-	CurrentPos            binding.String
-	EndPos                binding.String
-	serverStopCTX         context.Context
-	cancelServerStop      context.CancelFunc
-	Current               fyne.Window
-	cancelEnablePlay      context.CancelFunc
-	PlayPause             *widget.Button
-	Debug                 *debugWriter
-	VolumeUp              *widget.Button
-	SkipNextButton        *widget.Button
-	tvdata                *soapcalls.TVPayload
-	tabs                  *container.AppTabs
-	CheckVersion          *widget.Button
-	SubsText              *widget.Entry
-	CustomSubsCheck       *widget.Check
-	NextMediaCheck        *widget.Check
-	LoopSelectedCheck     *widget.Check
-	TranscodeCheckBox     *widget.Check
-	Stop                  *widget.Button
-	DeviceList            *deviceList
-	httpserver            *httphandlers.HTTPserver
-	MediaText             *widget.Entry
-	ExternalMediaURL      *widget.Check
-	SkinNextOnlySameTypes bool
-	GaplessMediaWatcher   func(context.Context, *FyneScreen, *soapcalls.TVPayload)
-	SlideBar              *tappedSlider
-	MuteUnmute            *widget.Button
-	VolumeDown            *widget.Button
-	selectedDevice        devType
-	selectedDeviceType    string
-	chromecastClient      *castprotocol.CastClient // Active Chromecast connection
-	State                 string
-	mediafile             string
-	version               string
-	eventlURL             string
-	subsfile              string
-	controlURL            string
-	renderingControlURL   string
-	connectionManagerURL  string
-	currentmfolder        string
-	ffmpegPath            string
-	ffmpegSeek            int
-	castingMediaType      string  // MIME type of currently casting media (e.g., "image/jpeg", "video/mp4")
-	mediaDuration         float64 // Actual media duration in seconds (from ffprobe, for transcoded streams)
-	chromecastCheckedFile string  // Tracks which file was already auto-checked for Chromecast compatibility
-	systemTheme           fyne.ThemeVariant
-	mediaFormats          []string
-	audioFormats          []string
-	videoFormats          []string
-	imageFormats          []string
-	muError               sync.RWMutex
-	mu                    sync.RWMutex
-	ffmpegPathChanged     bool
-	Medialoop             bool
-	sliderActive          bool
-	Transcode             bool
-	ErrorVisible          bool
-	Hotkeys               bool
-	MediaBrowse           *widget.Button
-	ClearMedia            *widget.Button
-	SubsBrowse            *widget.Button
-	ActiveDeviceLabel     *widget.Label
-	ActiveDeviceCard      *widget.Card
-	rtmpServer            *rtmp.Server
-	rtmpServerCheck       *widget.Check
-	rtmpURLCard           *widget.Card
-	rtmpURLEntry          *widget.Entry
-	rtmpHLSURL            string // The local HLS HLS URL
-	rtmpMu                sync.Mutex
+	tempFiles                []string
+	SelectInternalSubs       *widget.Select
+	CurrentPos               binding.String
+	EndPos                   binding.String
+	serverStopCTX            context.Context
+	cancelServerStop         context.CancelFunc
+	Current                  fyne.Window
+	cancelEnablePlay         context.CancelFunc
+	PlayPause                *widget.Button
+	Debug                    *debugWriter
+	VolumeUp                 *widget.Button
+	SkipNextButton           *widget.Button
+	tvdata                   *soapcalls.TVPayload
+	tabs                     *container.AppTabs
+	CheckVersion             *widget.Button
+	SubsText                 *widget.Entry
+	CustomSubsCheck          *widget.Check
+	NextMediaCheck           *widget.Check
+	LoopSelectedCheck        *widget.Check
+	TranscodeCheckBox        *widget.Check
+	Stop                     *widget.Button
+	DeviceList               *deviceList
+	httpserver               *httphandlers.HTTPserver
+	MediaText                *widget.Entry
+	ExternalMediaURL         *widget.Check
+	SkinNextOnlySameTypes    bool
+	GaplessMediaWatcher      func(context.Context, *FyneScreen, *soapcalls.TVPayload)
+	SlideBar                 *tappedSlider
+	MuteUnmute               *widget.Button
+	VolumeDown               *widget.Button
+	selectedDevice           devType
+	selectedDeviceType       string
+	chromecastClient         *castprotocol.CastClient // Active Chromecast connection
+	State                    string
+	mediafile                string
+	version                  string
+	eventlURL                string
+	subsfile                 string
+	controlURL               string
+	renderingControlURL      string
+	connectionManagerURL     string
+	currentmfolder           string
+	ffmpegPath               string
+	ffmpegSeek               int
+	castingMediaType         string  // MIME type of currently casting media (e.g., "image/jpeg", "video/mp4")
+	mediaDuration            float64 // Actual media duration in seconds (from ffprobe, for transcoded streams)
+	chromecastCheckedFile    string  // Tracks which file was already auto-checked for Chromecast compatibility
+	systemTheme              fyne.ThemeVariant
+	mediaFormats             []string
+	audioFormats             []string
+	videoFormats             []string
+	imageFormats             []string
+	muError                  sync.RWMutex
+	mu                       sync.RWMutex
+	ffmpegPathChanged        bool
+	Medialoop                bool
+	sliderActive             bool
+	Transcode                bool
+	ErrorVisible             bool
+	Hotkeys                  bool
+	MediaBrowse              *widget.Button
+	ClearMedia               *widget.Button
+	SubsBrowse               *widget.Button
+	ActiveDeviceLabel        *widget.Label
+	ActiveDeviceCard         *widget.Card
+	rtmpServer               *rtmp.Server
+	rtmpServerCheck          *widget.Check
+	rtmpURLCard              *widget.Card
+	rtmpURLEntry             *widget.Entry
+	rtmpKeyEntry             *widget.Entry
+	rtmpHLSURL               string // The local HLS HLS URL
+	rtmpPrevExternalMediaURL bool
+	rtmpMu                   sync.Mutex
 }
 
 type debugWriter struct {

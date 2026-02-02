@@ -512,10 +512,41 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	s.rtmpURLEntry = widget.NewEntry()
 	s.rtmpURLEntry.Disable()
-	copyBtn := widget.NewButtonWithIcon(lang.L("Copy"), theme.ContentCopyIcon(), func() {
+	copyURLBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
 		w.Clipboard().SetContent(s.rtmpURLEntry.Text)
 	})
-	s.rtmpURLCard = widget.NewCard(lang.L("RTMP Stream URL"), "", container.NewBorder(nil, nil, nil, copyBtn, s.rtmpURLEntry))
+
+	s.rtmpKeyEntry = widget.NewEntry()
+	s.rtmpKeyEntry.Password = true
+	s.rtmpKeyEntry.Disable()
+	copyKeyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+		w.Clipboard().SetContent(s.rtmpKeyEntry.Text)
+	})
+
+	var toggleKeyBtn *widget.Button
+	toggleKeyBtn = widget.NewButtonWithIcon("", theme.VisibilityIcon(), func() {
+		if s.rtmpKeyEntry.Password {
+			s.rtmpKeyEntry.Password = false
+			toggleKeyBtn.SetIcon(theme.VisibilityOffIcon())
+		} else {
+			s.rtmpKeyEntry.Password = true
+			toggleKeyBtn.SetIcon(theme.VisibilityIcon())
+		}
+		s.rtmpKeyEntry.Refresh()
+	})
+
+	rtmpRows := container.NewVBox(
+		container.NewVBox(
+			widget.NewLabelWithStyle(lang.L("RTMP Stream URL"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			container.NewBorder(nil, nil, nil, copyURLBtn, s.rtmpURLEntry),
+		),
+		container.NewVBox(
+			widget.NewLabelWithStyle(lang.L("Stream Key"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			container.NewBorder(nil, nil, nil, container.NewHBox(toggleKeyBtn, copyKeyBtn), s.rtmpKeyEntry),
+		),
+	)
+
+	s.rtmpURLCard = widget.NewCard(lang.L("RTMP Server"), "", rtmpRows)
 	s.rtmpURLCard.Hide()
 
 	mediafilelabel := widget.NewLabel(lang.L("Media File") + ":")
@@ -595,8 +626,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		container.NewHBox(widget.NewIcon(theme.MediaPlayIcon()), s.ActiveDeviceLabel))
 	s.ActiveDeviceCard.Hide()
 
-	deviceTop := container.NewVBox(s.ActiveDeviceCard, s.rtmpURLCard)
-	deviceCard := widget.NewCard(lang.L("Devices"), "", container.NewBorder(deviceHeader, deviceTop, nil, nil, list))
+	deviceBottom := container.NewVBox(s.ActiveDeviceCard, s.rtmpURLCard)
+	deviceCard := widget.NewCard(lang.L("Devices"), "", container.NewBorder(deviceHeader, deviceBottom, nil, nil, list))
 
 	leftColumn := container.NewVBox(mediaCard, playCard, commonCard, advancedCard)
 	content := container.New(&RatioLayout{LeftRatio: 0.66}, leftColumn, deviceCard)

@@ -365,25 +365,30 @@ func playAction(screen *FyneScreen) {
 	var isSeek bool
 
 	if !screen.ExternalMediaURL.Checked {
-		mfile, err := os.Open(screen.mediafile)
-		check(screen, err)
-		if err != nil {
-			startAfreshPlayButton(screen)
-			return
-		}
+		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
+			mediaType = "application/vnd.apple.mpegurl"
+			screen.SetMediaType(mediaType)
+		} else {
+			mfile, err := os.Open(screen.mediafile)
+			check(screen, err)
+			if err != nil {
+				startAfreshPlayButton(screen)
+				return
+			}
 
-		mediaType, err = utils.GetMimeDetailsFromFile(mfile)
-		check(screen, err)
-		if err != nil {
-			startAfreshPlayButton(screen)
-			return
-		}
+			mediaType, err = utils.GetMimeDetailsFromFile(mfile)
+			check(screen, err)
+			if err != nil {
+				startAfreshPlayButton(screen)
+				return
+			}
 
-		// Set casting media type
-		screen.SetMediaType(mediaType)
+			// Set casting media type
+			screen.SetMediaType(mediaType)
 
-		if !screen.Transcode {
-			isSeek = true
+			if !screen.Transcode {
+				isSeek = true
+			}
 		}
 	}
 
@@ -762,6 +767,10 @@ func chromecastPlayAction(screen *FyneScreen) {
 			go func() { <-serverStoppedCTX.Done(); cancel() }()
 		}
 
+	} else if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
+		// RTMP Mode: No need for local file checks
+		mediaType = "application/vnd.apple.mpegurl"
+		screen.SetMediaType(mediaType)
 	} else {
 		// LOCAL FILE: Serve via internal HTTP server
 		mfile, err := os.Open(screen.mediafile)
@@ -1677,8 +1686,10 @@ func startRTMPServer(screen *FyneScreen) {
 		// Successful start - Update UI
 		fyne.Do(func() {
 			screen.rtmpServerCheck.Enable()
+			screen.rtmpPrevExternalMediaURL = screen.ExternalMediaURL.Checked
 
 			// Disable other media inputs
+			screen.ExternalMediaURL.SetChecked(true)
 			screen.ExternalMediaURL.Disable()
 			screen.MediaBrowse.Disable()
 			screen.MediaText.Disable()
@@ -1689,7 +1700,8 @@ func startRTMPServer(screen *FyneScreen) {
 			if ip == "" {
 				ip = "127.0.0.1"
 			}
-			screen.rtmpURLEntry.SetText(fmt.Sprintf("rtmp://%s:%s/live/%s", ip, port, streamKey))
+			screen.rtmpURLEntry.SetText(fmt.Sprintf("rtmp://%s:%s/live/", ip, port))
+			screen.rtmpKeyEntry.SetText(streamKey)
 			screen.rtmpURLCard.Show()
 
 			screen.rtmpHLSURL = hlsDir
@@ -1737,6 +1749,7 @@ func stopRTMPServer(screen *FyneScreen) {
 
 func resetRTMPUI(screen *FyneScreen) {
 	screen.rtmpServerCheck.SetChecked(false)
+	screen.ExternalMediaURL.SetChecked(screen.rtmpPrevExternalMediaURL)
 	screen.ExternalMediaURL.Enable()
 
 	if screen.ExternalMediaURL.Checked {
@@ -1750,6 +1763,7 @@ func resetRTMPUI(screen *FyneScreen) {
 	screen.ClearMedia.Enable()
 	screen.rtmpURLCard.Hide()
 	screen.rtmpURLEntry.SetText("")
+	screen.rtmpKeyEntry.SetText("")
 
 	if screen.MediaText.Text == "RTMP Live Stream" {
 		screen.MediaText.SetText("")
