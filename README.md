@@ -62,10 +62,8 @@ For maximum compatibility with all devices and file formats, install [FFmpeg](ht
 
 **GUI Mode**
 
-![](https://i.imgur.com/Ga3hLJM.gif)
-
-![](https://i.imgur.com/Pw44BYD.png)
-![](https://i.imgur.com/JeUxGGd.png)
+![](https://i.imgur.com/AUxZBte.png)
+![](https://i.imgur.com/wrrSNgX.png)
 
 **CLI Mode**
 
