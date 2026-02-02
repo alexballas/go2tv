@@ -516,14 +516,14 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.rtmpURLEntry = widget.NewEntry()
 	s.rtmpURLEntry.Disable()
 	copyURLBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
-		w.Clipboard().SetContent(s.rtmpURLEntry.Text)
+		fyne.CurrentApp().Clipboard().SetContent(s.rtmpURLEntry.Text)
 	})
 
 	s.rtmpKeyEntry = widget.NewEntry()
 	s.rtmpKeyEntry.Password = true
 	s.rtmpKeyEntry.Disable()
 	copyKeyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
-		w.Clipboard().SetContent(s.rtmpKeyEntry.Text)
+		fyne.CurrentApp().Clipboard().SetContent(s.rtmpKeyEntry.Text)
 	})
 
 	var toggleKeyBtn *widget.Button
