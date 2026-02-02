@@ -294,6 +294,259 @@ func playAction(screen *FyneScreen) {
 	screen.cancelEnablePlay = cancelEnablePlay
 
 	go func() {
+		// RTMP wait mechanism
+		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
+			if err := waitForRTMPStream(screen); err != nil {
+				check(screen, err)
+				startAfreshPlayButton(screen)
+				return
+			}
+		}
+
+		// DLNA pause/resume handling for new playback sessions
+		// (active sessions are handled above before device type check)
+		if currentState == "Paused" {
+			err := screen.tvdata.SendtoTV("Play")
+			check(screen, err)
+			return
+		}
+
+		if screen.mediafile == "" && screen.MediaText.Text == "" {
+			check(screen, errors.New(lang.L("please select a media file or enter a media URL")))
+			startAfreshPlayButton(screen)
+			return
+		}
+
+		if screen.selectedDevice.addr == "" {
+			check(screen, errors.New(lang.L("please select a device")))
+			startAfreshPlayButton(screen)
+			return
+		}
+
+		if screen.controlURL == "" {
+			check(screen, errors.New(lang.L("please select a device")))
+			startAfreshPlayButton(screen)
+			return
+		}
+
+		whereToListen, err := utils.URLtoListenIPandPort(screen.controlURL)
+		check(screen, err)
+		if err != nil {
+			startAfreshPlayButton(screen)
+			return
+		}
+
+		var mediaType string
+		var isSeek bool
+
+		if !screen.ExternalMediaURL.Checked {
+			if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
+				mediaType = "application/vnd.apple.mpegurl"
+				screen.SetMediaType(mediaType)
+			} else {
+				mfile, err := os.Open(screen.mediafile)
+				check(screen, err)
+				if err != nil {
+					startAfreshPlayButton(screen)
+					return
+				}
+
+				mediaType, err = utils.GetMimeDetailsFromFile(mfile)
+				check(screen, err)
+				if err != nil {
+					startAfreshPlayButton(screen)
+					return
+				}
+
+				// Set casting media type
+				screen.SetMediaType(mediaType)
+
+				if !screen.Transcode {
+					isSeek = true
+				}
+			}
+		}
+
+		callbackPath, err := utils.RandomString()
+		if err != nil {
+			startAfreshPlayButton(screen)
+			return
+		}
+
+		mediaFile = screen.mediafile
+
+		if screen.ExternalMediaURL.Checked {
+			// We need to define the screen.mediafile
+			// as this is the core item in our structure
+			// that defines that something is being streamed.
+			// We use its value for many checks in our code.
+			// We use its value for many checks in our code.
+			screen.mediafile = screen.MediaText.Text
+
+			if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
+				mediaType = "application/vnd.apple.mpegurl"
+				screen.SetMediaType(mediaType)
+				mediaFile = screen.mediafile
+			} else {
+				// We're not using any context here. The reason is
+				// that when the webserver shuts down it causes the
+				// the io.Copy operation to fail with "broken pipe".
+				// That's good enough for us since right after that
+				// we close the io.ReadCloser.
+				mediaURL, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
+				check(screen, err)
+				if err != nil {
+					startAfreshPlayButton(screen)
+					return
+				}
+
+				mediaURLinfo, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
+				check(screen, err)
+				if err != nil {
+					startAfreshPlayButton(screen)
+					return
+				}
+
+				mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
+				check(screen, err)
+				if err != nil {
+					startAfreshPlayButton(screen)
+					return
+				}
+
+				// Set casting media type
+				screen.SetMediaType(mediaType)
+
+				mediaFile = mediaURL
+				if strings.Contains(mediaType, "image") {
+					readerToBytes, err := io.ReadAll(mediaURL)
+					mediaURL.Close()
+					if err != nil {
+						startAfreshPlayButton(screen)
+						return
+					}
+					mediaFile = readerToBytes
+				}
+			}
+		}
+
+		if screen.SelectInternalSubs.Selected != "" {
+			for n, opt := range screen.SelectInternalSubs.Options {
+				if opt == screen.SelectInternalSubs.Selected {
+					fyne.Do(func() {
+						screen.PlayPause.Text = lang.L("Extracting Subtitles")
+						screen.PlayPause.Refresh()
+					})
+					tempSubsPath, err := utils.ExtractSub(screen.ffmpegPath, n, screen.mediafile)
+					fyne.Do(func() {
+						screen.PlayPause.Text = lang.L("Play")
+						screen.PlayPause.Refresh()
+					})
+					if err != nil {
+						break
+					}
+
+					screen.tempFiles = append(screen.tempFiles, tempSubsPath)
+					screen.subsfile = tempSubsPath
+				}
+			}
+		}
+
+		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
+			screen.tvdata = &soapcalls.TVPayload{
+				ControlURL:                  screen.controlURL,
+				EventURL:                    screen.eventlURL,
+				RenderingControlURL:         screen.renderingControlURL,
+				ConnectionManagerURL:        screen.connectionManagerURL,
+				MediaURL:                    "http://" + whereToListen + "/rtmp/playlist.m3u8",
+				SubtitlesURL:                "http://" + whereToListen + "/rtmp/subs.srt",
+				CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
+				MediaType:                   mediaType,
+				MediaPath:                   screen.mediafile,
+				CurrentTimers:               make(map[string]*time.Timer),
+				MediaRenderersStates:        make(map[string]*soapcalls.States),
+				InitialMediaRenderersStates: make(map[string]bool),
+				Transcode:                   false,
+				Seekable:                    false,
+				LogOutput:                   screen.Debug,
+				FFmpegPath:                  screen.ffmpegPath,
+			}
+		} else {
+			screen.tvdata = &soapcalls.TVPayload{
+				ControlURL:                  screen.controlURL,
+				EventURL:                    screen.eventlURL,
+				RenderingControlURL:         screen.renderingControlURL,
+				ConnectionManagerURL:        screen.connectionManagerURL,
+				MediaURL:                    "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile),
+				SubtitlesURL:                "http://" + whereToListen + "/" + utils.ConvertFilename(screen.subsfile),
+				CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
+				MediaType:                   mediaType,
+				MediaPath:                   screen.mediafile,
+				CurrentTimers:               make(map[string]*time.Timer),
+				MediaRenderersStates:        make(map[string]*soapcalls.States),
+				InitialMediaRenderersStates: make(map[string]bool),
+				Transcode:                   screen.Transcode,
+				Seekable:                    isSeek,
+				LogOutput:                   screen.Debug,
+				FFmpegPath:                  screen.ffmpegPath,
+				FFmpegSeek:                  screen.ffmpegSeek,
+				FFmpegSubsPath:              screen.subsfile,
+			}
+		}
+
+		if screen.httpserver != nil {
+			screen.httpserver.StopServer()
+		}
+
+		screen.httpserver = httphandlers.NewServer(whereToListen)
+		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
+			screen.httpserver.AddDirectoryHandler("/rtmp/", screen.rtmpHLSURL)
+		}
+
+		serverStarted := make(chan error)
+		serverStoppedCTX, serverCTXStop := context.WithCancel(context.Background())
+		screen.serverStopCTX = serverStoppedCTX
+
+		// We pass the tvdata here as we need the callback handlers to be able to react
+		// to the different media renderer states.
+		go func() {
+			screen.httpserver.StartServer(serverStarted, mediaFile, screen.subsfile, screen.tvdata, screen)
+			serverCTXStop()
+		}()
+
+		// Wait for the HTTP server to properly initialize.
+		err = <-serverStarted
+		check(screen, err)
+
+		err = screen.tvdata.SendtoTV("Play1")
+		check(screen, err)
+		if err != nil {
+			// Something failed when sent Play1 to the TV.
+			// Just force the user to re-select a device.
+			lsize := screen.DeviceList.Length()
+			for i := 0; i <= lsize; i++ {
+				screen.DeviceList.Unselect(lsize - 1)
+			}
+			screen.controlURL = ""
+			stopAction(screen)
+		}
+
+		gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
+		if screen.NextMediaCheck.Checked && gaplessOption == "Enabled" {
+			newTVPayload, err := queueNext(screen, false)
+			if err != nil {
+				stopAction(screen)
+			}
+
+			if screen.GaplessMediaWatcher == nil {
+				screen.GaplessMediaWatcher = gaplessMediaWatcher
+				go screen.GaplessMediaWatcher(serverStoppedCTX, screen, newTVPayload)
+			}
+		}
+
+	}()
+
+	go func() {
 		<-ctx.Done()
 
 		defer func() { screen.cancelEnablePlay = nil }()
@@ -316,249 +569,6 @@ func playAction(screen *FyneScreen) {
 			screen.updateScreenState("Paused")
 		}
 	}()
-
-	// DLNA pause/resume handling for new playback sessions
-	// (active sessions are handled above before device type check)
-	if currentState == "Paused" {
-		err := screen.tvdata.SendtoTV("Play")
-		check(screen, err)
-		return
-	}
-
-	// With this check we're covering the edge case
-	// where we're able to click 'Play' while a media
-	// is looping repeatedly and throws an error that
-	// it's not supported by our media renderer.
-	// Without this check we'd end up spinning more
-	// webservers while keeping the old ones open.
-	if screen.httpserver != nil {
-		screen.httpserver.StopServer()
-	}
-
-	if screen.mediafile == "" && screen.MediaText.Text == "" {
-		check(screen, errors.New(lang.L("please select a media file or enter a media URL")))
-		startAfreshPlayButton(screen)
-		return
-	}
-
-	if screen.selectedDevice.addr == "" {
-		check(screen, errors.New(lang.L("please select a device")))
-		startAfreshPlayButton(screen)
-		return
-	}
-
-	// Continue with existing DLNA logic...
-	if screen.controlURL == "" {
-		check(screen, errors.New(lang.L("please select a device")))
-		startAfreshPlayButton(screen)
-		return
-	}
-
-	whereToListen, err := utils.URLtoListenIPandPort(screen.controlURL)
-	check(screen, err)
-	if err != nil {
-		startAfreshPlayButton(screen)
-		return
-	}
-
-	var mediaType string
-	var isSeek bool
-
-	if !screen.ExternalMediaURL.Checked {
-		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
-			mediaType = "application/vnd.apple.mpegurl"
-			screen.SetMediaType(mediaType)
-		} else {
-			mfile, err := os.Open(screen.mediafile)
-			check(screen, err)
-			if err != nil {
-				startAfreshPlayButton(screen)
-				return
-			}
-
-			mediaType, err = utils.GetMimeDetailsFromFile(mfile)
-			check(screen, err)
-			if err != nil {
-				startAfreshPlayButton(screen)
-				return
-			}
-
-			// Set casting media type
-			screen.SetMediaType(mediaType)
-
-			if !screen.Transcode {
-				isSeek = true
-			}
-		}
-	}
-
-	callbackPath, err := utils.RandomString()
-	if err != nil {
-		startAfreshPlayButton(screen)
-		return
-	}
-
-	mediaFile = screen.mediafile
-
-	if screen.ExternalMediaURL.Checked {
-		// We need to define the screen.mediafile
-		// as this is the core item in our structure
-		// that defines that something is being streamed.
-		// We use its value for many checks in our code.
-		// We use its value for many checks in our code.
-		screen.mediafile = screen.MediaText.Text
-
-		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
-			mediaType = "application/vnd.apple.mpegurl"
-			screen.SetMediaType(mediaType)
-			mediaFile = screen.mediafile
-		} else {
-			// We're not using any context here. The reason is
-			// that when the webserver shuts down it causes the
-			// the io.Copy operation to fail with "broken pipe".
-			// That's good enough for us since right after that
-			// we close the io.ReadCloser.
-			mediaURL, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
-			check(screen, err)
-			if err != nil {
-				startAfreshPlayButton(screen)
-				return
-			}
-
-			mediaURLinfo, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
-			check(screen, err)
-			if err != nil {
-				startAfreshPlayButton(screen)
-				return
-			}
-
-			mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
-			check(screen, err)
-			if err != nil {
-				startAfreshPlayButton(screen)
-				return
-			}
-
-			// Set casting media type
-			screen.SetMediaType(mediaType)
-
-			mediaFile = mediaURL
-			if strings.Contains(mediaType, "image") {
-				readerToBytes, err := io.ReadAll(mediaURL)
-				mediaURL.Close()
-				if err != nil {
-					startAfreshPlayButton(screen)
-					return
-				}
-				mediaFile = readerToBytes
-			}
-		}
-	}
-
-	if screen.SelectInternalSubs.Selected != "" {
-		for n, opt := range screen.SelectInternalSubs.Options {
-			if opt == screen.SelectInternalSubs.Selected {
-				screen.PlayPause.Text = lang.L("Extracting Subtitles")
-				screen.PlayPause.Refresh()
-				tempSubsPath, err := utils.ExtractSub(screen.ffmpegPath, n, screen.mediafile)
-				screen.PlayPause.Text = lang.L("Play")
-				screen.PlayPause.Refresh()
-				if err != nil {
-					break
-				}
-
-				screen.tempFiles = append(screen.tempFiles, tempSubsPath)
-				screen.subsfile = tempSubsPath
-			}
-		}
-	}
-
-	if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
-		screen.tvdata = &soapcalls.TVPayload{
-			ControlURL:                  screen.controlURL,
-			EventURL:                    screen.eventlURL,
-			RenderingControlURL:         screen.renderingControlURL,
-			ConnectionManagerURL:        screen.connectionManagerURL,
-			MediaURL:                    "http://" + whereToListen + "/rtmp/playlist.m3u8",
-			SubtitlesURL:                "http://" + whereToListen + "/rtmp/subs.srt",
-			CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
-			MediaType:                   mediaType,
-			MediaPath:                   screen.mediafile,
-			CurrentTimers:               make(map[string]*time.Timer),
-			MediaRenderersStates:        make(map[string]*soapcalls.States),
-			InitialMediaRenderersStates: make(map[string]bool),
-			Transcode:                   false,
-			Seekable:                    false,
-			LogOutput:                   screen.Debug,
-			FFmpegPath:                  screen.ffmpegPath,
-		}
-	} else {
-		screen.tvdata = &soapcalls.TVPayload{
-			ControlURL:                  screen.controlURL,
-			EventURL:                    screen.eventlURL,
-			RenderingControlURL:         screen.renderingControlURL,
-			ConnectionManagerURL:        screen.connectionManagerURL,
-			MediaURL:                    "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile),
-			SubtitlesURL:                "http://" + whereToListen + "/" + utils.ConvertFilename(screen.subsfile),
-			CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
-			MediaType:                   mediaType,
-			MediaPath:                   screen.mediafile,
-			CurrentTimers:               make(map[string]*time.Timer),
-			MediaRenderersStates:        make(map[string]*soapcalls.States),
-			InitialMediaRenderersStates: make(map[string]bool),
-			Transcode:                   screen.Transcode,
-			Seekable:                    isSeek,
-			LogOutput:                   screen.Debug,
-			FFmpegPath:                  screen.ffmpegPath,
-			FFmpegSeek:                  screen.ffmpegSeek,
-			FFmpegSubsPath:              screen.subsfile,
-		}
-	}
-	screen.httpserver = httphandlers.NewServer(whereToListen)
-	if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
-		screen.httpserver.AddDirectoryHandler("/rtmp/", screen.rtmpHLSURL)
-	}
-
-	serverStarted := make(chan error)
-	serverStoppedCTX, serverCTXStop := context.WithCancel(context.Background())
-	screen.serverStopCTX = serverStoppedCTX
-
-	// We pass the tvdata here as we need the callback handlers to be able to react
-	// to the different media renderer states.
-	go func() {
-		screen.httpserver.StartServer(serverStarted, mediaFile, screen.subsfile, screen.tvdata, screen)
-		serverCTXStop()
-	}()
-
-	// Wait for the HTTP server to properly initialize.
-	err = <-serverStarted
-	check(screen, err)
-
-	err = screen.tvdata.SendtoTV("Play1")
-	check(screen, err)
-	if err != nil {
-		// Something failed when sent Play1 to the TV.
-		// Just force the user to re-select a device.
-		lsize := screen.DeviceList.Length()
-		for i := 0; i <= lsize; i++ {
-			screen.DeviceList.Unselect(lsize - 1)
-		}
-		screen.controlURL = ""
-		stopAction(screen)
-	}
-
-	gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
-	if screen.NextMediaCheck.Checked && gaplessOption == "Enabled" {
-		newTVPayload, err := queueNext(screen, false)
-		if err != nil {
-			stopAction(screen)
-		}
-
-		if screen.GaplessMediaWatcher == nil {
-			screen.GaplessMediaWatcher = gaplessMediaWatcher
-			go screen.GaplessMediaWatcher(serverStoppedCTX, screen, newTVPayload)
-		}
-	}
 
 }
 
@@ -596,6 +606,15 @@ func chromecastPlayAction(screen *FyneScreen) {
 		check(screen, errors.New(lang.L("please select a media file or enter a media URL")))
 		startAfreshPlayButton(screen)
 		return
+	}
+
+	// RTMP wait mechanism
+	if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
+		if err := waitForRTMPStream(screen); err != nil {
+			check(screen, err)
+			startAfreshPlayButton(screen)
+			return
+		}
 	}
 
 	// Reset seek position for fresh playback (auto-play next file needs this)
@@ -1770,5 +1789,37 @@ func resetRTMPUI(screen *FyneScreen) {
 	}
 	if screen.mediafile == "RTMP Live Stream" {
 		screen.mediafile = ""
+	}
+}
+
+func waitForRTMPStream(screen *FyneScreen) error {
+	screen.rtmpMu.Lock()
+	if screen.rtmpServer == nil {
+		screen.rtmpMu.Unlock()
+		return errors.New(lang.L("RTMP server not started"))
+	}
+	playlistPath := filepath.Join(screen.rtmpServer.TempDir(), "playlist.m3u8")
+	screen.rtmpMu.Unlock()
+
+	fyne.Do(func() {
+		screen.PlayPause.SetText(lang.L("Waiting for Stream..."))
+		screen.PlayPause.Disable()
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return errors.New(lang.L("RTMP stream not found. Please start streaming from OBS first."))
+		case <-ticker.C:
+			if _, err := os.Stat(playlistPath); err == nil {
+				return nil
+			}
+		}
 	}
 }

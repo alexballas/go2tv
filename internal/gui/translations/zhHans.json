@@ -91,5 +91,8 @@
     "RTMP Port": "RTMP 端口",
     "RTMP Stream Key": "RTMP 串流密钥",
     "Regenerate": "重新生成",
-    "Website": "网站"
+    "Website": "网站",
+    "Waiting for Stream...": "等待流...",
+    "RTMP stream not found. Please start streaming from OBS first.": "未找到 RTMP 流。请先从 OBS 开始推流。",
+    "RTMP server not started": "RTMP 服务器未启动"
 }
