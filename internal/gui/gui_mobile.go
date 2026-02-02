@@ -112,6 +112,8 @@ func Start(ctx context.Context, s *FyneScreen) {
 		os.Exit(0)
 	}()
 
+	go silentCheckVersion(s)
+
 	w.ShowAndRun()
 }
 

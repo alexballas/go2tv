@@ -222,6 +222,8 @@ func Start(ctx context.Context, s *FyneScreen) {
 		s.rtmpMu.Unlock()
 	})
 
+	go silentCheckVersion(s)
+
 	w.ShowAndRun()
 
 }

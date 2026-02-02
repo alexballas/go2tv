@@ -4,10 +4,7 @@ package gui
 
 import (
 	"errors"
-	"net/http"
 	"net/url"
-	"path/filepath"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -91,7 +88,7 @@ func checkVersion(s *FyneScreen) {
 		return
 	}
 
-	req, err := http.NewRequest("GET", "https://go2tv.app/latest", nil)
+	latestVersionStr, err := getLatestVersion()
 	if err != nil {
 		fyne.Do(func() {
 			dialog.ShowError(errVersionGet, s.Current)
@@ -99,22 +96,6 @@ func checkVersion(s *FyneScreen) {
 		return
 	}
 
-	// We want to follow the redirects to the final URL which contains the version tag.
-	// client.Do handles following redirects by default up to a limit (10).
-	client := &http.Client{
-		Timeout: 3 * time.Second,
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		fyne.Do(func() {
-			dialog.ShowError(errVersionGet, s.Current)
-		})
-		return
-	}
-	defer resp.Body.Close()
-
-	latestVersionStr := filepath.Base(resp.Request.URL.Path)
 	cmp, err := compareVersions(latestVersionStr, s.version)
 	if err != nil {
 		fyne.Do(func() {
@@ -125,24 +106,7 @@ func checkVersion(s *FyneScreen) {
 
 	switch cmp {
 	case 1:
-		fyne.Do(func() {
-			lbl := widget.NewLabel(lang.L("Current") + ": v" + s.version + " → " + lang.L("New") + ": " + latestVersionStr)
-			lbl.Alignment = fyne.TextAlignCenter
-			cnf := dialog.NewCustomConfirm(
-				lang.L("Version checker"),
-				lang.L("Download"),
-				lang.L("Cancel"),
-				lbl,
-				func(b bool) {
-					if b {
-						u, _ := url.Parse("https://go2tv.app/latest")
-						_ = fyne.CurrentApp().OpenURL(u)
-					}
-				},
-				s.Current,
-			)
-			cnf.Show()
-		})
+		showVersionPopup(latestVersionStr, s)
 		return
 	default:
 		fyne.Do(func() {
@@ -150,4 +114,25 @@ func checkVersion(s *FyneScreen) {
 		})
 		return
 	}
+}
+
+func showVersionPopup(latestVersionStr string, s *FyneScreen) {
+	fyne.Do(func() {
+		lbl := widget.NewLabel(lang.L("Current") + ": v" + s.version + " → " + lang.L("New") + ": " + latestVersionStr)
+		lbl.Alignment = fyne.TextAlignCenter
+		cnf := dialog.NewCustomConfirm(
+			lang.L("Version checker"),
+			lang.L("Download"),
+			lang.L("Cancel"),
+			lbl,
+			func(b bool) {
+				if b {
+					u, _ := url.Parse("https://go2tv.app/latest")
+					_ = fyne.CurrentApp().OpenURL(u)
+				}
+			},
+			s.Current,
+		)
+		cnf.Show()
+	})
 }
