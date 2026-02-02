@@ -7,7 +7,6 @@
     "Select Device": "Select Device",
     "Select Media File": "Select Media File",
     "Select Subtitles File": "Select Subtitles File",
-    "File": "File",
     "URL": "URL",
     "Subtitles": "Subtitles",
     "Enter URL here": "Enter URL here",
@@ -94,5 +93,7 @@
     "Website": "Website",
     "Waiting for Stream...": "Waiting for Stream...",
     "RTMP stream not found. Please start streaming from OBS first.": "RTMP stream not found. Please start streaming from OBS first.",
-    "RTMP server not started": "RTMP server not started"
+    "RTMP server not started": "RTMP server not started",
+    "Cast": "Cast",
+    "Start RTMP Session": "Start RTMP Session"
 }

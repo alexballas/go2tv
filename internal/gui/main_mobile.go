@@ -113,7 +113,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	externalmedia := widget.NewCheck(lang.L("Media from URL"), func(b bool) {})
 	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
 
-	mediafilelabel := widget.NewLabel(lang.L("File") + ":")
+	mediafilelabel := widget.NewLabel(lang.L("Media File") + ":")
 	subsfilelabel := widget.NewLabel(lang.L("Subtitles") + ":")
 	devicelabel := widget.NewLabel(lang.L("Select Device") + ":")
 
@@ -205,7 +205,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 		medialoop.Enable()
 		mfile.Enable()
-		mediafilelabel.Text = lang.L("File") + ":"
+		mediafilelabel.Text = lang.L("Media File") + ":"
 		mfiletext.SetPlaceHolder("")
 		s.MediaText.Text = mediafileOldText
 		s.mediafile = mediafileOld

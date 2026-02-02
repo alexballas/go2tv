@@ -435,6 +435,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	}()
 
 	mfiletext := widget.NewEntry()
+	mfiletext.OnChanged = func(string) {
+		setPlayPauseView("", s)
+	}
 	sfiletext := widget.NewEntry()
 
 	mbrowse := widget.NewButtonWithIcon(lang.L("Browse"), theme.FolderOpenIcon(), func() {
@@ -450,25 +453,35 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	sbrowse.Disable()
 	sfiletext.Disable()
 
-	playpause := widget.NewButtonWithIcon(lang.L("Play"), theme.MediaPlayIcon(), func() {
+	playpause := widget.NewButtonWithIcon(lang.L("Cast")+"   ", theme.MediaPlayIcon(), func() {
 		playAction(s)
 	})
+	playpause.Importance = widget.HighImportance
+	// playpause.Alignment = widget.ButtonAlignCenter
 
 	stop := widget.NewButtonWithIcon(lang.L("Stop"), theme.MediaStopIcon(), func() {
 		stopAction(s)
 	})
+	stop.Importance = widget.LowImportance
+	stop.Alignment = widget.ButtonAlignCenter
 
 	volumeup := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() {
 		volumeAction(s, true)
 	})
+	volumeup.Importance = widget.LowImportance
+	volumeup.Alignment = widget.ButtonAlignCenter
 
 	muteunmute := widget.NewButtonWithIcon("", theme.VolumeMuteIcon(), func() {
 		muteAction(s)
 	})
+	muteunmute.Importance = widget.LowImportance
+	muteunmute.Alignment = widget.ButtonAlignCenter
 
 	volumedown := widget.NewButtonWithIcon("", theme.VolumeDownIcon(), func() {
 		volumeAction(s, false)
 	})
+	volumedown.Importance = widget.LowImportance
+	volumedown.Alignment = widget.ButtonAlignCenter
 
 	clearmedia := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		clearmediaAction(s)
@@ -478,9 +491,11 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		clearsubsAction(s)
 	})
 
-	skipNext := widget.NewButtonWithIcon("Next", theme.MediaSkipNextIcon(), func() {
+	skipNext := widget.NewButtonWithIcon(lang.L("Next"), theme.MediaSkipNextIcon(), func() {
 		skipNextAction(s)
 	})
+	skipNext.Importance = widget.LowImportance
+	skipNext.Alignment = widget.ButtonAlignCenter
 	sliderBar := newTappableSlider(s)
 
 	// previewmedia spawns external applications.
@@ -559,9 +574,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		if item == "" {
 			return
 		}
-		s.SubsText.Text = ""
+		s.SubsText.SetText("")
 		s.subsfile = ""
-		s.SubsText.Refresh()
 		sfilecheck.Checked = false
 		sfilecheck.Refresh()
 		s.SubsBrowse.Disable()
@@ -598,7 +612,10 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	curPos.Set("00:00:00")
 	endPos.Set("00:00:00")
 
+	setPlayPauseView("", s)
+
 	sliderArea := container.NewBorder(nil, nil, widget.NewLabelWithData(curPos), widget.NewLabelWithData(endPos), sliderBar)
+
 	actionbuttons := container.NewHBox(
 		playpause,
 		stop,
@@ -618,7 +635,11 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	mediaCard := widget.NewCard(lang.L("Media"), "", viewfilescont)
 
 	commonCard := widget.NewCard(lang.L("Common Options"), "", container.NewVBox(medialoop, nextmedia))
-	advancedCard := widget.NewCard(lang.L("Advanced Options"), "", container.NewVBox(externalmedia, sfilecheck, transcode, rtmpServerCheck))
+
+	advancedAccordion := widget.NewAccordion(
+		widget.NewAccordionItem(lang.L("Advanced Options"), container.NewVBox(externalmedia, sfilecheck, transcode, rtmpServerCheck)),
+	)
+	advancedCard := widget.NewCard("", "", advancedAccordion)
 
 	playCard := widget.NewCard(lang.L("Playback"), "", container.NewVBox(sliderArea, actionbuttons))
 
@@ -674,6 +695,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		if data[id].deviceType == devices.DeviceTypeChromecast && s.mediafile != "" {
 			s.checkChromecastCompatibility()
 		}
+		setPlayPauseView("", s)
 	}
 
 	transcode.OnChanged = func(b bool) {
@@ -715,9 +737,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			s.MediaText.SetPlaceHolder(lang.L("Enter URL here"))
 			s.MediaText.Enable()
 
-			s.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
 			s.SelectInternalSubs.ClearSelected()
 			s.SelectInternalSubs.Disable()
+			setPlayPauseView("", s)
 			return
 		}
 
@@ -732,7 +754,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		mbrowse.Enable()
 		previewmedia.Enable()
 		skipNext.Enable()
-		mediafilelabel.Text = lang.L("File") + ":"
+		mediafilelabel.Text = lang.L("Media File") + ":"
 		s.MediaText.SetPlaceHolder("")
 		s.MediaText.Text = mediafileOldText
 		s.mediafile = mediafileOld
@@ -753,6 +775,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			s.SelectInternalSubs.Options = subs
 			s.SelectInternalSubs.Enable()
 		}
+		setPlayPauseView("", s)
 	}
 
 	medialoop.OnChanged = func(b bool) {

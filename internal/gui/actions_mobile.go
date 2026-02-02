@@ -179,7 +179,7 @@ func playAction(screen *FyneScreen) {
 			check(w, err)
 			return
 		}
-		if screen.PlayPause.Text == "Pause" {
+		if currentState == "Playing" {
 			err := screen.tvdata.SendtoTV("Pause")
 			check(w, err)
 			return
@@ -197,7 +197,7 @@ func playAction(screen *FyneScreen) {
 			screen.updateScreenState("Playing")
 			return
 		}
-		if screen.PlayPause.Text == "Pause" {
+		if currentState == "Playing" {
 			if err := screen.chromecastClient.Pause(); err != nil {
 				check(w, err)
 				return
@@ -452,15 +452,13 @@ func playAction(screen *FyneScreen) {
 }
 
 func clearmediaAction(screen *FyneScreen) {
-	screen.MediaText.Text = ""
+	screen.MediaText.SetText("")
 	screen.mediafile = nil
-	screen.MediaText.Refresh()
 }
 
 func clearsubsAction(screen *FyneScreen) {
-	screen.SubsText.Text = ""
+	screen.SubsText.SetText("")
 	screen.subsfile = nil
-	screen.SubsText.Refresh()
 }
 
 func stopAction(screen *FyneScreen) {

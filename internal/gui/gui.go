@@ -105,6 +105,8 @@ type FyneScreen struct {
 	rtmpKeyEntry             *widget.Entry
 	rtmpHLSURL               string // The local HLS HLS URL
 	rtmpPrevExternalMediaURL bool
+	rtmpPrevMediaText        string
+	rtmpPrevMediaFile        string
 	rtmpMu                   sync.Mutex
 }
 
@@ -446,16 +448,29 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 			if isImage {
 				screen.PlayPause.Disable()
 				screen.PlayPause.SetIcon(theme.FileImageIcon())
-				screen.PlayPause.SetText("Image Casting")
+				screen.PlayPause.SetText(lang.L("Image Casting") + "   ")
 			} else {
-				screen.PlayPause.Enable()
-				switch s {
-				case "Play":
-					screen.PlayPause.Text = lang.L("Play")
-					screen.PlayPause.Icon = theme.MediaPlayIcon()
-				case "Pause":
-					screen.PlayPause.Text = lang.L("Pause")
-					screen.PlayPause.Icon = theme.MediaPauseIcon()
+				state := screen.getScreenState()
+				if state == "Playing" || state == "Paused" {
+					screen.PlayPause.Enable()
+					switch s {
+					case "Play":
+						screen.PlayPause.SetText(lang.L("Play") + "   ")
+						screen.PlayPause.SetIcon(theme.MediaPlayIcon())
+					case "Pause":
+						screen.PlayPause.SetText(lang.L("Pause") + "   ")
+						screen.PlayPause.SetIcon(theme.MediaPauseIcon())
+					}
+				} else {
+					// Stopped or initial state
+					screen.PlayPause.Enable()
+
+					if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked && screen.selectedDeviceType == devices.DeviceTypeChromecast {
+						screen.PlayPause.SetText(lang.L("Start RTMP Session") + "   ")
+					} else {
+						screen.PlayPause.SetText(lang.L("Cast") + "   ")
+					}
+					screen.PlayPause.SetIcon(theme.MediaPlayIcon())
 				}
 			}
 			screen.PlayPause.Refresh()

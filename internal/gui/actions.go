@@ -158,6 +158,7 @@ func selectMediaFile(screen *FyneScreen, f fyne.URI) {
 	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
 		screen.checkChromecastCompatibility()
 	}
+	setPlayPauseView("", screen)
 }
 
 func selectSubsFile(screen *FyneScreen, f fyne.URI) {
@@ -249,7 +250,7 @@ func playAction(screen *FyneScreen) {
 			check(screen, err)
 			return
 		}
-		if screen.PlayPause.Text == "Pause" {
+		if currentState == "Playing" {
 			err := screen.tvdata.SendtoTV("Pause")
 			check(screen, err)
 			return
@@ -267,7 +268,7 @@ func playAction(screen *FyneScreen) {
 			screen.updateScreenState("Playing")
 			return
 		}
-		if screen.PlayPause.Text == "Pause" {
+		if currentState == "Playing" {
 			if err := screen.chromecastClient.Pause(); err != nil {
 				check(screen, err)
 				return
@@ -433,12 +434,12 @@ func playAction(screen *FyneScreen) {
 			for n, opt := range screen.SelectInternalSubs.Options {
 				if opt == screen.SelectInternalSubs.Selected {
 					fyne.Do(func() {
-						screen.PlayPause.Text = lang.L("Extracting Subtitles")
+						screen.PlayPause.Text = lang.L("Extracting Subtitles") + "   "
 						screen.PlayPause.Refresh()
 					})
 					tempSubsPath, err := utils.ExtractSub(screen.ffmpegPath, n, screen.mediafile)
 					fyne.Do(func() {
-						screen.PlayPause.Text = lang.L("Play")
+						screen.PlayPause.Text = lang.L("Play") + "   "
 						screen.PlayPause.Refresh()
 					})
 					if err != nil {
@@ -620,12 +621,12 @@ func chromecastPlayAction(screen *FyneScreen) {
 		for n, opt := range screen.SelectInternalSubs.Options {
 			if opt == screen.SelectInternalSubs.Selected {
 				fyne.Do(func() {
-					screen.PlayPause.Text = lang.L("Extracting Subtitles")
+					screen.PlayPause.Text = lang.L("Extracting Subtitles") + "   "
 					screen.PlayPause.Refresh()
 				})
 				tempSubsPath, err := utils.ExtractSub(screen.ffmpegPath, n, screen.mediafile)
 				fyne.Do(func() {
-					screen.PlayPause.Text = lang.L("Play")
+					screen.PlayPause.Text = lang.L("Play") + "   "
 					screen.PlayPause.Refresh()
 				})
 				if err != nil {
@@ -1172,20 +1173,19 @@ out:
 }
 
 func clearmediaAction(screen *FyneScreen) {
-	screen.MediaText.Text = ""
+	screen.MediaText.SetText("")
 	screen.mediafile = ""
-	screen.MediaText.Refresh()
 	screen.SelectInternalSubs.Options = []string{}
 	screen.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
 	screen.SelectInternalSubs.ClearSelected()
 	screen.SelectInternalSubs.Disable()
+	setPlayPauseView("", screen)
 }
 
 func clearsubsAction(screen *FyneScreen) {
 	screen.SelectInternalSubs.ClearSelected()
-	screen.SubsText.Text = ""
+	screen.SubsText.SetText("")
 	screen.subsfile = ""
-	screen.SubsText.Refresh()
 }
 
 func skipNextAction(screen *FyneScreen) {
@@ -1702,6 +1702,8 @@ func startRTMPServer(screen *FyneScreen) {
 		fyne.Do(func() {
 			screen.rtmpServerCheck.Enable()
 			screen.rtmpPrevExternalMediaURL = screen.ExternalMediaURL.Checked
+			screen.rtmpPrevMediaText = screen.MediaText.Text
+			screen.rtmpPrevMediaFile = screen.mediafile
 
 			// Disable other media inputs
 			screen.ExternalMediaURL.SetChecked(true)
@@ -1724,8 +1726,9 @@ func startRTMPServer(screen *FyneScreen) {
 
 			screen.rtmpHLSURL = hlsDir
 			// Set text to indicate streaming mode, but keep disabled
-			screen.MediaText.SetText("RTMP Live Stream")
-			screen.mediafile = "RTMP Live Stream"
+			screen.MediaText.SetText(lang.L("RTMP Live Stream"))
+			screen.mediafile = lang.L("RTMP Live Stream")
+			setPlayPauseView("", screen)
 		})
 		screen.rtmpMu.Unlock()
 	}()
@@ -1787,12 +1790,14 @@ func resetRTMPUI(screen *FyneScreen) {
 	screen.rtmpURLEntry.SetText("")
 	screen.rtmpKeyEntry.SetText("")
 
-	if screen.MediaText.Text == "RTMP Live Stream" {
-		screen.MediaText.SetText("")
-	}
-	if screen.mediafile == "RTMP Live Stream" {
-		screen.mediafile = ""
-	}
+	screen.rtmpURLCard.Hide()
+	screen.rtmpURLEntry.SetText("")
+	screen.rtmpKeyEntry.SetText("")
+
+	screen.MediaText.SetText(screen.rtmpPrevMediaText)
+	screen.mediafile = screen.rtmpPrevMediaFile
+
+	setPlayPauseView("", screen)
 }
 
 func waitForRTMPStream(screen *FyneScreen) error {
