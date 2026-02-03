@@ -16,10 +16,10 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
+	xfilepicker "github.com/alexballas/xfilepicker/dialog"
 	"github.com/pkg/errors"
 	"github.com/skratchdot/open-golang/open"
 	"go2tv.app/go2tv/v2/castprotocol"
@@ -178,24 +178,32 @@ func selectSubsFile(screen *FyneScreen, f fyne.URI) {
 
 func mediaAction(screen *FyneScreen) {
 	w := screen.Current
-	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+	fd := xfilepicker.NewFileOpen(func(readers []fyne.URIReadCloser, err error) {
 		check(screen, err)
 
-		if reader == nil {
+		if readers == nil {
 			return
 		}
-		defer reader.Close()
+		defer func() {
+			for _, i := range readers {
+				i.Close()
+			}
+		}()
+		selectMediaFile(screen, readers[0].URI())
+	}, w, false)
 
-		selectMediaFile(screen, reader.URI())
-	}, w)
-
-	fd.SetFilter(storage.NewExtensionFileFilter(screen.mediaFormats))
+	if f, ok := fd.(xfilepicker.FilePicker); ok {
+		f.SetFilter(storage.NewExtensionFileFilter(screen.mediaFormats))
+	}
 
 	if screen.currentmfolder != "" {
 		mfileURI := storage.NewFileURI(screen.currentmfolder)
 		mfileLister, err := storage.ListerForURI(mfileURI)
 		check(screen, err)
-		fd.SetLocation(mfileLister)
+
+		if f, ok := fd.(xfilepicker.FilePicker); ok {
+			f.SetLocation(mfileLister)
+		}
 	}
 
 	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
@@ -204,17 +212,25 @@ func mediaAction(screen *FyneScreen) {
 
 func subsAction(screen *FyneScreen) {
 	w := screen.Current
-	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+	fd := xfilepicker.NewFileOpen(func(readers []fyne.URIReadCloser, err error) {
 		check(screen, err)
 
-		if reader == nil {
+		if readers == nil {
 			return
 		}
-		defer reader.Close()
 
-		selectSubsFile(screen, reader.URI())
-	}, w)
-	fd.SetFilter(storage.NewExtensionFileFilter([]string{".srt"}))
+		defer func() {
+			for _, i := range readers {
+				i.Close()
+			}
+		}()
+
+		selectSubsFile(screen, readers[0].URI())
+	}, w, false)
+
+	if f, ok := fd.(xfilepicker.FilePicker); ok {
+		f.SetFilter(storage.NewExtensionFileFilter([]string{".srt"}))
+	}
 
 	if screen.currentmfolder != "" {
 		mfileURI := storage.NewFileURI(screen.currentmfolder)
@@ -223,7 +239,11 @@ func subsAction(screen *FyneScreen) {
 		if err != nil {
 			return
 		}
-		fd.SetLocation(mfileLister)
+
+		if f, ok := fd.(xfilepicker.FilePicker); ok {
+			f.SetLocation(mfileLister)
+		}
+
 	}
 	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
 

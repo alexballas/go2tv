@@ -5,6 +5,7 @@ go 1.25
 require (
 	fyne.io/fyne/v2 v2.7.3-0.20260131162633-80f2081b7904
 	github.com/alexballas/go-ssdp v0.0.3
+	github.com/alexballas/xfilepicker v0.0.0-20260203133751-d67b26faab47
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/gdamore/tcell/v2 v2.9.0
 	github.com/go-viper/mapstructure/v2 v2.4.0
@@ -24,7 +25,7 @@ require (
 require (
 	fyne.io/systray v1.12.0 // indirect
 	github.com/BurntSushi/toml v1.5.0 // indirect
-	github.com/FyshOS/fancyfs v0.0.0-20251025194026-1f03098ff624 // indirect
+	github.com/FyshOS/fancyfs v0.0.1 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc // indirect
@@ -84,3 +85,5 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/alexballas/xfilepicker => ../fyneBetterFilePicker
