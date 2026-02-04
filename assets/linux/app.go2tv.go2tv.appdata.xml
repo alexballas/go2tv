@@ -55,6 +55,7 @@
             <li>Optimized Chromecast live casting for lower latency and improved responsiveness.</li>
             <li>Enhanced DLNA protocol compatibility and smart sensing for audio-only devices.</li>
             <li>Refactored UI threading (Fyne.Do) for improved stability and eliminated potential race conditions.</li>
+            <li>Improved File Picker: Now featuring type-to-search and thumbnails support.</li>
           </ul>
         </description>
         <url type="details">https://github.com/alexballas/go2tv/releases/tag/v2.1.0</url>
