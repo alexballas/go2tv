@@ -383,7 +383,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	}
 
 	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
-		if !s.Hotkeys {
+		if !s.Hotkeys || s.hotkeysSuspended() {
 			return
 		}
 

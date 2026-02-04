@@ -179,7 +179,11 @@ func selectSubsFile(screen *FyneScreen, f fyne.URI) {
 func mediaAction(screen *FyneScreen) {
 	w := screen.Current
 	xfilepicker.SetFFmpegPath(screen.ffmpegPath)
+	var resumeHotkeys func()
 	fd := xfilepicker.NewFileOpen(func(readers []fyne.URIReadCloser, err error) {
+		if resumeHotkeys != nil {
+			defer resumeHotkeys()
+		}
 		check(screen, err)
 
 		if readers == nil {
@@ -208,12 +212,17 @@ func mediaAction(screen *FyneScreen) {
 	}
 
 	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
+	resumeHotkeys = suspendHotkeys(screen)
 	fd.Show()
 }
 
 func subsAction(screen *FyneScreen) {
 	w := screen.Current
+	var resumeHotkeys func()
 	fd := xfilepicker.NewFileOpen(func(readers []fyne.URIReadCloser, err error) {
+		if resumeHotkeys != nil {
+			defer resumeHotkeys()
+		}
 		check(screen, err)
 
 		if readers == nil {
@@ -248,6 +257,7 @@ func subsAction(screen *FyneScreen) {
 	}
 	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
 
+	resumeHotkeys = suspendHotkeys(screen)
 	fd.Show()
 }
 

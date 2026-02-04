@@ -70,7 +70,11 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	})
 
 	ffmpegFolderSelect := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
+		var resumeHotkeys func()
 		fd := dialog.NewFolderOpen(func(lu fyne.ListableURI, err error) {
+			if resumeHotkeys != nil {
+				defer resumeHotkeys()
+			}
 			if err != nil {
 				dialog.ShowError(err, w)
 				return
@@ -84,6 +88,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		}, w)
 
 		fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
+		resumeHotkeys = suspendHotkeys(s)
 		fd.Show()
 
 	})
@@ -116,7 +121,11 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 			return
 		}
 
+		var resumeHotkeys func()
 		fd := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
+			if resumeHotkeys != nil {
+				defer resumeHotkeys()
+			}
 			if err != nil {
 				dialog.ShowError(err, s.Current)
 				return
@@ -129,6 +138,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		}, s.Current)
 
 		fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
+		resumeHotkeys = suspendHotkeys(s)
 		fd.Show()
 	})
 

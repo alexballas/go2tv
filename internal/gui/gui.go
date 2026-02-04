@@ -93,6 +93,7 @@ type FyneScreen struct {
 	Transcode                bool
 	ErrorVisible             bool
 	Hotkeys                  bool
+	hotkeysSuspendCount      int32
 	MediaBrowse              *widget.Button
 	ClearMedia               *widget.Button
 	SubsBrowse               *widget.Button

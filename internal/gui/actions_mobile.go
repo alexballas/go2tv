@@ -112,7 +112,11 @@ func unmuteAction(screen *FyneScreen) {
 
 func mediaAction(screen *FyneScreen) {
 	w := screen.Current
+	var resumeHotkeys func()
 	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+		if resumeHotkeys != nil {
+			defer resumeHotkeys()
+		}
 		check(w, err)
 
 		if reader == nil {
@@ -129,12 +133,17 @@ func mediaAction(screen *FyneScreen) {
 
 	fd.SetFilter(storage.NewExtensionFileFilter(screen.mediaFormats))
 
+	resumeHotkeys = suspendHotkeys(screen)
 	fd.Show()
 }
 
 func subsAction(screen *FyneScreen) {
 	w := screen.Current
+	var resumeHotkeys func()
 	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+		if resumeHotkeys != nil {
+			defer resumeHotkeys()
+		}
 		check(w, err)
 
 		if reader == nil {
@@ -155,6 +164,7 @@ func subsAction(screen *FyneScreen) {
 
 	fd.SetFilter(storage.NewExtensionFileFilter([]string{".srt"}))
 
+	resumeHotkeys = suspendHotkeys(screen)
 	fd.Show()
 }
 
