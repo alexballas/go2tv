@@ -24,11 +24,91 @@ var (
 	// map key: "host:port" address, value: castDevice struct
 	chromeCastDevices = make(map[string]castDevice)
 	ccMu              sync.Mutex
+	ccWarmupOnce      sync.Once
 )
 
 type castDevice struct {
 	Name        string
 	IsAudioOnly bool
+}
+
+func upsertChromecastFromMDNSEntry(entry *mdns.ServiceEntry) {
+	if entry == nil || entry.AddrV4 == nil {
+		return
+	}
+	if !strings.Contains(entry.Name, "_googlecast") {
+		return
+	}
+
+	address := fmt.Sprintf("%s:%d", entry.AddrV4, entry.Port)
+	friendlyName := entry.Name
+
+	for _, txt := range entry.InfoFields {
+		if strings.HasPrefix(txt, "fn=") {
+			friendlyName = strings.TrimPrefix(txt, "fn=")
+			break
+		}
+	}
+
+	if idx := strings.Index(friendlyName, "._googlecast"); idx > 0 {
+		friendlyName = friendlyName[:idx]
+	}
+
+	isAudioOnly := false
+	for _, txt := range entry.InfoFields {
+		if after, ok := strings.CutPrefix(txt, "ca="); ok {
+			isAudioOnly = isChromecastAudioOnly(after)
+			break
+		}
+	}
+
+	ccMu.Lock()
+	chromeCastDevices[address] = castDevice{
+		Name:        friendlyName,
+		IsAudioOnly: isAudioOnly,
+	}
+	ccMu.Unlock()
+}
+
+func warmupChromecastCache(timeout time.Duration) {
+	interfaces := getActiveNetworkInterfaces()
+
+	entriesCh := make(chan *mdns.ServiceEntry, 256)
+	doneCh := make(chan struct{})
+	go func() {
+		defer close(doneCh)
+		for entry := range entriesCh {
+			upsertChromecastFromMDNSEntry(entry)
+		}
+	}()
+
+	queryIface := func(iface *net.Interface) {
+		params := mdns.DefaultParams("_googlecast._tcp")
+		params.Entries = entriesCh
+		params.Timeout = timeout
+		params.DisableIPv6 = true
+		params.WantUnicastResponse = true
+		params.Logger = log.New(io.Discard, "", 0)
+		params.Interface = iface
+		_ = mdns.Query(params)
+	}
+
+	if len(interfaces) > 0 {
+		var wg sync.WaitGroup
+		for _, iface := range interfaces {
+			wg.Add(1)
+			go func(iface net.Interface) {
+				defer wg.Done()
+				queryIface(&iface)
+			}(iface)
+		}
+		wg.Wait()
+	} else {
+		queryIface(nil)
+	}
+
+	close(entriesCh)
+	<-doneCh
 }
 
 // StartChromecastDiscoveryLoop continuously discovers Chromecast devices on the local network using mDNS.
@@ -45,98 +125,120 @@ func StartChromecastDiscoveryLoop(ctx context.Context) {
 // adapters (VPN, Hyper-V, Docker, etc.) where the OS default interface may not be
 // the one connected to the Chromecast network.
 func discoverChromecastDevices(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
+	const googlecastService = "_googlecast._tcp"
 
-		// Get all active network interfaces
-		interfaces := getActiveNetworkInterfaces()
+	startPollingWorker := func(parent context.Context, iface *net.Interface) (context.CancelFunc, error) {
+		entriesCh := make(chan *mdns.ServiceEntry, 256)
+		workerCtx, cancel := context.WithCancel(parent)
 
-		// Create channel for results (sized for multiple interfaces)
-		entriesCh := make(chan *mdns.ServiceEntry, 10*len(interfaces)+10)
-
-		// Start a goroutine to process results
 		go func() {
-			for entry := range entriesCh {
-				if entry.AddrV4 == nil {
-					continue
+			for {
+				select {
+				case <-workerCtx.Done():
+					return
+				case entry := <-entriesCh:
+					upsertChromecastFromMDNSEntry(entry)
 				}
-
-				// Verify this is actually a Chromecast (filter out other services)
-				if !strings.Contains(entry.Name, "_googlecast") {
-					continue
-				}
-
-				address := fmt.Sprintf("%s:%d", entry.AddrV4, entry.Port)
-				friendlyName := entry.Name
-
-				// Parse TXT records for friendly name (fn=)
-				for _, txt := range entry.InfoFields {
-					if strings.HasPrefix(txt, "fn=") {
-						friendlyName = strings.TrimPrefix(txt, "fn=")
-						break
-					}
-				}
-
-				// Clean up the name (remove service suffix if present)
-				if idx := strings.Index(friendlyName, "._googlecast"); idx > 0 {
-					friendlyName = friendlyName[:idx]
-				}
-
-				// Check if device is audio-only
-				isAudioOnly := false
-				for _, txt := range entry.InfoFields {
-					if after, ok := strings.CutPrefix(txt, "ca="); ok {
-						isAudioOnly = isChromecastAudioOnly(after)
-						break
-					}
-				}
-
-				ccMu.Lock()
-				chromeCastDevices[address] = castDevice{
-					Name:        friendlyName,
-					IsAudioOnly: isAudioOnly,
-				}
-				ccMu.Unlock()
 			}
 		}()
 
-		// Query on each interface to handle multi-interface Windows systems
-		if len(interfaces) > 0 {
-			var wg sync.WaitGroup
-			for _, iface := range interfaces {
-				wg.Add(1)
-				go func(iface net.Interface) {
-					defer wg.Done()
-					params := mdns.DefaultParams("_googlecast._tcp")
-					params.Entries = entriesCh
-					params.Timeout = 2 * time.Second
-					params.DisableIPv6 = true
-					params.Logger = log.New(io.Discard, "", 0)
-					params.Interface = &iface
-					_ = mdns.Query(params)
-				}(iface)
-			}
-			wg.Wait()
-		} else {
-			// Fallback: no specific interfaces found, use OS default
-			params := mdns.DefaultParams("_googlecast._tcp")
-			params.Entries = entriesCh
-			params.Timeout = 2 * time.Second
-			params.DisableIPv6 = true
-			params.Logger = log.New(io.Discard, "", 0)
-			_ = mdns.Query(params)
-		}
-		close(entriesCh)
+		go func() {
+			for {
+				select {
+				case <-workerCtx.Done():
+					return
+				default:
+				}
 
-		// Small delay before next scan
+				params := mdns.DefaultParams(googlecastService)
+				params.Entries = entriesCh
+				params.Timeout = 750 * time.Millisecond
+				params.DisableIPv6 = true
+				params.WantUnicastResponse = true
+				params.Logger = log.New(io.Discard, "", 0)
+				if iface != nil {
+					params.Interface = iface
+				}
+				_ = mdns.Query(params)
+
+				select {
+				case <-workerCtx.Done():
+					return
+				case <-time.After(250 * time.Millisecond):
+				}
+			}
+		}()
+
+		return cancel, nil
+	}
+
+	type worker struct {
+		cancel context.CancelFunc
+	}
+
+	pollWorkers := make(map[int]worker)
+	refresh := func() bool {
+		interfaces := getActiveNetworkInterfaces()
+
+		active := make(map[int]net.Interface, len(interfaces))
+		for _, iface := range interfaces {
+			active[iface.Index] = iface
+
+			if _, ok := pollWorkers[iface.Index]; ok {
+				continue
+			}
+
+			pollIface := iface
+			cancel, err := startPollingWorker(ctx, &pollIface)
+			if err == nil {
+				pollWorkers[iface.Index] = worker{cancel: cancel}
+			}
+		}
+
+		for idx, w := range pollWorkers {
+			if idx == -1 {
+				continue
+			}
+			if _, ok := active[idx]; !ok {
+				w.cancel()
+				delete(pollWorkers, idx)
+			}
+		}
+
+		if len(interfaces) == 0 {
+			if _, ok := pollWorkers[-1]; ok {
+				return true
+			}
+			cancel, err := startPollingWorker(ctx, nil)
+			if err == nil {
+				pollWorkers[-1] = worker{cancel: cancel}
+			}
+		} else if w, ok := pollWorkers[-1]; ok {
+			w.cancel()
+			delete(pollWorkers, -1)
+		}
+
+		return len(pollWorkers) > 0
+	}
+
+	ccWarmupOnce.Do(func() {
+		warmupChromecastCache(750 * time.Millisecond)
+	})
+
+	_ = refresh()
+
+	refreshTicker := time.NewTicker(10 * time.Second)
+	defer refreshTicker.Stop()
+
+	for {
 		select {
 		case <-ctx.Done():
+			for _, w := range pollWorkers {
+				w.cancel()
+			}
 			return
-		case <-time.After(500 * time.Millisecond):
+		case <-refreshTicker.C:
+			_ = refresh()
 		}
 	}
 }
@@ -206,6 +308,15 @@ func healthCheckChromecastDevices(ctx context.Context) {
 // GetChromecastDevices returns the current cached Chromecast devices.
 // Returns a slice of Device structs with type set to DeviceTypeChromecast.
 func GetChromecastDevices() []Device {
+	ccMu.Lock()
+	cacheEmpty := len(chromeCastDevices) == 0
+	ccMu.Unlock()
+	if cacheEmpty {
+		ccWarmupOnce.Do(func() {
+			warmupChromecastCache(750 * time.Millisecond)
+		})
+	}
+
 	ccMu.Lock()
 	defer ccMu.Unlock()
 
