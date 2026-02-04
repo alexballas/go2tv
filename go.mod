@@ -5,7 +5,7 @@ go 1.25
 require (
 	fyne.io/fyne/v2 v2.7.3-0.20260131162633-80f2081b7904
 	github.com/alexballas/go-ssdp v0.0.3
-	github.com/alexballas/xfilepicker v0.0.0-20260203184634-477d886291f6
+	github.com/alexballas/xfilepicker v0.0.0-20260204013748-cd65ae9a4f74
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/gdamore/tcell/v2 v2.13.8
 	github.com/go-viper/mapstructure/v2 v2.5.0
@@ -30,7 +30,7 @@ require (
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/charmbracelet/colorprofile v0.4.1 // indirect
 	github.com/charmbracelet/lipgloss v1.1.0 // indirect
-	github.com/charmbracelet/x/ansi v0.11.5 // indirect
+	github.com/charmbracelet/x/ansi v0.11.6 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.15 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/clipperhouse/displaywidth v0.9.0 // indirect

@@ -178,6 +178,7 @@ func selectSubsFile(screen *FyneScreen, f fyne.URI) {
 
 func mediaAction(screen *FyneScreen) {
 	w := screen.Current
+	xfilepicker.SetFFmpegPath(screen.ffmpegPath)
 	fd := xfilepicker.NewFileOpen(func(readers []fyne.URIReadCloser, err error) {
 		check(screen, err)
 
