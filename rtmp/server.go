@@ -49,6 +49,10 @@ func (s *Server) Start(ffmpegPath, streamKey, port string) (string, error) {
 		return "", fmt.Errorf("server already running")
 	}
 
+	// Best-effort: kill stale go2tv RTMP ffmpeg servers on same port.
+	// Ignore errors unless we also fail to start.
+	_, cleanupErr := CleanupDanglingFFmpegRTMPServers(port)
+
 	// Create temp directory for HLS segments
 	tempDir := filepath.Join(os.TempDir(), fmt.Sprintf("go2tv-rtmp-%d", time.Now().UnixNano()))
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
@@ -68,6 +72,9 @@ func (s *Server) Start(ffmpegPath, streamKey, port string) (string, error) {
 	// Start the command
 	if err := cmd.Start(); err != nil {
 		s.Cleanup()
+		if cleanupErr != nil {
+			return "", fmt.Errorf("failed to start ffmpeg (cleanup err: %v): %w", cleanupErr, err)
+		}
 		return "", fmt.Errorf("failed to start ffmpeg: %w", err)
 	}
 

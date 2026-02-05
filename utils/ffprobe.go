@@ -1,5 +1,3 @@
-//go:build !windows
-
 package utils
 
 import (
@@ -67,6 +65,7 @@ func DurationForMediaSeconds(ffmpeg string, f string) (float64, error) {
 		"-of", "json",
 		f,
 	)
+	setSysProcAttr(cmd)
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -99,6 +98,7 @@ func GetMediaCodecInfo(ffmpeg string, f string) (*MediaCodecInfo, error) {
 		"-of", "json",
 		f,
 	)
+	setSysProcAttr(cmd)
 
 	output, err := cmd.Output()
 	if err != nil {
