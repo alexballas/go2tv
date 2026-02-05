@@ -30,6 +30,8 @@ import (
 	"go2tv.app/go2tv/v2/utils"
 )
 
+const filePickerFillSize = 10000
+
 func muteAction(screen *FyneScreen) {
 	// Handle icon toggle (mute -> unmute)
 	if screen.MuteUnmute.Icon == theme.VolumeMuteIcon() {
@@ -211,9 +213,9 @@ func mediaAction(screen *FyneScreen) {
 		}
 	}
 
-	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
 	resumeHotkeys = suspendHotkeys(screen)
 	fd.Show()
+	fd.Resize(fyne.NewSize(filePickerFillSize, filePickerFillSize))
 }
 
 func subsAction(screen *FyneScreen) {
@@ -255,10 +257,9 @@ func subsAction(screen *FyneScreen) {
 		}
 
 	}
-	fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
-
 	resumeHotkeys = suspendHotkeys(screen)
 	fd.Show()
+	fd.Resize(fyne.NewSize(filePickerFillSize, filePickerFillSize))
 }
 
 func playAction(screen *FyneScreen) {
