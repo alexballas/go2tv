@@ -435,7 +435,12 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	}()
 
 	mfiletext := widget.NewEntry()
-	mfiletext.OnChanged = func(string) {
+	mfiletext.OnChanged = func(v string) {
+		if s.ExternalMediaURL != nil && s.ExternalMediaURL.Checked &&
+			s.TranscodeCheckBox != nil && s.TranscodeCheckBox.Checked &&
+			utils.IsHLSStream(v, "") {
+			s.TranscodeCheckBox.SetChecked(false)
+		}
 		setPlayPauseView("", s)
 	}
 	sfiletext := widget.NewEntry()

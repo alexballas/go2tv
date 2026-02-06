@@ -61,6 +61,7 @@ func run() error {
 		absMediaFile, mediaType string
 		mediaFile               any
 		isSeek                  bool
+		transcode               bool
 	)
 
 	exitCTX, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -75,6 +76,8 @@ func run() error {
 	if flagRes.exit {
 		return nil
 	}
+
+	transcode = *transcodePtr
 
 	if *mediaArg != "" {
 		mediaFile = *mediaArg
@@ -109,20 +112,11 @@ func run() error {
 	}
 
 	if *mediaArg == "" && *urlArg != "" {
-		mediaURL, err := utils.StreamURL(context.Background(), *urlArg)
+		mediaURL, inferredMediaType, err := utils.StreamURLWithMime(context.Background(), *urlArg)
 		if err != nil {
 			return err
 		}
-
-		mediaURLinfo, err := utils.StreamURL(context.Background(), *urlArg)
-		if err != nil {
-			return err
-		}
-
-		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
-		if err != nil {
-			return err
-		}
+		mediaType = inferredMediaType
 
 		mediaFile = mediaURL
 
@@ -133,6 +127,16 @@ func run() error {
 				return err
 			}
 			mediaFile = readerToBytes
+		}
+
+		if utils.IsHLSStream(*urlArg, mediaType) {
+			transcode = false
+		}
+	}
+
+	if transcode {
+		if _, err := exec.LookPath("ffmpeg"); err != nil {
+			return fmt.Errorf("checkTCflag parse error: %w", err)
 		}
 	}
 
@@ -160,7 +164,7 @@ func run() error {
 			return err
 		}
 
-		if !*transcodePtr {
+		if !transcode {
 			isSeek = true
 		}
 	case io.ReadCloser, []byte:
@@ -180,7 +184,7 @@ func run() error {
 
 	// Branch based on device type
 	if devices.IsChromecastURL(flagRes.targetURL) {
-		return runChromecastCLI(exitCTX, cancel, flagRes.targetURL, absMediaFile, mediaFile, mediaType, absSubtitlesFile, ffmpegPath, *transcodePtr)
+		return runChromecastCLI(exitCTX, cancel, flagRes.targetURL, absMediaFile, mediaFile, mediaType, absSubtitlesFile, ffmpegPath, transcode)
 	}
 
 	scr, err := interactive.InitTcellNewScreen(cancel)
@@ -193,7 +197,7 @@ func run() error {
 		Media:          absMediaFile,
 		Subs:           absSubtitlesFile,
 		Mtype:          mediaType,
-		Transcode:      *transcodePtr,
+		Transcode:      transcode,
 		Seek:           isSeek,
 		FFmpegPath:     ffmpegPath,
 		FFmpegSubsPath: absSubtitlesFile,
@@ -504,6 +508,10 @@ func checkSflag() error {
 
 func checkTCflag() error {
 	if *transcodePtr {
+		if *urlArg != "" {
+			return nil
+		}
+
 		_, err := exec.LookPath("ffmpeg")
 		if err != nil {
 			return fmt.Errorf("checkTCflag parse error: %w", err)

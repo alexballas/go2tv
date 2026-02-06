@@ -388,26 +388,14 @@ func playAction(screen *FyneScreen) {
 		// the io.Copy operation to fail with "broken pipe".
 		// That's good enough for us since right after that
 		// we close the io.ReadCloser.
-		mediaURL, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
+		mediaURL, inferredMediaType, err := utils.StreamURLWithMime(context.Background(), screen.MediaText.Text)
 		check(screen.Current, err)
 		if err != nil {
 			startAfreshPlayButton(screen)
 			return
 		}
 
-		mediaURLinfo, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
-		check(screen.Current, err)
-		if err != nil {
-			startAfreshPlayButton(screen)
-			return
-		}
-
-		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
-		check(w, err)
-		if err != nil {
-			startAfreshPlayButton(screen)
-			return
-		}
+		mediaType = inferredMediaType
 
 		mediaFile = mediaURL
 		if strings.Contains(mediaType, "image") {
@@ -691,19 +679,14 @@ func chromecastPlayAction(screen *FyneScreen) {
 	if screen.ExternalMediaURL.Checked {
 		mediaURL = screen.MediaText.Text
 
-		mediaURLinfo, err := utils.StreamURL(context.Background(), mediaURL)
+		mediaURLinfo, inferredMediaType, err := utils.StreamURLWithMime(context.Background(), mediaURL)
 		if err != nil {
 			check(w, err)
 			startAfreshPlayButton(screen)
 			return
 		}
-		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
+		mediaType = inferredMediaType
 		mediaURLinfo.Close()
-		if err != nil {
-			check(w, err)
-			startAfreshPlayButton(screen)
-			return
-		}
 
 		if screen.selectedDevice.isAudioOnly && (strings.Contains(mediaType, "video") || strings.Contains(mediaType, "image")) {
 			check(w, errors.New(lang.L("Video/Image file not supported by audio-only device")))

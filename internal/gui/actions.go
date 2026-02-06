@@ -370,6 +370,7 @@ func playAction(screen *FyneScreen) {
 
 		var mediaType string
 		var isSeek bool
+		transcodeEnabled := screen.Transcode
 
 		if !screen.ExternalMediaURL.Checked {
 			if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
@@ -393,7 +394,7 @@ func playAction(screen *FyneScreen) {
 				// Set casting media type
 				screen.SetMediaType(mediaType)
 
-				if !screen.Transcode {
+				if !transcodeEnabled {
 					isSeek = true
 				}
 			}
@@ -425,29 +426,25 @@ func playAction(screen *FyneScreen) {
 				// the io.Copy operation to fail with "broken pipe".
 				// That's good enough for us since right after that
 				// we close the io.ReadCloser.
-				mediaURL, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
+				mediaURL, inferredMediaType, err := utils.StreamURLWithMime(context.Background(), screen.MediaText.Text)
 				check(screen, err)
 				if err != nil {
 					startAfreshPlayButton(screen)
 					return
 				}
 
-				mediaURLinfo, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
-				check(screen, err)
-				if err != nil {
-					startAfreshPlayButton(screen)
-					return
-				}
-
-				mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
-				check(screen, err)
-				if err != nil {
-					startAfreshPlayButton(screen)
-					return
-				}
+				mediaType = inferredMediaType
 
 				// Set casting media type
 				screen.SetMediaType(mediaType)
+				if utils.IsHLSStream(screen.MediaText.Text, mediaType) {
+					transcodeEnabled = false
+					fyne.Do(func() {
+						if screen.TranscodeCheckBox != nil && screen.TranscodeCheckBox.Checked {
+							screen.TranscodeCheckBox.SetChecked(false)
+						}
+					})
+				}
 
 				mediaFile = mediaURL
 				if strings.Contains(mediaType, "image") {
@@ -517,7 +514,7 @@ func playAction(screen *FyneScreen) {
 				CurrentTimers:               make(map[string]*time.Timer),
 				MediaRenderersStates:        make(map[string]*soapcalls.States),
 				InitialMediaRenderersStates: make(map[string]bool),
-				Transcode:                   screen.Transcode,
+				Transcode:                   transcodeEnabled,
 				Seekable:                    isSeek,
 				LogOutput:                   screen.Debug,
 				FFmpegPath:                  screen.ffmpegPath,
@@ -707,18 +704,21 @@ func chromecastPlayAction(screen *FyneScreen) {
 			screen.SetMediaType(mediaType)
 			transcode = true
 		} else {
-			mediaURLinfo, err := utils.StreamURL(context.Background(), mediaURL)
+			mediaURLinfo, inferredMediaType, err := utils.StreamURLWithMime(context.Background(), mediaURL)
 			if err != nil {
 				check(screen, err)
 				startAfreshPlayButton(screen)
 				return
 			}
-			mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
+			mediaType = inferredMediaType
 			mediaURLinfo.Close()
-			if err != nil {
-				check(screen, err)
-				startAfreshPlayButton(screen)
-				return
+			if utils.IsHLSStream(mediaURL, mediaType) {
+				transcode = false
+				fyne.Do(func() {
+					if screen.TranscodeCheckBox != nil && screen.TranscodeCheckBox.Checked {
+						screen.TranscodeCheckBox.SetChecked(false)
+					}
+				})
 			}
 
 			// Chromecast handles images and audio natively - never transcode these
