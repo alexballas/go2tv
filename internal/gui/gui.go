@@ -449,17 +449,17 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 			if isImage {
 				screen.PlayPause.Disable()
 				screen.PlayPause.SetIcon(theme.FileImageIcon())
-				screen.PlayPause.SetText(lang.L("Image Casting") + "   ")
+				screen.PlayPause.SetText(lang.L("Image Casting") + "  ")
 			} else {
 				state := screen.getScreenState()
 				if state == "Playing" || state == "Paused" {
 					screen.PlayPause.Enable()
 					switch s {
 					case "Play":
-						screen.PlayPause.SetText(lang.L("Play") + "   ")
+						screen.PlayPause.SetText(lang.L("Play") + "  ")
 						screen.PlayPause.SetIcon(theme.MediaPlayIcon())
 					case "Pause":
-						screen.PlayPause.SetText(lang.L("Pause") + "   ")
+						screen.PlayPause.SetText(lang.L("Pause") + "  ")
 						screen.PlayPause.SetIcon(theme.MediaPauseIcon())
 					}
 				} else {
@@ -467,9 +467,9 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 					screen.PlayPause.Enable()
 
 					if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked && screen.selectedDeviceType == devices.DeviceTypeChromecast {
-						screen.PlayPause.SetText(lang.L("Start RTMP Session") + "   ")
+						screen.PlayPause.SetText(lang.L("Start RTMP Session") + "  ")
 					} else {
-						screen.PlayPause.SetText(lang.L("Cast") + "   ")
+						screen.PlayPause.SetText(lang.L("Cast") + "  ")
 					}
 					screen.PlayPause.SetIcon(theme.MediaPlayIcon())
 				}
