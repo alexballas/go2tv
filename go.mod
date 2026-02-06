@@ -5,7 +5,7 @@ go 1.25
 require (
 	fyne.io/fyne/v2 v2.7.3-0.20260131162633-80f2081b7904
 	github.com/alexballas/go-ssdp v0.0.3
-	github.com/alexballas/xfilepicker v0.0.0-20260205185546-96413fa9a095
+	github.com/alexballas/xfilepicker v0.0.0-20260206213252-e8f58cac8729
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/gdamore/tcell/v2 v2.13.8
 	github.com/go-viper/mapstructure/v2 v2.5.0
@@ -87,4 +87,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace fyne.io/fyne/v2 => github.com/alexballas/fyne/v2 v2.3.3-0.20260205132451-ebcb537c172a
+replace fyne.io/fyne/v2 => ../fyne

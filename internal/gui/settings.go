@@ -4,17 +4,20 @@ package gui
 
 import (
 	"errors"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
+	fynedialog "fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	xfilepicker "github.com/alexballas/xfilepicker/dialog"
 	"go2tv.app/go2tv/v2/rtmp"
 )
 
@@ -71,12 +74,13 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 
 	ffmpegFolderSelect := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
 		var resumeHotkeys func()
-		fd := dialog.NewFolderOpen(func(lu fyne.ListableURI, err error) {
+		xfilepicker.SetFFmpegPath(s.ffmpegPath)
+		fd := xfilepicker.NewFolderOpen(func(lu fyne.ListableURI, err error) {
 			if resumeHotkeys != nil {
 				defer resumeHotkeys()
 			}
 			if err != nil {
-				dialog.ShowError(err, w)
+				fynedialog.ShowError(err, w)
 				return
 			}
 			if lu == nil {
@@ -87,9 +91,17 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 			ffmpegTextEntry.SetText(p)
 		}, w)
 
-		fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
+		if f, ok := fd.(xfilepicker.FilePicker); ok {
+			ffmpegURI := storage.NewFileURI(filepath.Dir(s.ffmpegPath))
+			ffmpegLister, err := storage.ListerForURI(ffmpegURI)
+			if err == nil {
+				f.SetLocation(ffmpegLister)
+			}
+		}
+
 		resumeHotkeys = suspendHotkeys(s)
 		fd.Show()
+		fd.Resize(fyne.NewSize(filePickerFillSize, filePickerFillSize))
 
 	})
 
@@ -117,17 +129,17 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		})
 
 		if !itemInRing {
-			dialog.ShowInformation(lang.L("Debug"), lang.L("Debug logs are empty"), w)
+			fynedialog.ShowInformation(lang.L("Debug"), lang.L("Debug logs are empty"), w)
 			return
 		}
 
 		var resumeHotkeys func()
-		fd := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
+		fd := xfilepicker.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
 			if resumeHotkeys != nil {
 				defer resumeHotkeys()
 			}
 			if err != nil {
-				dialog.ShowError(err, s.Current)
+				fynedialog.ShowError(err, s.Current)
 				return
 			}
 			if writer == nil {
@@ -137,9 +149,22 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 			saveDebugLogs(writer, s)
 		}, s.Current)
 
-		fd.Resize(fyne.NewSize(w.Canvas().Size().Width*1.2, w.Canvas().Size().Height*1.3))
+		if f, ok := fd.(interface{ SetFileName(string) }); ok {
+			f.SetFileName("go2tv-debug.log")
+		}
+
+		if f, ok := fd.(xfilepicker.FilePicker); ok {
+			cwd, err := os.Getwd()
+			if err == nil {
+				if lister, listerErr := storage.ListerForURI(storage.NewFileURI(cwd)); listerErr == nil {
+					f.SetLocation(lister)
+				}
+			}
+		}
+
 		resumeHotkeys = suspendHotkeys(s)
 		fd.Show()
+		fd.Resize(fyne.NewSize(filePickerFillSize, filePickerFillSize))
 	})
 
 	gaplessText := widget.NewLabel(lang.L("Gapless Playback"))
@@ -154,7 +179,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		}
 
 		if selection == "Enabled" && fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled") == "Disabled" {
-			dialog.ShowInformation(lang.L("Gapless Playback"), lang.L(`Some devices don't support gapless playback. If 'Auto-Play Next File' isn't working properly, try turning it off.`), w)
+			fynedialog.ShowInformation(lang.L("Gapless Playback"), lang.L(`Some devices don't support gapless playback. If 'Auto-Play Next File' isn't working properly, try turning it off.`), w)
 		}
 
 		fyne.CurrentApp().Preferences().SetString("Gapless", selection)
@@ -257,11 +282,11 @@ func saveDebugLogs(f fyne.URIWriteCloser, s *FyneScreen) {
 		if p != nil {
 			_, err := f.Write([]byte(p.(string)))
 			if err != nil {
-				dialog.ShowError(err, w)
+				fynedialog.ShowError(err, w)
 			}
 		}
 	})
-	dialog.ShowInformation(lang.L("Debug"), lang.L("Saved to")+"... "+f.URI().String(), w)
+	fynedialog.ShowInformation(lang.L("Debug"), lang.L("Saved to")+"... "+f.URI().String(), w)
 }
 
 func parseTheme(s *FyneScreen) func(string) {
@@ -304,7 +329,7 @@ func parseLanguage(s *FyneScreen) func(string) {
 	w := s.Current
 	return func(t string) {
 		if t != fyne.CurrentApp().Preferences().StringWithFallback("Language", "System Default") {
-			dialog.ShowInformation(lang.L("Update Language Preferences"), lang.L(`Please restart the application for the changes to take effect.`), w)
+			fynedialog.ShowInformation(lang.L("Update Language Preferences"), lang.L(`Please restart the application for the changes to take effect.`), w)
 		}
 		go func() {
 			switch t {
