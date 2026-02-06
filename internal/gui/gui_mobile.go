@@ -61,6 +61,7 @@ type FyneScreen struct {
 	Transcode            bool
 	Medialoop            bool
 	castingMediaType     string // MIME type of currently casting media
+	hotkeysSuspendCount  int32
 }
 
 type debugWriter struct {
