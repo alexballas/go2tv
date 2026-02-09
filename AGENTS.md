@@ -14,12 +14,14 @@ Go2TV is a Go application that casts local/remote media files to UPnP/DLNA Media
 ### Core Commands
 ```bash
 make build              # Build to build/go2tv
+make windows            # Windows Build
 make test               # Run all tests (go test -v ./...)
 make run                # Build and run
 make clean              # Clean build artifacts
 go test -v ./path/to/pkg                        # Test specific package
 go test -run TestName -v ./path/to/pkg          # Run single test
 go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test ./... # Modernize checks
+go run cmd/fynedo-check/main.go internal/gui/   # Standard fyne.Do violation check
 ```
 
 ### Testing

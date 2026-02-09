@@ -440,11 +440,13 @@ func playAction(screen *FyneScreen) {
 	if err != nil {
 		// Something failed when sent Play1 to the TV.
 		// Just force the user to re-select a device.
-		lsize := screen.DeviceList.Length()
-		for i := 0; i <= lsize; i++ {
-			screen.DeviceList.Unselect(lsize - 1)
-		}
-		screen.controlURL = ""
+		fyne.Do(func() {
+			lsize := screen.DeviceList.Length()
+			for i := 0; i <= lsize; i++ {
+				screen.DeviceList.Unselect(lsize - 1)
+			}
+			screen.controlURL = ""
+		})
 		stopAction(screen)
 	}
 }
