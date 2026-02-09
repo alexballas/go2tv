@@ -1,3 +1,5 @@
+//go:build !android && !ios
+
 package gui
 
 import "testing"

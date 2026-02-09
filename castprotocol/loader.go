@@ -29,7 +29,7 @@ type CustomLoadPayload struct {
 	Type           string              `json:"type"`
 	RequestId      int                 `json:"requestId"`
 	Media          MediaItemWithTracks `json:"media"`
-	CurrentTime    float64             `json:"currentTime"` // Seconds (SDK uses float)
+	CurrentTime    *float64            `json:"currentTime,omitempty"` // Omit for LIVE to start at live edge
 	Autoplay       bool                `json:"autoplay"`
 	ActiveTrackIds []int               `json:"activeTrackIds,omitempty"`
 }
@@ -88,9 +88,15 @@ func LoadWithSubtitles(conn cast.Conn, transportId string, mediaURL string, cont
 	payload := &CustomLoadPayload{
 		Type:           "LOAD",
 		Media:          media,
-		CurrentTime:    float64(startTime),
 		Autoplay:       autoplay,
 		ActiveTrackIds: activeTrackIds,
+	}
+
+	// For LIVE streams, omitting currentTime makes Chromecast jump to live edge.
+	// If startTime is explicitly set (>0), keep it.
+	if !live || startTime > 0 {
+		start := float64(startTime)
+		payload.CurrentTime = &start
 	}
 
 	requestID := nextRequestID()
