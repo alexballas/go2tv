@@ -1092,13 +1092,12 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 				progress := (currentTime / duration) * screen.SlideBar.Max
 				fyne.Do(func() {
 					screen.SlideBar.SetValue(progress)
+					// Update time labels
+					current, _ := utils.SecondsToClockTime(int(currentTime))
+					total, _ := utils.SecondsToClockTime(int(duration))
+					screen.CurrentPos.Set(current)
+					screen.EndPos.Set(total)
 				})
-
-				// Update time labels
-				current, _ := utils.SecondsToClockTime(int(currentTime))
-				total, _ := utils.SecondsToClockTime(int(duration))
-				screen.CurrentPos.Set(current)
-				screen.EndPos.Set(total)
 
 				// Fallback: Detect media completion when CurrentTime reaches Duration
 				// go-chromecast doesn't always report IDLE when media finishes
@@ -1130,9 +1129,10 @@ func startAfreshPlayButton(screen *FyneScreen) {
 			screen.SkipNextButton.Enable()
 		}
 		screen.SlideBar.SetValue(0)
+		screen.CurrentPos.Set("00:00:00")
+		screen.EndPos.Set("00:00:00")
 	})
-	screen.CurrentPos.Set("00:00:00")
-	screen.EndPos.Set("00:00:00")
+
 	screen.ffmpegSeek = 0
 	screen.mediaDuration = 0
 }

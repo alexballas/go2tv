@@ -313,8 +313,10 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 			// Update time labels immediately for visual feedback (like DLNA)
 			current, _ := utils.SecondsToClockTime(seekPos)
 			total, _ := utils.SecondsToClockTime(int(duration))
-			t.screen.CurrentPos.Set(current)
-			t.screen.EndPos.Set(total)
+			fyne.Do(func() {
+				t.screen.CurrentPos.Set(current)
+				t.screen.EndPos.Set(total)
+			})
 
 			// Transcoded seek: use optimized helper that keeps connection open
 			if t.screen.mediaDuration > 0 {
