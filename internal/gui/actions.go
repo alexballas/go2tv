@@ -413,7 +413,6 @@ func playAction(screen *FyneScreen) {
 			// as this is the core item in our structure
 			// that defines that something is being streamed.
 			// We use its value for many checks in our code.
-			// We use its value for many checks in our code.
 			screen.mediafile = screen.MediaText.Text
 
 			if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {

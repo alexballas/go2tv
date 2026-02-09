@@ -165,7 +165,8 @@ func Start(ctx context.Context, s *FyneScreen) {
 				s.SlideBar.Enable()
 			}
 
-			if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
+			ffmpegErr := utils.CheckFFmpeg(s.ffmpegPath)
+			if ffmpegErr != nil {
 				s.TranscodeCheckBox.SetChecked(false)
 				s.TranscodeCheckBox.Disable()
 				s.SelectInternalSubs.Options = []string{}
@@ -174,7 +175,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 				s.SelectInternalSubs.Disable()
 			}
 
-			if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
+			if ffmpegErr != nil {
 				s.rtmpServerCheck.SetChecked(false)
 				s.rtmpServerCheck.Disable()
 			} else {

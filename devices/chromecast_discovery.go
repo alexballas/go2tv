@@ -17,6 +17,14 @@ import (
 const (
 	// CapabilityVideoOut is the bitmask for video output capability (bit 0)
 	CapabilityVideoOut = 1
+	// mDNS query timeout per request
+	chromecastQueryTimeout = 750 * time.Millisecond
+	// Faster polling while cache is empty for quick first discovery
+	chromecastPollIntervalFast = 1 * time.Second
+	// Slower polling once at least one device is known to reduce network load
+	chromecastPollIntervalSlow = 4 * time.Second
+	// Interface refresh cadence for add/remove changes
+	chromecastIfaceRefreshInterval = 20 * time.Second
 )
 
 var (
@@ -44,8 +52,8 @@ func upsertChromecastFromMDNSEntry(entry *mdns.ServiceEntry) {
 	friendlyName := entry.Name
 
 	for _, txt := range entry.InfoFields {
-		if strings.HasPrefix(txt, "fn=") {
-			friendlyName = strings.TrimPrefix(txt, "fn=")
+		if after, ok := strings.CutPrefix(txt, "fn="); ok {
+			friendlyName = after
 			break
 		}
 	}
@@ -111,8 +119,18 @@ func warmupChromecastCache(timeout time.Duration) {
 	<-doneCh
 }
 
+func currentChromecastPollInterval() time.Duration {
+	ccMu.Lock()
+	hasDevices := len(chromeCastDevices) > 0
+	ccMu.Unlock()
+	if hasDevices {
+		return chromecastPollIntervalSlow
+	}
+	return chromecastPollIntervalFast
+}
+
 // StartChromecastDiscoveryLoop continuously discovers Chromecast devices on the local network using mDNS.
-// It runs indefinitely until the provided context is canceled, searching for devices every 2 seconds.
+// It runs indefinitely until the provided context is canceled, using adaptive polling.
 // Discovered devices are stored in a global map with their network addresses as keys.
 // The function runs background goroutines to handle device discovery and health checking.
 func StartChromecastDiscoveryLoop(ctx context.Context) {
@@ -143,16 +161,19 @@ func discoverChromecastDevices(ctx context.Context) {
 		}()
 
 		go func() {
+			pollTimer := time.NewTimer(0)
+			defer pollTimer.Stop()
+
 			for {
 				select {
 				case <-workerCtx.Done():
 					return
-				default:
+				case <-pollTimer.C:
 				}
 
 				params := mdns.DefaultParams(googlecastService)
 				params.Entries = entriesCh
-				params.Timeout = 750 * time.Millisecond
+				params.Timeout = chromecastQueryTimeout
 				params.DisableIPv6 = true
 				params.WantUnicastResponse = true
 				params.Logger = log.New(io.Discard, "", 0)
@@ -161,11 +182,7 @@ func discoverChromecastDevices(ctx context.Context) {
 				}
 				_ = mdns.Query(params)
 
-				select {
-				case <-workerCtx.Done():
-					return
-				case <-time.After(250 * time.Millisecond):
-				}
+				pollTimer.Reset(currentChromecastPollInterval())
 			}
 		}()
 
@@ -222,12 +239,12 @@ func discoverChromecastDevices(ctx context.Context) {
 	}
 
 	ccWarmupOnce.Do(func() {
-		warmupChromecastCache(750 * time.Millisecond)
+		warmupChromecastCache(chromecastQueryTimeout)
 	})
 
 	_ = refresh()
 
-	refreshTicker := time.NewTicker(10 * time.Second)
+	refreshTicker := time.NewTicker(chromecastIfaceRefreshInterval)
 	defer refreshTicker.Stop()
 
 	for {
@@ -244,7 +261,7 @@ func discoverChromecastDevices(ctx context.Context) {
 }
 
 // getActiveNetworkInterfaces returns all network interfaces that are up,
-// not loopback, and have an IPv4 address. This is used to query mDNS on
+// multicast-capable, not loopback, and have an IPv4 address. This is used to query mDNS on
 // all possible interfaces where Chromecast devices might be reachable.
 func getActiveNetworkInterfaces() []net.Interface {
 	interfaces, err := net.Interfaces()
@@ -254,8 +271,10 @@ func getActiveNetworkInterfaces() []net.Interface {
 
 	var active []net.Interface
 	for _, iface := range interfaces {
-		// Skip down or loopback interfaces
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+		// Skip down, loopback, or non-multicast interfaces.
+		if iface.Flags&net.FlagUp == 0 ||
+			iface.Flags&net.FlagLoopback != 0 ||
+			iface.Flags&net.FlagMulticast == 0 {
 			continue
 		}
 
@@ -313,7 +332,7 @@ func GetChromecastDevices() []Device {
 	ccMu.Unlock()
 	if cacheEmpty {
 		ccWarmupOnce.Do(func() {
-			warmupChromecastCache(750 * time.Millisecond)
+			warmupChromecastCache(chromecastQueryTimeout)
 		})
 	}
 

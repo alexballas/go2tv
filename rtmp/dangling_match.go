@@ -97,7 +97,7 @@ func isSafeGo2tvRTMPTempDir(tempDir string) bool {
 }
 
 func normalizePath(p string) string {
-	return strings.ReplaceAll(p, "\\", "/")
+	return filepath.ToSlash(p)
 }
 
 func hasFlagValue(args []string, flag, want string) bool {

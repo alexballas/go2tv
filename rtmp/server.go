@@ -5,9 +5,7 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sync"
-	"time"
 )
 
 // Server manages the RTMP server process (ffmpeg)
@@ -54,8 +52,8 @@ func (s *Server) Start(ffmpegPath, streamKey, port string) (string, error) {
 	_, cleanupErr := CleanupDanglingFFmpegRTMPServers(port)
 
 	// Create temp directory for HLS segments
-	tempDir := filepath.Join(os.TempDir(), fmt.Sprintf("go2tv-rtmp-%d", time.Now().UnixNano()))
-	if err := os.MkdirAll(tempDir, 0755); err != nil {
+	tempDir, err := os.MkdirTemp("", "go2tv-rtmp-*")
+	if err != nil {
 		return "", fmt.Errorf("failed to create temp directory: %w", err)
 	}
 	s.tempDir = tempDir

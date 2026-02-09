@@ -19,6 +19,7 @@ make run                # Build and run
 make clean              # Clean build artifacts
 go test -v ./path/to/pkg                        # Test specific package
 go test -run TestName -v ./path/to/pkg          # Run single test
+go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test ./... # Modernize checks
 ```
 
 ### Testing

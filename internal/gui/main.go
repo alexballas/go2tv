@@ -160,7 +160,11 @@ func (t *tappedSlider) Dragged(e *fyne.DragEvent) {
 	}
 
 	// DLNA: Get position from device
-	if t.end == "" {
+	t.mu.Lock()
+	cachedEnd := t.end
+	t.mu.Unlock()
+
+	if cachedEnd == "" {
 		if t.screen.tvdata == nil {
 			return
 		}
@@ -171,6 +175,7 @@ func (t *tappedSlider) Dragged(e *fyne.DragEvent) {
 
 		t.mu.Lock()
 		t.end = getSliderPos[0]
+		cachedEnd = t.end
 		t.mu.Unlock()
 
 		// poor man's caching to reduce the amount of
@@ -183,7 +188,7 @@ func (t *tappedSlider) Dragged(e *fyne.DragEvent) {
 		}()
 	}
 
-	total, err := utils.ClockTimeToSeconds(t.end)
+	total, err := utils.ClockTimeToSeconds(cachedEnd)
 	if err != nil {
 		return
 	}
@@ -196,7 +201,7 @@ func (t *tappedSlider) Dragged(e *fyne.DragEvent) {
 		return
 	}
 
-	end, err := utils.FormatClockTime(t.end)
+	end, err := utils.FormatClockTime(cachedEnd)
 	if err != nil {
 		return
 	}
@@ -969,6 +974,7 @@ func checkMutefunc(s *FyneScreen) {
 
 func sliderUpdate(s *FyneScreen) {
 	t := time.NewTicker(time.Second)
+	defer t.Stop()
 	for range t.C {
 		if s.sliderActive {
 			s.sliderActive = false

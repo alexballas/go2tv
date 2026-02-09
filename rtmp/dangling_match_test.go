@@ -49,3 +49,17 @@ func TestIsSafeGo2tvRTMPTempDir(t *testing.T) {
 		t.Fatalf("should not allow outside temp")
 	}
 }
+
+func TestNormalizePathPreservesLiteralBackslashOnUnix(t *testing.T) {
+	t.Parallel()
+
+	if os.PathSeparator != '/' {
+		t.Skip("unix-only assertion")
+	}
+
+	in := "/home/user/AC\\DC Rocks/video.ts"
+	got := normalizePath(in)
+	if got != in {
+		t.Fatalf("normalizePath changed unix path: got %q want %q", got, in)
+	}
+}

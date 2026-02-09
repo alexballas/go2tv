@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"runtime"
@@ -478,7 +479,9 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 		p.ctx = context.Background()
 	}
 
+	p.mu.Lock()
 	delete(p.CurrentTimers, uuidInput)
+	p.mu.Unlock()
 
 	parsedURLcontrol, err := url.Parse(p.EventURL)
 	if err != nil {
@@ -1334,9 +1337,7 @@ func (p *TVPayload) SendtoTV(action string) error {
 	if action == "Stop" {
 		p.mu.RLock()
 		localStates := make(map[string]*States)
-		for key, value := range p.MediaRenderersStates {
-			localStates[key] = value
-		}
+		maps.Copy(localStates, p.MediaRenderersStates)
 		p.mu.RUnlock()
 
 		// Cleaning up all uuids on force stop.

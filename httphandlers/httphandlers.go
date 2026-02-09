@@ -208,19 +208,33 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 		if !exists {
 			// Check for directory handlers
 			for prefix, dirPath := range s.dirHandlers {
-				if strings.HasPrefix(r.URL.Path, prefix) {
-					// Found a match
-					relPath := strings.TrimPrefix(r.URL.Path, prefix)
-					// Clean path to prevent directory traversal
-					relPath = filepath.Clean("/" + relPath)
-					fullPath := filepath.Join(dirPath, relPath)
-
-					// Basic security check to ensure we're still in the base directory
-					if strings.HasPrefix(fullPath, dirPath) {
-						out = handler{media: fullPath}
-						exists = true
-						break
+				if after, ok := strings.CutPrefix(r.URL.Path, prefix); ok {
+					// Found a match. Build candidate path and enforce it stays under dirPath.
+					relPath := filepath.Clean(strings.TrimPrefix(after, "/"))
+					baseAbs, err := filepath.Abs(filepath.Clean(dirPath))
+					if err != nil {
+						continue
 					}
+
+					fullAbs, err := filepath.Abs(filepath.Join(baseAbs, relPath))
+					if err != nil {
+						continue
+					}
+
+					relToBase, err := filepath.Rel(baseAbs, fullAbs)
+					if err != nil {
+						continue
+					}
+
+					if relToBase == ".." ||
+						strings.HasPrefix(relToBase, ".."+string(filepath.Separator)) ||
+						filepath.IsAbs(relToBase) {
+						continue
+					}
+
+					out = handler{media: fullAbs}
+					exists = true
+					break
 				}
 			}
 		}

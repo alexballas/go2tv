@@ -18,7 +18,7 @@ type MediaItemWithTracks struct {
 	ContentType    string          `json:"contentType"`
 	StreamType     string          `json:"streamType"`
 	Duration       float32         `json:"duration,omitempty"`
-	Metadata       MediaMeta       `json:"metadata,omitempty"`
+	Metadata       *MediaMeta      `json:"metadata,omitempty"`
 	Tracks         []MediaTrack    `json:"tracks,omitempty"`
 	TextTrackStyle *TextTrackStyle `json:"textTrackStyle,omitempty"`
 }
