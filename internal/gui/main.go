@@ -1043,8 +1043,10 @@ func sliderUpdate(s *FyneScreen) {
 					return
 				}
 
-				s.CurrentPos.Set(currentClock)
-				s.EndPos.Set(end)
+				fyne.Do(func() {
+					s.CurrentPos.Set(currentClock)
+					s.EndPos.Set(end)
+				})
 			}
 		}
 	}
