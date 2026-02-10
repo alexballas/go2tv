@@ -71,7 +71,7 @@ func DMRextractor(ctx context.Context, dmrurl string) (*DMRextracted, error) {
 		return nil, fmt.Errorf("DMRextractor parse error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 	req, err := http.NewRequestWithContext(ctx, "GET", dmrurl, nil)
 	if err != nil {
 		return nil, fmt.Errorf("DMRextractor GET error: %w", err)
@@ -101,7 +101,7 @@ func LoadDevicesFromLocation(ctx context.Context, dmrurl string) ([]*DMRextracte
 		return nil, fmt.Errorf("LoadDevicesFromLocation parse error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 	req, err := http.NewRequestWithContext(ctx, "GET", dmrurl, nil)
 	if err != nil {
 		return nil, fmt.Errorf("LoadDevicesFromLocation GET error: %w", err)

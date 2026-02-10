@@ -11,7 +11,7 @@ import (
 
 type Options struct {
 	LogOutput      io.Writer
-	ctx            context.Context
+	Ctx            context.Context
 	DMR            string
 	Media          string
 	Subs           string
@@ -29,11 +29,12 @@ type Options struct {
 // generates a random callback path, and determines the listen address.
 // It returns a pointer to the created TVPayload or an error if any step fails.
 func NewTVPayload(o *Options) (*TVPayload, error) {
-	if o.ctx == nil {
-		o.ctx = context.Background()
+	ctx := o.Ctx
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
-	upnpServicesURLs, err := DMRextractor(o.ctx, o.DMR)
+	upnpServicesURLs, err := DMRextractor(ctx, o.DMR)
 	if err != nil {
 		return nil, err
 	}
@@ -49,6 +50,7 @@ func NewTVPayload(o *Options) (*TVPayload, error) {
 	}
 
 	return &TVPayload{
+		ctx:                         ctx,
 		ControlURL:                  upnpServicesURLs.AvtransportControlURL,
 		EventURL:                    upnpServicesURLs.AvtransportEventSubURL,
 		RenderingControlURL:         upnpServicesURLs.RenderingControlURL,
@@ -76,4 +78,10 @@ func NewTVPayload(o *Options) (*TVPayload, error) {
 func (p *TVPayload) ListenAddress() string {
 	mediaUrl, _ := url.Parse(p.MediaURL)
 	return mediaUrl.Host
+}
+
+func (p *TVPayload) SetContext(ctx context.Context) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.ctx = ctx
 }

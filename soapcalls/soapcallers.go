@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 )
@@ -184,10 +183,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 		return fmt.Errorf("setAVTransportSoapCall soap build error: %w", err)
 	}
 
-	retryClient := retryablehttp.NewClient()
-	retryClient.RetryMax = 3
-	retryClient.Logger = nil
-	client := retryClient.StandardClient()
+	client := newRetryableHTTPClient(3)
 
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlData))
 	if err != nil {
@@ -257,7 +253,7 @@ func (p *TVPayload) setNextAVTransportSoapCall(clear bool) error {
 		return fmt.Errorf("setNextAVTransportSoapCall soap build error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlData))
 	if err != nil {
@@ -339,13 +335,10 @@ func (p *TVPayload) PlayPauseStopSoapCall(action string) error {
 		return fmt.Errorf("AVTransportActionSoapCall action error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 
 	if retry {
-		retryClient := retryablehttp.NewClient()
-		retryClient.RetryMax = 3
-		retryClient.Logger = nil
-		client = retryClient.StandardClient()
+		client = newRetryableHTTPClient(3)
 	}
 
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlData))
@@ -419,7 +412,7 @@ func (p *TVPayload) SeekSoapCall(reltime string) error {
 		return fmt.Errorf("SeekSoapCall action error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlData))
 	if err != nil {
@@ -493,11 +486,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 		return fmt.Errorf("SubscribeSoapCall #2 parse error: %w", err)
 	}
 
-	retryClient := retryablehttp.NewClient()
-	retryClient.RetryMax = 3
-	retryClient.Logger = nil
-
-	client := retryClient.StandardClient()
+	client := newRetryableHTTPClient(3)
 
 	req, err := http.NewRequestWithContext(p.ctx, "SUBSCRIBE", parsedURLcontrol.String(), nil)
 	if err != nil {
@@ -612,7 +601,7 @@ func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 		return fmt.Errorf("UnsubscribeSoapCall parse error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 
 	req, err := http.NewRequestWithContext(p.ctx, "UNSUBSCRIBE", parsedURLcontrol.String(), nil)
 	if err != nil {
@@ -704,7 +693,7 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 		return "", fmt.Errorf("GetMuteSoapCall build error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "GetMuteSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
@@ -787,7 +776,7 @@ func (p *TVPayload) SetMuteSoapCall(number string) error {
 		return fmt.Errorf("SetMuteSoapCall build error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "SetMuteSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
@@ -858,7 +847,7 @@ func (p *TVPayload) GetVolumeSoapCall() (int, error) {
 		return 0, fmt.Errorf("GetVolumeSoapCall build error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "GetVolumeSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
@@ -950,7 +939,7 @@ func (p *TVPayload) SetVolumeSoapCall(v string) error {
 		return fmt.Errorf("SetVolumeSoapCall build error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "SetVolumeSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
@@ -1014,7 +1003,7 @@ func (p *TVPayload) GetProtocolInfo() error {
 		return fmt.Errorf("GetProtocolInfo build error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 	req, err := http.NewRequestWithContext(p.ctx, "POST", p.ConnectionManagerURL, bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "Prepare POST").Err(err).Msg("")
@@ -1094,7 +1083,7 @@ func (p *TVPayload) Gapless() (string, error) {
 		return "", fmt.Errorf("Gapless build error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "Gapless").Str("Action", "Prepare POST").Err(err).Msg("")
@@ -1178,7 +1167,7 @@ func (p *TVPayload) GetTransportInfo() ([]string, error) {
 		return nil, fmt.Errorf("GetTransportInfo build error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "GetTransportInfo").Str("Action", "Prepare POST").Err(err).Msg("")
@@ -1265,7 +1254,7 @@ func (p *TVPayload) GetPositionInfo() ([]string, error) {
 		return nil, fmt.Errorf("GetPositionInfo build error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "GetPositionInfo").Str("Action", "Prepare POST").Err(err).Msg("")

@@ -193,6 +193,7 @@ func run() error {
 	}
 
 	tvdata, err := soapcalls.NewTVPayload(&soapcalls.Options{
+		Ctx:            exitCTX,
 		DMR:            flagRes.targetURL,
 		Media:          absMediaFile,
 		Subs:           absSubtitlesFile,

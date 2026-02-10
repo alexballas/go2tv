@@ -7,14 +7,41 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 var (
 	ErrBadStatus = errors.New("streamURL bad status code")
 )
+
+const (
+	streamHTTPClientTimeout         = 20 * time.Second
+	streamHTTPDialTimeout           = 5 * time.Second
+	streamHTTPKeepAlive             = 30 * time.Second
+	streamHTTPTLSHandshakeTimeout   = 5 * time.Second
+	streamHTTPResponseHeaderTimeout = 10 * time.Second
+	streamHTTPExpectContinueTimeout = 1 * time.Second
+	streamHTTPIdleConnTimeout       = 90 * time.Second
+)
+
+var streamHTTPClient = &http.Client{
+	Timeout: streamHTTPClientTimeout,
+	Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   streamHTTPDialTimeout,
+			KeepAlive: streamHTTPKeepAlive,
+		}).DialContext,
+		TLSHandshakeTimeout:   streamHTTPTLSHandshakeTimeout,
+		ResponseHeaderTimeout: streamHTTPResponseHeaderTimeout,
+		ExpectContinueTimeout: streamHTTPExpectContinueTimeout,
+		IdleConnTimeout:       streamHTTPIdleConnTimeout,
+	},
+}
 
 func streamURLResponse(ctx context.Context, s string) (*http.Response, error) {
 	_, err := url.ParseRequestURI(s)
@@ -22,13 +49,12 @@ func streamURLResponse(ctx context.Context, s string) (*http.Response, error) {
 		return nil, fmt.Errorf("streamURL failed to parse url: %w", err)
 	}
 
-	client := &http.Client{}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s, nil)
 	if err != nil {
 		return nil, fmt.Errorf("streamURL failed to call NewRequest: %w", err)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := streamHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("streamURL failed to client.Do: %w", err)
 	}

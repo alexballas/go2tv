@@ -9,7 +9,7 @@ import (
 
 // GetFriendlyName returns the friendly name value for a the specific DMR url.
 func GetFriendlyName(ctx context.Context, dmr string) (string, error) {
-	client := &http.Client{}
+	client := newHTTPClient()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dmr, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create NewRequest for GetFriendlyName: %w", err)
