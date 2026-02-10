@@ -565,7 +565,8 @@ func playAction(screen *FyneScreen) {
 		if screen.NextMediaCheck.Checked && gaplessOption == "Enabled" {
 			newTVPayload, err := queueNext(screen, false)
 			if err != nil {
-				stopAction(screen)
+				check(screen, err)
+				return
 			}
 
 			if screen.GaplessMediaWatcher == nil {
@@ -1156,7 +1157,16 @@ out:
 			if screen.NextMediaCheck.Checked {
 				// If we change the current folder of media files we need to ensure
 				// that the next song is going to be requeued correctly.
-				next, _ := getNextMedia(screen)
+				next, _, err := getNextMediaOrError(screen)
+				if err != nil {
+					check(screen, err)
+					fyne.Do(func() {
+						screen.NextMediaCheck.SetChecked(false)
+					})
+					screen.GaplessMediaWatcher = nil
+					break out
+				}
+
 				if path.Base(nextURI) == utils.ConvertFilename(next) {
 					continue
 				}
@@ -1178,7 +1188,16 @@ out:
 					screen.httpserver.RemoveHandler(mPath.Path)
 					screen.httpserver.RemoveHandler(sPath.Path)
 
-					mediaName, mediaPath := getNextMedia(screen)
+					mediaName, mediaPath, err := getNextMediaOrError(screen)
+					if err != nil {
+						check(screen, err)
+						fyne.Do(func() {
+							screen.NextMediaCheck.SetChecked(false)
+						})
+						screen.GaplessMediaWatcher = nil
+						break out
+					}
+
 					screen.mediafile = mediaPath
 					fyne.Do(func() {
 						screen.MediaText.Text = mediaName
@@ -1192,7 +1211,12 @@ out:
 
 				newTVPayload, err := queueNext(screen, false)
 				if err != nil {
-					stopAction(screen)
+					check(screen, err)
+					fyne.Do(func() {
+						screen.NextMediaCheck.SetChecked(false)
+					})
+					screen.GaplessMediaWatcher = nil
+					break out
 				}
 				screen.tvdata = payload
 				payload = newTVPayload
@@ -1233,6 +1257,12 @@ func skipNextAction(screen *FyneScreen) {
 		return
 	}
 
+	name, nextMediaPath, err := getNextMediaOrError(screen)
+	if err != nil {
+		check(screen, err)
+		return
+	}
+
 	fyne.Do(func() {
 		screen.PlayPause.Disable()
 		screen.SkipNextButton.Disable()
@@ -1241,7 +1271,6 @@ func skipNextAction(screen *FyneScreen) {
 	// Capture old path for handler cleanup
 	oldMediaPath := screen.mediafile
 
-	name, nextMediaPath := getNextMedia(screen)
 	screen.MediaText.Text = name
 	screen.mediafile = nextMediaPath
 	screen.MediaText.Refresh()
@@ -1617,7 +1646,10 @@ func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 		return nil, nil
 	}
 
-	fname, fpath := getNextMedia(screen)
+	fname, fpath, err := getNextMediaOrError(screen)
+	if err != nil {
+		return nil, err
+	}
 	_, spath := getNextPossibleSubs(fname)
 
 	var mediaType string
@@ -1627,6 +1659,7 @@ func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer mfile.Close()
 
 	mediaType, err = utils.GetMimeDetailsFromFile(mfile)
 	if err != nil {

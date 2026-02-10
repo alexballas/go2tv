@@ -49,6 +49,7 @@
     "could not send mute action": "無法傳送靜音操作",
     "please select a media file or enter a media URL": "請選擇一個媒體檔案或輸入媒體網址",
     "please select a media file": "請選擇一個媒體檔案",
+    "no next media file found in the current folder": "目前資料夾中找不到下一個媒體檔案",
     "Video/Image file not supported by audio-only device": "僅音訊裝置不支援影片/圖片檔案",
     "Save": "保存",
     "Enter filename": "輸入檔名",

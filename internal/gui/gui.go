@@ -279,7 +279,15 @@ func (p *FyneScreen) Fini() {
 		}
 
 		if p.NextMediaCheck.Checked && (isChromecast || gaplessOption == "Disabled") {
-			p.MediaText.Text, p.mediafile = getNextMedia(p)
+			nextMediaName, nextMediaPath, err := getNextMediaOrError(p)
+			if err != nil {
+				check(p, err)
+				startAfreshPlayButton(p)
+				return
+			}
+
+			p.MediaText.Text = nextMediaName
+			p.mediafile = nextMediaPath
 			p.MediaText.Refresh()
 
 			if !p.CustomSubsCheck.Checked {
@@ -408,6 +416,15 @@ func getNextMedia(screen *FyneScreen) (string, string) {
 	}
 
 	return files[idx+1], filepath.Join(filedir, files[idx+1])
+}
+
+func getNextMediaOrError(screen *FyneScreen) (string, string, error) {
+	name, path := getNextMedia(screen)
+	if name == "" || path == "" {
+		return "", "", errors.New(lang.L("no next media file found in the current folder"))
+	}
+
+	return name, path, nil
 }
 
 func autoSelectNextSubs(v string, screen *FyneScreen) {

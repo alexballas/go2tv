@@ -49,6 +49,7 @@
     "could not send mute action": "could not send mute action",
     "please select a media file or enter a media URL": "please select a media file or enter a media URL",
     "please select a media file": "please select a media file",
+    "no next media file found in the current folder": "no next media file found in the current folder",
     "Video/Image file not supported by audio-only device": "Video/Image file not supported by audio-only device",
     "Save": "Save",
     "Enter filename": "Enter filename",
