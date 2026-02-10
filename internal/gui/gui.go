@@ -304,59 +304,6 @@ func (p *FyneScreen) Fini() {
 	})
 }
 
-func initFyneNewScreen(version string) *FyneScreen {
-	go2tv := app.NewWithID("app.go2tv.go2tv")
-
-	// Hack. Ongoing discussion in https://github.com/fyne-io/fyne/issues/5333
-	var content []byte
-	switch go2tv.Preferences().String("Language") {
-	case "中文(简体)":
-		content, _ = translations.ReadFile("translations/zh.json")
-	case "English":
-		content, _ = translations.ReadFile("translations/en.json")
-	}
-
-	if content != nil {
-		name := lang.SystemLocale().LanguageString()
-		_ = lang.AddTranslations(fyne.NewStaticResource(name+".json", content))
-	} else {
-		_ = lang.AddTranslationsFS(translations, "translations")
-	}
-
-	go2tv.SetIcon(fyne.NewStaticResource("icon", go2TVIcon512))
-
-	w := go2tv.NewWindow("Go2TV")
-	currentDir, err := os.Getwd()
-	if err != nil {
-		currentDir = ""
-	}
-
-	dw := &debugWriter{
-		ring: ring.New(1000),
-	}
-
-	ffmpegPath := func() string {
-		if go2tv.Preferences().String("ffmpeg") != "" {
-			return go2tv.Preferences().String("ffmpeg")
-		}
-
-		path, _ := exec.LookPath("ffmpeg")
-		return path
-	}()
-
-	return &FyneScreen{
-		Current:        w,
-		currentmfolder: currentDir,
-		ffmpegPath:     ffmpegPath,
-		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".m4a", ".jpg", ".jpeg", ".png"},
-		imageFormats:   []string{".jpg", ".jpeg", ".png"},
-		videoFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv"},
-		audioFormats:   []string{".mp3", ".flac", ".wav", ".m4a"},
-		version:        version,
-		Debug:          dw,
-	}
-}
-
 func check(s *FyneScreen, err error) {
 	s.muError.Lock()
 	defer s.muError.Unlock()
@@ -602,9 +549,58 @@ func (p *FyneScreen) checkChromecastCompatibility() {
 	}
 }
 
-// NewFyneScreen .
+// NewFyneScreen creates and initializes a new FyneScreen instance with the provided version string.
 func NewFyneScreen(version string) *FyneScreen {
-	return initFyneNewScreen(version)
+	go2tv := app.NewWithID("app.go2tv.go2tv")
+
+	// Hack. Ongoing discussion in https://github.com/fyne-io/fyne/issues/5333
+	var content []byte
+	switch go2tv.Preferences().String("Language") {
+	case "中文(简体)":
+		content, _ = translations.ReadFile("translations/zh.json")
+	case "English":
+		content, _ = translations.ReadFile("translations/en.json")
+	}
+
+	if content != nil {
+		name := lang.SystemLocale().LanguageString()
+		_ = lang.AddTranslations(fyne.NewStaticResource(name+".json", content))
+	} else {
+		_ = lang.AddTranslationsFS(translations, "translations")
+	}
+
+	go2tv.SetIcon(fyne.NewStaticResource("icon", go2TVIcon512))
+
+	w := go2tv.NewWindow("Go2TV")
+	currentDir, err := os.Getwd()
+	if err != nil {
+		currentDir = ""
+	}
+
+	dw := &debugWriter{
+		ring: ring.New(1000),
+	}
+
+	ffmpegPath := func() string {
+		if go2tv.Preferences().String("ffmpeg") != "" {
+			return go2tv.Preferences().String("ffmpeg")
+		}
+
+		path, _ := exec.LookPath("ffmpeg")
+		return path
+	}()
+
+	return &FyneScreen{
+		Current:        w,
+		currentmfolder: currentDir,
+		ffmpegPath:     ffmpegPath,
+		mediaFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".m4a", ".jpg", ".jpeg", ".png"},
+		imageFormats:   []string{".jpg", ".jpeg", ".png"},
+		videoFormats:   []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv"},
+		audioFormats:   []string{".mp3", ".flac", ".wav", ".m4a"},
+		version:        version,
+		Debug:          dw,
+	}
 }
 
 func onDropFiles(screen *FyneScreen) func(p fyne.Position, u []fyne.URI) {

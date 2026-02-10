@@ -377,14 +377,7 @@ func playAction(screen *FyneScreen) {
 				mediaType = "application/vnd.apple.mpegurl"
 				screen.SetMediaType(mediaType)
 			} else {
-				mfile, err := os.Open(screen.mediafile)
-				check(screen, err)
-				if err != nil {
-					startAfreshPlayButton(screen)
-					return
-				}
-
-				mediaType, err = utils.GetMimeDetailsFromFile(mfile)
+				mediaType, err = utils.GetMimeDetailsFromPath(screen.mediafile)
 				check(screen, err)
 				if err != nil {
 					startAfreshPlayButton(screen)
@@ -822,19 +815,13 @@ func chromecastPlayAction(screen *FyneScreen) {
 		screen.SetMediaType(mediaType)
 	} else {
 		// LOCAL FILE: Serve via internal HTTP server
-		mfile, err := os.Open(screen.mediafile)
+		detectedMediaType, err := utils.GetMimeDetailsFromPath(screen.mediafile)
 		if err != nil {
 			check(screen, err)
 			startAfreshPlayButton(screen)
 			return
 		}
-		mediaType, err = utils.GetMimeDetailsFromFile(mfile)
-		mfile.Close()
-		if err != nil {
-			check(screen, err)
-			startAfreshPlayButton(screen)
-			return
-		}
+		mediaType = detectedMediaType
 
 		// Chromecast handles images and audio natively - never transcode these
 		mediaTypeSlice := strings.Split(mediaType, "/")
@@ -1284,13 +1271,7 @@ func skipNextAction(screen *FyneScreen) {
 		screen.chromecastClient != nil && screen.chromecastClient.IsConnected() {
 
 		// Get media type
-		mfile, err := os.Open(screen.mediafile)
-		if err != nil {
-			check(screen, err)
-			return
-		}
-		mediaType, err := utils.GetMimeDetailsFromFile(mfile)
-		mfile.Close()
+		mediaType, err := utils.GetMimeDetailsFromPath(screen.mediafile)
 		if err != nil {
 			check(screen, err)
 			return
@@ -1446,14 +1427,7 @@ func previewmedia(screen *FyneScreen) {
 		return
 	}
 
-	mfile, err := os.Open(screen.mediafile)
-	check(screen, err)
-	if err != nil {
-		return
-	}
-	defer mfile.Close()
-
-	mediaType, err := utils.GetMimeDetailsFromFile(mfile)
+	mediaType, err := utils.GetMimeDetailsFromPath(screen.mediafile)
 	check(screen, err)
 	if err != nil {
 		return
@@ -1655,13 +1629,7 @@ func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 	var mediaType string
 	var isSeek bool
 
-	mfile, err := os.Open(fpath)
-	if err != nil {
-		return nil, err
-	}
-	defer mfile.Close()
-
-	mediaType, err = utils.GetMimeDetailsFromFile(mfile)
+	mediaType, err = utils.GetMimeDetailsFromPath(fpath)
 	if err != nil {
 		return nil, err
 	}

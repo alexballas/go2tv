@@ -153,13 +153,8 @@ func run() error {
 			return err
 		}
 
-		mfile, err := os.Open(absMediaFile)
-		if err != nil {
-			return err
-		}
-
 		mediaFile = absMediaFile
-		mediaType, err = utils.GetMimeDetailsFromFile(mfile)
+		mediaType, err = utils.GetMimeDetailsFromPath(absMediaFile)
 		if err != nil {
 			return err
 		}

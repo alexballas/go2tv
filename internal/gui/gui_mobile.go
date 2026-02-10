@@ -150,29 +150,6 @@ func (p *FyneScreen) Fini() {
 	}
 }
 
-func initFyneNewScreen(v string) *FyneScreen {
-	go2tv := app.NewWithID("app.go2tv.go2tv")
-	go2tv.Settings().SetTheme(go2tvTheme{"Dark"})
-	go2tv.Driver().SetDisableScreenBlanking(true)
-
-	w := go2tv.NewWindow("Go2TV")
-
-	return &FyneScreen{
-		Current:      w,
-		mediaFormats: []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".m4a", ".jpg", ".jpeg", ".png"},
-		version:      v,
-	}
-}
-
-func check(win fyne.Window, err error) {
-	if err != nil {
-		cleanErr := strings.ReplaceAll(err.Error(), ": ", "\n")
-		fyne.Do(func() {
-			dialog.ShowError(errors.New(cleanErr), win)
-		})
-	}
-}
-
 // updateScreenState updates the screen state based on
 // the emitted messages. The State variable is used across
 // the GUI interface to control certain flows.
@@ -241,5 +218,24 @@ func setMuteUnmuteView(s string, screen *FyneScreen) {
 
 // NewFyneScreen .
 func NewFyneScreen(version string) *FyneScreen {
-	return initFyneNewScreen(version)
+	go2tv := app.NewWithID("app.go2tv.go2tv")
+	go2tv.Settings().SetTheme(go2tvTheme{"Dark"})
+	go2tv.Driver().SetDisableScreenBlanking(true)
+
+	w := go2tv.NewWindow("Go2TV")
+
+	return &FyneScreen{
+		Current:      w,
+		mediaFormats: []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".m4a", ".jpg", ".jpeg", ".png"},
+		version:      version,
+	}
+}
+
+func check(win fyne.Window, err error) {
+	if err != nil {
+		cleanErr := strings.ReplaceAll(err.Error(), ": ", "\n")
+		fyne.Do(func() {
+			dialog.ShowError(errors.New(cleanErr), win)
+		})
+	}
 }
