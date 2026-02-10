@@ -137,3 +137,24 @@ func StreamURLWithMime(ctx context.Context, s string) (io.ReadCloser, string, er
 		Closer: resp.Body,
 	}, mediaType, nil
 }
+
+// PrepareURLMedia fetches URL media once and returns stream/bytes plus MIME type.
+func PrepareURLMedia(ctx context.Context, s string) (any, string, error) {
+	mediaURL, mediaType, err := StreamURLWithMime(ctx, s)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if strings.Contains(mediaType, "image") {
+		defer mediaURL.Close()
+
+		readerToBytes, err := io.ReadAll(mediaURL)
+		if err != nil {
+			return nil, "", fmt.Errorf("prepareURLMedia failed to read image: %w", err)
+		}
+
+		return readerToBytes, mediaType, nil
+	}
+
+	return mediaURL, mediaType, nil
+}

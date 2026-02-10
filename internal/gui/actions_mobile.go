@@ -250,7 +250,7 @@ func playAction(screen *FyneScreen) {
 		case "PLAYING":
 			setPlayPauseView("Pause", screen)
 			screen.updateScreenState("Playing")
-		case "PAUSED":
+		case "PAUSED_PLAYBACK":
 			setPlayPauseView("Play", screen)
 			screen.updateScreenState("Paused")
 		}

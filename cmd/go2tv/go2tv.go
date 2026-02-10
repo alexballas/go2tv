@@ -112,22 +112,13 @@ func run() error {
 	}
 
 	if *mediaArg == "" && *urlArg != "" {
-		mediaURL, inferredMediaType, err := utils.StreamURLWithMime(context.Background(), *urlArg)
+		preparedMedia, inferredMediaType, err := utils.PrepareURLMedia(context.Background(), *urlArg)
 		if err != nil {
 			return err
 		}
 		mediaType = inferredMediaType
 
-		mediaFile = mediaURL
-
-		if strings.Contains(mediaType, "image") {
-			readerToBytes, err := io.ReadAll(mediaURL)
-			mediaURL.Close()
-			if err != nil {
-				return err
-			}
-			mediaFile = readerToBytes
-		}
+		mediaFile = preparedMedia
 
 		if utils.IsHLSStream(*urlArg, mediaType) {
 			transcode = false

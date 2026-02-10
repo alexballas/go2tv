@@ -121,31 +121,12 @@ func run() error {
 	}
 
 	if *mediaArg == "" && *urlArg != "" {
-		mediaURL, err := utils.StreamURL(context.Background(), *urlArg)
+		preparedMedia, inferredMediaType, err := utils.PrepareURLMedia(context.Background(), *urlArg)
 		if err != nil {
 			return err
 		}
-
-		mediaURLinfo, err := utils.StreamURL(context.Background(), *urlArg)
-		if err != nil {
-			return err
-		}
-
-		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
-		if err != nil {
-			return err
-		}
-
-		mediaFile = mediaURL
-
-		if strings.Contains(mediaType, "image") {
-			readerToBytes, err := io.ReadAll(mediaURL)
-			mediaURL.Close()
-			if err != nil {
-				return err
-			}
-			mediaFile = readerToBytes
-		}
+		mediaType = inferredMediaType
+		mediaFile = preparedMedia
 	}
 
 	switch t := mediaFile.(type) {
