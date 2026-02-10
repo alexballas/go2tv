@@ -677,7 +677,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		if s.selectedDevice.addr != "" && s.selectedDevice.addr != data[id].addr && !isActivePlayback {
 			// Clear DLNA-specific state only
 			s.controlURL = ""
-			s.eventlURL = ""
+			s.eventURL = ""
 			s.renderingControlURL = ""
 			s.connectionManagerURL = ""
 			s.tvdata = nil
@@ -691,7 +691,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			check(s, err)
 			if err == nil {
 				s.controlURL = t.AvtransportControlURL
-				s.eventlURL = t.AvtransportEventSubURL
+				s.eventURL = t.AvtransportEventSubURL
 				s.renderingControlURL = t.RenderingControlURL
 				s.connectionManagerURL = t.ConnectionManagerURL
 				if s.tvdata != nil {

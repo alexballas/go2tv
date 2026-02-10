@@ -548,15 +548,13 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 		RawJSON("Headers", headerBytesRes).
 		Msg(string(resBytes))
 
-	var uuid string
-
 	if res.Status != "200 OK" {
 		if uuidInput != "" {
 			// We're calling the unsubscribe method to make sure
 			// we clean up any remaining states for the specific
 			// uuid. The actual UNSUBSCRIBE request to the media
 			// renderer may still fail with error 412, but it's fine.
-			_ = p.UnsubscribeSoapCall(uuid)
+			_ = p.UnsubscribeSoapCall(uuidInput)
 		}
 		return nil
 	}
@@ -565,6 +563,8 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 		// This should be an impossible case
 		return nil
 	}
+
+	var uuid string
 
 	uuid = res.Header["Sid"][0]
 	uuid = strings.TrimLeft(uuid, "[")

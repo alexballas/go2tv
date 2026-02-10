@@ -483,7 +483,7 @@ func playAction(screen *FyneScreen) {
 		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
 			screen.tvdata = &soapcalls.TVPayload{
 				ControlURL:                  screen.controlURL,
-				EventURL:                    screen.eventlURL,
+				EventURL:                    screen.eventURL,
 				RenderingControlURL:         screen.renderingControlURL,
 				ConnectionManagerURL:        screen.connectionManagerURL,
 				MediaURL:                    "http://" + whereToListen + "/rtmp/playlist.m3u8",
@@ -502,7 +502,7 @@ func playAction(screen *FyneScreen) {
 		} else {
 			screen.tvdata = &soapcalls.TVPayload{
 				ControlURL:                  screen.controlURL,
-				EventURL:                    screen.eventlURL,
+				EventURL:                    screen.eventURL,
 				RenderingControlURL:         screen.renderingControlURL,
 				ConnectionManagerURL:        screen.connectionManagerURL,
 				MediaURL:                    "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile),
@@ -1650,7 +1650,7 @@ func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 
 	nextTvData := &soapcalls.TVPayload{
 		ControlURL:                  screen.controlURL,
-		EventURL:                    screen.eventlURL,
+		EventURL:                    screen.eventURL,
 		RenderingControlURL:         screen.renderingControlURL,
 		ConnectionManagerURL:        screen.connectionManagerURL,
 		MediaURL:                    "http://" + oldMediaURL.Host + "/" + utils.ConvertFilename(fname),

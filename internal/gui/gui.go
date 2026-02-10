@@ -69,7 +69,7 @@ type FyneScreen struct {
 	State                    string
 	mediafile                string
 	version                  string
-	eventlURL                string
+	eventURL                 string
 	subsfile                 string
 	controlURL               string
 	renderingControlURL      string
@@ -396,6 +396,10 @@ func getNextMedia(screen *FyneScreen) (string, string) {
 		}
 
 		files = append(files, f.Name())
+	}
+
+	if len(files) == 0 {
+		return "", ""
 	}
 
 	idx := slices.Index(files, filepath.Base(screen.mediafile))
