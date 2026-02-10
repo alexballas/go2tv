@@ -24,8 +24,6 @@ type NewScreen struct {
 	mu          sync.RWMutex
 }
 
-var flipflop bool = true
-
 func (p *NewScreen) emitStr(x, y int, style tcell.Style, str string) {
 	s := p.Current
 	for _, c := range str {
@@ -147,6 +145,9 @@ func (p *NewScreen) InterInit(tv *soapcalls.TVPayload, c chan error) {
 // HandleKeyEvent Method to handle all key press events
 func (p *NewScreen) HandleKeyEvent(ev *tcell.EventKey) {
 	tv := p.TV
+	if tv == nil {
+		return
+	}
 
 	if ev.Key() == tcell.KeyEscape {
 		_ = tv.SendtoTV("Stop")
@@ -173,14 +174,11 @@ func (p *NewScreen) HandleKeyEvent(ev *tcell.EventKey) {
 
 	switch ev.Rune() {
 	case 'p':
-		if flipflop {
-			flipflop = false
-			_ = tv.SendtoTV("Pause")
+		action, err := resolvePlayPauseAction(tv)
+		if err != nil {
 			break
 		}
-
-		flipflop = true
-		_ = tv.SendtoTV("Play")
+		_ = tv.SendtoTV(action)
 
 	case 'm':
 		currentMute, err := tv.GetMuteSoapCall()
@@ -234,4 +232,28 @@ func (p *NewScreen) updateLastAction(s string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.lastAction = s
+}
+
+func resolvePlayPauseAction(tv *soapcalls.TVPayload) (string, error) {
+	transportInfo, err := tv.GetTransportInfo()
+	if err != nil {
+		return "", err
+	}
+
+	if len(transportInfo) == 0 {
+		return "Play", nil
+	}
+
+	return playPauseActionFromState(transportInfo[0]), nil
+}
+
+func playPauseActionFromState(state string) string {
+	switch strings.ToUpper(strings.TrimSpace(state)) {
+	case "PLAYING":
+		return "Pause"
+	case "PAUSED_PLAYBACK", "PAUSED_RECORDING", "PAUSED":
+		return "Play"
+	default:
+		return "Play"
+	}
 }
