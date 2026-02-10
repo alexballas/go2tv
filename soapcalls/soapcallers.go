@@ -479,9 +479,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 		p.ctx = context.Background()
 	}
 
-	p.mu.Lock()
-	delete(p.CurrentTimers, uuidInput)
-	p.mu.Unlock()
+	p.deleteTimer(uuidInput)
 
 	parsedURLcontrol, err := url.Parse(p.EventURL)
 	if err != nil {
@@ -628,10 +626,13 @@ func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 
 	req.Header.Del("User-Agent")
 
-	_, err = client.Do(req)
+	res, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("UnsubscribeSoapCall Do UNSUBSCRIBE error: %w", err)
 	}
+	defer res.Body.Close()
+
+	io.Copy(io.Discard, res.Body)
 
 	return nil
 }
@@ -652,7 +653,28 @@ func (p *TVPayload) RefreshLoopUUIDSoapCall(uuid, timeout string) {
 
 	f := p.refreshLoopUUIDAsyncSoapCall(uuid)
 	timer := time.AfterFunc(triggerTimefunc, f)
+	p.setTimer(uuid, timer)
+}
+
+func (p *TVPayload) deleteTimer(uuid string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.CurrentTimers, uuid)
+}
+
+func (p *TVPayload) setTimer(uuid string, timer *time.Timer) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.CurrentTimers[uuid] = timer
+}
+
+func (p *TVPayload) stopAndClearTimers() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for uuid, timer := range p.CurrentTimers {
+		timer.Stop()
+		delete(p.CurrentTimers, uuid)
+	}
 }
 
 func (p *TVPayload) refreshLoopUUIDAsyncSoapCall(uuid string) func() {
@@ -1350,10 +1372,7 @@ func (p *TVPayload) SendtoTV(action string) error {
 		// Clear timers on Stop to avoid errors responses
 		// from the media renderers. If we don't clear those, we
 		// might receive a "412 Precondition Failed" error.
-		for uuid, timer := range p.CurrentTimers {
-			timer.Stop()
-			delete(p.CurrentTimers, uuid)
-		}
+		p.stopAndClearTimers()
 	}
 
 	if err := p.PlayPauseStopSoapCall(action); err != nil {
@@ -1379,8 +1398,13 @@ func (p *TVPayload) UpdateMRstate(previous, new, uuid string) bool {
 	// https://openconnectivity.org/upnp-specs/UPnP-arch-DeviceArchitecture-v1.1.pdf
 	// (page 94).
 	if p.InitialMediaRenderersStates[uuid] {
-		p.MediaRenderersStates[uuid].PreviousState = previous
-		p.MediaRenderersStates[uuid].NewState = new
+		state := p.MediaRenderersStates[uuid]
+		if state == nil {
+			return false
+		}
+
+		state.PreviousState = previous
+		state.NewState = new
 		return true
 	}
 
@@ -1413,7 +1437,12 @@ func (p *TVPayload) DeleteMRstate(uuid string) {
 func (p *TVPayload) SetProcessStopTrue(uuid string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.MediaRenderersStates[uuid].ProcessStop = true
+	state := p.MediaRenderersStates[uuid]
+	if state == nil {
+		return
+	}
+
+	state.ProcessStop = true
 }
 
 // GetProcessStop checks if the process stop flag is set for a given media renderer identified by the UUID.
@@ -1422,7 +1451,12 @@ func (p *TVPayload) GetProcessStop(uuid string) (bool, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	if p.InitialMediaRenderersStates[uuid] {
-		return p.MediaRenderersStates[uuid].ProcessStop, nil
+		state := p.MediaRenderersStates[uuid]
+		if state == nil {
+			return true, ErrZombieCallbacks
+		}
+
+		return state.ProcessStop, nil
 	}
 
 	return true, ErrZombieCallbacks
