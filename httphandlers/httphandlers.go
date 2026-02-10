@@ -285,12 +285,7 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 		reqParsed, _ := io.ReadAll(req.Body)
 		sidVal, sidExists := req.Header["Sid"]
 
-		if !sidExists {
-			http.NotFound(w, req)
-			return
-		}
-
-		if sidVal[0] == "" {
+		if !sidExists || (len(sidVal) > 0 && sidVal[0] == "") {
 			http.NotFound(w, req)
 			return
 		}
@@ -469,8 +464,7 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 		w.Header()["contentFeatures.dlna.org"] = []string{contentFeatures}
 	}
 
-	// Since we're dealing with an io.Reader we can't
-	// allow any HEAD requests that some DMRs trigger.
+	// In ffmpeg we can emulate seek support for live streams
 	if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "video") {
 		// Route based on which config is provided
 		switch {
@@ -495,9 +489,9 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 	// No seek support
 	if r.Method == http.MethodGet {
 		_, _ = io.Copy(w, f)
-		f.Close()
-		return
 	}
+
+	f.Close()
 }
 
 func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode, seek bool, f osFileType, ff *exec.Cmd) {
