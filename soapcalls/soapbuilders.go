@@ -1,7 +1,6 @@
 package soapcalls
 
 import (
-	"bytes"
 	"encoding/xml"
 	"fmt"
 	"net/url"
@@ -454,9 +453,6 @@ func setAVTransportSoapBuild(tvdata *TVPayload) ([]byte, error) {
 		return nil, fmt.Errorf("setAVTransportSoapBuild #2 Marshal error: %w", err)
 	}
 
-	// Samsung TV hack.
-	b = bytes.ReplaceAll(b, []byte("&#34;"), []byte(`"`))
-
 	return append(xmlStart, b...), nil
 }
 
@@ -589,9 +585,6 @@ func setNextAVTransportSoapBuild(tvdata *TVPayload, clear bool) ([]byte, error) 
 	if err != nil {
 		return nil, fmt.Errorf("setNextAVTransportSoapBuild #2 Marshal error: %w", err)
 	}
-
-	// Samsung TV hack.
-	b = bytes.ReplaceAll(b, []byte("&#34;"), []byte(`"`))
 
 	return append(xmlStart, b...), nil
 }
