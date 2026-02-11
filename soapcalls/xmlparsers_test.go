@@ -289,12 +289,12 @@ func TestParseDMRFromXMLResolvesRelativeServiceURLs(t *testing.T) {
 		t.Fatalf("ParseDMRFromXML() unexpected error: %v", err)
 	}
 
-	if result.AvtransportControlURL != "http://sonos.local:1400/MediaRenderer/AVTransport/Control" {
-		t.Fatalf("AvtransportControlURL = %q, want %q", result.AvtransportControlURL, "http://sonos.local:1400/MediaRenderer/AVTransport/Control")
+	if result.AvtransportControlURL != "http://sonos.local:1400/xml/MediaRenderer/AVTransport/Control" {
+		t.Fatalf("AvtransportControlURL = %q, want %q", result.AvtransportControlURL, "http://sonos.local:1400/xml/MediaRenderer/AVTransport/Control")
 	}
 
-	if result.AvtransportEventSubURL != "http://sonos.local:1400/MediaRenderer/AVTransport/Event" {
-		t.Fatalf("AvtransportEventSubURL = %q, want %q", result.AvtransportEventSubURL, "http://sonos.local:1400/MediaRenderer/AVTransport/Event")
+	if result.AvtransportEventSubURL != "http://sonos.local:1400/xml/MediaRenderer/AVTransport/Event" {
+		t.Fatalf("AvtransportEventSubURL = %q, want %q", result.AvtransportEventSubURL, "http://sonos.local:1400/xml/MediaRenderer/AVTransport/Event")
 	}
 
 	if result.ConnectionManagerURL != "http://sonos.local:1400/MediaRenderer/ConnectionManager/Control" {

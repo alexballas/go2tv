@@ -253,15 +253,20 @@ func toAbsoluteServiceURL(baseURL *url.URL, rawServiceURL string) string {
 		return ""
 	}
 
-	if strings.HasPrefix(serviceURL, "http://") || strings.HasPrefix(serviceURL, "https://") {
-		return serviceURL
+	parsedServiceURL, err := url.Parse(serviceURL)
+	if err != nil {
+		return ""
 	}
 
-	if !strings.HasPrefix(serviceURL, "/") {
-		serviceURL = "/" + serviceURL
+	if parsedServiceURL.IsAbs() {
+		return parsedServiceURL.String()
 	}
 
-	return baseURL.Scheme + "://" + baseURL.Host + serviceURL
+	if baseURL == nil {
+		return ""
+	}
+
+	return baseURL.ResolveReference(parsedServiceURL).String()
 }
 
 // EventNotifyParser parses the Notify messages from the DMR device.
