@@ -31,6 +31,11 @@ var (
 	ErrSomethingWentWrong = errors.New("devicePicker: Something went terribly wrong")
 )
 
+var (
+	ssdpSearch              = ssdp.Search
+	loadDevicesFromLocation = soapcalls.LoadDevicesFromLocation
+)
+
 // IsChromecastURL returns true if the URL points to a Chromecast device (port 8009).
 func IsChromecastURL(deviceURL string) bool {
 	u, err := url.Parse(deviceURL)
@@ -40,10 +45,12 @@ func IsChromecastURL(deviceURL string) bool {
 	return u.Port() == "8009"
 }
 
-// LoadSSDPservices returns a slice of DLNA devices that support the
-// AVTransport service.
+// LoadSSDPservices returns a slice of DLNA devices that support
+// required playback services.
 func LoadSSDPservices(delay int) ([]Device, error) {
-	// Collect unique locations (a single location may have multiple embedded devices)
+	// Collect unique locations (a single location may have multiple embedded devices).
+	// We intentionally do not filter by ST value here because some vendors reply with
+	// non-AVTransport ST values while still exposing AVTransport in LOCATION XML.
 	locations := make(map[string]struct{})
 
 	port := 3339
@@ -73,16 +80,13 @@ func LoadSSDPservices(delay int) ([]Device, error) {
 		addrString = address.String()
 	}
 
-	list, err := ssdp.Search(ssdp.All, delay, addrString)
+	list, err := ssdpSearch(ssdp.All, delay, addrString)
 	if err != nil {
 		return nil, fmt.Errorf("LoadSSDPservices search error: %w", err)
 	}
 
 	for _, srv := range list {
-		// We only care about the AVTransport services for basic actions
-		// (stop,play,pause). If we need support other functionalities
-		// like volume control we need to use the RenderingControl service.
-		if srv.Type == "urn:schemas-upnp-org:service:AVTransport:1" {
+		if srv.Location != "" {
 			locations[srv.Location] = struct{}{}
 		}
 	}
@@ -95,12 +99,16 @@ func LoadSSDPservices(delay int) ([]Device, error) {
 	var allDevices []deviceEntry
 
 	for loc := range locations {
-		devices, err := soapcalls.LoadDevicesFromLocation(context.Background(), loc)
+		devices, err := loadDevicesFromLocation(context.Background(), loc)
 		if err != nil {
 			continue
 		}
 
 		for _, dev := range devices {
+			if !isDLNADeviceCastable(dev) {
+				continue
+			}
+
 			name := dev.FriendlyName
 			if name == "" {
 				name = "Unknown Device"
@@ -147,6 +155,16 @@ func LoadSSDPservices(delay int) ([]Device, error) {
 	}
 
 	return result, nil
+}
+
+func isDLNADeviceCastable(dev *soapcalls.DMRextracted) bool {
+	if dev == nil {
+		return false
+	}
+
+	// AVTransport drives playback. ConnectionManager is required by Play1 path
+	// because we call GetProtocolInfo before SetAVTransportURI.
+	return dev.AvtransportControlURL != "" && dev.ConnectionManagerURL != ""
 }
 
 // LoadAllDevices returns a combined slice of DLNA and Chromecast devices.
