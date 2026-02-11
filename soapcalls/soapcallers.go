@@ -193,8 +193,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -263,8 +262,7 @@ func (p *TVPayload) setNextAVTransportSoapCall(clear bool) error {
 
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#SetNextAVTransportURI"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -349,8 +347,7 @@ func (p *TVPayload) PlayPauseStopSoapCall(action string) error {
 
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#` + action + `"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -422,8 +419,7 @@ func (p *TVPayload) SeekSoapCall(reltime string) error {
 
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#Seek"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -702,8 +698,7 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:RenderingControl:1#GetMute"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -785,8 +780,7 @@ func (p *TVPayload) SetMuteSoapCall(number string) error {
 
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:RenderingControl:1#SetMute"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -856,8 +850,7 @@ func (p *TVPayload) GetVolumeSoapCall() (int, error) {
 
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:RenderingControl:1#GetVolume"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -948,8 +941,7 @@ func (p *TVPayload) SetVolumeSoapCall(v string) error {
 
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:RenderingControl:1#SetVolume"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -1012,8 +1004,7 @@ func (p *TVPayload) GetProtocolInfo() error {
 
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:ConnectionManager:1#GetProtocolInfo"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -1091,8 +1082,7 @@ func (p *TVPayload) Gapless() (string, error) {
 	}
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#GetMediaInfo"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -1175,8 +1165,7 @@ func (p *TVPayload) GetTransportInfo() ([]string, error) {
 	}
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -1262,8 +1251,7 @@ func (p *TVPayload) GetPositionInfo() ([]string, error) {
 	}
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 

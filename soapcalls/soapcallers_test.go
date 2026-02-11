@@ -1,7 +1,10 @@
 package soapcalls
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestParseProtocolInfo(t *testing.T) {
@@ -29,5 +32,45 @@ func TestParseProtocolInfo(t *testing.T) {
 				t.Fatalf("%s: Failed to call parseProtocolInfo due to %s", tc.name, err.Error())
 			}
 		})
+	}
+}
+
+func TestSetVolumeSoapCallHeaders(t *testing.T) {
+	type headerCapture struct {
+		contentType string
+		charset     string
+	}
+
+	headersCh := make(chan headerCapture, 1)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headersCh <- headerCapture{
+			contentType: r.Header.Get("Content-Type"),
+			charset:     r.Header.Get("Charset"),
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	p := &TVPayload{
+		RenderingControlURL: srv.URL,
+	}
+
+	if err := p.SetVolumeSoapCall("10"); err != nil {
+		t.Fatalf("SetVolumeSoapCall failed: %v", err)
+	}
+
+	select {
+	case h := <-headersCh:
+		if h.contentType != `text/xml; charset="utf-8"` {
+			t.Fatalf("unexpected Content-Type: %q", h.contentType)
+		}
+
+		if h.charset != "" {
+			t.Fatalf("unexpected Charset header: %q", h.charset)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for request headers")
 	}
 }
