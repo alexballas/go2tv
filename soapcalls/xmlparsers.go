@@ -205,27 +205,20 @@ func buildDMRExtracted(device *deviceNode, baseURL *url.URL) *DMRextracted {
 
 	// Check this device's services
 	for _, service := range device.ServiceList.Services {
-		eventSubURL := service.EventSubURL
-		controlURL := service.ControlURL
-
-		if !strings.HasPrefix(eventSubURL, "/") {
-			eventSubURL = "/" + eventSubURL
-		}
-		if !strings.HasPrefix(controlURL, "/") {
-			controlURL = "/" + controlURL
-		}
+		eventSubURL := toAbsoluteServiceURL(baseURL, service.EventSubURL)
+		controlURL := toAbsoluteServiceURL(baseURL, service.ControlURL)
 
 		switch service.ID {
 		case "urn:upnp-org:serviceId:AVTransport":
-			ex.AvtransportControlURL = baseURL.Scheme + "://" + baseURL.Host + controlURL
-			ex.AvtransportEventSubURL = baseURL.Scheme + "://" + baseURL.Host + eventSubURL
+			ex.AvtransportControlURL = controlURL
+			ex.AvtransportEventSubURL = eventSubURL
 			hasAVTransport = true
 
 		case "urn:upnp-org:serviceId:RenderingControl":
-			ex.RenderingControlURL = baseURL.Scheme + "://" + baseURL.Host + controlURL
+			ex.RenderingControlURL = controlURL
 
 		case "urn:upnp-org:serviceId:ConnectionManager":
-			ex.ConnectionManagerURL = baseURL.Scheme + "://" + baseURL.Host + controlURL
+			ex.ConnectionManagerURL = controlURL
 		}
 	}
 
@@ -252,6 +245,23 @@ func buildDMRExtracted(device *deviceNode, baseURL *url.URL) *DMRextracted {
 	}
 
 	return nil
+}
+
+func toAbsoluteServiceURL(baseURL *url.URL, rawServiceURL string) string {
+	serviceURL := strings.TrimSpace(rawServiceURL)
+	if serviceURL == "" {
+		return ""
+	}
+
+	if strings.HasPrefix(serviceURL, "http://") || strings.HasPrefix(serviceURL, "https://") {
+		return serviceURL
+	}
+
+	if !strings.HasPrefix(serviceURL, "/") {
+		serviceURL = "/" + serviceURL
+	}
+
+	return baseURL.Scheme + "://" + baseURL.Host + serviceURL
 }
 
 // EventNotifyParser parses the Notify messages from the DMR device.

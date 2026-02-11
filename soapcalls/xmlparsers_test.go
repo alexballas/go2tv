@@ -262,6 +262,46 @@ func TestParseDMRFromXML(t *testing.T) {
 	}
 }
 
+func TestParseDMRFromXMLResolvesRelativeServiceURLs(t *testing.T) {
+	raw := `<?xml version="1.0"?>
+<root>
+	<device>
+		<serviceList>
+			<service>
+				<serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
+				<serviceId>urn:upnp-org:serviceId:AVTransport</serviceId>
+				<controlURL>MediaRenderer/AVTransport/Control</controlURL>
+				<eventSubURL>MediaRenderer/AVTransport/Event</eventSubURL>
+			</service>
+			<service>
+				<serviceType>urn:schemas-upnp-org:service:ConnectionManager:1</serviceType>
+				<serviceId>urn:upnp-org:serviceId:ConnectionManager</serviceId>
+				<controlURL>/MediaRenderer/ConnectionManager/Control</controlURL>
+				<eventSubURL>/MediaRenderer/ConnectionManager/Event</eventSubURL>
+			</service>
+		</serviceList>
+	</device>
+</root>`
+
+	baseURL, _ := url.Parse("http://sonos.local:1400/xml/device_description.xml")
+	result, err := ParseDMRFromXML([]byte(raw), baseURL)
+	if err != nil {
+		t.Fatalf("ParseDMRFromXML() unexpected error: %v", err)
+	}
+
+	if result.AvtransportControlURL != "http://sonos.local:1400/MediaRenderer/AVTransport/Control" {
+		t.Fatalf("AvtransportControlURL = %q, want %q", result.AvtransportControlURL, "http://sonos.local:1400/MediaRenderer/AVTransport/Control")
+	}
+
+	if result.AvtransportEventSubURL != "http://sonos.local:1400/MediaRenderer/AVTransport/Event" {
+		t.Fatalf("AvtransportEventSubURL = %q, want %q", result.AvtransportEventSubURL, "http://sonos.local:1400/MediaRenderer/AVTransport/Event")
+	}
+
+	if result.ConnectionManagerURL != "http://sonos.local:1400/MediaRenderer/ConnectionManager/Control" {
+		t.Fatalf("ConnectionManagerURL = %q, want %q", result.ConnectionManagerURL, "http://sonos.local:1400/MediaRenderer/ConnectionManager/Control")
+	}
+}
+
 func TestDMRextractorEmbeddedDevice(t *testing.T) {
 	// Test full HTTP flow with embedded device XML
 	raw := `<?xml version="1.0" encoding="utf-8"?>

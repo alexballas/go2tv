@@ -5,7 +5,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"net/url"
-	"regexp"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -51,7 +50,6 @@ type pauseAction struct {
 	XMLName     xml.Name `xml:"u:Pause"`
 	AVTransport string   `xml:"xmlns:u,attr"`
 	InstanceID  string
-	Speed       string
 }
 
 type stopEnvelope struct {
@@ -70,7 +68,6 @@ type stopAction struct {
 	XMLName     xml.Name `xml:"u:Stop"`
 	AVTransport string   `xml:"xmlns:u,attr"`
 	InstanceID  string
-	Speed       string
 }
 
 type seekEnvelope struct {
@@ -361,12 +358,6 @@ func setAVTransportSoapBuild(tvdata *TVPayload) ([]byte, error) {
 
 	mediaTitle := strings.TrimLeft(mediaTitlefromURL.Path, "/")
 
-	re, err := regexp.Compile(`[&<>\\]+`)
-	if err != nil {
-		return nil, fmt.Errorf("setAVTransportSoapBuild regex compile error: %w", err)
-	}
-	mediaTitle = re.ReplaceAllString(mediaTitle, "")
-
 	var didl didLLiteItem
 	resNodeData := []resNode{}
 	duration, _ := utils.DurationForMedia(tvdata.FFmpegPath, tvdata.MediaPath)
@@ -465,7 +456,6 @@ func setAVTransportSoapBuild(tvdata *TVPayload) ([]byte, error) {
 
 	// Samsung TV hack.
 	b = bytes.ReplaceAll(b, []byte("&#34;"), []byte(`"`))
-	b = bytes.ReplaceAll(b, []byte("&amp;"), []byte("&"))
 
 	return append(xmlStart, b...), nil
 }
@@ -503,12 +493,6 @@ func setNextAVTransportSoapBuild(tvdata *TVPayload, clear bool) ([]byte, error) 
 	}
 
 	mediaTitle := strings.TrimLeft(mediaTitlefromURL.Path, "/")
-
-	re, err := regexp.Compile(`[&<>\\]+`)
-	if err != nil {
-		return nil, fmt.Errorf("setNextAVTransportSoapBuild regex compile error: %w", err)
-	}
-	mediaTitle = re.ReplaceAllString(mediaTitle, "")
 
 	var didl didLLiteItem
 	resNodeData := []resNode{}
@@ -608,7 +592,6 @@ func setNextAVTransportSoapBuild(tvdata *TVPayload, clear bool) ([]byte, error) 
 
 	// Samsung TV hack.
 	b = bytes.ReplaceAll(b, []byte("&#34;"), []byte(`"`))
-	b = bytes.ReplaceAll(b, []byte("&amp;"), []byte("&"))
 
 	return append(xmlStart, b...), nil
 }
@@ -648,7 +631,6 @@ func stopSoapBuild() ([]byte, error) {
 				XMLName:     xml.Name{},
 				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
 				InstanceID:  "0",
-				Speed:       "1",
 			},
 		},
 	}
@@ -672,7 +654,6 @@ func pauseSoapBuild() ([]byte, error) {
 				XMLName:     xml.Name{},
 				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
 				InstanceID:  "0",
-				Speed:       "1",
 			},
 		},
 	}
