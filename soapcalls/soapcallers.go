@@ -9,6 +9,7 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"runtime"
 	"strconv"
@@ -176,7 +177,7 @@ func (p *TVPayload) doSOAPRequestWithMPostFallback(client *http.Client, req *htt
 		return res, false, nil
 	}
 
-	soapAction := req.Header.Get("SOAPAction")
+	soapAction := headerGetCaseInsensitive(req.Header, "SOAPAction")
 	if soapAction == "" {
 		return res, false, nil
 	}
@@ -206,7 +207,7 @@ func (p *TVPayload) doSOAPRequestWithMPostFallback(client *http.Client, req *htt
 	mpostReq.Header.Del("Upgrade")
 
 	// M-POST uses MAN + namespaced SOAPACTION header
-	mpostReq.Header.Del("SOAPAction")
+	headerDelCaseInsensitive(mpostReq.Header, "SOAPAction")
 	mpostReq.Header.Set("MAN", `"http://schemas.xmlsoap.org/soap/envelope/"; ns=01`)
 	mpostReq.Header.Set("01-SOAPACTION", soapAction)
 
@@ -216,6 +217,30 @@ func (p *TVPayload) doSOAPRequestWithMPostFallback(client *http.Client, req *htt
 	}
 
 	return res, true, nil
+}
+
+func headerGetCaseInsensitive(h http.Header, key string) string {
+	if v := h.Get(key); v != "" {
+		return v
+	}
+
+	for k, values := range h {
+		if strings.EqualFold(k, key) && len(values) > 0 {
+			return values[0]
+		}
+	}
+
+	return ""
+}
+
+func headerDelCaseInsensitive(h http.Header, key string) {
+	h.Del(key)
+	canonicalKey := textproto.CanonicalMIMEHeaderKey(key)
+	for k := range h {
+		if strings.EqualFold(k, key) && k != canonicalKey {
+			delete(h, k)
+		}
+	}
 }
 
 func (p *TVPayload) setAVTransportSoapCall() error {
