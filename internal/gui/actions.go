@@ -1412,13 +1412,30 @@ func skipNextAction(screen *FyneScreen) {
 	// which might be cancelled by the async StopAction or conflict with it.
 
 	fyne.Do(func() {
-		screen.PlayPause.SetText(lang.L("Play"))
+		screen.PlayPause.SetText(lang.L("Play") + "  ")
 		screen.PlayPause.SetIcon(theme.MediaPlayIcon())
 		screen.PlayPause.Refresh()
 	})
 
-	stopAction(screen)
-	playAction(screen)
+	// Stop must finish before starting Play1, otherwise some DMRs (e.g. Samsung)
+	// reject the transition with AVTransport error 701.
+	tvdata := screen.tvdata
+	server := screen.httpserver
+	screen.tvdata = nil
+	screen.httpserver = nil
+	screen.updateScreenState("Stopped")
+	screen.SetMediaType("")
+
+	go func() {
+		if tvdata != nil && tvdata.ControlURL != "" {
+			_ = tvdata.SendtoTV("Stop")
+		}
+		if server != nil {
+			server.StopServer()
+		}
+
+		playAction(screen)
+	}()
 }
 
 func previewmedia(screen *FyneScreen) {
