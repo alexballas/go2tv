@@ -54,6 +54,9 @@
             <li>Revamped UI with refreshed styling, modern checkbox designs, and active device indicators.</li>
             <li>Optimized Chromecast live casting for lower latency and improved responsiveness.</li>
             <li>Enhanced DLNA protocol compatibility and smart sensing for audio-only devices.</li>
+            <li>Added UPnP M-POST fallback and RFC-compliant relative URL resolution for wider renderer compatibility.</li>
+            <li>Improved UPnP action handling for Play/Pause/Next and device state mapping.</li>
+            <li>Improved UPnP discovery interoperability and callback/event URL handling.</li>
             <li>Refactored UI threading (Fyne.Do) for improved stability and eliminated potential race conditions.</li>
             <li>Improved File Picker: Now featuring type-to-search and thumbnails support.</li>
             <li>Improved Chromecast discovery and warmup to reduce device discovery latency.</li>
