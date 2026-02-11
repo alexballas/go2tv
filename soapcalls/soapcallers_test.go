@@ -3,6 +3,7 @@ package soapcalls
 import (
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 )
@@ -72,5 +73,70 @@ func TestSetVolumeSoapCallHeaders(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for request headers")
+	}
+}
+
+func TestSetVolumeSoapCallMPostFallbackOn405(t *testing.T) {
+	type requestCapture struct {
+		method       string
+		soapAction   string
+		man          string
+		nsSoapAction string
+	}
+
+	var (
+		mu       sync.Mutex
+		requests []requestCapture
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		idx := len(requests)
+		requests = append(requests, requestCapture{
+			method:       r.Method,
+			soapAction:   r.Header.Get("SOAPAction"),
+			man:          r.Header.Get("MAN"),
+			nsSoapAction: r.Header.Get("01-SOAPACTION"),
+		})
+		mu.Unlock()
+
+		if idx == 0 {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	p := &TVPayload{
+		RenderingControlURL: srv.URL,
+	}
+
+	if err := p.SetVolumeSoapCall("10"); err != nil {
+		t.Fatalf("SetVolumeSoapCall failed: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if len(requests) != 2 {
+		t.Fatalf("expected 2 requests, got %d", len(requests))
+	}
+
+	if requests[0].method != http.MethodPost {
+		t.Fatalf("first request method = %q, want %q", requests[0].method, http.MethodPost)
+	}
+
+	if requests[1].method != "M-POST" {
+		t.Fatalf("second request method = %q, want %q", requests[1].method, "M-POST")
+	}
+
+	if requests[1].man != `"http://schemas.xmlsoap.org/soap/envelope/"; ns=01` {
+		t.Fatalf("unexpected MAN header: %q", requests[1].man)
+	}
+
+	if requests[1].nsSoapAction != requests[0].soapAction {
+		t.Fatalf("01-SOAPACTION = %q, want %q", requests[1].nsSoapAction, requests[0].soapAction)
 	}
 }

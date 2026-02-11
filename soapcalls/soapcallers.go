@@ -166,6 +166,51 @@ type getPositionInfoResponse struct {
 	} `xml:"Body"`
 }
 
+func (p *TVPayload) doSOAPRequestWithMPostFallback(client *http.Client, req *http.Request, payload []byte, method string) (*http.Response, bool, error) {
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, false, err
+	}
+
+	soapAction := req.Header.Get("SOAPAction")
+	if soapAction == "" {
+		for k, v := range req.Header {
+			if strings.EqualFold(k, "SOAPAction") && len(v) > 0 {
+				soapAction = v[0]
+				break
+			}
+		}
+	}
+
+	if res.StatusCode != http.StatusMethodNotAllowed || req.Method != http.MethodPost || soapAction == "" {
+		return res, false, nil
+	}
+
+	p.Log().Debug().
+		Str("Method", method).
+		Str("Action", "M-POST Fallback").
+		Msg("POST returned 405, retrying with M-POST")
+
+	_, _ = io.Copy(io.Discard, res.Body)
+	_ = res.Body.Close()
+
+	mpostReq, err := http.NewRequestWithContext(req.Context(), "M-POST", req.URL.String(), bytes.NewReader(payload))
+	if err != nil {
+		return nil, true, err
+	}
+
+	mpostReq.Header = req.Header.Clone()
+	mpostReq.Header.Set("MAN", `"http://schemas.xmlsoap.org/soap/envelope/"; ns=01`)
+	mpostReq.Header.Set("01-SOAPACTION", soapAction)
+
+	res, err = client.Do(mpostReq)
+	if err != nil {
+		return nil, true, err
+	}
+
+	return res, true, nil
+}
+
 func (p *TVPayload) setAVTransportSoapCall() error {
 	if p.ctx == nil {
 		p.ctx = context.Background()
@@ -208,7 +253,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlData))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlData, "setAVTransportSoapCall")
 	if err != nil {
 		p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "Do POST").Err(err).Msg("")
 		return fmt.Errorf("setAVTransportSoapCall Do POST error: %w", err)
@@ -277,7 +322,7 @@ func (p *TVPayload) setNextAVTransportSoapCall(clear bool) error {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlData))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlData, "setNextAVTransportSoapCall")
 	if err != nil {
 		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "Do POST").Err(err).Msg("")
 		return fmt.Errorf("setNextAVTransportSoapCall Do POST error: %w", err)
@@ -362,7 +407,7 @@ func (p *TVPayload) PlayPauseStopSoapCall(action string) error {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlData))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlData, "AVTransportActionSoapCall")
 	if err != nil {
 		p.Log().Error().Str("Method", "AVTransportActionSoapCall").Str("Action", "Do POST").Err(err).Msg("")
 		return fmt.Errorf("AVTransportActionSoapCall Do POST error: %w", err)
@@ -434,7 +479,7 @@ func (p *TVPayload) SeekSoapCall(reltime string) error {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlData))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlData, "SeekSoapCall")
 	if err != nil {
 		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "Do POST").Err(err).Msg("")
 		return fmt.Errorf("SeekSoapCall Do POST error: %w", err)
@@ -713,7 +758,7 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlbuilder))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetMuteSoapCall")
 	if err != nil {
 		return "", fmt.Errorf("GetMuteSoapCall Do POST error: %w", err)
 	}
@@ -795,7 +840,7 @@ func (p *TVPayload) SetMuteSoapCall(number string) error {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlbuilder))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "SetMuteSoapCall")
 	if err != nil {
 		return fmt.Errorf("SetMuteSoapCall Do POST error: %w", err)
 	}
@@ -865,7 +910,7 @@ func (p *TVPayload) GetVolumeSoapCall() (int, error) {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlbuilder))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetVolumeSoapCall")
 	if err != nil {
 		p.Log().Error().Str("Method", "GetVolumeSoapCall").Str("Action", "Do POST").Err(err).Msg("")
 		return 0, fmt.Errorf("GetVolumeSoapCall Do POST error: %w", err)
@@ -956,7 +1001,7 @@ func (p *TVPayload) SetVolumeSoapCall(v string) error {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlbuilder))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "SetVolumeSoapCall")
 	if err != nil {
 		return fmt.Errorf("SetVolumeSoapCall Do POST error: %w", err)
 	}
@@ -1019,7 +1064,7 @@ func (p *TVPayload) GetProtocolInfo() error {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlbuilder))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetProtocolInfo")
 	if err != nil {
 		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "Do POST failed <ignoring>").Err(err).Msg("")
 		return nil
@@ -1097,7 +1142,7 @@ func (p *TVPayload) Gapless() (string, error) {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlbuilder))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "Gapless")
 	if err != nil {
 		return "", fmt.Errorf("Gapless Do POST error: %w", err)
 	}
@@ -1180,7 +1225,7 @@ func (p *TVPayload) GetTransportInfo() ([]string, error) {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlbuilder))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetTransportInfo")
 	if err != nil {
 		return nil, fmt.Errorf("GetTransportInfo Do POST error: %w", err)
 	}
@@ -1266,7 +1311,7 @@ func (p *TVPayload) GetPositionInfo() ([]string, error) {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlbuilder))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetPositionInfo")
 	if err != nil {
 		return nil, fmt.Errorf("GetPositionInfo Do POST error: %w", err)
 	}
