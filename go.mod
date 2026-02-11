@@ -4,7 +4,6 @@ go 1.25
 
 require (
 	fyne.io/fyne/v2 v2.7.3-0.20260131162633-80f2081b7904
-	github.com/alexballas/go-ssdp v0.0.3
 	github.com/alexballas/xfilepicker v0.0.0-20260206213252-e8f58cac8729
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/gdamore/tcell/v2 v2.13.8
@@ -12,6 +11,7 @@ require (
 	github.com/h2non/filetype v1.1.3
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/hashicorp/mdns v1.0.6
+	github.com/koron/go-ssdp v0.1.0
 	github.com/mattn/go-runewidth v0.0.19
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.34.0

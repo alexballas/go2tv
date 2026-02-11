@@ -8,7 +8,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/alexballas/go-ssdp"
+	"github.com/koron/go-ssdp"
 	"github.com/pkg/errors"
 	"go2tv.app/go2tv/v2/soapcalls"
 )

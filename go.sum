@@ -6,8 +6,6 @@ github.com/FyshOS/fancyfs v0.0.1 h1:kgvm7VvwOMLkYTqSflplp62SlMVWQ2uAoHw9CXwXHYg=
 github.com/FyshOS/fancyfs v0.0.1/go.mod h1:S5SHVz/5R72iCXOxCqdcyTPSlg3JxNd0gaHyGBSrY8A=
 github.com/alexballas/fyne/v2 v2.3.3-0.20260205132451-ebcb537c172a h1:5smlCU8GVUHenqJgR61Ir6BLZbCmyUzT7ESDS2TqSh0=
 github.com/alexballas/fyne/v2 v2.3.3-0.20260205132451-ebcb537c172a/go.mod h1:li9jHss2gw1/bXQVx7jlZu4gCNBuT7zIAIvvYAzeRxE=
-github.com/alexballas/go-ssdp v0.0.3 h1:wTtHib45NtrkYZ/saCaB/2qJ9ci6EWeQFl6imaW4gPg=
-github.com/alexballas/go-ssdp v0.0.3/go.mod h1:jUwvJl32BZxBQiRbW5Q0h1QrDGMuA+HRg5qTQvIquJE=
 github.com/alexballas/xfilepicker v0.0.0-20260206213252-e8f58cac8729 h1:nTZMJr0cueO8AMIrHLktnGS/GUpzrJY6IgkuN0ihPPs=
 github.com/alexballas/xfilepicker v0.0.0-20260206213252-e8f58cac8729/go.mod h1:3iVlb7BjvPrChA4y5VhJ4+C7rW08csLbAQCMp45kU/M=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=
@@ -99,6 +97,8 @@ github.com/jsummers/gobmp v0.0.0-20230614200233-a9de23ed2e25 h1:YLvr1eE6cdCqjOe9
 github.com/jsummers/gobmp v0.0.0-20230614200233-a9de23ed2e25/go.mod h1:kLgvv7o6UM+0QSf0QjAse3wReFDsb9qbZJdfexWlrQw=
 github.com/kisielk/errcheck v1.5.0/go.mod h1:pFxgyoBC7bSaBwPgfKdkLd5X25qrDl4LWUI2bnpBCr8=
 github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=
+github.com/koron/go-ssdp v0.1.0 h1:ckl5x5H6qSNFmi+wCuROvvGUu2FQnMbQrU95IHCcv3Y=
+github.com/koron/go-ssdp v0.1.0/go.mod h1:GltaDBjtK1kemZOusWYLGotV0kBeEf59Bp0wtSB0uyU=
 github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
 github.com/kr/text v0.2.0/go.mod h1:eLer722TekiGuMkidMxC/pM04lWEeraHUUmBw8l2grE=
 github.com/lucasb-eyer/go-colorful v1.3.0 h1:2/yBRLdWBZKrf7gB40FoiKfAWYQ0lqNcbuQwVHXptag=
