@@ -172,17 +172,12 @@ func (p *TVPayload) doSOAPRequestWithMPostFallback(client *http.Client, req *htt
 		return nil, false, err
 	}
 
-	soapAction := req.Header.Get("SOAPAction")
-	if soapAction == "" {
-		for k, v := range req.Header {
-			if strings.EqualFold(k, "SOAPAction") && len(v) > 0 {
-				soapAction = v[0]
-				break
-			}
-		}
+	if res.StatusCode != http.StatusMethodNotAllowed || req.Method != http.MethodPost {
+		return res, false, nil
 	}
 
-	if res.StatusCode != http.StatusMethodNotAllowed || req.Method != http.MethodPost || soapAction == "" {
+	soapAction := req.Header.Get("SOAPAction")
+	if soapAction == "" {
 		return res, false, nil
 	}
 
@@ -200,6 +195,18 @@ func (p *TVPayload) doSOAPRequestWithMPostFallback(client *http.Client, req *htt
 	}
 
 	mpostReq.Header = req.Header.Clone()
+	mpostReq.Host = req.Host
+
+	// Hop-by-hop headers should not be forwarded
+	mpostReq.Header.Del("Connection")
+	mpostReq.Header.Del("Proxy-Connection")
+	mpostReq.Header.Del("Keep-Alive")
+	mpostReq.Header.Del("TE")
+	mpostReq.Header.Del("Trailer")
+	mpostReq.Header.Del("Upgrade")
+
+	// M-POST uses MAN + namespaced SOAPACTION header
+	mpostReq.Header.Del("SOAPAction")
 	mpostReq.Header.Set("MAN", `"http://schemas.xmlsoap.org/soap/envelope/"; ns=01`)
 	mpostReq.Header.Set("01-SOAPACTION", soapAction)
 
