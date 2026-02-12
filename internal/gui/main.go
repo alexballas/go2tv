@@ -256,45 +256,7 @@ func (t *tappedSlider) DragEnd() {
 			return
 		}
 
-		// Handle DLNA seeking
-		if t.screen.tvdata == nil {
-			return
-		}
-		getPos, err := t.screen.tvdata.GetPositionInfo()
-		if err != nil {
-			return
-		}
-
-		total, err := utils.ClockTimeToSeconds(getPos[0])
-		if err != nil {
-			return
-		}
-
-		cur := (float64(total) * t.screen.SlideBar.Value) / t.screen.SlideBar.Max
-		roundedInt := int(math.Round(cur))
-
-		reltime, err := utils.SecondsToClockTime(roundedInt)
-		if err != nil {
-			return
-		}
-
-		end, err := utils.FormatClockTime(getPos[0])
-		if err != nil {
-			return
-		}
-
-		t.screen.CurrentPos.Set(reltime)
-		t.screen.EndPos.Set(end)
-
-		if t.screen.tvdata.Transcode {
-			t.screen.ffmpegSeek = roundedInt
-			stopAction(t.screen)
-			playAction(t.screen)
-		}
-
-		if err := t.screen.tvdata.SeekSoapCall(reltime); err != nil {
-			return
-		}
+		t.seekDLNAAsync()
 	}
 }
 
@@ -340,14 +302,29 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 			if err := t.screen.chromecastClient.Seek(seekPos); err != nil {
 				return
 			}
+
 			return
 		}
 
-		// Handle DLNA seeking
-		if t.screen.tvdata == nil {
-			return
-		}
-		getPos, err := t.screen.tvdata.GetPositionInfo()
+		t.seekDLNAAsync()
+	}
+}
+
+func (t *tappedSlider) seekDLNAAsync() {
+	if t.screen.tvdata == nil {
+		return
+	}
+
+	tvdata := t.screen.tvdata
+	sliderValue := t.screen.SlideBar.Value
+	sliderMax := t.screen.SlideBar.Max
+	if sliderMax == 0 {
+		return
+	}
+	isTranscode := tvdata.Transcode
+
+	go func() {
+		getPos, err := tvdata.GetPositionInfo()
 		if err != nil {
 			return
 		}
@@ -357,7 +334,7 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 			return
 		}
 
-		cur := (float64(total) * t.screen.SlideBar.Value) / t.screen.SlideBar.Max
+		cur := (float64(total) * sliderValue) / sliderMax
 		roundedInt := int(math.Round(cur))
 
 		reltime, err := utils.SecondsToClockTime(roundedInt)
@@ -370,19 +347,21 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 			return
 		}
 
-		t.screen.CurrentPos.Set(reltime)
-		t.screen.EndPos.Set(end)
+		fyne.Do(func() {
+			t.screen.CurrentPos.Set(reltime)
+			t.screen.EndPos.Set(end)
+			if isTranscode {
+				t.screen.ffmpegSeek = roundedInt
+			}
+		})
 
-		if t.screen.tvdata.Transcode {
-			t.screen.ffmpegSeek = roundedInt
+		if isTranscode {
 			stopAction(t.screen)
 			playAction(t.screen)
 		}
 
-		if err := t.screen.tvdata.SeekSoapCall(reltime); err != nil {
-			return
-		}
-	}
+		_ = tvdata.SeekSoapCall(reltime)
+	}()
 }
 
 func mainWindow(s *FyneScreen) fyne.CanvasObject {
