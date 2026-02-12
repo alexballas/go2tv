@@ -760,9 +760,6 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			// to indicate that we're expecting a URL
 			s.MediaText.SetPlaceHolder(lang.L("Enter URL here"))
 			s.MediaText.Enable()
-
-			s.SelectInternalSubs.ClearSelected()
-			s.SelectInternalSubs.Disable()
 			setPlayPauseView("", s)
 			return
 		}
@@ -786,18 +783,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		s.MediaText.Disable()
 
 		if mediafileOld != "" {
-			subs, err := utils.GetSubs(s.ffmpegPath, mediafileOld)
-			if err != nil {
-				s.SelectInternalSubs.Options = []string{}
-				s.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
-				s.SelectInternalSubs.ClearSelected()
-				s.SelectInternalSubs.Disable()
+			if !refreshInternalSubsDropdown(s, mediafileOld) {
 				return
 			}
-
-			s.SelectInternalSubs.PlaceHolder = lang.L("Embedded Subs")
-			s.SelectInternalSubs.Options = subs
-			s.SelectInternalSubs.Enable()
 		}
 		setPlayPauseView("", s)
 	}

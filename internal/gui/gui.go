@@ -169,10 +169,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 			if ffmpegErr != nil {
 				s.TranscodeCheckBox.SetChecked(false)
 				s.TranscodeCheckBox.Disable()
-				s.SelectInternalSubs.Options = []string{}
-				s.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
-				s.SelectInternalSubs.ClearSelected()
-				s.SelectInternalSubs.Disable()
+				setInternalSubsDropdownNoSubs(s)
 			}
 
 			if ffmpegErr != nil {

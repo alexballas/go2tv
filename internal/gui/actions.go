@@ -142,25 +142,64 @@ func selectMediaFile(screen *FyneScreen, f fyne.URI) {
 
 	screen.MediaText.Refresh()
 
-	subs, err := utils.GetSubs(screen.ffmpegPath, absMediaFile)
-	if err != nil {
-		screen.SelectInternalSubs.Options = []string{}
-		screen.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
-		screen.SelectInternalSubs.ClearSelected()
-		screen.SelectInternalSubs.Disable()
+	if !refreshInternalSubsDropdown(screen, absMediaFile) {
 		return
 	}
-
-	screen.SelectInternalSubs.Options = subs
-	screen.SelectInternalSubs.PlaceHolder = lang.L("Embedded Subs")
-
-	screen.SelectInternalSubs.Enable()
 
 	// Auto-enable transcoding for incompatible Chromecast media
 	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
 		screen.checkChromecastCompatibility()
 	}
 	setPlayPauseView("", screen)
+}
+
+func setInternalSubsDropdownNoSubs(screen *FyneScreen) {
+	screen.SelectInternalSubs.Options = []string{}
+	screen.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
+	screen.SelectInternalSubs.ClearSelected()
+	screen.SelectInternalSubs.Disable()
+}
+
+func setInternalSubsDropdownWithSubs(screen *FyneScreen, subs []string) {
+	screen.SelectInternalSubs.Options = subs
+	screen.SelectInternalSubs.PlaceHolder = lang.L("Embedded Subs")
+	screen.SelectInternalSubs.ClearSelected()
+	screen.SelectInternalSubs.Enable()
+}
+
+func getInternalSubsDropdownOptions(screen *FyneScreen, mediaFile string) ([]string, bool) {
+	subs, err := utils.GetSubs(screen.ffmpegPath, mediaFile)
+	if err != nil {
+		return nil, false
+	}
+
+	return subs, true
+}
+
+func refreshInternalSubsDropdown(screen *FyneScreen, mediaFile string) bool {
+	subs, ok := getInternalSubsDropdownOptions(screen, mediaFile)
+	if !ok {
+		setInternalSubsDropdownNoSubs(screen)
+		return false
+	}
+
+	setInternalSubsDropdownWithSubs(screen, subs)
+	return true
+}
+
+// updateInternalSubsDropdown refreshes the embedded subtitles dropdown
+// for the given media file. Should be called when media file changes
+// (e.g., via Next button or auto-play).
+func updateInternalSubsDropdown(screen *FyneScreen, mediaFile string) {
+	subs, ok := getInternalSubsDropdownOptions(screen, mediaFile)
+
+	fyne.Do(func() {
+		if !ok {
+			setInternalSubsDropdownNoSubs(screen)
+			return
+		}
+		setInternalSubsDropdownWithSubs(screen, subs)
+	})
 }
 
 func selectSubsFile(screen *FyneScreen, f fyne.URI) {
@@ -1191,6 +1230,9 @@ out:
 						screen.MediaText.Refresh()
 					})
 
+					// Update embedded subtitles dropdown for new media file
+					updateInternalSubsDropdown(screen, mediaPath)
+
 					if !screen.CustomSubsCheck.Checked {
 						autoSelectNextSubs(screen.mediafile, screen)
 					}
@@ -1219,10 +1261,7 @@ out:
 func clearmediaAction(screen *FyneScreen) {
 	screen.MediaText.SetText("")
 	screen.mediafile = ""
-	screen.SelectInternalSubs.Options = []string{}
-	screen.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
-	screen.SelectInternalSubs.ClearSelected()
-	screen.SelectInternalSubs.Disable()
+	setInternalSubsDropdownNoSubs(screen)
 	setPlayPauseView("", screen)
 }
 
@@ -1261,6 +1300,9 @@ func skipNextAction(screen *FyneScreen) {
 	screen.MediaText.Text = name
 	screen.mediafile = nextMediaPath
 	screen.MediaText.Refresh()
+
+	// Update embedded subtitles dropdown for new media file
+	updateInternalSubsDropdown(screen, nextMediaPath)
 
 	if !screen.CustomSubsCheck.Checked {
 		autoSelectNextSubs(screen.mediafile, screen)
