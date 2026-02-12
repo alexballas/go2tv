@@ -7,6 +7,7 @@ import (
 	"errors"
 	"math"
 	"net/url"
+	"sort"
 	"sync"
 	"time"
 
@@ -35,6 +36,17 @@ type deviceList struct {
 }
 
 func (c *deviceList) FocusGained() {}
+
+// sortDevTypeSlice sorts devices alphabetically by name,
+// with DLNA devices before Chromecast devices when names are equal.
+func sortDevTypeSlice(d []devType) {
+	sort.Slice(d, func(i, j int) bool {
+		if d[i].deviceType != d[j].deviceType {
+			return d[i].deviceType < d[j].deviceType
+		}
+		return d[i].name < d[j].name
+	})
+}
 
 func newDeviceList(s *FyneScreen, dd *[]devType) *deviceList {
 	list := &deviceList{}
@@ -432,6 +444,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		if err != nil {
 			datanew = nil
 		}
+
+		// Sort devices alphabetically for consistent ordering
+		sortDevTypeSlice(datanew)
 
 		fyne.DoAndWait(func() {
 			data = datanew
@@ -889,6 +904,9 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 				newDevices = append(newDevices, old)
 			}
 		}
+
+		// Sort devices alphabetically for consistent ordering
+		sortDevTypeSlice(newDevices)
 
 		// check to see if the new refresh includes one of the already selected devices
 		var includes bool
