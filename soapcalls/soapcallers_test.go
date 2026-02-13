@@ -1,8 +1,10 @@
 package soapcalls
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -138,5 +140,67 @@ func TestSetVolumeSoapCallMPostFallbackOn405(t *testing.T) {
 
 	if requests[1].nsSoapAction != requests[0].soapAction {
 		t.Fatalf("01-SOAPACTION = %q, want %q", requests[1].nsSoapAction, requests[0].soapAction)
+	}
+}
+
+func TestSetAVTransportSoapCallRetriesWithLegacyMetadataOnFault(t *testing.T) {
+	var (
+		mu       sync.Mutex
+		requests []string
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		bodyStr := string(body)
+
+		mu.Lock()
+		requests = append(requests, bodyStr)
+		mu.Unlock()
+
+		if strings.Contains(bodyStr, `CurrentURIMetaData>&lt;DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"`) {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`<s:Fault><detail><UPnPError><errorCode>714</errorCode></UPnPError></detail></s:Fault>`))
+	}))
+	defer srv.Close()
+
+	p := &TVPayload{
+		ControlURL: srv.URL,
+		MediaURL:   `http://192.168.88.250:3500/video%20%26%20%27example%27.mp4`,
+		MediaType:  "video/mp4",
+		Seekable:   true,
+	}
+
+	if err := p.setAVTransportSoapCall(); err != nil {
+		t.Fatalf("setAVTransportSoapCall failed: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if len(requests) < 2 {
+		t.Fatalf("expected at least 2 requests, got %d", len(requests))
+	}
+
+	seenStandard := false
+	seenCompat := false
+	for _, reqBody := range requests {
+		if strings.Contains(reqBody, "xmlns=&#34;urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/&#34;") {
+			seenStandard = true
+		}
+		if strings.Contains(reqBody, `CurrentURIMetaData>&lt;DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"`) {
+			seenCompat = true
+		}
+	}
+
+	if !seenStandard {
+		t.Fatalf("did not observe standard escaped DIDL metadata in requests: %#v", requests)
+	}
+
+	if !seenCompat {
+		t.Fatalf("did not observe compatibility DIDL metadata in requests: %#v", requests)
 	}
 }

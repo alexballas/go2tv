@@ -243,6 +243,22 @@ func headerDelCaseInsensitive(h http.Header, key string) {
 	}
 }
 
+func shouldRetrySetAVTransportLegacyMetadata(statusCode int, body []byte) bool {
+	if statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices {
+		return false
+	}
+
+	bodyLower := strings.ToLower(string(body))
+	return statusCode >= http.StatusInternalServerError ||
+		strings.Contains(bodyLower, "upnperror") ||
+		strings.Contains(bodyLower, "faultcode") ||
+		strings.Contains(bodyLower, "errorcode")
+}
+
+func isHTTPSuccess(statusCode int) bool {
+	return statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices
+}
+
 func (p *TVPayload) setAVTransportSoapCall() error {
 	if p.ctx == nil {
 		p.ctx = context.Background()
@@ -260,54 +276,127 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 		return fmt.Errorf("setAVTransportSoapCall soap build error: %w", err)
 	}
 
-	client := newRetryableHTTPClient(3)
+	client := newHTTPClient()
 
-	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlData))
-	if err != nil {
-		p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
-		return fmt.Errorf("setAVTransportSoapCall POST error: %w", err)
+	send := func(payload []byte, action string) (int, []byte, error) {
+		req, reqErr := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(payload))
+		if reqErr != nil {
+			p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", action+" Prepare POST").Err(reqErr).Msg("")
+			return 0, nil, fmt.Errorf("setAVTransportSoapCall POST error: %w", reqErr)
+		}
+
+		req.Header = http.Header{
+			"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI"`},
+			"Content-Type": []string{`text/xml; charset="utf-8"`},
+			"Connection":   []string{"close"},
+		}
+
+		headerBytesReq, reqErr := json.Marshal(req.Header)
+		if reqErr != nil {
+			p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", action+" Header Marshaling").Err(reqErr).Msg("")
+			return 0, nil, fmt.Errorf("setAVTransportSoapCall Request Marshaling error: %w", reqErr)
+		}
+
+		p.Log().Debug().
+			Str("Method", "setAVTransportSoapCall").Str("Action", action+" Request").
+			RawJSON("Headers", headerBytesReq).
+			Msg(string(payload))
+
+		res, _, reqErr := p.doSOAPRequestWithMPostFallback(client, req, payload, "setAVTransportSoapCall")
+		if reqErr != nil {
+			p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", action+" Do POST").Err(reqErr).Msg("")
+			return 0, nil, fmt.Errorf("setAVTransportSoapCall Do POST error: %w", reqErr)
+		}
+		defer res.Body.Close()
+
+		resBytes, reqErr := io.ReadAll(res.Body)
+		if reqErr != nil {
+			p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", action+" Readall").Err(reqErr).Msg("")
+			return 0, nil, fmt.Errorf("setAVTransportSoapCall Failed to read response: %w", reqErr)
+		}
+
+		headerBytesRes, reqErr := json.Marshal(res.Header)
+		if reqErr != nil {
+			p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", action+" Header Marshaling #2").Err(reqErr).Msg("")
+			return 0, nil, fmt.Errorf("setAVTransportSoapCall Response Marshaling error: %w", reqErr)
+		}
+
+		p.Log().Debug().
+			Str("Method", "setAVTransportSoapCall").Str("Action", action+" Response").Str("Status Code", strconv.Itoa(res.StatusCode)).
+			RawJSON("Headers", headerBytesRes).
+			Msg(string(resBytes))
+
+		return res.StatusCode, resBytes, nil
 	}
 
-	req.Header = http.Header{
-		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI"`},
-		"Content-Type": []string{`text/xml; charset="utf-8"`},
-		"Connection":   []string{"close"},
+	sendWithRetries := func(payload []byte, action string, attempts int) (int, []byte, error) {
+		var (
+			lastErr  error
+			status   int
+			resBytes []byte
+		)
+
+		for i := 1; i <= attempts; i++ {
+			attemptAction := fmt.Sprintf("%s Attempt %d/%d", action, i, attempts)
+			status, resBytes, lastErr = send(payload, attemptAction)
+			if lastErr == nil {
+				return status, resBytes, nil
+			}
+
+			if i < attempts {
+				p.Log().Debug().
+					Str("Method", "setAVTransportSoapCall").
+					Str("Action", attemptAction+" Retry").
+					Err(lastErr).
+					Msg("Retrying after transport-level failure")
+			}
+		}
+
+		return status, resBytes, lastErr
 	}
 
-	headerBytesReq, err := json.Marshal(req.Header)
-	if err != nil {
-		p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "Header Marshaling").Err(err).Msg("")
-		return fmt.Errorf("setAVTransportSoapCall Request Marshaling error: %w", err)
+	retryWithCompat := false
+	statusCode, resBytes, err := sendWithRetries(xmlData, "Standard", 2)
+	switch {
+	case err != nil:
+		retryWithCompat = true
+		p.Log().Debug().
+			Str("Method", "setAVTransportSoapCall").
+			Str("Action", "Legacy DIDL Metadata Retry").
+			Msg("Retrying after standard SetAVTransportURI failure")
+	case shouldRetrySetAVTransportLegacyMetadata(statusCode, resBytes):
+		retryWithCompat = true
+	case !isHTTPSuccess(statusCode):
+		return fmt.Errorf("setAVTransportSoapCall HTTP status %d", statusCode)
 	}
 
-	p.Log().Debug().
-		Str("Method", "setAVTransportSoapCall").Str("Action", "Request").
-		RawJSON("Headers", headerBytesReq).
-		Msg(string(xmlData))
+	if retryWithCompat {
+		p.Log().Debug().
+			Str("Method", "setAVTransportSoapCall").
+			Str("Action", "Legacy DIDL Metadata Retry").
+			Msg("Retrying SetAVTransportURI with compatibility metadata encoding")
 
-	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlData, "setAVTransportSoapCall")
-	if err != nil {
-		p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "Do POST").Err(err).Msg("")
-		return fmt.Errorf("setAVTransportSoapCall Do POST error: %w", err)
+		xmlDataCompat, buildErr := setAVTransportSoapBuildWithCompat(p, true)
+		if buildErr != nil {
+			p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "setAVTransportSoapBuildWithCompat").Err(buildErr).Msg("")
+			return fmt.Errorf("setAVTransportSoapCall compat soap build error: %w", buildErr)
+		}
+
+		compatStatusCode, _, compatErr := sendWithRetries(xmlDataCompat, "Compat", 2)
+		if compatErr != nil {
+			if err != nil {
+				return fmt.Errorf("setAVTransportSoapCall standard and compat failed: standard=%w, compat=%v", err, compatErr)
+			}
+			return compatErr
+		}
+
+		if !isHTTPSuccess(compatStatusCode) {
+			if err != nil {
+				return fmt.Errorf("setAVTransportSoapCall standard and compat failed: standard=%w, compat status=%d", err, compatStatusCode)
+			}
+			return fmt.Errorf("setAVTransportSoapCall compat HTTP status %d", compatStatusCode)
+		}
 	}
-	defer res.Body.Close()
-
-	resBytes, err := io.ReadAll(res.Body)
-	if err != nil {
-		p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "Readall").Err(err).Msg("")
-		return fmt.Errorf("setAVTransportSoapCall Failed to read response: %w", err)
-	}
-
-	headerBytesRes, err := json.Marshal(res.Header)
-	if err != nil {
-		p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "Header Marshaling #2").Err(err).Msg("")
-		return fmt.Errorf("setAVTransportSoapCall Response Marshaling error: %w", err)
-	}
-
-	p.Log().Debug().
-		Str("Method", "setAVTransportSoapCall").Str("Action", "Response").Str("Status Code", strconv.Itoa(res.StatusCode)).
-		RawJSON("Headers", headerBytesRes).
-		Msg(string(resBytes))
 
 	return nil
 }

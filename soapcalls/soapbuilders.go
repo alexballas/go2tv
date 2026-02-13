@@ -1,6 +1,7 @@
 package soapcalls
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
 	"net/url"
@@ -329,6 +330,10 @@ type getPositionInfoAction struct {
 }
 
 func setAVTransportSoapBuild(tvdata *TVPayload) ([]byte, error) {
+	return setAVTransportSoapBuildWithCompat(tvdata, false)
+}
+
+func setAVTransportSoapBuildWithCompat(tvdata *TVPayload, legacyMetadataCompat bool) ([]byte, error) {
 	mediaTypeSlice := strings.Split(tvdata.MediaType, "/")
 	seekflag := "00"
 	if tvdata.Seekable {
@@ -453,7 +458,39 @@ func setAVTransportSoapBuild(tvdata *TVPayload) ([]byte, error) {
 		return nil, fmt.Errorf("setAVTransportSoapBuild #2 Marshal error: %w", err)
 	}
 
+	if legacyMetadataCompat {
+		// Some Samsung renderers reject fully escaped nested DIDL metadata.
+		b = applyLegacyDIDLCompatOnCurrentURIMetadata(b)
+	}
+
 	return append(xmlStart, b...), nil
+}
+
+func applyLegacyDIDLCompatOnCurrentURIMetadata(input []byte) []byte {
+	startTag := []byte("<CurrentURIMetaData>")
+	endTag := []byte("</CurrentURIMetaData>")
+
+	startIdx := bytes.Index(input, startTag)
+	endIdx := bytes.Index(input, endTag)
+	if startIdx == -1 || endIdx == -1 {
+		return input
+	}
+
+	startIdx += len(startTag)
+	if startIdx >= endIdx {
+		return input
+	}
+
+	metadata := append([]byte(nil), input[startIdx:endIdx]...)
+	metadata = bytes.ReplaceAll(metadata, []byte("&#34;"), []byte(`"`))
+	metadata = bytes.ReplaceAll(metadata, []byte("&amp;"), []byte("&"))
+
+	out := make([]byte, 0, len(input)-(endIdx-startIdx)+len(metadata))
+	out = append(out, input[:startIdx]...)
+	out = append(out, metadata...)
+	out = append(out, input[endIdx:]...)
+
+	return out
 }
 
 func setNextAVTransportSoapBuild(tvdata *TVPayload, clear bool) ([]byte, error) {

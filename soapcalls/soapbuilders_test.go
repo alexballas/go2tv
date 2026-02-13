@@ -377,3 +377,43 @@ func TestSetAVTransportSoapBuildEscapesTitleMarkupWithoutStripping(t *testing.T)
 		t.Fatalf("expected escaped title markup without stripping, got %q", got)
 	}
 }
+
+func TestSetAVTransportSoapBuildLegacyMetadataCompat(t *testing.T) {
+	tv := &TVPayload{
+		MediaURL:  `http://192.168.88.250:3500/video%20%26%20%27example%27.mp4`,
+		MediaType: "video/mp4",
+		Seekable:  true,
+	}
+
+	out, err := setAVTransportSoapBuildWithCompat(tv, true)
+	if err != nil {
+		t.Fatalf("setAVTransportSoapBuildWithCompat failed: %v", err)
+	}
+
+	got := string(out)
+	if !strings.Contains(got, `CurrentURIMetaData>&lt;DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"`) {
+		t.Fatalf("expected compat metadata to unescape XML quotes, got %q", got)
+	}
+
+	if strings.Contains(got, "xmlns=&#34;") {
+		t.Fatalf("expected compat metadata to remove encoded quotes, got %q", got)
+	}
+}
+
+func TestSetAVTransportSoapBuildLegacyMetadataCompatKeepsCurrentURIXMLEscaped(t *testing.T) {
+	tv := &TVPayload{
+		MediaURL:  "http://192.168.88.250:3500/video.mp4?foo=1&bar=2",
+		MediaType: "video/mp4",
+		Seekable:  true,
+	}
+
+	out, err := setAVTransportSoapBuildWithCompat(tv, true)
+	if err != nil {
+		t.Fatalf("setAVTransportSoapBuildWithCompat failed: %v", err)
+	}
+
+	got := string(out)
+	if !strings.Contains(got, "<CurrentURI>http://192.168.88.250:3500/video.mp4?foo=1&amp;bar=2</CurrentURI>") {
+		t.Fatalf("expected CurrentURI to stay XML escaped, got %q", got)
+	}
+}
