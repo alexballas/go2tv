@@ -30,7 +30,7 @@ jobs:
         GOARCH=arm64 fyne package --release --os darwin --icon ../../assets/go2tv-icon.png
         mv go2tv.app ../../
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v6
       with:
         name: go2tv_${{ env.GO2TV_VERSION }}_macOS_arm64
         path: |

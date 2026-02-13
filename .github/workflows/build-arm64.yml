@@ -8,7 +8,7 @@ jobs:
       fail-fast: false
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
 
     - name: Set env
       run: if grep -Fxq "devel" version.txt;then echo "GO2TV_VERSION=$(cat version.txt)";else echo "GO2TV_VERSION=v$(cat version.txt)";fi  >> $GITHUB_ENV
@@ -23,7 +23,7 @@ jobs:
     - name: Package (Linux)
       run: go build -tags migrated_fynedo -ldflags "-s -w -X main.version=$(echo ${{ env.GO2TV_VERSION }} | sed 's/^v//')" -o go2tv cmd/go2tv/go2tv.go
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v6
       with:
         name: go2tv_${{ env.GO2TV_VERSION }}_linux_arm64
         path: |
