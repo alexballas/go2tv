@@ -4,8 +4,8 @@ github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk
 github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
 github.com/FyshOS/fancyfs v0.0.1 h1:kgvm7VvwOMLkYTqSflplp62SlMVWQ2uAoHw9CXwXHYg=
 github.com/FyshOS/fancyfs v0.0.1/go.mod h1:S5SHVz/5R72iCXOxCqdcyTPSlg3JxNd0gaHyGBSrY8A=
-github.com/alexballas/fyne/v2 v2.3.3-0.20260205132451-ebcb537c172a h1:5smlCU8GVUHenqJgR61Ir6BLZbCmyUzT7ESDS2TqSh0=
-github.com/alexballas/fyne/v2 v2.3.3-0.20260205132451-ebcb537c172a/go.mod h1:li9jHss2gw1/bXQVx7jlZu4gCNBuT7zIAIvvYAzeRxE=
+github.com/alexballas/fyne/v2 v2.3.3-0.20260214003640-c68aed308565 h1:Fxtg5GWDmGteYpOPUcPuybH7lglhqFEUJKMHpIRLp8o=
+github.com/alexballas/fyne/v2 v2.3.3-0.20260214003640-c68aed308565/go.mod h1:li9jHss2gw1/bXQVx7jlZu4gCNBuT7zIAIvvYAzeRxE=
 github.com/alexballas/xfilepicker v0.0.0-20260206213252-e8f58cac8729 h1:nTZMJr0cueO8AMIrHLktnGS/GUpzrJY6IgkuN0ihPPs=
 github.com/alexballas/xfilepicker v0.0.0-20260206213252-e8f58cac8729/go.mod h1:3iVlb7BjvPrChA4y5VhJ4+C7rW08csLbAQCMp45kU/M=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=
