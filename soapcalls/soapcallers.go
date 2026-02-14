@@ -7,7 +7,9 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"runtime"
 	"strconv"
@@ -15,7 +17,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 )
@@ -166,6 +167,98 @@ type getPositionInfoResponse struct {
 	} `xml:"Body"`
 }
 
+func (p *TVPayload) doSOAPRequestWithMPostFallback(client *http.Client, req *http.Request, payload []byte, method string) (*http.Response, bool, error) {
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if res.StatusCode != http.StatusMethodNotAllowed || req.Method != http.MethodPost {
+		return res, false, nil
+	}
+
+	soapAction := headerGetCaseInsensitive(req.Header, "SOAPAction")
+	if soapAction == "" {
+		return res, false, nil
+	}
+
+	p.Log().Debug().
+		Str("Method", method).
+		Str("Action", "M-POST Fallback").
+		Msg("POST returned 405, retrying with M-POST")
+
+	_, _ = io.Copy(io.Discard, res.Body)
+	_ = res.Body.Close()
+
+	mpostReq, err := http.NewRequestWithContext(req.Context(), "M-POST", req.URL.String(), bytes.NewReader(payload))
+	if err != nil {
+		return nil, true, err
+	}
+
+	mpostReq.Header = req.Header.Clone()
+	mpostReq.Host = req.Host
+
+	// Hop-by-hop headers should not be forwarded
+	mpostReq.Header.Del("Connection")
+	mpostReq.Header.Del("Proxy-Connection")
+	mpostReq.Header.Del("Keep-Alive")
+	mpostReq.Header.Del("TE")
+	mpostReq.Header.Del("Trailer")
+	mpostReq.Header.Del("Upgrade")
+
+	// M-POST uses MAN + namespaced SOAPACTION header
+	headerDelCaseInsensitive(mpostReq.Header, "SOAPAction")
+	mpostReq.Header.Set("MAN", `"http://schemas.xmlsoap.org/soap/envelope/"; ns=01`)
+	mpostReq.Header.Set("01-SOAPACTION", soapAction)
+
+	res, err = client.Do(mpostReq)
+	if err != nil {
+		return nil, true, err
+	}
+
+	return res, true, nil
+}
+
+func headerGetCaseInsensitive(h http.Header, key string) string {
+	if v := h.Get(key); v != "" {
+		return v
+	}
+
+	for k, values := range h {
+		if strings.EqualFold(k, key) && len(values) > 0 {
+			return values[0]
+		}
+	}
+
+	return ""
+}
+
+func headerDelCaseInsensitive(h http.Header, key string) {
+	h.Del(key)
+	canonicalKey := textproto.CanonicalMIMEHeaderKey(key)
+	for k := range h {
+		if strings.EqualFold(k, key) && k != canonicalKey {
+			delete(h, k)
+		}
+	}
+}
+
+func shouldRetrySetAVTransportLegacyMetadata(statusCode int, body []byte) bool {
+	if statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices {
+		return false
+	}
+
+	bodyLower := strings.ToLower(string(body))
+	return statusCode >= http.StatusInternalServerError ||
+		strings.Contains(bodyLower, "upnperror") ||
+		strings.Contains(bodyLower, "faultcode") ||
+		strings.Contains(bodyLower, "errorcode")
+}
+
+func isHTTPSuccess(statusCode int) bool {
+	return statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices
+}
+
 func (p *TVPayload) setAVTransportSoapCall() error {
 	if p.ctx == nil {
 		p.ctx = context.Background()
@@ -183,58 +276,127 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 		return fmt.Errorf("setAVTransportSoapCall soap build error: %w", err)
 	}
 
-	retryClient := retryablehttp.NewClient()
-	retryClient.RetryMax = 3
-	retryClient.Logger = nil
-	client := retryClient.StandardClient()
+	client := newHTTPClient()
 
-	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlData))
-	if err != nil {
-		p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
-		return fmt.Errorf("setAVTransportSoapCall POST error: %w", err)
+	send := func(payload []byte, action string) (int, []byte, error) {
+		req, reqErr := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(payload))
+		if reqErr != nil {
+			p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", action+" Prepare POST").Err(reqErr).Msg("")
+			return 0, nil, fmt.Errorf("setAVTransportSoapCall POST error: %w", reqErr)
+		}
+
+		req.Header = http.Header{
+			"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI"`},
+			"Content-Type": []string{`text/xml; charset="utf-8"`},
+			"Connection":   []string{"close"},
+		}
+
+		headerBytesReq, reqErr := json.Marshal(req.Header)
+		if reqErr != nil {
+			p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", action+" Header Marshaling").Err(reqErr).Msg("")
+			return 0, nil, fmt.Errorf("setAVTransportSoapCall Request Marshaling error: %w", reqErr)
+		}
+
+		p.Log().Debug().
+			Str("Method", "setAVTransportSoapCall").Str("Action", action+" Request").
+			RawJSON("Headers", headerBytesReq).
+			Msg(string(payload))
+
+		res, _, reqErr := p.doSOAPRequestWithMPostFallback(client, req, payload, "setAVTransportSoapCall")
+		if reqErr != nil {
+			p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", action+" Do POST").Err(reqErr).Msg("")
+			return 0, nil, fmt.Errorf("setAVTransportSoapCall Do POST error: %w", reqErr)
+		}
+		defer res.Body.Close()
+
+		resBytes, reqErr := io.ReadAll(res.Body)
+		if reqErr != nil {
+			p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", action+" Readall").Err(reqErr).Msg("")
+			return 0, nil, fmt.Errorf("setAVTransportSoapCall Failed to read response: %w", reqErr)
+		}
+
+		headerBytesRes, reqErr := json.Marshal(res.Header)
+		if reqErr != nil {
+			p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", action+" Header Marshaling #2").Err(reqErr).Msg("")
+			return 0, nil, fmt.Errorf("setAVTransportSoapCall Response Marshaling error: %w", reqErr)
+		}
+
+		p.Log().Debug().
+			Str("Method", "setAVTransportSoapCall").Str("Action", action+" Response").Str("Status Code", strconv.Itoa(res.StatusCode)).
+			RawJSON("Headers", headerBytesRes).
+			Msg(string(resBytes))
+
+		return res.StatusCode, resBytes, nil
 	}
 
-	req.Header = http.Header{
-		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
-		"Connection":   []string{"close"},
+	sendWithRetries := func(payload []byte, action string, attempts int) (int, []byte, error) {
+		var (
+			lastErr  error
+			status   int
+			resBytes []byte
+		)
+
+		for i := 1; i <= attempts; i++ {
+			attemptAction := fmt.Sprintf("%s Attempt %d/%d", action, i, attempts)
+			status, resBytes, lastErr = send(payload, attemptAction)
+			if lastErr == nil {
+				return status, resBytes, nil
+			}
+
+			if i < attempts {
+				p.Log().Debug().
+					Str("Method", "setAVTransportSoapCall").
+					Str("Action", attemptAction+" Retry").
+					Err(lastErr).
+					Msg("Retrying after transport-level failure")
+			}
+		}
+
+		return status, resBytes, lastErr
 	}
 
-	headerBytesReq, err := json.Marshal(req.Header)
-	if err != nil {
-		p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "Header Marshaling").Err(err).Msg("")
-		return fmt.Errorf("setAVTransportSoapCall Request Marshaling error: %w", err)
+	retryWithCompat := false
+	statusCode, resBytes, err := sendWithRetries(xmlData, "Standard", 2)
+	switch {
+	case err != nil:
+		retryWithCompat = true
+		p.Log().Debug().
+			Str("Method", "setAVTransportSoapCall").
+			Str("Action", "Legacy DIDL Metadata Retry").
+			Msg("Retrying after standard SetAVTransportURI failure")
+	case shouldRetrySetAVTransportLegacyMetadata(statusCode, resBytes):
+		retryWithCompat = true
+	case !isHTTPSuccess(statusCode):
+		return fmt.Errorf("setAVTransportSoapCall HTTP status %d", statusCode)
 	}
 
-	p.Log().Debug().
-		Str("Method", "setAVTransportSoapCall").Str("Action", "Request").
-		RawJSON("Headers", headerBytesReq).
-		Msg(string(xmlData))
+	if retryWithCompat {
+		p.Log().Debug().
+			Str("Method", "setAVTransportSoapCall").
+			Str("Action", "Legacy DIDL Metadata Retry").
+			Msg("Retrying SetAVTransportURI with compatibility metadata encoding")
 
-	res, err := client.Do(req)
-	if err != nil {
-		p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "Do POST").Err(err).Msg("")
-		return fmt.Errorf("setAVTransportSoapCall Do POST error: %w", err)
+		xmlDataCompat, buildErr := setAVTransportSoapBuildWithCompat(p, true)
+		if buildErr != nil {
+			p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "setAVTransportSoapBuildWithCompat").Err(buildErr).Msg("")
+			return fmt.Errorf("setAVTransportSoapCall compat soap build error: %w", buildErr)
+		}
+
+		compatStatusCode, _, compatErr := sendWithRetries(xmlDataCompat, "Compat", 2)
+		if compatErr != nil {
+			if err != nil {
+				return fmt.Errorf("setAVTransportSoapCall standard and compat failed: standard=%w, compat=%v", err, compatErr)
+			}
+			return compatErr
+		}
+
+		if !isHTTPSuccess(compatStatusCode) {
+			if err != nil {
+				return fmt.Errorf("setAVTransportSoapCall standard and compat failed: standard=%w, compat status=%d", err, compatStatusCode)
+			}
+			return fmt.Errorf("setAVTransportSoapCall compat HTTP status %d", compatStatusCode)
+		}
 	}
-	defer res.Body.Close()
-
-	resBytes, err := io.ReadAll(res.Body)
-	if err != nil {
-		p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "Readall").Err(err).Msg("")
-		return fmt.Errorf("setAVTransportSoapCall Failed to read response: %w", err)
-	}
-
-	headerBytesRes, err := json.Marshal(res.Header)
-	if err != nil {
-		p.Log().Error().Str("Method", "setAVTransportSoapCall").Str("Action", "Header Marshaling #2").Err(err).Msg("")
-		return fmt.Errorf("setAVTransportSoapCall Response Marshaling error: %w", err)
-	}
-
-	p.Log().Debug().
-		Str("Method", "setAVTransportSoapCall").Str("Action", "Response").Str("Status Code", strconv.Itoa(res.StatusCode)).
-		RawJSON("Headers", headerBytesRes).
-		Msg(string(resBytes))
 
 	return nil
 }
@@ -256,7 +418,7 @@ func (p *TVPayload) setNextAVTransportSoapCall(clear bool) error {
 		return fmt.Errorf("setNextAVTransportSoapCall soap build error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlData))
 	if err != nil {
@@ -266,8 +428,7 @@ func (p *TVPayload) setNextAVTransportSoapCall(clear bool) error {
 
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#SetNextAVTransportURI"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -282,7 +443,7 @@ func (p *TVPayload) setNextAVTransportSoapCall(clear bool) error {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlData))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlData, "setNextAVTransportSoapCall")
 	if err != nil {
 		p.Log().Error().Str("Method", "setNextAVTransportSoapCall").Str("Action", "Do POST").Err(err).Msg("")
 		return fmt.Errorf("setNextAVTransportSoapCall Do POST error: %w", err)
@@ -338,13 +499,10 @@ func (p *TVPayload) PlayPauseStopSoapCall(action string) error {
 		return fmt.Errorf("AVTransportActionSoapCall action error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 
 	if retry {
-		retryClient := retryablehttp.NewClient()
-		retryClient.RetryMax = 3
-		retryClient.Logger = nil
-		client = retryClient.StandardClient()
+		client = newRetryableHTTPClient(3)
 	}
 
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlData))
@@ -355,8 +513,7 @@ func (p *TVPayload) PlayPauseStopSoapCall(action string) error {
 
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#` + action + `"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -371,7 +528,7 @@ func (p *TVPayload) PlayPauseStopSoapCall(action string) error {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlData))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlData, "AVTransportActionSoapCall")
 	if err != nil {
 		p.Log().Error().Str("Method", "AVTransportActionSoapCall").Str("Action", "Do POST").Err(err).Msg("")
 		return fmt.Errorf("AVTransportActionSoapCall Do POST error: %w", err)
@@ -418,7 +575,7 @@ func (p *TVPayload) SeekSoapCall(reltime string) error {
 		return fmt.Errorf("SeekSoapCall action error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlData))
 	if err != nil {
@@ -428,8 +585,7 @@ func (p *TVPayload) SeekSoapCall(reltime string) error {
 
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#Seek"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -444,7 +600,7 @@ func (p *TVPayload) SeekSoapCall(reltime string) error {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlData))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlData, "SeekSoapCall")
 	if err != nil {
 		p.Log().Error().Str("Method", "SeekSoapCall").Str("Action", "Do POST").Err(err).Msg("")
 		return fmt.Errorf("SeekSoapCall Do POST error: %w", err)
@@ -478,7 +634,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 		p.ctx = context.Background()
 	}
 
-	delete(p.CurrentTimers, uuidInput)
+	p.deleteTimer(uuidInput)
 
 	parsedURLcontrol, err := url.Parse(p.EventURL)
 	if err != nil {
@@ -492,11 +648,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 		return fmt.Errorf("SubscribeSoapCall #2 parse error: %w", err)
 	}
 
-	retryClient := retryablehttp.NewClient()
-	retryClient.RetryMax = 3
-	retryClient.Logger = nil
-
-	client := retryClient.StandardClient()
+	client := newRetryableHTTPClient(3)
 
 	req, err := http.NewRequestWithContext(p.ctx, "SUBSCRIBE", parsedURLcontrol.String(), nil)
 	if err != nil {
@@ -558,15 +710,13 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 		RawJSON("Headers", headerBytesRes).
 		Msg(string(resBytes))
 
-	var uuid string
-
 	if res.Status != "200 OK" {
 		if uuidInput != "" {
 			// We're calling the unsubscribe method to make sure
 			// we clean up any remaining states for the specific
 			// uuid. The actual UNSUBSCRIBE request to the media
 			// renderer may still fail with error 412, but it's fine.
-			_ = p.UnsubscribeSoapCall(uuid)
+			_ = p.UnsubscribeSoapCall(uuidInput)
 		}
 		return nil
 	}
@@ -575,6 +725,8 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 		// This should be an impossible case
 		return nil
 	}
+
+	var uuid string
 
 	uuid = res.Header["Sid"][0]
 	uuid = strings.TrimLeft(uuid, "[")
@@ -611,7 +763,7 @@ func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 		return fmt.Errorf("UnsubscribeSoapCall parse error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 
 	req, err := http.NewRequestWithContext(p.ctx, "UNSUBSCRIBE", parsedURLcontrol.String(), nil)
 	if err != nil {
@@ -625,10 +777,13 @@ func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 
 	req.Header.Del("User-Agent")
 
-	_, err = client.Do(req)
+	res, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("UnsubscribeSoapCall Do UNSUBSCRIBE error: %w", err)
 	}
+	defer res.Body.Close()
+
+	io.Copy(io.Discard, res.Body)
 
 	return nil
 }
@@ -649,7 +804,28 @@ func (p *TVPayload) RefreshLoopUUIDSoapCall(uuid, timeout string) {
 
 	f := p.refreshLoopUUIDAsyncSoapCall(uuid)
 	timer := time.AfterFunc(triggerTimefunc, f)
+	p.setTimer(uuid, timer)
+}
+
+func (p *TVPayload) deleteTimer(uuid string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.CurrentTimers, uuid)
+}
+
+func (p *TVPayload) setTimer(uuid string, timer *time.Timer) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.CurrentTimers[uuid] = timer
+}
+
+func (p *TVPayload) stopAndClearTimers() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for uuid, timer := range p.CurrentTimers {
+		timer.Stop()
+		delete(p.CurrentTimers, uuid)
+	}
 }
 
 func (p *TVPayload) refreshLoopUUIDAsyncSoapCall(uuid string) func() {
@@ -679,7 +855,7 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 		return "", fmt.Errorf("GetMuteSoapCall build error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "GetMuteSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
@@ -688,8 +864,7 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:RenderingControl:1#GetMute"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -704,7 +879,7 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlbuilder))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetMuteSoapCall")
 	if err != nil {
 		return "", fmt.Errorf("GetMuteSoapCall Do POST error: %w", err)
 	}
@@ -762,7 +937,7 @@ func (p *TVPayload) SetMuteSoapCall(number string) error {
 		return fmt.Errorf("SetMuteSoapCall build error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "SetMuteSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
@@ -771,8 +946,7 @@ func (p *TVPayload) SetMuteSoapCall(number string) error {
 
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:RenderingControl:1#SetMute"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -787,7 +961,7 @@ func (p *TVPayload) SetMuteSoapCall(number string) error {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlbuilder))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "SetMuteSoapCall")
 	if err != nil {
 		return fmt.Errorf("SetMuteSoapCall Do POST error: %w", err)
 	}
@@ -833,7 +1007,7 @@ func (p *TVPayload) GetVolumeSoapCall() (int, error) {
 		return 0, fmt.Errorf("GetVolumeSoapCall build error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "GetVolumeSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
@@ -842,8 +1016,7 @@ func (p *TVPayload) GetVolumeSoapCall() (int, error) {
 
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:RenderingControl:1#GetVolume"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -858,7 +1031,7 @@ func (p *TVPayload) GetVolumeSoapCall() (int, error) {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlbuilder))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetVolumeSoapCall")
 	if err != nil {
 		p.Log().Error().Str("Method", "GetVolumeSoapCall").Str("Action", "Do POST").Err(err).Msg("")
 		return 0, fmt.Errorf("GetVolumeSoapCall Do POST error: %w", err)
@@ -925,7 +1098,7 @@ func (p *TVPayload) SetVolumeSoapCall(v string) error {
 		return fmt.Errorf("SetVolumeSoapCall build error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "SetVolumeSoapCall").Str("Action", "Prepare POST").Err(err).Msg("")
@@ -934,8 +1107,7 @@ func (p *TVPayload) SetVolumeSoapCall(v string) error {
 
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:RenderingControl:1#SetVolume"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -950,7 +1122,7 @@ func (p *TVPayload) SetVolumeSoapCall(v string) error {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlbuilder))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "SetVolumeSoapCall")
 	if err != nil {
 		return fmt.Errorf("SetVolumeSoapCall Do POST error: %w", err)
 	}
@@ -989,7 +1161,7 @@ func (p *TVPayload) GetProtocolInfo() error {
 		return fmt.Errorf("GetProtocolInfo build error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 	req, err := http.NewRequestWithContext(p.ctx, "POST", p.ConnectionManagerURL, bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "Prepare POST").Err(err).Msg("")
@@ -998,8 +1170,7 @@ func (p *TVPayload) GetProtocolInfo() error {
 
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:ConnectionManager:1#GetProtocolInfo"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -1014,7 +1185,7 @@ func (p *TVPayload) GetProtocolInfo() error {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlbuilder))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetProtocolInfo")
 	if err != nil {
 		p.Log().Error().Str("Method", "GetProtocolInfo").Str("Action", "Do POST failed <ignoring>").Err(err).Msg("")
 		return nil
@@ -1069,7 +1240,7 @@ func (p *TVPayload) Gapless() (string, error) {
 		return "", fmt.Errorf("Gapless build error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "Gapless").Str("Action", "Prepare POST").Err(err).Msg("")
@@ -1077,8 +1248,7 @@ func (p *TVPayload) Gapless() (string, error) {
 	}
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#GetMediaInfo"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -1093,7 +1263,7 @@ func (p *TVPayload) Gapless() (string, error) {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlbuilder))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "Gapless")
 	if err != nil {
 		return "", fmt.Errorf("Gapless Do POST error: %w", err)
 	}
@@ -1153,7 +1323,7 @@ func (p *TVPayload) GetTransportInfo() ([]string, error) {
 		return nil, fmt.Errorf("GetTransportInfo build error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "GetTransportInfo").Str("Action", "Prepare POST").Err(err).Msg("")
@@ -1161,8 +1331,7 @@ func (p *TVPayload) GetTransportInfo() ([]string, error) {
 	}
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -1177,7 +1346,7 @@ func (p *TVPayload) GetTransportInfo() ([]string, error) {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlbuilder))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetTransportInfo")
 	if err != nil {
 		return nil, fmt.Errorf("GetTransportInfo Do POST error: %w", err)
 	}
@@ -1240,7 +1409,7 @@ func (p *TVPayload) GetPositionInfo() ([]string, error) {
 		return nil, fmt.Errorf("GetPositionInfo build error: %w", err)
 	}
 
-	client := &http.Client{}
+	client := newHTTPClient()
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error().Str("Method", "GetPositionInfo").Str("Action", "Prepare POST").Err(err).Msg("")
@@ -1248,8 +1417,7 @@ func (p *TVPayload) GetPositionInfo() ([]string, error) {
 	}
 	req.Header = http.Header{
 		"SOAPAction":   []string{`"urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"`},
-		"content-type": []string{"text/xml"},
-		"charset":      []string{"utf-8"},
+		"Content-Type": []string{`text/xml; charset="utf-8"`},
 		"Connection":   []string{"close"},
 	}
 
@@ -1264,7 +1432,7 @@ func (p *TVPayload) GetPositionInfo() ([]string, error) {
 		RawJSON("Headers", headerBytesReq).
 		Msg(string(xmlbuilder))
 
-	res, err := client.Do(req)
+	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetPositionInfo")
 	if err != nil {
 		return nil, fmt.Errorf("GetPositionInfo Do POST error: %w", err)
 	}
@@ -1334,9 +1502,7 @@ func (p *TVPayload) SendtoTV(action string) error {
 	if action == "Stop" {
 		p.mu.RLock()
 		localStates := make(map[string]*States)
-		for key, value := range p.MediaRenderersStates {
-			localStates[key] = value
-		}
+		maps.Copy(localStates, p.MediaRenderersStates)
 		p.mu.RUnlock()
 
 		// Cleaning up all uuids on force stop.
@@ -1349,10 +1515,7 @@ func (p *TVPayload) SendtoTV(action string) error {
 		// Clear timers on Stop to avoid errors responses
 		// from the media renderers. If we don't clear those, we
 		// might receive a "412 Precondition Failed" error.
-		for uuid, timer := range p.CurrentTimers {
-			timer.Stop()
-			delete(p.CurrentTimers, uuid)
-		}
+		p.stopAndClearTimers()
 	}
 
 	if err := p.PlayPauseStopSoapCall(action); err != nil {
@@ -1378,8 +1541,13 @@ func (p *TVPayload) UpdateMRstate(previous, new, uuid string) bool {
 	// https://openconnectivity.org/upnp-specs/UPnP-arch-DeviceArchitecture-v1.1.pdf
 	// (page 94).
 	if p.InitialMediaRenderersStates[uuid] {
-		p.MediaRenderersStates[uuid].PreviousState = previous
-		p.MediaRenderersStates[uuid].NewState = new
+		state := p.MediaRenderersStates[uuid]
+		if state == nil {
+			return false
+		}
+
+		state.PreviousState = previous
+		state.NewState = new
 		return true
 	}
 
@@ -1412,7 +1580,12 @@ func (p *TVPayload) DeleteMRstate(uuid string) {
 func (p *TVPayload) SetProcessStopTrue(uuid string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.MediaRenderersStates[uuid].ProcessStop = true
+	state := p.MediaRenderersStates[uuid]
+	if state == nil {
+		return
+	}
+
+	state.ProcessStop = true
 }
 
 // GetProcessStop checks if the process stop flag is set for a given media renderer identified by the UUID.
@@ -1421,7 +1594,12 @@ func (p *TVPayload) GetProcessStop(uuid string) (bool, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	if p.InitialMediaRenderersStates[uuid] {
-		return p.MediaRenderersStates[uuid].ProcessStop, nil
+		state := p.MediaRenderersStates[uuid]
+		if state == nil {
+			return true, ErrZombieCallbacks
+		}
+
+		return state.ProcessStop, nil
 	}
 
 	return true, ErrZombieCallbacks

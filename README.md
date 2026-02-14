@@ -62,14 +62,24 @@ For maximum compatibility with all devices and file formats, install [FFmpeg](ht
 
 **GUI Mode**
 
-![](https://i.imgur.com/Ga3hLJM.gif)
-
-![](https://i.imgur.com/Pw44BYD.png)
-![](https://i.imgur.com/JeUxGGd.png)
+![](https://i.imgur.com/6hwB4DC.png)
+![](https://i.imgur.com/dQ40FWb.png)
 
 **CLI Mode**
 
 ![](https://i.imgur.com/BsMevHi.gif)
+
+---
+
+## RTMP Streaming (Chromecast only)
+
+Go2TV can act as an RTMP server, allowing you to stream from OBS or other software directly to your Chromecast. **This feature requires FFmpeg.**
+
+1. Select a **Chromecast** device.
+2. Check the **RTMP Server** box.
+3. Click **Play** in Go2TV (the app will wait for the stream).
+4. Use the provided URL in your streaming software (e.g., OBS Settings > Stream).
+5. Start streaming in your software.
 
 ---
 
@@ -134,6 +144,7 @@ yt-dlp -o - "https://youtu.be/..." | go2tv -tc -t http://192.168.1.50:8009
 - **Seek support** - Jump to any position in the video
 - **Loop and auto-play** - Loop a single file or auto-play the next file in folder
 - **Gapless playback** - Supported for DLNA devices
+- **RTMP Server** - Cast live streams from OBS directly to Chromecast (requires FFmpeg)
 - **GUI and CLI** - Use the graphical interface or command line
 
 ### Supported File Types (GUI)

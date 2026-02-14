@@ -60,6 +60,8 @@ type FyneScreen struct {
 	tempMediaFile        string // Temp file path for mobile media serving (cleanup on stop)
 	Transcode            bool
 	Medialoop            bool
+	castingMediaType     string // MIME type of currently casting media
+	hotkeysSuspendCount  int32
 }
 
 type debugWriter struct {
@@ -67,14 +69,10 @@ type debugWriter struct {
 }
 
 type devType struct {
-	name       string
-	addr       string
-	deviceType string
-}
-
-type mainButtonsLayout struct {
-	buttonHeight  float32
-	buttonPadding float32
+	name        string
+	addr        string
+	deviceType  string
+	isAudioOnly bool
 }
 
 func (f *debugWriter) Write(b []byte) (int, error) {
@@ -110,6 +108,8 @@ func Start(ctx context.Context, s *FyneScreen) {
 		os.Exit(0)
 	}()
 
+	go silentCheckVersion(s)
+
 	w.ShowAndRun()
 }
 
@@ -125,10 +125,19 @@ func (p *FyneScreen) EmitMsg(a string) {
 	case "Stopped":
 		setPlayPauseView("Play", p)
 		p.updateScreenState("Stopped")
+		// Clear casting media type
+		p.SetMediaType("")
 		stopAction(p)
 	default:
 		dialog.ShowInformation("?", "Unknown callback value", p.Current)
 	}
+}
+
+// SetMediaType Method to implement the screen interface
+func (p *FyneScreen) SetMediaType(mediaType string) {
+	p.mu.Lock()
+	p.castingMediaType = mediaType
+	p.mu.Unlock()
 }
 
 // Fini Method to implement the screen interface.
@@ -138,27 +147,6 @@ func (p *FyneScreen) Fini() {
 	// Main media loop logic
 	if p.Medialoop {
 		playAction(p)
-	}
-}
-
-func initFyneNewScreen(v string) *FyneScreen {
-	go2tv := app.NewWithID("app.go2tv.go2tv")
-	go2tv.Settings().SetTheme(go2tvTheme{"Dark"})
-	go2tv.Driver().SetDisableScreenBlanking(true)
-
-	w := go2tv.NewWindow("Go2TV")
-
-	return &FyneScreen{
-		Current:      w,
-		mediaFormats: []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".m4a", ".jpg", ".jpeg", ".png"},
-		version:      v,
-	}
-}
-
-func check(win fyne.Window, err error) {
-	if err != nil {
-		cleanErr := strings.ReplaceAll(err.Error(), ": ", "\n")
-		dialog.ShowError(errors.New(cleanErr), win)
 	}
 }
 
@@ -183,38 +171,71 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 		screen.cancelEnablePlay()
 	}
 
-	fyne.Do(func() {
-		screen.PlayPause.Enable()
-	})
+	// Delay the update to avoid conflict with button tap animation.
+	// Fyne's button tap animation doesn't synchronize with Refresh() calls,
+	// causing visual artifacts. Delay by 300ms to let animation complete.
+	go func() {
+		fyne.Do(func() {
+			// Check if we are casting an image
+			isImage := false
+			screen.mu.RLock()
+			if strings.HasPrefix(screen.castingMediaType, "image/") {
+				isImage = true
+			}
+			screen.mu.RUnlock()
 
-	switch s {
-	case "Play":
-		screen.PlayPause.Text = lang.L("Play")
-		screen.PlayPause.Icon = theme.MediaPlayIcon()
-	case "Pause":
-		screen.PlayPause.Text = lang.L("Pause")
-		screen.PlayPause.Icon = theme.MediaPauseIcon()
-	}
-
-	fyne.Do(func() {
-		screen.PlayPause.Refresh()
-	})
+			if isImage {
+				screen.PlayPause.Disable()
+				screen.PlayPause.SetIcon(theme.FileImageIcon())
+				screen.PlayPause.SetText("Image Casting")
+			} else {
+				screen.PlayPause.Enable()
+				switch s {
+				case "Play":
+					screen.PlayPause.Text = lang.L("Play")
+					screen.PlayPause.Icon = theme.MediaPlayIcon()
+				case "Pause":
+					screen.PlayPause.Text = lang.L("Pause")
+					screen.PlayPause.Icon = theme.MediaPauseIcon()
+				}
+			}
+			screen.PlayPause.Refresh()
+		})
+	}()
 }
 
 func setMuteUnmuteView(s string, screen *FyneScreen) {
-	switch s {
-	case "Mute":
-		screen.MuteUnmute.Icon = theme.VolumeUpIcon()
-	case "Unmute":
-		screen.MuteUnmute.Icon = theme.VolumeMuteIcon()
-	}
-
 	fyne.Do(func() {
+		switch s {
+		case "Mute":
+			screen.MuteUnmute.Icon = theme.VolumeUpIcon()
+		case "Unmute":
+			screen.MuteUnmute.Icon = theme.VolumeMuteIcon()
+		}
 		screen.MuteUnmute.Refresh()
 	})
 }
 
 // NewFyneScreen .
 func NewFyneScreen(version string) *FyneScreen {
-	return initFyneNewScreen(version)
+	go2tv := app.NewWithID("app.go2tv.go2tv")
+	go2tv.Settings().SetTheme(go2tvTheme{"Dark"})
+	go2tv.Driver().SetDisableScreenBlanking(true)
+
+	w := go2tv.NewWindow("Go2TV")
+
+	return &FyneScreen{
+		Current:      w,
+		mediaFormats: []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".m4a", ".jpg", ".jpeg", ".png"},
+		version:      version,
+	}
+}
+
+func check(win fyne.Window, err error) {
+	if err != nil {
+		cleanErr := strings.ReplaceAll(err.Error(), ": ", "\n")
+		fyne.Do(func() {
+			dialog.ShowError(errors.New(cleanErr), win)
+		})
+	}
 }

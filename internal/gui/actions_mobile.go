@@ -37,15 +37,17 @@ func muteAction(screen *FyneScreen) {
 
 	// Handle Chromecast mute
 	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
-		if screen.chromecastClient == nil || !screen.chromecastClient.IsConnected() {
-			check(w, errors.New(lang.L("chromecast not connected")))
-			return
-		}
-		if err := screen.chromecastClient.SetMuted(true); err != nil {
-			check(w, errors.New(lang.L("could not send mute action")))
-			return
-		}
-		setMuteUnmuteView("Unmute", screen)
+		go func() {
+			if screen.chromecastClient == nil || !screen.chromecastClient.IsConnected() {
+				check(w, errors.New(lang.L("chromecast not connected")))
+				return
+			}
+			if err := screen.chromecastClient.SetMuted(true); err != nil {
+				check(w, errors.New(lang.L("could not send mute action")))
+				return
+			}
+			setMuteUnmuteView("Unmute", screen)
+		}()
 		return
 	}
 
@@ -55,16 +57,18 @@ func muteAction(screen *FyneScreen) {
 		return
 	}
 
-	if screen.tvdata == nil {
-		screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
-	}
+	go func() {
+		if screen.tvdata == nil {
+			screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
+		}
 
-	if err := screen.tvdata.SetMuteSoapCall("1"); err != nil {
-		check(w, errors.New(lang.L("could not send mute action")))
-		return
-	}
+		if err := screen.tvdata.SetMuteSoapCall("1"); err != nil {
+			check(w, errors.New(lang.L("could not send mute action")))
+			return
+		}
 
-	setMuteUnmuteView("Unmute", screen)
+		setMuteUnmuteView("Unmute", screen)
+	}()
 }
 
 func unmuteAction(screen *FyneScreen) {
@@ -72,15 +76,17 @@ func unmuteAction(screen *FyneScreen) {
 
 	// Handle Chromecast unmute
 	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
-		if screen.chromecastClient == nil || !screen.chromecastClient.IsConnected() {
-			check(w, errors.New(lang.L("chromecast not connected")))
-			return
-		}
-		if err := screen.chromecastClient.SetMuted(false); err != nil {
-			check(w, errors.New(lang.L("could not send mute action")))
-			return
-		}
-		setMuteUnmuteView("Mute", screen)
+		go func() {
+			if screen.chromecastClient == nil || !screen.chromecastClient.IsConnected() {
+				check(w, errors.New(lang.L("chromecast not connected")))
+				return
+			}
+			if err := screen.chromecastClient.SetMuted(false); err != nil {
+				check(w, errors.New(lang.L("could not send mute action")))
+				return
+			}
+			setMuteUnmuteView("Mute", screen)
+		}()
 		return
 	}
 
@@ -90,21 +96,27 @@ func unmuteAction(screen *FyneScreen) {
 		return
 	}
 
-	if screen.tvdata == nil {
-		screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
-	}
+	go func() {
+		if screen.tvdata == nil {
+			screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
+		}
 
-	if err := screen.tvdata.SetMuteSoapCall("0"); err != nil {
-		check(w, errors.New(lang.L("could not send mute action")))
-		return
-	}
+		if err := screen.tvdata.SetMuteSoapCall("0"); err != nil {
+			check(w, errors.New(lang.L("could not send mute action")))
+			return
+		}
 
-	setMuteUnmuteView("Mute", screen)
+		setMuteUnmuteView("Mute", screen)
+	}()
 }
 
 func mediaAction(screen *FyneScreen) {
 	w := screen.Current
+	var resumeHotkeys func()
 	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+		if resumeHotkeys != nil {
+			defer resumeHotkeys()
+		}
 		check(w, err)
 
 		if reader == nil {
@@ -121,12 +133,17 @@ func mediaAction(screen *FyneScreen) {
 
 	fd.SetFilter(storage.NewExtensionFileFilter(screen.mediaFormats))
 
+	resumeHotkeys = suspendHotkeys(screen)
 	fd.Show()
 }
 
 func subsAction(screen *FyneScreen) {
 	w := screen.Current
+	var resumeHotkeys func()
 	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+		if resumeHotkeys != nil {
+			defer resumeHotkeys()
+		}
 		check(w, err)
 
 		if reader == nil {
@@ -147,6 +164,7 @@ func subsAction(screen *FyneScreen) {
 
 	fd.SetFilter(storage.NewExtensionFileFilter([]string{".srt"}))
 
+	resumeHotkeys = suspendHotkeys(screen)
 	fd.Show()
 }
 
@@ -158,9 +176,51 @@ func playAction(screen *FyneScreen) {
 		screen.PlayPause.Disable()
 	})
 
+	// Check if there's an active playback session (DLNA or Chromecast) that should be
+	// controlled even when browsing other devices. This takes priority over starting
+	// new playback on the currently selected device.
+	currentState := screen.getScreenState()
+	isActivePlayback := currentState == "Playing" || currentState == "Paused"
+
+	// Active DLNA session: tvdata exists and has control URL
+	if screen.tvdata != nil && screen.tvdata.ControlURL != "" && isActivePlayback {
+		if currentState == "Paused" {
+			err := screen.tvdata.SendtoTV("Play")
+			check(w, err)
+			return
+		}
+		if currentState == "Playing" {
+			err := screen.tvdata.SendtoTV("Pause")
+			check(w, err)
+			return
+		}
+	}
+
+	// Active Chromecast session: client connected and playing/paused
+	if screen.chromecastClient != nil && screen.chromecastClient.IsConnected() && isActivePlayback {
+		if currentState == "Paused" {
+			if err := screen.chromecastClient.Play(); err != nil {
+				check(w, err)
+				return
+			}
+			setPlayPauseView("Pause", screen)
+			screen.updateScreenState("Playing")
+			return
+		}
+		if currentState == "Playing" {
+			if err := screen.chromecastClient.Pause(); err != nil {
+				check(w, err)
+				return
+			}
+			setPlayPauseView("Play", screen)
+			screen.updateScreenState("Paused")
+			return
+		}
+	}
+
 	// Branch based on device type - MUST be first, before any DLNA-specific logic
 	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
-		chromecastPlayAction(screen)
+		go chromecastPlayAction(screen)
 		return
 	}
 
@@ -190,22 +250,17 @@ func playAction(screen *FyneScreen) {
 		case "PLAYING":
 			setPlayPauseView("Pause", screen)
 			screen.updateScreenState("Playing")
-		case "PAUSED":
+		case "PAUSED_PLAYBACK":
 			setPlayPauseView("Play", screen)
 			screen.updateScreenState("Paused")
 		}
 	}()
 
-	currentState := screen.getScreenState()
-
+	// DLNA pause/resume handling for new playback sessions
+	// (active sessions are handled above before device type check)
 	if currentState == "Paused" {
 		err := screen.tvdata.SendtoTV("Play")
 		check(w, err)
-		return
-	}
-
-	if screen.PlayPause.Text == "Pause" {
-		pauseAction(screen)
 		return
 	}
 
@@ -264,6 +319,9 @@ func playAction(screen *FyneScreen) {
 			startAfreshPlayButton(screen)
 			return
 		}
+
+		// Set casting media type
+		screen.SetMediaType(mediaType)
 
 		// Images: read to byte buffer (small, no seeking needed)
 		if strings.Contains(mediaType, "image") {
@@ -330,26 +388,14 @@ func playAction(screen *FyneScreen) {
 		// the io.Copy operation to fail with "broken pipe".
 		// That's good enough for us since right after that
 		// we close the io.ReadCloser.
-		mediaURL, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
+		mediaURL, inferredMediaType, err := utils.StreamURLWithMime(context.Background(), screen.MediaText.Text)
 		check(screen.Current, err)
 		if err != nil {
 			startAfreshPlayButton(screen)
 			return
 		}
 
-		mediaURLinfo, err := utils.StreamURL(context.Background(), screen.MediaText.Text)
-		check(screen.Current, err)
-		if err != nil {
-			startAfreshPlayButton(screen)
-			return
-		}
-
-		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
-		check(w, err)
-		if err != nil {
-			startAfreshPlayButton(screen)
-			return
-		}
+		mediaType = inferredMediaType
 
 		mediaFile = mediaURL
 		if strings.Contains(mediaType, "image") {
@@ -394,37 +440,33 @@ func playAction(screen *FyneScreen) {
 	if err != nil {
 		// Something failed when sent Play1 to the TV.
 		// Just force the user to re-select a device.
-		lsize := screen.DeviceList.Length()
-		for i := 0; i <= lsize; i++ {
-			screen.DeviceList.Unselect(lsize - 1)
-		}
-		screen.controlURL = ""
+		fyne.Do(func() {
+			lsize := screen.DeviceList.Length()
+			for i := 0; i <= lsize; i++ {
+				screen.DeviceList.Unselect(lsize - 1)
+			}
+			screen.controlURL = ""
+		})
 		stopAction(screen)
 	}
 }
 
-func pauseAction(screen *FyneScreen) {
-	w := screen.Current
-
-	err := screen.tvdata.SendtoTV("Pause")
-	check(w, err)
-}
-
 func clearmediaAction(screen *FyneScreen) {
-	screen.MediaText.Text = ""
+	screen.MediaText.SetText("")
 	screen.mediafile = nil
-	screen.MediaText.Refresh()
 }
 
 func clearsubsAction(screen *FyneScreen) {
-	screen.SubsText.Text = ""
+	screen.SubsText.SetText("")
 	screen.subsfile = nil
-	screen.SubsText.Refresh()
 }
 
 func stopAction(screen *FyneScreen) {
 	setPlayPauseView("Play", screen)
 	screen.updateScreenState("Stopped")
+
+	// Clear casting media type immediately
+	screen.SetMediaType("")
 
 	// Clean up temp media file
 	if screen.tempMediaFile != "" {
@@ -434,12 +476,19 @@ func stopAction(screen *FyneScreen) {
 
 	// Handle Chromecast stop
 	if screen.chromecastClient != nil && screen.chromecastClient.IsConnected() {
-		_ = screen.chromecastClient.Stop()
-		screen.chromecastClient.Close(false)
+		client := screen.chromecastClient
+		server := screen.httpserver
+
 		screen.chromecastClient = nil
-		if screen.httpserver != nil {
-			screen.httpserver.StopServer()
-		}
+		screen.httpserver = nil
+
+		go func() {
+			_ = client.Stop()
+			client.Close(false)
+			if server != nil {
+				server.StopServer()
+			}
+		}()
 		return
 	}
 
@@ -448,13 +497,21 @@ func stopAction(screen *FyneScreen) {
 		return
 	}
 
-	_ = screen.tvdata.SendtoTV("Stop")
+	// Run network stop in background
+	go func() {
+		// Capture references for safety within goroutine
+		tvdata := screen.tvdata
+		server := screen.httpserver
+		screen.tvdata = nil
+		screen.httpserver = nil
 
-	if screen.httpserver != nil {
-		screen.httpserver.StopServer()
-	}
-
-	screen.tvdata = nil
+		if tvdata != nil && tvdata.ControlURL != "" {
+			_ = tvdata.SendtoTV("Stop")
+		}
+		if server != nil {
+			server.StopServer()
+		}
+	}()
 }
 
 func getDevices(delay int) ([]devType, error) {
@@ -466,9 +523,10 @@ func getDevices(delay int) ([]devType, error) {
 	var guiDeviceList []devType
 	for _, dev := range deviceList {
 		guiDeviceList = append(guiDeviceList, devType{
-			name:       dev.Name,
-			addr:       dev.Addr,
-			deviceType: dev.Type,
+			name:        dev.Name,
+			addr:        dev.Addr,
+			deviceType:  dev.Type,
+			isAudioOnly: dev.IsAudioOnly,
 		})
 	}
 
@@ -477,71 +535,73 @@ func getDevices(delay int) ([]devType, error) {
 
 func volumeAction(screen *FyneScreen, up bool) {
 	w := screen.Current
+	go func() {
 
-	// Handle Chromecast volume
-	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
-		if screen.chromecastClient == nil || !screen.chromecastClient.IsConnected() {
-			check(w, errors.New(lang.L("chromecast not connected")))
+		// Handle Chromecast volume
+		if screen.selectedDeviceType == devices.DeviceTypeChromecast {
+			if screen.chromecastClient == nil || !screen.chromecastClient.IsConnected() {
+				check(w, errors.New(lang.L("chromecast not connected")))
+				return
+			}
+
+			status, err := screen.chromecastClient.GetStatus()
+			if err != nil {
+				check(w, errors.New(lang.L("could not get the volume levels")))
+				return
+			}
+
+			// Volume is 0.0 to 1.0, step by 0.05 (5%)
+			newVolume := status.Volume - 0.05
+			if up {
+				newVolume = status.Volume + 0.05
+			}
+
+			// Clamp to valid range
+			if newVolume < 0 {
+				newVolume = 0
+			}
+			if newVolume > 1 {
+				newVolume = 1
+			}
+
+			if err := screen.chromecastClient.SetVolume(newVolume); err != nil {
+				check(w, errors.New(lang.L("could not send volume action")))
+			}
 			return
 		}
 
-		status, err := screen.chromecastClient.GetStatus()
+		// Handle DLNA volume
+		if screen.renderingControlURL == "" {
+			check(w, errors.New(lang.L("please select a device")))
+			return
+		}
+
+		if screen.tvdata == nil {
+			screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
+		}
+
+		currentVolume, err := screen.tvdata.GetVolumeSoapCall()
 		if err != nil {
 			check(w, errors.New(lang.L("could not get the volume levels")))
 			return
 		}
 
-		// Volume is 0.0 to 1.0, step by 0.05 (5%)
-		newVolume := status.Volume - 0.05
+		setVolume := currentVolume - 1
+
 		if up {
-			newVolume = status.Volume + 0.05
+			setVolume = currentVolume + 1
 		}
 
-		// Clamp to valid range
-		if newVolume < 0 {
-			newVolume = 0
-		}
-		if newVolume > 1 {
-			newVolume = 1
+		if setVolume < 0 {
+			setVolume = 0
 		}
 
-		if err := screen.chromecastClient.SetVolume(newVolume); err != nil {
+		stringVolume := strconv.Itoa(setVolume)
+
+		if err := screen.tvdata.SetVolumeSoapCall(stringVolume); err != nil {
 			check(w, errors.New(lang.L("could not send volume action")))
 		}
-		return
-	}
-
-	// Handle DLNA volume
-	if screen.renderingControlURL == "" {
-		check(w, errors.New(lang.L("please select a device")))
-		return
-	}
-
-	if screen.tvdata == nil {
-		screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
-	}
-
-	currentVolume, err := screen.tvdata.GetVolumeSoapCall()
-	if err != nil {
-		check(w, errors.New(lang.L("could not get the volume levels")))
-		return
-	}
-
-	setVolume := currentVolume - 1
-
-	if up {
-		setVolume = currentVolume + 1
-	}
-
-	if setVolume < 0 {
-		setVolume = 0
-	}
-
-	stringVolume := strconv.Itoa(setVolume)
-
-	if err := screen.tvdata.SetVolumeSoapCall(stringVolume); err != nil {
-		check(w, errors.New(lang.L("could not send volume action")))
-	}
+	}()
 }
 
 func startAfreshPlayButton(screen *FyneScreen) {
@@ -621,16 +681,17 @@ func chromecastPlayAction(screen *FyneScreen) {
 	if screen.ExternalMediaURL.Checked {
 		mediaURL = screen.MediaText.Text
 
-		mediaURLinfo, err := utils.StreamURL(context.Background(), mediaURL)
+		mediaURLinfo, inferredMediaType, err := utils.StreamURLWithMime(context.Background(), mediaURL)
 		if err != nil {
 			check(w, err)
 			startAfreshPlayButton(screen)
 			return
 		}
-		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
+		mediaType = inferredMediaType
 		mediaURLinfo.Close()
-		if err != nil {
-			check(w, err)
+
+		if screen.selectedDevice.isAudioOnly && (strings.Contains(mediaType, "video") || strings.Contains(mediaType, "image")) {
+			check(w, errors.New(lang.L("Video/Image file not supported by audio-only device")))
 			startAfreshPlayButton(screen)
 			return
 		}
@@ -656,6 +717,12 @@ func chromecastPlayAction(screen *FyneScreen) {
 		mediaReader.Close()
 		if err != nil {
 			check(w, err)
+			startAfreshPlayButton(screen)
+			return
+		}
+
+		if screen.selectedDevice.isAudioOnly && (strings.Contains(mediaType, "video") || strings.Contains(mediaType, "image")) {
+			check(w, errors.New(lang.L("Video/Image file not supported by audio-only device")))
 			startAfreshPlayButton(screen)
 			return
 		}
@@ -762,8 +829,10 @@ func chromecastPlayAction(screen *FyneScreen) {
 	}
 
 	// Load media (duration=0 since mobile doesn't support transcoding)
+	// Use LIVE stream type for URL streams (DMR shows LIVE badge, but buffer unchanged)
 	go func() {
-		if err := client.Load(mediaURL, mediaType, 0, 0, subtitleURL); err != nil {
+		live := screen.ExternalMediaURL.Checked
+		if err := client.Load(mediaURL, mediaType, 0, 0, subtitleURL, live); err != nil {
 			check(w, fmt.Errorf("chromecast load: %w", err))
 			startAfreshPlayButton(screen)
 			return

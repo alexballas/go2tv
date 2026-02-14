@@ -61,6 +61,7 @@ func run() error {
 		absMediaFile, mediaType string
 		mediaFile               any
 		isSeek                  bool
+		transcode               bool
 	)
 
 	exitCTX, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -75,6 +76,8 @@ func run() error {
 	if flagRes.exit {
 		return nil
 	}
+
+	transcode = *transcodePtr
 
 	if *mediaArg != "" {
 		mediaFile = *mediaArg
@@ -109,30 +112,22 @@ func run() error {
 	}
 
 	if *mediaArg == "" && *urlArg != "" {
-		mediaURL, err := utils.StreamURL(context.Background(), *urlArg)
+		preparedMedia, inferredMediaType, err := utils.PrepareURLMedia(context.Background(), *urlArg)
 		if err != nil {
 			return err
 		}
+		mediaType = inferredMediaType
 
-		mediaURLinfo, err := utils.StreamURL(context.Background(), *urlArg)
-		if err != nil {
-			return err
+		mediaFile = preparedMedia
+
+		if utils.IsHLSStream(*urlArg, mediaType) {
+			transcode = false
 		}
+	}
 
-		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
-		if err != nil {
-			return err
-		}
-
-		mediaFile = mediaURL
-
-		if strings.Contains(mediaType, "image") {
-			readerToBytes, err := io.ReadAll(mediaURL)
-			mediaURL.Close()
-			if err != nil {
-				return err
-			}
-			mediaFile = readerToBytes
+	if transcode {
+		if _, err := exec.LookPath("ffmpeg"); err != nil {
+			return fmt.Errorf("checkTCflag parse error: %w", err)
 		}
 	}
 
@@ -149,18 +144,13 @@ func run() error {
 			return err
 		}
 
-		mfile, err := os.Open(absMediaFile)
-		if err != nil {
-			return err
-		}
-
 		mediaFile = absMediaFile
-		mediaType, err = utils.GetMimeDetailsFromFile(mfile)
+		mediaType, err = utils.GetMimeDetailsFromPath(absMediaFile)
 		if err != nil {
 			return err
 		}
 
-		if !*transcodePtr {
+		if !transcode {
 			isSeek = true
 		}
 	case io.ReadCloser, []byte:
@@ -180,7 +170,7 @@ func run() error {
 
 	// Branch based on device type
 	if devices.IsChromecastURL(flagRes.targetURL) {
-		return runChromecastCLI(exitCTX, cancel, flagRes.targetURL, absMediaFile, mediaFile, mediaType, absSubtitlesFile, ffmpegPath, *transcodePtr)
+		return runChromecastCLI(exitCTX, cancel, flagRes.targetURL, absMediaFile, mediaFile, mediaType, absSubtitlesFile, ffmpegPath, transcode)
 	}
 
 	scr, err := interactive.InitTcellNewScreen(cancel)
@@ -189,11 +179,12 @@ func run() error {
 	}
 
 	tvdata, err := soapcalls.NewTVPayload(&soapcalls.Options{
+		Ctx:            exitCTX,
 		DMR:            flagRes.targetURL,
 		Media:          absMediaFile,
 		Subs:           absSubtitlesFile,
 		Mtype:          mediaType,
-		Transcode:      *transcodePtr,
+		Transcode:      transcode,
 		Seek:           isSeek,
 		FFmpegPath:     ffmpegPath,
 		FFmpegSubsPath: absSubtitlesFile,
@@ -337,7 +328,9 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 
 	// Load media (async)
 	go func() {
-		if err := client.Load(mediaURL, mediaType, 0, mediaDuration, subtitleURL); err != nil {
+		// Use LIVE stream type for URL/stdin streams to avoid ~30s buffering delay
+		_, isStream := mediaFile.(io.ReadCloser)
+		if err := client.Load(mediaURL, mediaType, 0, mediaDuration, subtitleURL, isStream); err != nil {
 			fmt.Fprintf(os.Stderr, "chromecast load: %v\n", err)
 		}
 	}()
@@ -407,7 +400,7 @@ func (m listDevicesModel) View() string {
 	var s strings.Builder
 	s.WriteString("Scanning devices... (q to quit)\n\n")
 	for _, dev := range m.devices {
-		s.WriteString("• " + dev.Model + " [" + dev.URL + "] " + "\n")
+		s.WriteString("• " + dev.Model + " [" + dev.URL + "]\n")
 	}
 	return s.String()
 }
@@ -502,6 +495,10 @@ func checkSflag() error {
 
 func checkTCflag() error {
 	if *transcodePtr {
+		if *urlArg != "" {
+			return nil
+		}
+
 		_, err := exec.LookPath("ffmpeg")
 		if err != nil {
 			return fmt.Errorf("checkTCflag parse error: %w", err)

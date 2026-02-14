@@ -26,9 +26,10 @@ type HTTPserver struct {
 	Mux  *http.ServeMux
 	// We only need to run one ffmpeg
 	// command at a time, per server instance
-	ffmpeg   *exec.Cmd
-	handlers map[string]handler
-	mu       sync.Mutex
+	ffmpeg      *exec.Cmd
+	handlers    map[string]handler
+	dirHandlers map[string]string // Handlers for serving entire directories (e.g. HLS)
+	mu          sync.Mutex
 }
 
 // handler holds the configuration for a registered media path.
@@ -46,6 +47,7 @@ type handler struct {
 type Screen interface {
 	EmitMsg(string)
 	Fini()
+	SetMediaType(string)
 }
 
 // We use this type to be able to test
@@ -72,6 +74,21 @@ func (s *HTTPserver) AddHandler(path string, payload *soapcalls.TVPayload, trans
 func (s *HTTPserver) RemoveHandler(path string) {
 	s.mu.Lock()
 	delete(s.handlers, path)
+	s.mu.Unlock()
+}
+
+// AddDirectoryHandler registers a directory to be served under a URL prefix.
+// Used for HLS serving where multiple .ts files are requested.
+func (s *HTTPserver) AddDirectoryHandler(urlPrefix, fsPath string) {
+	s.mu.Lock()
+	s.dirHandlers[urlPrefix] = fsPath
+	s.mu.Unlock()
+}
+
+// RemoveDirectoryHandler removes a directory handler.
+func (s *HTTPserver) RemoveDirectoryHandler(urlPrefix string) {
+	s.mu.Lock()
+	delete(s.dirHandlers, urlPrefix)
 	s.mu.Unlock()
 }
 
@@ -188,11 +205,53 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 
 		s.mu.Lock()
 		out, exists := s.handlers[r.URL.Path]
+		if !exists {
+			// Check for directory handlers
+			for prefix, dirPath := range s.dirHandlers {
+				if after, ok := strings.CutPrefix(r.URL.Path, prefix); ok {
+					// Found a match. Build candidate path and enforce it stays under dirPath.
+					relPath := filepath.Clean(strings.TrimPrefix(after, "/"))
+					baseAbs, err := filepath.Abs(filepath.Clean(dirPath))
+					if err != nil {
+						continue
+					}
+
+					fullAbs, err := filepath.Abs(filepath.Join(baseAbs, relPath))
+					if err != nil {
+						continue
+					}
+
+					relToBase, err := filepath.Rel(baseAbs, fullAbs)
+					if err != nil {
+						continue
+					}
+
+					if relToBase == ".." ||
+						strings.HasPrefix(relToBase, ".."+string(filepath.Separator)) ||
+						filepath.IsAbs(relToBase) {
+						continue
+					}
+
+					out = handler{media: fullAbs}
+					exists = true
+					break
+				}
+			}
+		}
 		s.mu.Unlock()
 
 		if !exists {
 			http.Error(w, "not exists", http.StatusNotFound)
 			return
+		}
+
+		// Explicitly set Content-Type for HLS files
+		if strings.HasSuffix(r.URL.Path, ".m3u8") {
+			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		} else if strings.HasSuffix(r.URL.Path, ".ts") {
+			w.Header().Set("Content-Type", "video/mp2t")
+		} else if strings.HasSuffix(r.URL.Path, ".mp4") || strings.HasSuffix(r.URL.Path, ".m4s") {
+			w.Header().Set("Content-Type", "video/mp4")
 		}
 
 		switch f := out.media.(type) {
@@ -226,12 +285,7 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 		reqParsed, _ := io.ReadAll(req.Body)
 		sidVal, sidExists := req.Header["Sid"]
 
-		if !sidExists {
-			http.NotFound(w, req)
-			return
-		}
-
-		if sidVal[0] == "" {
+		if !sidExists || (len(sidVal) > 0 && sidVal[0] == "") {
 			http.NotFound(w, req)
 			return
 		}
@@ -268,6 +322,10 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 
 		switch newstate {
 		case "PLAYING":
+			// Handle gapless transition: update media type if changed
+			if tv != nil && tv.MediaType != "" {
+				screen.SetMediaType(tv.MediaType)
+			}
 			screen.EmitMsg("Playing")
 			tv.SetProcessStopTrue(uuid)
 		case "PAUSED_PLAYBACK":
@@ -278,6 +336,34 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 			screen.Fini()
 		}
 	}
+}
+
+// AddHLSHandler configures the server to serve HLS content from a directory
+func (s *HTTPserver) AddHLSHandler(urlPrefix, dir string) {
+	fileServer := http.FileServer(http.Dir(dir))
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		if strings.HasSuffix(r.URL.Path, ".m3u8") {
+			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		} else if strings.HasSuffix(r.URL.Path, ".ts") {
+			w.Header().Set("Content-Type", "video/MP2T")
+		} else if strings.HasSuffix(r.URL.Path, ".mp4") || strings.HasSuffix(r.URL.Path, ".m4s") {
+			w.Header().Set("Content-Type", "video/mp4")
+		}
+
+		fileServer.ServeHTTP(w, r)
+	})
+
+	s.Mux.Handle(urlPrefix, http.StripPrefix(urlPrefix, handler))
 }
 
 // StopServer forcefully closes the HTTP server.
@@ -293,10 +379,11 @@ func (s *HTTPserver) StopServer() {
 func NewServer(a string) *HTTPserver {
 	mux := http.NewServeMux()
 	srv := HTTPserver{
-		http:     &http.Server{Addr: a, Handler: mux},
-		Mux:      mux,
-		ffmpeg:   new(exec.Cmd),
-		handlers: make(map[string]handler),
+		http:        &http.Server{Addr: a, Handler: mux},
+		Mux:         mux,
+		ffmpeg:      new(exec.Cmd),
+		handlers:    make(map[string]handler),
+		dirHandlers: make(map[string]string),
 	}
 
 	return &srv
@@ -377,8 +464,7 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 		w.Header()["contentFeatures.dlna.org"] = []string{contentFeatures}
 	}
 
-	// Since we're dealing with an io.Reader we can't
-	// allow any HEAD requests that some DMRs trigger.
+	// In ffmpeg we can emulate seek support for live streams
 	if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "video") {
 		// Route based on which config is provided
 		switch {
@@ -403,9 +489,9 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 	// No seek support
 	if r.Method == http.MethodGet {
 		_, _ = io.Copy(w, f)
-		f.Close()
-		return
 	}
+
+	f.Close()
 }
 
 func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode, seek bool, f osFileType, ff *exec.Cmd) {

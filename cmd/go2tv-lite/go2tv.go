@@ -40,8 +40,7 @@ var (
 
 	versionPtr = flag.Bool("version", false, "Print version.")
 
-	errNoCombi    = errors.New("can't combine -l with other flags")
-	errFailtoList = errors.New("failed to list devices")
+	errNoCombi = errors.New("can't combine -l with other flags")
 )
 
 type dummyScreen struct {
@@ -122,31 +121,12 @@ func run() error {
 	}
 
 	if *mediaArg == "" && *urlArg != "" {
-		mediaURL, err := utils.StreamURL(context.Background(), *urlArg)
+		preparedMedia, inferredMediaType, err := utils.PrepareURLMedia(context.Background(), *urlArg)
 		if err != nil {
 			return err
 		}
-
-		mediaURLinfo, err := utils.StreamURL(context.Background(), *urlArg)
-		if err != nil {
-			return err
-		}
-
-		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
-		if err != nil {
-			return err
-		}
-
-		mediaFile = mediaURL
-
-		if strings.Contains(mediaType, "image") {
-			readerToBytes, err := io.ReadAll(mediaURL)
-			mediaURL.Close()
-			if err != nil {
-				return err
-			}
-			mediaFile = readerToBytes
-		}
+		mediaType = inferredMediaType
+		mediaFile = preparedMedia
 	}
 
 	switch t := mediaFile.(type) {
@@ -156,13 +136,8 @@ func run() error {
 			return err
 		}
 
-		mfile, err := os.Open(absMediaFile)
-		if err != nil {
-			return err
-		}
-
 		mediaFile = absMediaFile
-		mediaType, err = utils.GetMimeDetailsFromFile(mfile)
+		mediaType, err = utils.GetMimeDetailsFromPath(absMediaFile)
 		if err != nil {
 			return err
 		}
@@ -193,6 +168,7 @@ func run() error {
 	scr := &dummyScreen{ctxCancel: cancel}
 
 	tvdata, err := soapcalls.NewTVPayload(&soapcalls.Options{
+		Ctx:            exitCTX,
 		DMR:            flagRes.targetURL,
 		Media:          absMediaFile,
 		Subs:           absSubtitlesFile,
@@ -345,8 +321,45 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 
 	// Load media (async)
 	go func() {
-		if err := client.Load(mediaURL, mediaType, 0, mediaDuration, subtitleURL); err != nil {
+		// Use LIVE stream type for URL/stdin streams (DMR shows LIVE badge, but buffer unchanged)
+		_, isStream := mediaFile.(io.ReadCloser)
+		if err := client.Load(mediaURL, mediaType, 0, mediaDuration, subtitleURL, isStream); err != nil {
 			fmt.Fprintf(os.Stderr, "chromecast load: %v\n", err)
+		}
+	}()
+
+	// Poll for status updates
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		var previousState string
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if !client.IsConnected() {
+					continue
+				}
+				status, err := client.GetStatus()
+				if err != nil {
+					continue
+				}
+				if status.PlayerState != previousState {
+					previousState = status.PlayerState
+					switch status.PlayerState {
+					case "PLAYING":
+						scr.EmitMsg("Playing")
+					case "PAUSED":
+						scr.EmitMsg("Paused")
+					case "BUFFERING":
+						scr.EmitMsg("Buffering")
+					case "IDLE":
+						scr.EmitMsg("Idle")
+					}
+				}
+			}
 		}
 	}()
 
@@ -557,6 +570,10 @@ func (s *dummyScreen) Fini() {
 	}
 	fmt.Println("exiting..")
 	s.ctxCancel()
+}
+
+func (s *dummyScreen) SetMediaType(mediaType string) {
+	// No-op for CLI mode
 }
 
 func checkStdin() bool {

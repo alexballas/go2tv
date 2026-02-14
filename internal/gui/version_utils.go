@@ -4,8 +4,33 @@ import (
 	"errors"
 	"strings"
 
+	"net/http"
+	"path/filepath"
+	"time"
+
+	"fyne.io/fyne/v2"
 	"golang.org/x/mod/semver"
 )
+
+// getLatestVersion fetches the latest version tag from go2tv.app.
+func getLatestVersion() (string, error) {
+	req, err := http.NewRequest("GET", "https://go2tv.app/latest", nil)
+	if err != nil {
+		return "", err
+	}
+
+	client := &http.Client{
+		Timeout: 3 * time.Second,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	return filepath.Base(resp.Request.URL.Path), nil
+}
 
 // normalize adds a "v" prefix to the version string if it's missing.
 // The semver package strictly requires the "v" prefix (e.g., "v1.2.3").
@@ -31,6 +56,35 @@ func parseVersion(version string) ([]int, error) {
 	}
 	// Return non-nil slice to avoid potential checks? No, caller ignores it.
 	return []int{0}, nil
+}
+
+// silentCheckVersion performs a background version check and notifies the user
+// if a new version is available, but only once per version.
+func silentCheckVersion(s *FyneScreen) {
+	// Parse current version - fail silently if dev or non-compiled
+	if _, err := parseVersion(s.version); err != nil {
+		return
+	}
+
+	latestVersionStr, err := getLatestVersion()
+	if err != nil {
+		return
+	}
+
+	cmp, err := compareVersions(latestVersionStr, s.version)
+	if err != nil {
+		return
+	}
+
+	if cmp == 1 {
+		// New version available!
+		lastSeen := fyne.CurrentApp().Preferences().StringWithFallback("LastLatestVersionSeen", "")
+		if lastSeen != latestVersionStr {
+			// Show popup and update preference
+			showVersionPopup(latestVersionStr, s)
+			fyne.CurrentApp().Preferences().SetString("LastLatestVersionSeen", latestVersionStr)
+		}
+	}
 }
 
 // compareVersions compares two semantic version strings using golang.org/x/mod/semver.

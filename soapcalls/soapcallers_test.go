@@ -1,7 +1,13 @@
 package soapcalls
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestParseProtocolInfo(t *testing.T) {
@@ -29,5 +35,172 @@ func TestParseProtocolInfo(t *testing.T) {
 				t.Fatalf("%s: Failed to call parseProtocolInfo due to %s", tc.name, err.Error())
 			}
 		})
+	}
+}
+
+func TestSetVolumeSoapCallHeaders(t *testing.T) {
+	type headerCapture struct {
+		contentType string
+		charset     string
+	}
+
+	headersCh := make(chan headerCapture, 1)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headersCh <- headerCapture{
+			contentType: r.Header.Get("Content-Type"),
+			charset:     r.Header.Get("Charset"),
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	p := &TVPayload{
+		RenderingControlURL: srv.URL,
+	}
+
+	if err := p.SetVolumeSoapCall("10"); err != nil {
+		t.Fatalf("SetVolumeSoapCall failed: %v", err)
+	}
+
+	select {
+	case h := <-headersCh:
+		if h.contentType != `text/xml; charset="utf-8"` {
+			t.Fatalf("unexpected Content-Type: %q", h.contentType)
+		}
+
+		if h.charset != "" {
+			t.Fatalf("unexpected Charset header: %q", h.charset)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for request headers")
+	}
+}
+
+func TestSetVolumeSoapCallMPostFallbackOn405(t *testing.T) {
+	type requestCapture struct {
+		method       string
+		soapAction   string
+		man          string
+		nsSoapAction string
+	}
+
+	var (
+		mu       sync.Mutex
+		requests []requestCapture
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		idx := len(requests)
+		requests = append(requests, requestCapture{
+			method:       r.Method,
+			soapAction:   r.Header.Get("SOAPAction"),
+			man:          r.Header.Get("MAN"),
+			nsSoapAction: r.Header.Get("01-SOAPACTION"),
+		})
+		mu.Unlock()
+
+		if idx == 0 {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	p := &TVPayload{
+		RenderingControlURL: srv.URL,
+	}
+
+	if err := p.SetVolumeSoapCall("10"); err != nil {
+		t.Fatalf("SetVolumeSoapCall failed: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if len(requests) != 2 {
+		t.Fatalf("expected 2 requests, got %d", len(requests))
+	}
+
+	if requests[0].method != http.MethodPost {
+		t.Fatalf("first request method = %q, want %q", requests[0].method, http.MethodPost)
+	}
+
+	if requests[1].method != "M-POST" {
+		t.Fatalf("second request method = %q, want %q", requests[1].method, "M-POST")
+	}
+
+	if requests[1].man != `"http://schemas.xmlsoap.org/soap/envelope/"; ns=01` {
+		t.Fatalf("unexpected MAN header: %q", requests[1].man)
+	}
+
+	if requests[1].nsSoapAction != requests[0].soapAction {
+		t.Fatalf("01-SOAPACTION = %q, want %q", requests[1].nsSoapAction, requests[0].soapAction)
+	}
+}
+
+func TestSetAVTransportSoapCallRetriesWithLegacyMetadataOnFault(t *testing.T) {
+	var (
+		mu       sync.Mutex
+		requests []string
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		bodyStr := string(body)
+
+		mu.Lock()
+		requests = append(requests, bodyStr)
+		mu.Unlock()
+
+		if strings.Contains(bodyStr, `CurrentURIMetaData>&lt;DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"`) {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`<s:Fault><detail><UPnPError><errorCode>714</errorCode></UPnPError></detail></s:Fault>`))
+	}))
+	defer srv.Close()
+
+	p := &TVPayload{
+		ControlURL: srv.URL,
+		MediaURL:   `http://192.168.88.250:3500/video%20%26%20%27example%27.mp4`,
+		MediaType:  "video/mp4",
+		Seekable:   true,
+	}
+
+	if err := p.setAVTransportSoapCall(); err != nil {
+		t.Fatalf("setAVTransportSoapCall failed: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if len(requests) < 2 {
+		t.Fatalf("expected at least 2 requests, got %d", len(requests))
+	}
+
+	seenStandard := false
+	seenCompat := false
+	for _, reqBody := range requests {
+		if strings.Contains(reqBody, "xmlns=&#34;urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/&#34;") {
+			seenStandard = true
+		}
+		if strings.Contains(reqBody, `CurrentURIMetaData>&lt;DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"`) {
+			seenCompat = true
+		}
+	}
+
+	if !seenStandard {
+		t.Fatalf("did not observe standard escaped DIDL metadata in requests: %#v", requests)
+	}
+
+	if !seenCompat {
+		t.Fatalf("did not observe compatibility DIDL metadata in requests: %#v", requests)
 	}
 }

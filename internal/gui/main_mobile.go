@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"sort"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -25,6 +26,17 @@ type deviceList struct {
 
 func (c *deviceList) FocusGained() {}
 
+// sortDevTypeSlice sorts devices alphabetically by name,
+// with DLNA devices before Chromecast devices when names are equal.
+func sortDevTypeSlice(d []devType) {
+	sort.Slice(d, func(i, j int) bool {
+		if d[i].deviceType != d[j].deviceType {
+			return d[i].deviceType < d[j].deviceType
+		}
+		return d[i].name < d[j].name
+	})
+}
+
 func newDeviceList(dd *[]devType) *deviceList {
 	list := &deviceList{}
 
@@ -38,9 +50,7 @@ func newDeviceList(dd *[]devType) *deviceList {
 	}
 
 	list.UpdateItem = func(i widget.ListItemID, o fyne.CanvasObject) {
-		fyne.Do(func() {
-			o.(*fyne.Container).Objects[1].(*widget.Label).SetText((*dd)[i].name)
-		})
+		o.(*fyne.Container).Objects[1].(*widget.Label).SetText((*dd)[i].name)
 	}
 
 	list.ExtendBaseWidget(list)
@@ -55,13 +65,16 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	// Avoid parallel execution of getDevices.
 	blockGetDevices := make(chan struct{})
 	go func() {
-		var err error
-		data, err = getDevices(1)
+		datanew, err := getDevices(1)
 		if err != nil {
-			data = nil
+			datanew = nil
 		}
 
-		fyne.Do(func() {
+		// Sort devices alphabetically for consistent ordering
+		sortDevTypeSlice(datanew)
+
+		fyne.DoAndWait(func() {
+			data = datanew
 			list.Refresh()
 		})
 
@@ -85,51 +98,37 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	sfiletext.Disable()
 
 	playpause := widget.NewButtonWithIcon(lang.L("Play"), theme.MediaPlayIcon(), func() {
-		go fyne.Do(func() {
-			playAction(s)
-		})
+		playAction(s)
 	})
 
 	stop := widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
-		go fyne.Do(func() {
-			stopAction(s)
-		})
+		stopAction(s)
 	})
 
 	volumeup := widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
-		go fyne.Do(func() {
-			volumeAction(s, true)
-		})
+		volumeAction(s, true)
 	})
 
 	muteunmute := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() {
-		go fyne.Do(func() {
-			muteAction(s)
-		})
+		muteAction(s)
 	})
 
 	volumedown := widget.NewButtonWithIcon("", theme.ContentRemoveIcon(), func() {
-		go fyne.Do(func() {
-			volumeAction(s, false)
-		})
+		volumeAction(s, false)
 	})
 
 	clearmedia := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		go fyne.Do(func() {
-			clearmediaAction(s)
-		})
+		clearmediaAction(s)
 	})
 
 	clearsubs := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		go fyne.Do(func() {
-			clearsubsAction(s)
-		})
+		clearsubsAction(s)
 	})
 
 	externalmedia := widget.NewCheck(lang.L("Media from URL"), func(b bool) {})
 	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
 
-	mediafilelabel := widget.NewLabel(lang.L("File") + ":")
+	mediafilelabel := widget.NewLabel(lang.L("Media File") + ":")
 	subsfilelabel := widget.NewLabel(lang.L("Subtitles") + ":")
 	devicelabel := widget.NewLabel(lang.L("Select Device") + ":")
 
@@ -163,8 +162,11 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		s.selectedDevice = data[id]
 		s.selectedDeviceType = data[id].deviceType
 
-		// Reset device state when switching
-		if s.chromecastClient != nil {
+		// Reset device state when switching, but preserve active Chromecast session
+		// so user can still control it while browsing other devices
+		currentState := s.getScreenState()
+		isActivePlayback := currentState == "Playing" || currentState == "Paused"
+		if s.chromecastClient != nil && !isActivePlayback {
 			s.chromecastClient.Close(false)
 			s.chromecastClient = nil
 		}
@@ -218,7 +220,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 		medialoop.Enable()
 		mfile.Enable()
-		mediafilelabel.Text = lang.L("File") + ":"
+		mediafilelabel.Text = lang.L("Media File") + ":"
 		mfiletext.SetPlaceHolder("")
 		s.MediaText.Text = mediafileOldText
 		s.mediafile = mediafileOld
@@ -255,8 +257,20 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 	for range refreshDevices.C {
 		datanew, _ := getDevices(2)
 
+		var oldDevices []devType
+		var selectedAddr string
+		var selectedDeviceAddr string
+		fyne.DoAndWait(func() {
+			oldDevices = append([]devType(nil), (*data)...)
+			selectedDeviceAddr = s.selectedDevice.addr
+			selectedAddr = s.controlURL
+			if s.selectedDeviceType == devices.DeviceTypeChromecast {
+				selectedAddr = selectedDeviceAddr
+			}
+		})
+
 	outer:
-		for _, old := range *data {
+		for _, old := range oldDevices {
 			oldAddress, _ := url.Parse(old.addr)
 			for _, new := range datanew {
 				newAddress, _ := url.Parse(new.addr)
@@ -270,13 +284,12 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 			}
 		}
 
+		// Sort devices alphabetically for consistent ordering
+		sortDevTypeSlice(datanew)
+
 		// check to see if the new refresh includes
 		// one of the already selected devices
 		var includes bool
-		selectedAddr := s.controlURL
-		if s.selectedDeviceType == devices.DeviceTypeChromecast {
-			selectedAddr = s.selectedDevice.addr
-		}
 		if selectedAddr != "" {
 			u, _ := url.Parse(selectedAddr)
 			for _, d := range datanew {
@@ -287,36 +300,37 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 			}
 		}
 
-		*data = datanew
-
+		clearSelection := false
 		if selectedAddr != "" && !includes {
 			u, _ := url.Parse(selectedAddr)
 			if !utils.HostPortIsAlive(u.Host) {
+				clearSelection = true
+			}
+		}
+
+		foundIdx := -1
+		if selectedDeviceAddr != "" {
+			for n, a := range datanew {
+				if selectedDeviceAddr == a.addr {
+					foundIdx = n
+					break
+				}
+			}
+		}
+
+		fyne.DoAndWait(func() {
+			*data = datanew
+
+			if clearSelection {
 				s.controlURL = ""
 				s.selectedDevice = devType{}
-				fyne.Do(func() {
-					s.DeviceList.UnselectAll()
-				})
-			}
-		}
-
-		var found bool
-		for n, a := range *data {
-			if s.selectedDevice.addr == a.addr {
-				found = true
-				fyne.Do(func() {
-					s.DeviceList.Select(n)
-				})
-			}
-		}
-
-		if !found {
-			fyne.Do(func() {
 				s.DeviceList.UnselectAll()
-			})
-		}
+			} else if foundIdx >= 0 {
+				s.DeviceList.Select(foundIdx)
+			} else {
+				s.DeviceList.UnselectAll()
+			}
 
-		fyne.Do(func() {
 			s.DeviceList.Refresh()
 		})
 	}

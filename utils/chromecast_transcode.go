@@ -1,5 +1,3 @@
-//go:build !windows
-
 package utils
 
 import (
@@ -125,6 +123,7 @@ func ServeChromecastTranscodedStream(
 	// Use regular Command instead of CommandContext to avoid nil pointer crash
 	// when context cancels before process starts
 	cmd := exec.Command(args[0], args[1:]...)
+	setSysProcAttr(cmd)
 
 	*ff = *cmd
 

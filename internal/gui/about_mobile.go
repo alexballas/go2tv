@@ -4,10 +4,7 @@ package gui
 
 import (
 	"errors"
-	"net/http"
 	"net/url"
-	"path/filepath"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -51,9 +48,7 @@ MIT
 		}()
 	})
 	checkversion := widget.NewButton(lang.L("Check version"), func() {
-		go fyne.Do(func() {
-			checkVersion(s)
-		})
+		go checkVersion(s)
 	})
 
 	s.CheckVersion = checkversion
@@ -62,45 +57,54 @@ MIT
 }
 
 func checkVersion(s *FyneScreen) {
-	s.CheckVersion.Disable()
-	defer s.CheckVersion.Enable()
+	fyne.Do(func() {
+		s.CheckVersion.Disable()
+	})
+	defer fyne.Do(func() {
+		s.CheckVersion.Enable()
+	})
 	errVersioncomp := errors.New(lang.L("failed to get version info") + "\n" + lang.L("you're using a development or a non-compiled version"))
 	errVersionGet := errors.New(lang.L("failed to get version info") + "\n" + lang.L("check your internet connection"))
 
 	// Parse current version
 	// Check if current version is valid/parsable (not "dev")
 	if _, err := parseVersion(s.version); err != nil {
-		dialog.ShowError(errVersioncomp, s.Current)
+		fyne.Do(func() {
+			dialog.ShowError(errVersioncomp, s.Current)
+		})
 		return
 	}
 
-	req, err := http.NewRequest("GET", "https://go2tv.app/latest", nil)
+	latestVersionStr, err := getLatestVersion()
 	if err != nil {
-		dialog.ShowError(errVersionGet, s.Current)
-	}
-
-	// We want to follow the redirects to the final URL which contains the version tag.
-	client := &http.Client{
-		Timeout: time.Duration(3 * time.Second),
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		dialog.ShowError(errVersionGet, s.Current)
+		fyne.Do(func() {
+			dialog.ShowError(errVersionGet, s.Current)
+		})
 		return
 	}
-	defer resp.Body.Close()
-
-	latestVersionStr := filepath.Base(resp.Request.URL.Path)
 
 	cmp, err := compareVersions(latestVersionStr, s.version)
 	if err != nil {
-		dialog.ShowError(errVersionGet, s.Current)
+		fyne.Do(func() {
+			dialog.ShowError(errVersionGet, s.Current)
+		})
 		return
 	}
 
 	switch cmp {
 	case 1:
+		showVersionPopup(latestVersionStr, s)
+		return
+	default:
+		fyne.Do(func() {
+			dialog.ShowInformation(lang.L("Version checker"), lang.L("No new version"), s.Current)
+		})
+		return
+	}
+}
+
+func showVersionPopup(latestVersionStr string, s *FyneScreen) {
+	fyne.Do(func() {
 		lbl := widget.NewLabel(lang.L("Current") + ": v" + s.version + " → " + lang.L("New") + ": " + latestVersionStr)
 		lbl.Alignment = fyne.TextAlignCenter
 		cnf := dialog.NewCustomConfirm(
@@ -117,9 +121,5 @@ func checkVersion(s *FyneScreen) {
 			s.Current,
 		)
 		cnf.Show()
-		return
-	default:
-		dialog.ShowInformation(lang.L("Version checker"), lang.L("No new version"), s.Current)
-		return
-	}
+	})
 }

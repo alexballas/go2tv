@@ -80,8 +80,7 @@ func TestServeContent(t *testing.T) {
 				t.Fatalf("%s: contentFeatures.dlna.org header does not exist", tc.name)
 			}
 
-			cfElements := strings.Split(cf[0], ";")
-			for _, c := range cfElements {
+			for c := range strings.SplitSeq(cf[0], ";") {
 				if strings.Contains(c, "DLNA.ORG_OP") {
 					if tc.tvdata != nil && tc.tvdata.Transcode && c != "DLNA.ORG_OP=00" {
 						t.Fatalf("%s: no proper DLNA.ORG_OP header for transcoded video", tc.name)

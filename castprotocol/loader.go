@@ -24,13 +24,12 @@ type TextTrackStyle struct {
 	FontScale       float32 `json:"fontScale,omitempty"`       // Font size multiplier
 }
 
-// CustomLoadPayload is a LoadMediaCommand with tracks support.
 // This extends the standard cast.LoadMediaCommand to include subtitle tracks.
 type CustomLoadPayload struct {
 	Type           string              `json:"type"`
 	RequestId      int                 `json:"requestId"`
 	Media          MediaItemWithTracks `json:"media"`
-	CurrentTime    float64             `json:"currentTime"` // Seconds (SDK uses float)
+	CurrentTime    *float64            `json:"currentTime,omitempty"` // Omit for LIVE to start at live edge
 	Autoplay       bool                `json:"autoplay"`
 	ActiveTrackIds []int               `json:"activeTrackIds,omitempty"`
 }
@@ -49,11 +48,18 @@ func (p *CustomLoadPayload) SetRequestId(id int) {
 // startTime: start position in seconds
 // duration: total media duration in seconds (0 to let Chromecast detect)
 // subtitleURL: URL of the WebVTT subtitle file (or empty for no subtitles)
-func LoadWithSubtitles(conn cast.Conn, transportId string, mediaURL string, contentType string, startTime int, duration float64, subtitleURL string) error {
+// live: if true, sets StreamType to "LIVE" to identify as live stream (DMR will show LIVE badge)
+// autoplay: if true, starts playback immediately; if false, waits for PLAY command
+func LoadWithSubtitles(conn cast.Conn, transportId string, mediaURL string, contentType string, startTime int, duration float64, subtitleURL string, live bool, autoplay bool) error {
+	streamType := "BUFFERED"
+	if live {
+		streamType = "LIVE"
+	}
+
 	media := MediaItemWithTracks{
 		ContentId:   mediaURL,
 		ContentType: contentType,
-		StreamType:  "BUFFERED",
+		StreamType:  streamType,
 	}
 
 	// Set duration if provided (useful for transcoded streams where Chromecast can't detect it)
@@ -82,9 +88,15 @@ func LoadWithSubtitles(conn cast.Conn, transportId string, mediaURL string, cont
 	payload := &CustomLoadPayload{
 		Type:           "LOAD",
 		Media:          media,
-		CurrentTime:    float64(startTime),
-		Autoplay:       true,
+		Autoplay:       autoplay,
 		ActiveTrackIds: activeTrackIds,
+	}
+
+	// For LIVE streams, omitting currentTime makes Chromecast jump to live edge.
+	// If startTime is explicitly set (>0), keep it.
+	if !live || startTime > 0 {
+		start := float64(startTime)
+		payload.CurrentTime = &start
 	}
 
 	requestID := nextRequestID()

@@ -8,12 +8,12 @@ jobs:
       fail-fast: false
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
 
     - name: Set env
       run: if grep -Fxq "devel" version.txt;then echo "GO2TV_VERSION=$(cat version.txt)";else echo "GO2TV_VERSION=v$(cat version.txt)";fi  >> $GITHUB_ENV
 
-    - uses: actions/setup-go@v5
+    - uses: actions/setup-go@v6
       with:
         go-version: 'stable'
 
@@ -48,7 +48,7 @@ jobs:
 
         mv Go2TV.apk ../../
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v6
       with:
         name: go2tv_${{ env.GO2TV_VERSION }}_android
         path: |

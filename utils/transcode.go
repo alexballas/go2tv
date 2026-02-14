@@ -1,5 +1,3 @@
-//go:build !windows
-
 package utils
 
 import (
@@ -99,6 +97,7 @@ func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec
 	// Use regular Command instead of CommandContext to avoid nil pointer crash
 	// when context cancels before process starts
 	cmd := exec.Command(args[0], args[1:]...)
+	setSysProcAttr(cmd)
 
 	*ff = *cmd
 
