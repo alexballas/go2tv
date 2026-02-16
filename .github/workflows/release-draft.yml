@@ -1,0 +1,165 @@
+name: Create Draft Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version for release (example: 2.1.1 or v2.1.1)
+        required: true
+      target_branch:
+        description: Branch artifacts should come from
+        required: true
+        default: devel
+        type: choice
+        options:
+          - devel
+          - main
+
+jobs:
+  draft-release:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - uses: actions/setup-go@v6
+      with:
+        go-version: 'stable'
+
+    - name: Normalize version
+      id: version
+      run: |
+        set -euo pipefail
+        raw="${{ inputs.version }}"
+        bare="${raw#v}"
+        if ! [[ "$bare" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "invalid version: $raw"
+          exit 1
+        fi
+        echo "bare=$bare" >> "$GITHUB_OUTPUT"
+        echo "tag=v$bare" >> "$GITHUB_OUTPUT"
+
+    - name: Validate version.txt
+      run: |
+        set -euo pipefail
+        current="$(cat version.txt)"
+        if [ "$current" != "${{ steps.version.outputs.bare }}" ]; then
+          echo "version.txt mismatch. got=$current expected=${{ steps.version.outputs.bare }}"
+          exit 1
+        fi
+
+    - name: Download latest artifacts for version
+      uses: actions/github-script@v7
+      env:
+        VERSION_TAG: ${{ steps.version.outputs.tag }}
+        TARGET_BRANCH: ${{ inputs.target_branch }}
+      with:
+        script: |
+          const fs = require("fs");
+          const path = require("path");
+          const versionTag = process.env.VERSION_TAG;
+          const targetBranch = process.env.TARGET_BRANCH;
+          const outDir = path.join(process.env.GITHUB_WORKSPACE, "raw-artifacts");
+          fs.mkdirSync(outDir, { recursive: true });
+
+          const artifacts = await github.paginate(github.rest.actions.listArtifactsForRepo, {
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            per_page: 100,
+          });
+
+          const expected = [
+            `go2tv_${versionTag}_android`,
+            `go2tv_${versionTag}_linux_amd64`,
+            `go2tv_${versionTag}_linux_arm`,
+            `go2tv_${versionTag}_linux_arm64`,
+            `go2tv_${versionTag}_macOS_amd64`,
+            `go2tv_${versionTag}_macOS_arm64`,
+            `go2tv_${versionTag}_windows_amd64`,
+          ];
+
+          const candidates = artifacts.filter((artifact) => {
+            if (artifact.expired) return false;
+            if (!expected.includes(artifact.name)) return false;
+            const run = artifact.workflow_run || {};
+            if (!run.head_branch) return true;
+            return run.head_branch === targetBranch;
+          });
+
+          const latestByName = new Map();
+          for (const artifact of candidates) {
+            const prev = latestByName.get(artifact.name);
+            if (!prev || new Date(artifact.created_at) > new Date(prev.created_at)) {
+              latestByName.set(artifact.name, artifact);
+            }
+          }
+
+          const missing = expected.filter((name) => !latestByName.has(name));
+          if (missing.length > 0) {
+            core.setFailed(`missing artifacts: ${missing.join(", ")}`);
+            return;
+          }
+
+          for (const name of expected) {
+            const artifact = latestByName.get(name);
+            core.info(`downloading ${artifact.name} (${artifact.id})`);
+            const zipData = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: artifact.id,
+              archive_format: "zip",
+            });
+            fs.writeFileSync(path.join(outDir, `${artifact.name}.zip`), Buffer.from(zipData.data));
+          }
+
+    - name: Repack assets
+      run: |
+        set -euo pipefail
+        mkdir -p release-assets
+        shopt -s nullglob
+
+        for zip_path in raw-artifacts/*.zip; do
+          name="$(basename "$zip_path" .zip)"
+          workdir="$(mktemp -d)"
+
+          unzip -q "$zip_path" -d "$workdir"
+
+          if [[ "$name" == *"_linux_"* ]] && [ -f "$workdir/go2tv" ]; then
+            chmod +x "$workdir/go2tv"
+          fi
+
+          if [[ "$name" == *"_macOS_"* ]] && [ -f "$workdir/go2tv.app/Contents/MacOS/go2tv" ]; then
+            chmod +x "$workdir/go2tv.app/Contents/MacOS/go2tv"
+          fi
+
+          (
+            cd "$workdir"
+            zip -qry "$GITHUB_WORKSPACE/release-assets/${name}.zip" .
+          )
+
+          rm -rf "$workdir"
+        done
+
+        ls -1 release-assets
+
+    - name: Build release notes from appdata
+      run: |
+        set -euo pipefail
+        go run ./scripts/release/extract_appdata_notes.go "${{ steps.version.outputs.bare }}" > /tmp/release_notes.md
+        cat /tmp/release_notes.md
+
+    - name: Create or update draft release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.version.outputs.tag }}
+        target_commitish: ${{ inputs.target_branch }}
+        name: Go2TV ${{ steps.version.outputs.tag }}
+        body_path: /tmp/release_notes.md
+        files: release-assets/*.zip
+        draft: true
+        overwrite_files: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
