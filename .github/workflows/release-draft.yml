@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version for release (example: 2.1.1 or v2.1.1)
+        description: "Version for release (example: 2.1.1 or v2.1.1)"
         required: true
       target_branch:
-        description: Branch artifacts should come from
+        description: "Branch artifacts should come from"
         required: true
         default: devel
         type: choice
@@ -127,6 +127,15 @@ jobs:
 
           unzip -q "$zip_path" -d "$workdir"
 
+          if [[ "$name" == *"_android" ]]; then
+            apk_path="$(find "$workdir" -type f -name 'Go2TV.apk' | head -n1 || true)"
+            if [ -z "$apk_path" ]; then
+              echo "android apk missing in $zip_path"
+              exit 1
+            fi
+            cp "$apk_path" "$GITHUB_WORKSPACE/release-assets/Go2TV.apk"
+          fi
+
           if [[ "$name" == *"_linux_"* ]] && [ -f "$workdir/go2tv" ]; then
             chmod +x "$workdir/go2tv"
           fi
@@ -158,7 +167,9 @@ jobs:
         target_commitish: ${{ inputs.target_branch }}
         name: Go2TV ${{ steps.version.outputs.tag }}
         body_path: /tmp/release_notes.md
-        files: release-assets/*.zip
+        files: |
+          release-assets/*.zip
+          release-assets/Go2TV.apk
         draft: true
         overwrite_files: true
       env:
