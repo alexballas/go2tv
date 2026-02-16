@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version for release (example: 2.1.1 or v2.1.1)
+        description: "Version for release (example: 2.1.1 or v2.1.1)"
         required: true
       target_branch:
-        description: Branch artifacts should come from
+        description: "Branch artifacts should come from"
         required: true
         default: devel
         type: choice
