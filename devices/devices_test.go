@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/koron/go-ssdp"
+	"github.com/alexballas/go-ssdp"
 	"go2tv.app/go2tv/v2/soapcalls"
 )
 
