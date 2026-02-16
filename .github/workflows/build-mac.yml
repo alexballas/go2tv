@@ -8,23 +8,29 @@ jobs:
       fail-fast: false
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
 
     - name: Set env
-      run: if grep -Fxq "devel" cmd/go2tv/version.txt;then echo "GO2TV_VERSION=$(cat cmd/go2tv/version.txt)";else echo "GO2TV_VERSION=v$(cat cmd/go2tv/version.txt)";fi  >> $GITHUB_ENV
+      run: if grep -Fxq "devel" version.txt;then echo "GO2TV_VERSION=$(cat version.txt)";else echo "GO2TV_VERSION=v$(cat version.txt)";fi  >> $GITHUB_ENV
 
-    - uses: WillAbides/setup-go-faster@v1.14.0
-      id: setup-go-faster
+    - uses: actions/setup-go@v6
       with:
-        go-version: "*"
+        go-version: 'stable'
 
     - name: Install fyne
       run: go install fyne.io/tools/cmd/fyne@latest
 
-    - name: Package (macOS)
-      run:  cd cmd/go2tv && GOARCH=arm64 fyne package --release --os darwin --icon  ../../assets/go2tv-icon.png  && mv go2tv.app ../../
+    - name: Update FyneApp.toml version
+      run: sed -i '' "s/^Version.*/Version = \"${{ env.GO2TV_VERSION }}\"/" cmd/go2tv/FyneApp.toml
 
-    - uses: actions/upload-artifact@v4
+    - name: Package (macOS)
+      run: |
+        cd cmd/go2tv
+        sed -i '' "s/version      = \"dev\"/version      = \"$(echo ${{ env.GO2TV_VERSION }} | sed 's/^v//')\"/" go2tv.go
+        GOARCH=arm64 fyne package --release --os darwin --icon ../../assets/go2tv-icon.png
+        mv go2tv.app ../../
+
+    - uses: actions/upload-artifact@v6
       with:
         name: go2tv_${{ env.GO2TV_VERSION }}_macOS_arm64
         path: |

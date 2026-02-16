@@ -8,23 +8,22 @@ jobs:
       fail-fast: false
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
 
     - name: Set env
-      run: if grep -Fxq "devel" cmd/go2tv/version.txt;then echo "GO2TV_VERSION=$(cat cmd/go2tv/version.txt)";else echo "GO2TV_VERSION=v$(cat cmd/go2tv/version.txt)";fi  >> $GITHUB_ENV
+      run: if grep -Fxq "devel" version.txt;then echo "GO2TV_VERSION=$(cat version.txt)";else echo "GO2TV_VERSION=v$(cat version.txt)";fi  >> $GITHUB_ENV
 
-    - uses: WillAbides/setup-go-faster@v1.14.0
-      id: setup-go-faster
+    - uses: actions/setup-go@v6
       with:
-        go-version: "*"
+        go-version: 'stable'
 
     - name: Get dependencies
       run: sudo apt update && sudo apt install xorg-dev
 
     - name: Package (Linux)
-      run: GOOS=linux GOARCH=amd64 go build -tags migrated_fynedo -ldflags "-s -w" -o go2tv cmd/go2tv/go2tv.go
+      run: GOOS=linux GOARCH=amd64 go build -tags migrated_fynedo -ldflags "-s -w -X main.version=$(echo ${{ env.GO2TV_VERSION }} | sed 's/^v//')" -o go2tv cmd/go2tv/go2tv.go
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v6
       with:
         name: go2tv_${{ env.GO2TV_VERSION }}_linux_amd64
         path: |

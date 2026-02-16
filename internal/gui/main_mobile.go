@@ -15,9 +15,9 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/alexballas/go2tv/devices"
-	"github.com/alexballas/go2tv/soapcalls"
-	"github.com/alexballas/go2tv/soapcalls/utils"
+	"go2tv.app/go2tv/v2/devices"
+	"go2tv.app/go2tv/v2/soapcalls"
+	"go2tv.app/go2tv/v2/utils"
 )
 
 type deviceList struct {
@@ -25,6 +25,17 @@ type deviceList struct {
 }
 
 func (c *deviceList) FocusGained() {}
+
+// sortDevTypeSlice sorts devices alphabetically by name,
+// with DLNA devices before Chromecast devices when names are equal.
+func sortDevTypeSlice(d []devType) {
+	sort.Slice(d, func(i, j int) bool {
+		if d[i].deviceType != d[j].deviceType {
+			return d[i].deviceType < d[j].deviceType
+		}
+		return d[i].name < d[j].name
+	})
+}
 
 func newDeviceList(dd *[]devType) *deviceList {
 	list := &deviceList{}
@@ -39,9 +50,7 @@ func newDeviceList(dd *[]devType) *deviceList {
 	}
 
 	list.UpdateItem = func(i widget.ListItemID, o fyne.CanvasObject) {
-		fyne.Do(func() {
-			o.(*fyne.Container).Objects[1].(*widget.Label).SetText((*dd)[i].name)
-		})
+		o.(*fyne.Container).Objects[1].(*widget.Label).SetText((*dd)[i].name)
 	}
 
 	list.ExtendBaseWidget(list)
@@ -56,17 +65,16 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	// Avoid parallel execution of getDevices.
 	blockGetDevices := make(chan struct{})
 	go func() {
-		var err error
-		data, err = getDevices(1)
+		datanew, err := getDevices(1)
 		if err != nil {
-			data = nil
+			datanew = nil
 		}
 
-		sort.Slice(data, func(i, j int) bool {
-			return (data)[i].name < (data)[j].name
-		})
+		// Sort devices alphabetically for consistent ordering
+		sortDevTypeSlice(datanew)
 
-		fyne.Do(func() {
+		fyne.DoAndWait(func() {
+			data = datanew
 			list.Refresh()
 		})
 
@@ -90,51 +98,37 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	sfiletext.Disable()
 
 	playpause := widget.NewButtonWithIcon(lang.L("Play"), theme.MediaPlayIcon(), func() {
-		go fyne.Do(func() {
-			playAction(s)
-		})
+		playAction(s)
 	})
 
 	stop := widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
-		go fyne.Do(func() {
-			stopAction(s)
-		})
+		stopAction(s)
 	})
 
 	volumeup := widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
-		go fyne.Do(func() {
-			volumeAction(s, true)
-		})
+		volumeAction(s, true)
 	})
 
 	muteunmute := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() {
-		go fyne.Do(func() {
-			muteAction(s)
-		})
+		muteAction(s)
 	})
 
 	volumedown := widget.NewButtonWithIcon("", theme.ContentRemoveIcon(), func() {
-		go fyne.Do(func() {
-			volumeAction(s, false)
-		})
+		volumeAction(s, false)
 	})
 
 	clearmedia := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		go fyne.Do(func() {
-			clearmediaAction(s)
-		})
+		clearmediaAction(s)
 	})
 
 	clearsubs := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		go fyne.Do(func() {
-			clearsubsAction(s)
-		})
+		clearsubsAction(s)
 	})
 
 	externalmedia := widget.NewCheck(lang.L("Media from URL"), func(b bool) {})
 	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
 
-	mediafilelabel := widget.NewLabel(lang.L("File") + ":")
+	mediafilelabel := widget.NewLabel(lang.L("Media File") + ":")
 	subsfilelabel := widget.NewLabel(lang.L("Subtitles") + ":")
 	devicelabel := widget.NewLabel(lang.L("Select Device") + ":")
 
@@ -164,17 +158,38 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
 		playpause.Enable()
-		t, err := soapcalls.DMRextractor(context.Background(), data[id].addr)
-		check(w, err)
-		if err == nil {
-			s.selectedDevice = data[id]
-			s.controlURL = t.AvtransportControlURL
-			s.eventlURL = t.AvtransportEventSubURL
-			s.renderingControlURL = t.RenderingControlURL
-			s.connectionManagerURL = t.ConnectionManagerURL
-			if s.tvdata != nil {
-				s.tvdata.RenderingControlURL = s.renderingControlURL
+
+		s.selectedDevice = data[id]
+		s.selectedDeviceType = data[id].deviceType
+
+		// Reset device state when switching, but preserve active Chromecast session
+		// so user can still control it while browsing other devices
+		currentState := s.getScreenState()
+		isActivePlayback := currentState == "Playing" || currentState == "Paused"
+		if s.chromecastClient != nil && !isActivePlayback {
+			s.chromecastClient.Close(false)
+			s.chromecastClient = nil
+		}
+
+		switch data[id].deviceType {
+		case devices.DeviceTypeDLNA:
+			t, err := soapcalls.DMRextractor(context.Background(), data[id].addr)
+			check(w, err)
+			if err == nil {
+				s.controlURL = t.AvtransportControlURL
+				s.eventlURL = t.AvtransportEventSubURL
+				s.renderingControlURL = t.RenderingControlURL
+				s.connectionManagerURL = t.ConnectionManagerURL
+				if s.tvdata != nil {
+					s.tvdata.RenderingControlURL = s.renderingControlURL
+				}
 			}
+		case devices.DeviceTypeChromecast:
+			// Clear DLNA-specific state when selecting Chromecast
+			s.controlURL = ""
+			s.eventlURL = ""
+			s.renderingControlURL = ""
+			s.connectionManagerURL = ""
 		}
 	}
 
@@ -205,7 +220,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 		medialoop.Enable()
 		mfile.Enable()
-		mediafilelabel.Text = lang.L("File") + ":"
+		mediafilelabel.Text = lang.L("Media File") + ":"
 		mfiletext.SetPlaceHolder("")
 		s.MediaText.Text = mediafileOldText
 		s.mediafile = mediafileOld
@@ -242,8 +257,20 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 	for range refreshDevices.C {
 		datanew, _ := getDevices(2)
 
+		var oldDevices []devType
+		var selectedAddr string
+		var selectedDeviceAddr string
+		fyne.DoAndWait(func() {
+			oldDevices = append([]devType(nil), (*data)...)
+			selectedDeviceAddr = s.selectedDevice.addr
+			selectedAddr = s.controlURL
+			if s.selectedDeviceType == devices.DeviceTypeChromecast {
+				selectedAddr = selectedDeviceAddr
+			}
+		})
+
 	outer:
-		for _, old := range *data {
+		for _, old := range oldDevices {
 			oldAddress, _ := url.Parse(old.addr)
 			for _, new := range datanew {
 				newAddress, _ := url.Parse(new.addr)
@@ -255,43 +282,55 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 			if utils.HostPortIsAlive(oldAddress.Host) {
 				datanew = append(datanew, old)
 			}
-
-			sort.Slice(datanew, func(i, j int) bool {
-				return (datanew)[i].name < (datanew)[j].name
-			})
 		}
+
+		// Sort devices alphabetically for consistent ordering
+		sortDevTypeSlice(datanew)
 
 		// check to see if the new refresh includes
 		// one of the already selected devices
 		var includes bool
-		u, _ := url.Parse(s.controlURL)
-		for _, d := range datanew {
-			n, _ := url.Parse(d.addr)
-			if n.Host == u.Host {
-				includes = true
+		if selectedAddr != "" {
+			u, _ := url.Parse(selectedAddr)
+			for _, d := range datanew {
+				n, _ := url.Parse(d.addr)
+				if n.Host == u.Host {
+					includes = true
+				}
 			}
 		}
 
-		*data = datanew
-
-		if !includes && !utils.HostPortIsAlive(u.Host) {
-			s.controlURL = ""
-			s.DeviceList.UnselectAll()
-		}
-
-		var found bool
-		for n, a := range *data {
-			if s.selectedDevice.addr == a.addr {
-				found = true
-				s.DeviceList.Select(n)
+		clearSelection := false
+		if selectedAddr != "" && !includes {
+			u, _ := url.Parse(selectedAddr)
+			if !utils.HostPortIsAlive(u.Host) {
+				clearSelection = true
 			}
 		}
 
-		if !found {
-			s.DeviceList.UnselectAll()
+		foundIdx := -1
+		if selectedDeviceAddr != "" {
+			for n, a := range datanew {
+				if selectedDeviceAddr == a.addr {
+					foundIdx = n
+					break
+				}
+			}
 		}
 
-		fyne.Do(func() {
+		fyne.DoAndWait(func() {
+			*data = datanew
+
+			if clearSelection {
+				s.controlURL = ""
+				s.selectedDevice = devType{}
+				s.DeviceList.UnselectAll()
+			} else if foundIdx >= 0 {
+				s.DeviceList.Select(foundIdx)
+			} else {
+				s.DeviceList.UnselectAll()
+			}
+
 			s.DeviceList.Refresh()
 		})
 	}
@@ -302,7 +341,24 @@ func checkMutefunc(s *FyneScreen) {
 
 	var checkMuteCounter int
 	for range checkMute.C {
+		// Handle Chromecast mute status
+		if s.selectedDeviceType == devices.DeviceTypeChromecast {
+			if s.chromecastClient == nil || !s.chromecastClient.IsConnected() {
+				continue
+			}
+			status, err := s.chromecastClient.GetStatus()
+			if err != nil {
+				continue
+			}
+			if status.Muted {
+				setMuteUnmuteView("Unmute", s)
+			} else {
+				setMuteUnmuteView("Mute", s)
+			}
+			continue
+		}
 
+		// Handle DLNA mute status
 		// Stop trying after 5 failures
 		// to get the mute status
 		if checkMuteCounter == 5 {

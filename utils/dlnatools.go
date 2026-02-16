@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 
@@ -97,18 +98,33 @@ func BuildContentFeatures(mediaType string, seek string, transcode bool) (string
 	return cf.String(), nil
 }
 
-// GetMimeDetailsFromFile returns the media file mime details.
-func GetMimeDetailsFromFile(f io.ReadCloser) (string, error) {
-	defer f.Close()
-	head := make([]byte, 261)
-	_, err := f.Read(head)
+// GetMimeDetailsFromPath returns the media mime details from a local file path.
+func GetMimeDetailsFromPath(path string) (string, error) {
+	f, err := os.Open(path)
 	if err != nil {
-		return "", fmt.Errorf("getMimeDetailsFromFile error #2: %w", err)
+		return "", fmt.Errorf("getMimeDetailsFromPath: %w", err)
+	}
+	defer f.Close()
+
+	head := make([]byte, 261)
+	_, err = f.Read(head)
+	if err != nil {
+		return "", fmt.Errorf("getMimeDetailsFromPath error #2: %w", err)
 	}
 
 	kind, err := filetype.Match(head)
 	if err != nil {
-		return "", fmt.Errorf("getMimeDetailsFromFile error #3: %w", err)
+		return "", fmt.Errorf("getMimeDetailsFromPath error #3: %w", err)
+	}
+
+	return fmt.Sprintf("%s/%s", kind.MIME.Type, kind.MIME.Subtype), nil
+}
+
+// GetMimeDetailsFromBytes returns the media mime details from a byte slice.
+func GetMimeDetailsFromBytes(data []byte) (string, error) {
+	kind, err := filetype.Match(data)
+	if err != nil {
+		return "", fmt.Errorf("getMimeDetailsFromBytes error: %w", err)
 	}
 
 	return fmt.Sprintf("%s/%s", kind.MIME.Type, kind.MIME.Subtype), nil

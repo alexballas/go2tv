@@ -4,7 +4,7 @@
 
   <name>Go2TV</name>
   <developer_name>Alexandros Ballas</developer_name>
-  <summary>Stream media to TVs and devices</summary>
+  <summary>Cast media files to Smart TVs and Chromecast devices</summary>
 
   <metadata_license>MIT</metadata_license>
   <project_license>MIT</project_license>
@@ -15,21 +15,25 @@
   </supports>
 
   <description>
-   <p>Go2TV is a lightweight app designed to cast media files from your device directly to a Smart TV or any DLNA-compatible device on the same network. It supports various file formats and allows seamless streaming of videos, music, or images without the need for complicated setups or additional hardware. With its intuitive interface, Go2TV makes it simple to browse and select files, enabling users to enjoy their favorite content on the big screen with just a few taps. Perfect for casual media sharing or presentations, it's a convenient tool for enhancing your home entertainment experience.</p>
+   <p>Go2TV lets you play video, audio, and image files on your Smart TV or Chromecast device directly from your computer. It works with Smart TVs (Samsung, LG, Sony via DLNA/UPnP), Chromecast devices, BubbleUPnP, and GMediaRender. No need to copy files to a USB drive or set up a media server. Just select your file, pick your device, and play. Supports auto-discovery, transcoding for incompatible formats, external and embedded subtitles, seek support, and both GUI and CLI modes.</p>
   </description>
 
   <launchable type="desktop-id">app.go2tv.go2tv.desktop</launchable>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/alexballas/go2tv/devel/assets/screenshots/Screenshot_light.png</image>
-      <caption>Main window (light mode)</caption>
+      <image>https://i.imgur.com/6hwB4DC.png</image>
+      <caption>Main window (light mode - view 1)</caption>
+    </screenshot>
+     <screenshot>
+      <image>https://i.imgur.com/dQ40FWb.png</image>
+      <caption>Main window (light mode - view 2)</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/alexballas/go2tv/devel/assets/screenshots/Screenshot_dark.png</image>
+      <image>https://i.imgur.com/TKqpwfe.png</image>
       <caption>Main window (dark mode)</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/alexballas/go2tv/devel/assets/screenshots/Screenshot_settings_dark.png</image>
+      <image>https://i.imgur.com/mc8WvnS.png</image>
       <caption>Settings window (dark mode)</caption>
     </screenshot>
   </screenshots>
@@ -47,6 +51,55 @@
   </branding>
 
   <releases>
+        <release version="2.1.0" date="2026-02-02" type="stable">
+        <description>
+          <ul>
+            <li>Added built-in RTMP Server for OBS-to-Chromecast live streaming (requires FFmpeg).</li>
+            <li>Revamped UI with refreshed styling, modern checkbox designs, and active device indicators.</li>
+            <li>Optimized Chromecast live casting for lower latency and improved responsiveness.</li>
+            <li>Enhanced DLNA protocol compatibility and smart sensing for audio-only devices.</li>
+            <li>Added UPnP M-POST fallback and RFC-compliant relative URL resolution for wider renderer compatibility.</li>
+            <li>Improved UPnP action handling for Play/Pause/Next and device state mapping.</li>
+            <li>Improved UPnP discovery interoperability and callback/event URL handling.</li>
+            <li>Refactored UI threading (Fyne.Do) for improved stability and eliminated potential race conditions.</li>
+            <li>Improved File Picker: Now featuring type-to-search and thumbnails support.</li>
+            <li>Improved Chromecast discovery and warmup to reduce device discovery latency.</li>
+          </ul>
+        </description>
+        <url type="details">https://github.com/alexballas/go2tv/releases/tag/v2.1.0</url>
+      </release>
+        <release version="2.0.2" date="2026-01-30" type="stable">
+        <description>
+          <ul>
+            <li>Fixed broken media detection causing transcoding to be forced on images and audio.</li>
+          </ul>
+        </description>
+        <url type="details">https://github.com/alexballas/go2tv/releases/tag/v2.0.2</url>
+      </release>
+        <release version="2.0.1" date="2026-01-29" type="stable">
+        <description>
+          <ul>
+            <li>Fixed Chromecast discovery on Windows systems with multiple network adapters (VPN, Hyper-V, Docker).</li>
+            <li>Fixed "context deadline exceeded" error on slow TVs by increasing retry attempts and delays.</li>
+            <li>Added screen blanking prevention on mobile to keep display on during playback.</li>
+          </ul>
+        </description>
+        <url type="details">https://github.com/alexballas/go2tv/releases/tag/v2.0.1</url>
+      </release>
+        <release version="2.0.0" date="2026-01-15" type="stable">
+        <description>
+          <ul>
+            <li>Added full Chromecast V2 support with mDNS discovery, playback controls, and subtitle support.</li>
+            <li>Implemented stdin piping support for streaming directly from tools like yt-dlp.</li>
+            <li>Introduced on-the-fly transcoding infrastructure for Chromecast compatibility.</li>
+            <li>Fixed critical Android crash by updating Fyne dependencies and JNI interactions.</li>
+            <li>Improved mDNS recovery after mobile devices wake from sleep mode.</li>
+            <li>Optimized mobile streaming with temporary file caching for seeking support.</li>
+            <li>Fixed Chinese character rendering in flatpak builds.</li>
+          </ul>
+        </description>
+        <url type="details">https://github.com/alexballas/go2tv/releases/tag/v2.0.0</url>
+      </release>
         <release version="1.19.0" date="2025-10-13" type="stable">
         <description>
           <ul>

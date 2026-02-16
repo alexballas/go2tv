@@ -11,6 +11,19 @@ import (
 	"time"
 )
 
+// GetOutboundIP gets the preferred outbound IP of this machine
+func GetOutboundIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+
+	return localAddr.IP.String()
+}
+
 // URLtoListenIPandPort for a given internal URL,
 // find the correct IP/Interface to listen to.
 func URLtoListenIPandPort(u string) (string, error) {

@@ -1,5 +1,6 @@
-LDFLAGS="-s -w"
-LDFLAGS_WINDOWS="-s -w -H=windowsgui"
+VERSION=$(shell cat version.txt)
+LDFLAGS="-s -w -X main.version=$(VERSION)"
+LDFLAGS_WINDOWS="-s -w -H=windowsgui -X main.version=$(VERSION)"
 TAGS?=migrated_fynedo
 
 BUILD_DIR=build
@@ -18,13 +19,17 @@ APPIMAGETOOL=$(BUILD_DIR)/appimagetool
 ARCH:=$(shell uname -m)
 APPIMAGE_OUT=$(BUILD_DIR)/Go2TV-$(ARCH).AppImage
 
-.PHONY: build windows install uninstall clean run test appimage appimage-clean
+.PHONY: build wayland windows install uninstall clean run test appimage appimage-clean
 
 build: clean
-	go build -tags "$(TAGS)" -trimpath -ldflags $(LDFLAGS) -o $(BIN) cmd/go2tv/go2tv.go
+	go build -tags "$(TAGS)" -trimpath -ldflags $(LDFLAGS) -o $(BIN) ./cmd/go2tv
+
+wayland: clean
+	go build -tags "$(TAGS),wayland" -trimpath -ldflags $(LDFLAGS) -o $(BIN) ./cmd/go2tv
 
 windows: clean
-	env CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ GOOS=windows GOARCH=amd64 go build -tags "$(TAGS)" -trimpath -ldflags $(LDFLAGS_WINDOWS) -o $(BIN_WIN) cmd/go2tv/go2tv.go
+	env CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ GOOS=windows GOARCH=amd64 go build -tags "$(TAGS)" -trimpath -ldflags $(LDFLAGS_WINDOWS) -o $(BIN_WIN) ./cmd/go2tv
+
 
 install: build
 	mkdir -vp /usr/local/bin/

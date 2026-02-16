@@ -4,12 +4,7 @@ package gui
 
 import (
 	"errors"
-	"net/http"
 	"net/url"
-	"path/filepath"
-	"strconv"
-	"strings"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -22,9 +17,9 @@ func aboutWindow(s *FyneScreen) fyne.CanvasObject {
 	richhead := widget.NewRichTextFromMarkdown(`
 # Go2TV
 
-Cast your media files to UPnP/DLNA
+Cast media files to Smart TVs
 
-Media Renderers and Smart TVs
+and Chromecast devices
 
 ---
 
@@ -46,16 +41,14 @@ MIT
 			seg.Alignment = fyne.TextAlignCenter
 		}
 	}
-	githubbutton := widget.NewButton(lang.L("Github page"), func() {
+	githubbutton := widget.NewButton(lang.L("Website"), func() {
 		go func() {
-			u, _ := url.Parse("https://github.com/alexballas/go2tv")
+			u, _ := url.Parse("https://go2tv.app/")
 			_ = fyne.CurrentApp().OpenURL(u)
 		}()
 	})
 	checkversion := widget.NewButton(lang.L("Check version"), func() {
-		go fyne.Do(func() {
-			checkVersion(s)
-		})
+		go checkVersion(s)
 	})
 
 	s.CheckVersion = checkversion
@@ -64,63 +57,69 @@ MIT
 }
 
 func checkVersion(s *FyneScreen) {
-	s.CheckVersion.Disable()
-	defer s.CheckVersion.Enable()
-	errRedirectChecker := errors.New("redirect")
+	fyne.Do(func() {
+		s.CheckVersion.Disable()
+	})
+	defer fyne.Do(func() {
+		s.CheckVersion.Enable()
+	})
 	errVersioncomp := errors.New(lang.L("failed to get version info") + "\n" + lang.L("you're using a development or a non-compiled version"))
 	errVersionGet := errors.New(lang.L("failed to get version info") + "\n" + lang.L("check your internet connection"))
 
-	str := strings.ReplaceAll(s.version, ".", "")
-	str = strings.TrimSpace(str)
-	currversion, err := strconv.Atoi(str)
-	if err != nil {
-		dialog.ShowError(errVersioncomp, s.Current)
+	// Parse current version
+	// Check if current version is valid/parsable (not "dev")
+	if _, err := parseVersion(s.version); err != nil {
+		fyne.Do(func() {
+			dialog.ShowError(errVersioncomp, s.Current)
+		})
 		return
 	}
 
-	req, err := http.NewRequest("GET", "https://github.com/alexballas/Go2TV/releases/latest", nil)
+	latestVersionStr, err := getLatestVersion()
 	if err != nil {
-		dialog.ShowError(errVersionGet, s.Current)
-	}
-
-	client := &http.Client{
-		Timeout: time.Duration(3 * time.Second),
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return errRedirectChecker
-		},
-	}
-
-	response, err := client.Do(req)
-	if err != nil && !errors.Is(err, errRedirectChecker) {
-		dialog.ShowError(errVersionGet, s.Current)
+		fyne.Do(func() {
+			dialog.ShowError(errVersionGet, s.Current)
+		})
 		return
 	}
 
-	defer response.Body.Close()
-
-	if errors.Is(err, errRedirectChecker) {
-		url, err := response.Location()
-		if err != nil {
+	cmp, err := compareVersions(latestVersionStr, s.version)
+	if err != nil {
+		fyne.Do(func() {
 			dialog.ShowError(errVersionGet, s.Current)
-			return
-		}
-		str := strings.Trim(filepath.Base(url.Path), "v")
-		str = strings.ReplaceAll(str, ".", "")
-		chversion, err := strconv.Atoi(str)
-		if err != nil {
-			dialog.ShowError(errVersionGet, s.Current)
-			return
-		}
+		})
+		return
+	}
 
-		switch {
-		case chversion > currversion:
-			dialog.ShowInformation(lang.L("Version checker"), lang.L("New version")+": "+strings.Trim(filepath.Base(url.Path), "v"), s.Current)
-			return
-		default:
+	switch cmp {
+	case 1:
+		showVersionPopup(latestVersionStr, s)
+		return
+	default:
+		fyne.Do(func() {
 			dialog.ShowInformation(lang.L("Version checker"), lang.L("No new version"), s.Current)
-			return
-		}
+		})
+		return
 	}
+}
 
-	dialog.ShowError(errVersionGet, s.Current)
+func showVersionPopup(latestVersionStr string, s *FyneScreen) {
+	fyne.Do(func() {
+		lbl := widget.NewLabel(lang.L("Current") + ": v" + s.version + " → " + lang.L("New") + ": " + latestVersionStr)
+		lbl.Alignment = fyne.TextAlignCenter
+		cnf := dialog.NewCustomConfirm(
+			lang.L("Version checker"),
+			lang.L("Download"),
+			lang.L("Cancel"),
+			lbl,
+			func(b bool) {
+				if b {
+					u, _ := url.Parse("https://go2tv.app/latest")
+					_ = fyne.CurrentApp().OpenURL(u)
+				}
+			},
+			s.Current,
+		)
+		cnf.Show()
+	})
 }

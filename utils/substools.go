@@ -1,5 +1,3 @@
-//go:build !windows
-
 package utils
 
 import (
@@ -51,6 +49,7 @@ func GetSubs(ffmpeg string, f string) ([]string, error) {
 		"-of", "json",
 		f,
 	)
+	setSysProcAttr(cmd)
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -114,6 +113,7 @@ func ExtractSub(ffmpeg string, n int, f string) (string, error) {
 		"-map", "0:s:"+strconv.Itoa(n),
 		tempSub.Name(),
 	)
+	setSysProcAttr(cmd)
 
 	_, err = cmd.Output()
 	if err != nil {

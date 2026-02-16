@@ -5,11 +5,10 @@ import (
 	"encoding/xml"
 	"fmt"
 	"net/url"
-	"regexp"
 	"strings"
 
-	"github.com/alexballas/go2tv/soapcalls/utils"
 	"github.com/pkg/errors"
+	"go2tv.app/go2tv/v2/utils"
 )
 
 var (
@@ -51,7 +50,6 @@ type pauseAction struct {
 	XMLName     xml.Name `xml:"u:Pause"`
 	AVTransport string   `xml:"xmlns:u,attr"`
 	InstanceID  string
-	Speed       string
 }
 
 type stopEnvelope struct {
@@ -70,7 +68,6 @@ type stopAction struct {
 	XMLName     xml.Name `xml:"u:Stop"`
 	AVTransport string   `xml:"xmlns:u,attr"`
 	InstanceID  string
-	Speed       string
 }
 
 type seekEnvelope struct {
@@ -333,6 +330,10 @@ type getPositionInfoAction struct {
 }
 
 func setAVTransportSoapBuild(tvdata *TVPayload) ([]byte, error) {
+	return setAVTransportSoapBuildWithCompat(tvdata, false)
+}
+
+func setAVTransportSoapBuildWithCompat(tvdata *TVPayload, legacyMetadataCompat bool) ([]byte, error) {
 	mediaTypeSlice := strings.Split(tvdata.MediaType, "/")
 	seekflag := "00"
 	if tvdata.Seekable {
@@ -360,12 +361,6 @@ func setAVTransportSoapBuild(tvdata *TVPayload) ([]byte, error) {
 	}
 
 	mediaTitle := strings.TrimLeft(mediaTitlefromURL.Path, "/")
-
-	re, err := regexp.Compile(`[&<>\\]+`)
-	if err != nil {
-		return nil, fmt.Errorf("setAVTransportSoapBuild regex compile error: %w", err)
-	}
-	mediaTitle = re.ReplaceAllString(mediaTitle, "")
 
 	var didl didLLiteItem
 	resNodeData := []resNode{}
@@ -463,11 +458,39 @@ func setAVTransportSoapBuild(tvdata *TVPayload) ([]byte, error) {
 		return nil, fmt.Errorf("setAVTransportSoapBuild #2 Marshal error: %w", err)
 	}
 
-	// Samsung TV hack.
-	b = bytes.ReplaceAll(b, []byte("&#34;"), []byte(`"`))
-	b = bytes.ReplaceAll(b, []byte("&amp;"), []byte("&"))
+	if legacyMetadataCompat {
+		// Some Samsung renderers reject fully escaped nested DIDL metadata.
+		b = applyLegacyDIDLCompatOnCurrentURIMetadata(b)
+	}
 
 	return append(xmlStart, b...), nil
+}
+
+func applyLegacyDIDLCompatOnCurrentURIMetadata(input []byte) []byte {
+	startTag := []byte("<CurrentURIMetaData>")
+	endTag := []byte("</CurrentURIMetaData>")
+
+	startIdx := bytes.Index(input, startTag)
+	endIdx := bytes.Index(input, endTag)
+	if startIdx == -1 || endIdx == -1 {
+		return input
+	}
+
+	startIdx += len(startTag)
+	if startIdx >= endIdx {
+		return input
+	}
+
+	metadata := append([]byte(nil), input[startIdx:endIdx]...)
+	metadata = bytes.ReplaceAll(metadata, []byte("&#34;"), []byte(`"`))
+	metadata = bytes.ReplaceAll(metadata, []byte("&amp;"), []byte("&"))
+
+	out := make([]byte, 0, len(input)-(endIdx-startIdx)+len(metadata))
+	out = append(out, input[:startIdx]...)
+	out = append(out, metadata...)
+	out = append(out, input[endIdx:]...)
+
+	return out
 }
 
 func setNextAVTransportSoapBuild(tvdata *TVPayload, clear bool) ([]byte, error) {
@@ -503,12 +526,6 @@ func setNextAVTransportSoapBuild(tvdata *TVPayload, clear bool) ([]byte, error) 
 	}
 
 	mediaTitle := strings.TrimLeft(mediaTitlefromURL.Path, "/")
-
-	re, err := regexp.Compile(`[&<>\\]+`)
-	if err != nil {
-		return nil, fmt.Errorf("setNextAVTransportSoapBuild regex compile error: %w", err)
-	}
-	mediaTitle = re.ReplaceAllString(mediaTitle, "")
 
 	var didl didLLiteItem
 	resNodeData := []resNode{}
@@ -606,10 +623,6 @@ func setNextAVTransportSoapBuild(tvdata *TVPayload, clear bool) ([]byte, error) 
 		return nil, fmt.Errorf("setNextAVTransportSoapBuild #2 Marshal error: %w", err)
 	}
 
-	// Samsung TV hack.
-	b = bytes.ReplaceAll(b, []byte("&#34;"), []byte(`"`))
-	b = bytes.ReplaceAll(b, []byte("&amp;"), []byte("&"))
-
 	return append(xmlStart, b...), nil
 }
 
@@ -648,7 +661,6 @@ func stopSoapBuild() ([]byte, error) {
 				XMLName:     xml.Name{},
 				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
 				InstanceID:  "0",
-				Speed:       "1",
 			},
 		},
 	}
@@ -672,7 +684,6 @@ func pauseSoapBuild() ([]byte, error) {
 				XMLName:     xml.Name{},
 				AVTransport: "urn:schemas-upnp-org:service:AVTransport:1",
 				InstanceID:  "0",
-				Speed:       "1",
 			},
 		},
 	}

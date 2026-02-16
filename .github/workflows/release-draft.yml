@@ -4,16 +4,24 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version for release (example: 2.1.1 or v2.1.1)"
+        description: "Release version"
         required: true
       target_branch:
-        description: "Branch artifacts should come from"
+        description: "Source branch for artifacts"
         required: true
         default: devel
         type: choice
         options:
           - devel
           - main
+      release_target:
+        description: "Target branch for the draft release tag"
+        required: true
+        default: main
+        type: choice
+        options:
+          - main
+          - devel
 
 jobs:
   draft-release:
@@ -164,7 +172,7 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.version.outputs.tag }}
-        target_commitish: ${{ inputs.target_branch }}
+        target_commitish: ${{ inputs.release_target }}
         name: Go2TV ${{ steps.version.outputs.tag }}
         body_path: /tmp/release_notes.md
         files: |

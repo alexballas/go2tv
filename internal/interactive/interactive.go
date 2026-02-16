@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alexballas/go2tv/soapcalls"
 	"github.com/gdamore/tcell/v2"
 	"github.com/mattn/go-runewidth"
+	"go2tv.app/go2tv/v2/soapcalls"
 )
 
 // NewScreen .
@@ -23,8 +23,6 @@ type NewScreen struct {
 	lastAction  string
 	mu          sync.RWMutex
 }
-
-var flipflop bool = true
 
 func (p *NewScreen) emitStr(x, y int, style tcell.Style, str string) {
 	s := p.Current
@@ -147,6 +145,9 @@ func (p *NewScreen) InterInit(tv *soapcalls.TVPayload, c chan error) {
 // HandleKeyEvent Method to handle all key press events
 func (p *NewScreen) HandleKeyEvent(ev *tcell.EventKey) {
 	tv := p.TV
+	if tv == nil {
+		return
+	}
 
 	if ev.Key() == tcell.KeyEscape {
 		_ = tv.SendtoTV("Stop")
@@ -173,14 +174,11 @@ func (p *NewScreen) HandleKeyEvent(ev *tcell.EventKey) {
 
 	switch ev.Rune() {
 	case 'p':
-		if flipflop {
-			flipflop = false
-			_ = tv.SendtoTV("Pause")
+		action, err := resolvePlayPauseAction(tv)
+		if err != nil {
 			break
 		}
-
-		flipflop = true
-		_ = tv.SendtoTV("Play")
+		_ = tv.SendtoTV(action)
 
 	case 'm':
 		currentMute, err := tv.GetMuteSoapCall()
@@ -206,6 +204,11 @@ func (p *NewScreen) Fini() {
 	p.exitCTXfunc()
 }
 
+// SetMediaType Method to implement the screen interface
+func (p *NewScreen) SetMediaType(mediaType string) {
+	// No-op for interactive mode
+}
+
 // InitTcellNewScreen .
 func InitTcellNewScreen(ctxCancel context.CancelFunc) (*NewScreen, error) {
 	s, err := tcell.NewScreen()
@@ -229,4 +232,28 @@ func (p *NewScreen) updateLastAction(s string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.lastAction = s
+}
+
+func resolvePlayPauseAction(tv *soapcalls.TVPayload) (string, error) {
+	transportInfo, err := tv.GetTransportInfo()
+	if err != nil {
+		return "", err
+	}
+
+	if len(transportInfo) == 0 {
+		return "Play", nil
+	}
+
+	return playPauseActionFromState(transportInfo[0]), nil
+}
+
+func playPauseActionFromState(state string) string {
+	switch strings.ToUpper(strings.TrimSpace(state)) {
+	case "PLAYING":
+		return "Pause"
+	case "PAUSED_PLAYBACK", "PAUSED_RECORDING", "PAUSED":
+		return "Play"
+	default:
+		return "Play"
+	}
 }
