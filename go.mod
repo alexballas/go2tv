@@ -4,6 +4,7 @@ go 1.25
 
 require (
 	fyne.io/fyne/v2 v2.7.3-0.20260131162633-80f2081b7904
+	github.com/alexballas/go-ssdp v0.0.3
 	github.com/alexballas/xfilepicker v0.0.0-20260206213252-e8f58cac8729
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/gdamore/tcell/v2 v2.13.8
@@ -11,7 +12,6 @@ require (
 	github.com/h2non/filetype v1.1.3
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/hashicorp/mdns v1.0.6
-	github.com/koron/go-ssdp v0.1.0
 	github.com/mattn/go-runewidth v0.0.19
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.34.0
@@ -77,11 +77,11 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yuin/goldmark v1.7.16 // indirect
 	golang.org/x/image v0.35.0 // indirect
-	golang.org/x/net v0.49.0 // indirect
+	golang.org/x/net v0.50.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.40.0 // indirect
-	golang.org/x/term v0.39.0 // indirect
-	golang.org/x/text v0.33.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/term v0.40.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/tools v0.41.0 // indirect
 	gopkg.in/ini.v1 v1.67.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

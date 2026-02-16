@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/koron/go-ssdp"
+	"github.com/alexballas/go-ssdp"
 	"go2tv.app/go2tv/v2/soapcalls"
 )
 
@@ -17,7 +17,7 @@ func TestLoadSSDPservicesDetectsFromNonAVTransportST(t *testing.T) {
 		loadDevicesFromLocation = origLoad
 	})
 
-	ssdpSearch = func(searchType string, waitSec int, localAddr string, opts ...ssdp.Option) ([]ssdp.Service, error) {
+	ssdpSearch = func(searchType string, waitSec int, localAddr string) ([]ssdp.Service, error) {
 		return []ssdp.Service{
 			{
 				Type:     ssdp.RootDevice,
@@ -66,7 +66,7 @@ func TestLoadSSDPservicesFiltersDevicesMissingConnectionManager(t *testing.T) {
 		loadDevicesFromLocation = origLoad
 	})
 
-	ssdpSearch = func(searchType string, waitSec int, localAddr string, opts ...ssdp.Option) ([]ssdp.Service, error) {
+	ssdpSearch = func(searchType string, waitSec int, localAddr string) ([]ssdp.Service, error) {
 		return []ssdp.Service{
 			{
 				Type:     ssdp.RootDevice,
