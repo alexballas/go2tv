@@ -7,6 +7,7 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -98,6 +99,12 @@ type FyneScreen struct {
 	screencastPrevManualSubs bool
 	screencastPrevLoop       bool
 	screencastPrevNext       bool
+	screencastPrevMediaText  string
+	screencastPrevMediaFile  string
+	screencastDir            string
+	screencastStream         io.ReadCloser
+	screencastCmd            *exec.Cmd
+	screencastMu             sync.Mutex
 	ErrorVisible             bool
 	Hotkeys                  bool
 	hotkeysSuspendCount      int32
@@ -237,6 +244,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 			s.rtmpServer.Stop()
 		}
 		s.rtmpMu.Unlock()
+		stopScreencastSession(s)
 		os.Exit(0)
 	}()
 
@@ -246,6 +254,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 			s.rtmpServer.Stop()
 		}
 		s.rtmpMu.Unlock()
+		stopScreencastSession(s)
 	})
 
 	go silentCheckVersion(s)

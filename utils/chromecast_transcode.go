@@ -55,6 +55,9 @@ func ServeChromecastTranscodedStream(
 	}
 
 	if ff != nil && ff.Process != nil {
+		if isRawInput && ff.ProcessState == nil {
+			return ErrTranscodeBusy
+		}
 		_ = ff.Process.Kill()
 	}
 

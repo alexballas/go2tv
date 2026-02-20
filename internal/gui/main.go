@@ -522,7 +522,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
 	nextmedia := widget.NewCheck(lang.L("Auto-Play Next File"), func(b bool) {})
 	transcode := widget.NewCheck(lang.L("Transcode"), func(b bool) {})
-	screencast := widget.NewCheck(lang.L("Screencast"), func(b bool) {})
+	screencast := widget.NewCheck(lang.L("Cast Desktop"), func(b bool) {})
 	rtmpServerCheck := widget.NewCheck(lang.L("Enable RTMP Server"), func(b bool) {
 		if b {
 			startRTMPServer(s)
@@ -721,6 +721,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			s.screencastPrevManualSubs = sfilecheck.Checked
 			s.screencastPrevLoop = medialoop.Checked
 			s.screencastPrevNext = nextmedia.Checked
+			s.screencastPrevMediaText = s.MediaText.Text
+			s.screencastPrevMediaFile = s.mediafile
 
 			s.Screencast = true
 			s.Transcode = true
@@ -734,10 +736,14 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 				s.rtmpServerCheck.SetChecked(false)
 				s.rtmpServerCheck.Disable()
 			}
-			externalmedia.SetChecked(false)
+			externalmedia.SetChecked(true)
 			externalmedia.Disable()
 			mbrowse.Disable()
+			clearmedia.Disable()
 			s.MediaText.Disable()
+			s.MediaText.SetPlaceHolder("")
+			s.MediaText.SetText(lang.L("Cast Desktop Live Stream"))
+			s.mediafile = lang.L("Cast Desktop Live Stream")
 			sfilecheck.SetChecked(false)
 			sfilecheck.Disable()
 			s.subsfile = ""
@@ -747,6 +753,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		}
 
 		s.Screencast = false
+		stopScreencastSession(s)
 		if err := utils.CheckFFmpeg(s.ffmpegPath); err == nil && s.rtmpServer == nil {
 			transcode.Enable()
 			externalmedia.Enable()
@@ -773,6 +780,10 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 				mbrowse.Enable()
 				s.MediaText.Disable()
 			}
+			clearmedia.Enable()
+			s.MediaText.SetPlaceHolder("")
+			s.MediaText.SetText(s.screencastPrevMediaText)
+			s.mediafile = s.screencastPrevMediaFile
 			if s.rtmpServerCheck != nil {
 				s.rtmpServerCheck.Enable()
 			}

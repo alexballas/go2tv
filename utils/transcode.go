@@ -10,7 +10,8 @@ import (
 )
 
 var (
-	ErrInvalidInput = errors.New("invalid ffmpeg input")
+	ErrInvalidInput  = errors.New("invalid ffmpeg input")
+	ErrTranscodeBusy = errors.New("transcode already running")
 )
 
 // SubtitleSize represents the subtitle size option

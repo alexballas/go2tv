@@ -3,15 +3,19 @@
 package gui
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/url"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -651,6 +655,9 @@ func startChromecastScreencast(screen *FyneScreen) (string, string, context.Cont
 		return "", "", nil, errors.New(lang.L("screencast is not supported by audio-only device"))
 	}
 
+	stopScreencastSession(screen)
+	cleanupOldScreencastTempDirs()
+
 	whereToListen, err := utils.URLtoListenIPandPort(screen.selectedDevice.addr)
 	if err != nil {
 		return "", "", nil, err
@@ -660,7 +667,7 @@ func startChromecastScreencast(screen *FyneScreen) (string, string, context.Cont
 		screen.httpserver.StopServer()
 	}
 
-	stream, err := capture.Open(nil)
+	stream, err := capture.Open(&capture.Options{IncludeAudio: true})
 	if err != nil {
 		return "", "", nil, fmt.Errorf("screencast open: %w", err)
 	}
@@ -669,28 +676,124 @@ func startChromecastScreencast(screen *FyneScreen) (string, string, context.Cont
 	if frameRate == 0 {
 		frameRate = 60
 	}
+	targetFPS := frameRate
+	if targetFPS > 60 {
+		targetFPS = 60
+	}
+	// On high-resolution desktops, 60fps software x264 often starves and Chromecast
+	// gets stuck buffering. Use 30fps there for stable real-time output.
+	if stream.Width*stream.Height > 1920*1080 && targetFPS > 30 {
+		targetFPS = 30
+	}
+	fpsArg := strconv.FormatUint(uint64(targetFPS), 10)
+
+	tempDir, err := os.MkdirTemp("", "go2tv-screencast-*")
+	if err != nil {
+		_ = stream.Close()
+		return "", "", nil, fmt.Errorf("screencast temp dir: %w", err)
+	}
+
+	playlistPath := filepath.Join(tempDir, "playlist.m3u8")
+	vf := fmt.Sprintf(
+		"fps=%s,scale='min(1280,iw)':'min(720,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2",
+		fpsArg,
+	)
+	ffmpegStderr := &lockedBuffer{}
+	audioL, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		_ = stream.Close()
+		_ = os.RemoveAll(tempDir)
+		return "", "", nil, fmt.Errorf("screencast audio listener: %w", err)
+	}
+	
+	go func() {
+		defer audioL.Close()
+		conn, err := audioL.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		if stream.Audio != nil {
+			_, _ = io.Copy(conn, stream.Audio)
+		}
+	}()
+
+	audioURL := fmt.Sprintf("tcp://%s", audioL.Addr().String())
+
+	args := []string{
+		"-fflags", "nobuffer",
+		"-flags", "low_delay",
+		"-probesize", "32",
+		"-analyzeduration", "0",
+		"-thread_queue_size", "512",
+		"-f", "rawvideo",
+		"-pix_fmt", strings.ToLower(stream.PixelFormat),
+		"-s", fmt.Sprintf("%dx%d", stream.Width, stream.Height),
+		"-r", strconv.FormatUint(uint64(frameRate), 10),
+		"-i", "pipe:0",
+		"-f", "s16le",
+		"-ar", "48000",
+		"-ac", "2",
+		"-i", audioURL,
+		"-map", "0:v:0",
+		"-map", "1:a:0",
+		"-r", fpsArg,
+		"-c:v", "libx264",
+		"-preset", "ultrafast",
+		"-tune", "zerolatency",
+		"-pix_fmt", "yuv420p",
+		"-vf", vf,
+		"-g", fpsArg,
+		"-sc_threshold", "0",
+		"-c:a", "aac",
+		"-ar", "48000",
+		"-ac", "2",
+		"-f", "hls",
+		"-hls_time", "1",
+		"-hls_list_size", "6",
+		"-hls_delete_threshold", "12",
+		"-hls_allow_cache", "0",
+		"-hls_flags", "delete_segments+append_list+independent_segments",
+		"-hls_segment_filename", filepath.Join(tempDir, "segment_%03d.ts"),
+		playlistPath,
+	}
+	cmd := exec.Command(screen.ffmpegPath, args...)
+	cmd.Stdin = stream
+	if screen.Debug != nil {
+		cmd.Stderr = io.MultiWriter(screen.Debug, ffmpegStderr)
+	} else {
+		cmd.Stderr = ffmpegStderr
+	}
+	if err := cmd.Start(); err != nil {
+		_ = audioL.Close()
+		_ = stream.Close()
+		_ = os.RemoveAll(tempDir)
+		return "", "", nil, fmt.Errorf("screencast ffmpeg start: %w", err)
+	}
+
+	screen.screencastMu.Lock()
+	screen.screencastDir = tempDir
+	screen.screencastStream = stream
+	screen.screencastCmd = cmd
+	screen.screencastMu.Unlock()
+
+	ffmpegDone := make(chan error, 1)
+	go func(c *exec.Cmd) {
+		ffmpegDone <- c.Wait()
+		close(ffmpegDone)
+	}(cmd)
+
+	if err := waitForPlaylistReady(playlistPath, tempDir, 25*time.Second, ffmpegDone, ffmpegStderr); err != nil {
+		stopScreencastSession(screen)
+		return "", "", nil, err
+	}
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)
 	serverStarted := make(chan error)
 	serverStoppedCTX, serverCTXStop := context.WithCancel(context.Background())
 	screen.serverStopCTX = serverStoppedCTX
 	screen.cancelServerStop = serverCTXStop
-
-	tcOpts := &utils.TranscodeOptions{
-		FFmpegPath:   screen.ffmpegPath,
-		SeekSeconds:  0,
-		SubtitleSize: utils.SubtitleSizeMedium,
-		LogOutput:    screen.Debug,
-		RawInput: &utils.RawVideoInput{
-			Width:       stream.Width,
-			Height:      stream.Height,
-			FrameRate:   frameRate,
-			PixelFormat: strings.ToLower(stream.PixelFormat),
-		},
-	}
-
-	const screencastPath = "/screencast.mp4"
-	screen.httpserver.AddHandler(screencastPath, nil, tcOpts, stream)
+	screen.httpserver.AddHLSHandler("/live/", tempDir)
 
 	go func() {
 		screen.httpserver.StartServing(serverStarted)
@@ -698,15 +801,156 @@ func startChromecastScreencast(screen *FyneScreen) (string, string, context.Cont
 	}()
 
 	if err := <-serverStarted; err != nil {
-		_ = stream.Close()
+		stopScreencastSession(screen)
 		return "", "", nil, err
 	}
 
+	go monitorScreencastFFmpeg(screen, cmd, ffmpegDone, ffmpegStderr)
+
 	screen.ffmpegSeek = 0
 	screen.mediaDuration = 0
-	screen.SetMediaType("video/mp4")
+	screen.SetMediaType("application/vnd.apple.mpegurl")
 
-	return "http://" + whereToListen + screencastPath, "video/mp4", serverStoppedCTX, nil
+	return "http://" + whereToListen + "/live/playlist.m3u8", "application/vnd.apple.mpegurl", serverStoppedCTX, nil
+}
+
+func waitForPlaylistReady(path, baseDir string, timeout time.Duration, ffmpegDone <-chan error, ffmpegStderr *lockedBuffer) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	t := time.NewTicker(150 * time.Millisecond)
+	defer t.Stop()
+
+	for {
+		select {
+		case err := <-ffmpegDone:
+			if err != nil {
+				return fmt.Errorf("screencast ffmpeg exited: %w: %s", err, ffmpegStderr.Tail(300))
+			}
+			return errors.New(lang.L("screencast stream not initialized"))
+		case <-ctx.Done():
+			return fmt.Errorf("%s: %s", lang.L("screencast stream not initialized"), ffmpegStderr.Tail(300))
+		case <-t.C:
+			if screencastPlaylistReady(path, baseDir) {
+				return nil
+			}
+		}
+	}
+}
+
+func screencastPlaylistReady(path, baseDir string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		segmentPath := filepath.Join(baseDir, line)
+		info, statErr := os.Stat(segmentPath)
+		if statErr == nil && !info.IsDir() && info.Size() > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+func monitorScreencastFFmpeg(screen *FyneScreen, cmd *exec.Cmd, ffmpegDone <-chan error, ffmpegStderr *lockedBuffer) {
+	err, ok := <-ffmpegDone
+	if !ok {
+		return
+	}
+
+	screen.screencastMu.Lock()
+	stillActive := screen.screencastCmd == cmd
+	screen.screencastMu.Unlock()
+	if !stillActive {
+		return
+	}
+
+	if err != nil {
+		check(screen, fmt.Errorf("screencast ffmpeg stopped: %w: %s", err, ffmpegStderr.Tail(300)))
+	} else {
+		check(screen, errors.New(lang.L("screencast stream stopped unexpectedly")))
+	}
+
+	fyne.Do(func() {
+		if screen.ScreencastCheckBox != nil && screen.ScreencastCheckBox.Checked {
+			screen.ScreencastCheckBox.SetChecked(false)
+		}
+	})
+}
+
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) Tail(n int) string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	s := strings.TrimSpace(b.buf.String())
+	if s == "" {
+		return "no ffmpeg stderr output"
+	}
+
+	if len(s) <= n {
+		return s
+	}
+
+	return s[len(s)-n:]
+}
+
+func cleanupOldScreencastTempDirs() {
+	matches, err := filepath.Glob(filepath.Join(os.TempDir(), "go2tv-screencast-*"))
+	if err != nil {
+		return
+	}
+
+	for _, dir := range matches {
+		info, statErr := os.Stat(dir)
+		if statErr != nil || !info.IsDir() {
+			continue
+		}
+		// Keep recent dirs; remove only stale leftovers.
+		if time.Since(info.ModTime()) < 12*time.Hour {
+			continue
+		}
+		_ = os.RemoveAll(dir)
+	}
+}
+
+func stopScreencastSession(screen *FyneScreen) {
+	screen.screencastMu.Lock()
+	cmd := screen.screencastCmd
+	stream := screen.screencastStream
+	dir := screen.screencastDir
+	screen.screencastCmd = nil
+	screen.screencastStream = nil
+	screen.screencastDir = ""
+	screen.screencastMu.Unlock()
+
+	if cmd != nil && cmd.Process != nil {
+		_ = cmd.Process.Kill()
+	}
+	if stream != nil {
+		_ = stream.Close()
+	}
+	if dir != "" {
+		_ = os.RemoveAll(dir)
+	}
 }
 
 // chromecastPlayAction handles playback on Chromecast devices.
@@ -1662,11 +1906,13 @@ func stopAction(screen *FyneScreen) {
 			if server != nil {
 				server.StopServer()
 			}
+			stopScreencastSession(screen)
 		}()
 		return
 	}
 
 	if screen.tvdata == nil || screen.tvdata.ControlURL == "" {
+		stopScreencastSession(screen)
 		return
 	}
 
@@ -1686,6 +1932,7 @@ func stopAction(screen *FyneScreen) {
 		if server != nil {
 			server.StopServer()
 		}
+		stopScreencastSession(screen)
 	}()
 
 }

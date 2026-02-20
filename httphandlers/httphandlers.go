@@ -2,6 +2,7 @@ package httphandlers
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -354,8 +355,13 @@ func (s *HTTPserver) AddHLSHandler(urlPrefix, dir string) {
 		if strings.HasSuffix(r.URL.Path, ".m3u8") {
 			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
 		} else if strings.HasSuffix(r.URL.Path, ".ts") {
 			w.Header().Set("Content-Type", "video/MP2T")
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
 		} else if strings.HasSuffix(r.URL.Path, ".mp4") || strings.HasSuffix(r.URL.Path, ".m4s") {
 			w.Header().Set("Content-Type", "video/mp4")
 		}
@@ -476,6 +482,10 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			err := utils.ServeChromecastTranscodedStream(r.Context(), w, f, ff, tcOpts)
 			if err != nil {
+				if errors.Is(err, utils.ErrTranscodeBusy) {
+					http.Error(w, "busy", http.StatusServiceUnavailable)
+					return
+				}
 				tcOpts.LogError("serveContentReadClose", "ChromecastTranscode", err)
 			}
 		case tv != nil:
@@ -528,6 +538,10 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcall
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			err := utils.ServeChromecastTranscodedStream(r.Context(), w, input, ff, tcOpts)
 			if err != nil {
+				if errors.Is(err, utils.ErrTranscodeBusy) {
+					http.Error(w, "busy", http.StatusServiceUnavailable)
+					return
+				}
 				tcOpts.LogError("serveContentCustomType", "ChromecastTranscode", err)
 			}
 		case tv != nil:

@@ -98,6 +98,8 @@
     "RTMP stream not found. Please start streaming from OBS first.": "未找到 RTMP 串流。請先從 OBS 開始串流。",
     "RTMP server not started": "RTMP 伺服器未啟動",
     "Cast": "投放",
+    "Cast Desktop": "投放桌面",
+    "Cast Desktop Live Stream": "桌面即時投放",
     "Image Casting": "圖片投放",
     "Start RTMP Session": "開始 RTMP 會話",
     "Next": "下一個",
