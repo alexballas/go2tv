@@ -7,7 +7,6 @@ import (
 	"context"
 	"embed"
 	"errors"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,6 +29,7 @@ import (
 	"go2tv.app/go2tv/v2/rtmp"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
+	"go2tv.app/screencast/hls"
 )
 
 // FyneScreen .
@@ -101,9 +101,7 @@ type FyneScreen struct {
 	screencastPrevNext       bool
 	screencastPrevMediaText  string
 	screencastPrevMediaFile  string
-	screencastDir            string
-	screencastStream         io.ReadCloser
-	screencastCmd            *exec.Cmd
+	screencastSession        *hls.Session
 	screencastMu             sync.Mutex
 	ErrorVisible             bool
 	Hotkeys                  bool

@@ -753,7 +753,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		}
 
 		s.Screencast = false
-		stopScreencastSession(s)
+		go stopScreencastSession(s)
 		if err := utils.CheckFFmpeg(s.ffmpegPath); err == nil && s.rtmpServer == nil {
 			transcode.Enable()
 			externalmedia.Enable()
