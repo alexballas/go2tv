@@ -28,6 +28,7 @@ import (
 	"go2tv.app/go2tv/v2/rtmp"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
+	"go2tv.app/screencast/capture"
 )
 
 const filePickerFillSize = 10000
@@ -349,7 +350,7 @@ func playAction(screen *FyneScreen) {
 			return
 		}
 	}
-	if screen.mediafile == "" && screen.MediaText.Text == "" {
+	if !screen.Screencast && screen.mediafile == "" && screen.MediaText.Text == "" {
 		check(screen, errors.New(lang.L("please select a media file or enter a media URL")))
 		startAfreshPlayButton(screen)
 		return
@@ -357,6 +358,12 @@ func playAction(screen *FyneScreen) {
 
 	if screen.selectedDevice.addr == "" {
 		check(screen, errors.New(lang.L("please select a device")))
+		startAfreshPlayButton(screen)
+		return
+	}
+
+	if screen.Screencast && screen.selectedDeviceType != devices.DeviceTypeChromecast {
+		check(screen, errors.New(lang.L("screencast currently supports Chromecast only")))
 		startAfreshPlayButton(screen)
 		return
 	}
@@ -635,6 +642,73 @@ func playAction(screen *FyneScreen) {
 
 }
 
+func startChromecastScreencast(screen *FyneScreen) (string, string, context.Context, error) {
+	if err := utils.CheckFFmpeg(screen.ffmpegPath); err != nil {
+		return "", "", nil, errors.New(lang.L("ffmpeg is required for screencast"))
+	}
+
+	if screen.selectedDevice.isAudioOnly {
+		return "", "", nil, errors.New(lang.L("screencast is not supported by audio-only device"))
+	}
+
+	whereToListen, err := utils.URLtoListenIPandPort(screen.selectedDevice.addr)
+	if err != nil {
+		return "", "", nil, err
+	}
+
+	if screen.httpserver != nil {
+		screen.httpserver.StopServer()
+	}
+
+	stream, err := capture.Open(nil)
+	if err != nil {
+		return "", "", nil, fmt.Errorf("screencast open: %w", err)
+	}
+
+	frameRate := stream.FrameRate
+	if frameRate == 0 {
+		frameRate = 60
+	}
+
+	screen.httpserver = httphandlers.NewServer(whereToListen)
+	serverStarted := make(chan error)
+	serverStoppedCTX, serverCTXStop := context.WithCancel(context.Background())
+	screen.serverStopCTX = serverStoppedCTX
+	screen.cancelServerStop = serverCTXStop
+
+	tcOpts := &utils.TranscodeOptions{
+		FFmpegPath:   screen.ffmpegPath,
+		SeekSeconds:  0,
+		SubtitleSize: utils.SubtitleSizeMedium,
+		LogOutput:    screen.Debug,
+		RawInput: &utils.RawVideoInput{
+			Width:       stream.Width,
+			Height:      stream.Height,
+			FrameRate:   frameRate,
+			PixelFormat: strings.ToLower(stream.PixelFormat),
+		},
+	}
+
+	const screencastPath = "/screencast.mp4"
+	screen.httpserver.AddHandler(screencastPath, nil, tcOpts, stream)
+
+	go func() {
+		screen.httpserver.StartServing(serverStarted)
+		serverCTXStop()
+	}()
+
+	if err := <-serverStarted; err != nil {
+		_ = stream.Close()
+		return "", "", nil, err
+	}
+
+	screen.ffmpegSeek = 0
+	screen.mediaDuration = 0
+	screen.SetMediaType("video/mp4")
+
+	return "http://" + whereToListen + screencastPath, "video/mp4", serverStoppedCTX, nil
+}
+
 // chromecastPlayAction handles playback on Chromecast devices.
 // Supports both local files (via internal HTTP server) and external URLs (direct).
 func chromecastPlayAction(screen *FyneScreen) {
@@ -680,7 +754,7 @@ func chromecastPlayAction(screen *FyneScreen) {
 	ffmpegSeek := screen.ffmpegSeek
 
 	// Handle internal (embedded) subtitles extraction
-	if screen.SelectInternalSubs.Selected != "" {
+	if !screen.Screencast && screen.SelectInternalSubs.Selected != "" {
 		for n, opt := range screen.SelectInternalSubs.Options {
 			if opt == screen.SelectInternalSubs.Selected {
 				fyne.Do(func() {
@@ -723,6 +797,38 @@ func chromecastPlayAction(screen *FyneScreen) {
 		}
 
 		screen.chromecastClient = client
+	}
+
+	if screen.Screencast {
+		mediaURL, mediaType, serverStoppedCTX, err := startChromecastScreencast(screen)
+		if err != nil {
+			fyne.Do(func() {
+				if screen.ScreencastCheckBox != nil && screen.ScreencastCheckBox.Checked {
+					screen.ScreencastCheckBox.SetChecked(false)
+				}
+			})
+			check(screen, err)
+			startAfreshPlayButton(screen)
+			return
+		}
+
+		go func() {
+			if err := client.Load(mediaURL, mediaType, 0, 0, "", true); err != nil {
+				if screen.httpserver != nil {
+					screen.httpserver.StopServer()
+				}
+				check(screen, fmt.Errorf("chromecast load: %w", err))
+				startAfreshPlayButton(screen)
+				return
+			}
+			// For live screencast, set UI state immediately on successful load.
+			// Relying only on status polling can leave button text at "Cast" for a while.
+			screen.updateScreenState("Playing")
+			setPlayPauseView("Pause", screen)
+		}()
+
+		go chromecastStatusWatcher(serverStoppedCTX, screen)
+		return
 	}
 
 	var mediaURL string
@@ -1046,7 +1152,9 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	var mediaStarted bool // Track if media has started (seen BUFFERING or PLAYING)
+	// Track actual playback start. BUFFERING alone is not enough for live streams
+	// (screencast may briefly report IDLE after initial buffering before PLAYING).
+	var mediaStarted bool
 
 	for {
 		select {
@@ -1058,6 +1166,9 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 			if client == nil || !client.IsConnected() {
 				return
 			}
+			screen.mu.RLock()
+			isScreencast := screen.Screencast
+			screen.mu.RUnlock()
 
 			status, err := client.GetStatus()
 			if err != nil {
@@ -1066,9 +1177,8 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 			// Update state based on player state
 			switch status.PlayerState {
 			case "BUFFERING":
-				// Media is loading - mark as started but don't update slider
-				// (Chromecast reports 0 duration/time during buffering which would zero out slider)
-				mediaStarted = true
+				// Media is loading - don't mark as started yet.
+				// Some live sessions can bounce BUFFERING->IDLE before first PLAYING.
 			case "PLAYING":
 				mediaStarted = true
 				if screen.getScreenState() != "Playing" {
@@ -1088,6 +1198,12 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 				// Only treat IDLE as "finished" if media had actually started playing
 				// Ignore initial IDLE states while media is loading
 				if mediaStarted {
+					// Screencast is a live session with no natural "end".
+					// Ignore transient IDLE reports to avoid accidental replay loops.
+					if isScreencast {
+						continue
+					}
+
 					// Media finished - trigger auto-play next or loop via Fini()
 					screen.Fini()
 
@@ -1131,7 +1247,7 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 				// Fallback: Detect media completion when CurrentTime reaches Duration
 				// go-chromecast doesn't always report IDLE when media finishes
 				// Using 1.5 second threshold since Chromecast stops updating ~1-2s early
-				if currentTime >= duration-1.5 && duration > 0 {
+				if !isScreencast && currentTime >= duration-1.5 && duration > 0 {
 					screen.Fini()
 					// Only reset UI if not looping or auto-playing next
 					if !screen.Medialoop && !screen.NextMediaCheck.Checked {
@@ -1807,6 +1923,10 @@ func startRTMPServer(screen *FyneScreen) {
 			screen.ClearMedia.Disable()
 			screen.TranscodeCheckBox.SetChecked(false)
 			screen.TranscodeCheckBox.Disable()
+			if screen.ScreencastCheckBox != nil {
+				screen.ScreencastCheckBox.SetChecked(false)
+				screen.ScreencastCheckBox.Disable()
+			}
 			screen.SlideBar.Disable()
 
 			// Show RTMP URL
@@ -1879,7 +1999,12 @@ func resetRTMPUI(screen *FyneScreen) {
 
 	screen.ClearMedia.Enable()
 	if err := utils.CheckFFmpeg(screen.ffmpegPath); err == nil {
-		screen.TranscodeCheckBox.Enable()
+		if !screen.Screencast {
+			screen.TranscodeCheckBox.Enable()
+		}
+		if screen.ScreencastCheckBox != nil {
+			screen.ScreencastCheckBox.Enable()
+		}
 	}
 	screen.SlideBar.Enable()
 	screen.rtmpURLCard.Hide()

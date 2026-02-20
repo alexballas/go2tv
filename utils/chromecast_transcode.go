@@ -38,12 +38,18 @@ func ServeChromecastTranscodedStream(
 	ff *exec.Cmd,
 	opts *TranscodeOptions,
 ) error {
+	if opts == nil || opts.FFmpegPath == "" {
+		return ErrInvalidInput
+	}
+
 	var in string
+	isRawInput := false
 	switch f := input.(type) {
 	case string:
 		in = f
 	case io.Reader:
 		in = "pipe:0"
+		isRawInput = opts != nil && opts.RawInput != nil
 	default:
 		return ErrInvalidInput
 	}
@@ -55,8 +61,9 @@ func ServeChromecastTranscodedStream(
 	// Build video filter chain
 	vf := "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2"
 
-	// Add subtitle burning if configured
-	if opts.SubsPath != "" {
+	// Add subtitle burning if configured.
+	// Raw screencast input doesn't carry subtitle tracks.
+	if !isRawInput && opts.SubsPath != "" {
 		charenc, err := getCharDet(opts.SubsPath)
 		if err != nil {
 			// Log error but continue without subtitles
@@ -85,9 +92,6 @@ func ServeChromecastTranscodedStream(
 		}
 	}
 
-	// Append format conversion
-	vf = vf + ",format=yuv420p"
-
 	// Build ffmpeg arguments
 	// For piped input, skip -ss parameter entirely (even -ss 0) as it can cause issues
 	// Also skip -re for piped input as it interacts badly with streams
@@ -100,6 +104,28 @@ func ServeChromecastTranscodedStream(
 		args = append(args, "-ss", strconv.Itoa(opts.SeekSeconds), "-copyts")
 	}
 
+	if isRawInput {
+		if opts.RawInput.Width == 0 || opts.RawInput.Height == 0 {
+			return ErrInvalidInput
+		}
+		pixelFormat := strings.ToLower(opts.RawInput.PixelFormat)
+		if pixelFormat == "" {
+			pixelFormat = "bgra"
+		}
+		frameRate := opts.RawInput.FrameRate
+		if frameRate == 0 {
+			frameRate = 60
+		}
+		args = append(args,
+			"-f", "rawvideo",
+			"-pix_fmt", pixelFormat,
+			"-s", fmt.Sprintf("%dx%d", opts.RawInput.Width, opts.RawInput.Height),
+			"-r", strconv.FormatUint(uint64(frameRate), 10),
+		)
+	}
+
+	vf = vf + ",format=yuv420p"
+
 	args = append(args,
 		"-i", in,
 		"-c:v", "libx264",
@@ -108,13 +134,37 @@ func ServeChromecastTranscodedStream(
 		"-preset", "ultrafast",
 		"-tune", "zerolatency",
 		"-crf", "23",
-		"-maxrate", "10M",
-		"-bufsize", "20M",
 		"-vf", vf,
-		"-c:a", "aac",
-		"-b:a", "192k",
-		"-ar", "48000",
-		"-ac", "2",
+	)
+
+	if isRawInput {
+		// Low-latency screencast tuning:
+		// - frequent keyframes and no B-frames to reduce decoder wait time
+		// - tighter VBV and shorter fragment duration to reduce periodic buffering
+		args = append(args,
+			"-g", "30",
+			"-keyint_min", "30",
+			"-sc_threshold", "0",
+			"-bf", "0",
+			"-maxrate", "5M",
+			"-bufsize", "1M",
+			"-frag_duration", "250000",
+		)
+
+		// Screen capture stream contains video only.
+		args = append(args, "-an")
+	} else {
+		args = append(args,
+			"-maxrate", "10M",
+			"-bufsize", "20M",
+			"-c:a", "aac",
+			"-b:a", "192k",
+			"-ar", "48000",
+			"-ac", "2",
+		)
+	}
+
+	args = append(args,
 		"-movflags", "+frag_keyframe+empty_moov+default_base_moof",
 		"-f", "mp4",
 		"pipe:1",

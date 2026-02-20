@@ -522,6 +522,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
 	nextmedia := widget.NewCheck(lang.L("Auto-Play Next File"), func(b bool) {})
 	transcode := widget.NewCheck(lang.L("Transcode"), func(b bool) {})
+	screencast := widget.NewCheck(lang.L("Screencast"), func(b bool) {})
 	rtmpServerCheck := widget.NewCheck(lang.L("Enable RTMP Server"), func(b bool) {
 		if b {
 			startRTMPServer(s)
@@ -532,6 +533,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.rtmpServerCheck = rtmpServerCheck
 	if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
 		s.rtmpServerCheck.Disable()
+		screencast.Disable()
 	}
 
 	s.rtmpURLEntry = widget.NewEntry()
@@ -610,6 +612,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.EndPos = endPos
 	s.SelectInternalSubs = selectInternalSubs
 	s.TranscodeCheckBox = transcode
+	s.ScreencastCheckBox = screencast
 	s.LoopSelectedCheck = medialoop
 	s.MediaBrowse = mbrowse
 	s.ClearMedia = clearmedia
@@ -642,7 +645,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	commonCard := widget.NewCard(lang.L("Common Options"), "", container.NewVBox(medialoop, nextmedia))
 
-	advancedCard := widget.NewCard(lang.L("Advanced Options"), "", container.NewVBox(externalmedia, sfilecheck, transcode, rtmpServerCheck))
+	advancedCard := widget.NewCard(lang.L("Advanced Options"), "", container.NewVBox(externalmedia, sfilecheck, transcode, screencast, rtmpServerCheck))
 
 	playCard := widget.NewCard(lang.L("Playback"), "", container.NewVBox(sliderArea, actionbuttons))
 
@@ -703,6 +706,59 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	transcode.OnChanged = func(b bool) {
 		s.Transcode = b
+	}
+
+	screencast.OnChanged = func(b bool) {
+		if b {
+			if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
+				check(s, errors.New(lang.L("ffmpeg is required for screencast")))
+				screencast.SetChecked(false)
+				return
+			}
+
+			s.screencastPrevTranscode = transcode.Checked
+			s.screencastPrevExternal = externalmedia.Checked
+			s.screencastPrevManualSubs = sfilecheck.Checked
+
+			s.Screencast = true
+			s.Transcode = true
+			transcode.SetChecked(true)
+			transcode.Disable()
+			if s.rtmpServerCheck != nil {
+				s.rtmpServerCheck.SetChecked(false)
+				s.rtmpServerCheck.Disable()
+			}
+			externalmedia.SetChecked(false)
+			externalmedia.Disable()
+			mbrowse.Disable()
+			s.MediaText.Disable()
+			sfilecheck.SetChecked(false)
+			sfilecheck.Disable()
+			s.subsfile = ""
+			s.SubsText.SetText("")
+			setPlayPauseView("", s)
+			return
+		}
+
+		s.Screencast = false
+		if err := utils.CheckFFmpeg(s.ffmpegPath); err == nil && s.rtmpServer == nil {
+			transcode.Enable()
+			externalmedia.Enable()
+			sfilecheck.Enable()
+			transcode.SetChecked(s.screencastPrevTranscode)
+			externalmedia.SetChecked(s.screencastPrevExternal)
+			sfilecheck.SetChecked(s.screencastPrevManualSubs)
+			if s.ExternalMediaURL != nil && s.ExternalMediaURL.Checked {
+				mbrowse.Disable()
+				s.MediaText.Enable()
+			} else {
+				mbrowse.Enable()
+				s.MediaText.Disable()
+			}
+			if s.rtmpServerCheck != nil {
+				s.rtmpServerCheck.Enable()
+			}
+		}
 	}
 
 	sfilecheck.OnChanged = func(b bool) {

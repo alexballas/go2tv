@@ -454,6 +454,8 @@ func serveContentBytes(w http.ResponseWriter, r *http.Request, mediaType string,
 }
 
 func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode bool, f io.ReadCloser, ff *exec.Cmd) {
+	defer f.Close()
+
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
 		contentFeatures, err := utils.BuildContentFeatures(mediaType, "00", transcode)
 		if err != nil {
@@ -490,8 +492,6 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 	if r.Method == http.MethodGet {
 		_, _ = io.Copy(w, f)
 	}
-
-	f.Close()
 }
 
 func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode, seek bool, f osFileType, ff *exec.Cmd) {

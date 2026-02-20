@@ -53,6 +53,7 @@ type FyneScreen struct {
 	NextMediaCheck           *widget.Check
 	LoopSelectedCheck        *widget.Check
 	TranscodeCheckBox        *widget.Check
+	ScreencastCheckBox       *widget.Check
 	Stop                     *widget.Button
 	DeviceList               *deviceList
 	httpserver               *httphandlers.HTTPserver
@@ -91,6 +92,10 @@ type FyneScreen struct {
 	Medialoop                bool
 	sliderActive             bool
 	Transcode                bool
+	Screencast               bool
+	screencastPrevTranscode  bool
+	screencastPrevExternal   bool
+	screencastPrevManualSubs bool
 	ErrorVisible             bool
 	Hotkeys                  bool
 	hotkeysSuspendCount      int32
@@ -160,15 +165,24 @@ func Start(ctx context.Context, s *FyneScreen) {
 	tabs.OnSelected = func(t *container.TabItem) {
 		if t.Text == "Go2TV" {
 			s.Hotkeys = true
-			if s.rtmpServer == nil {
+			if s.rtmpServer == nil && !s.Screencast {
 				s.TranscodeCheckBox.Enable()
+				if s.ScreencastCheckBox != nil && !s.Screencast {
+					s.ScreencastCheckBox.Enable()
+				}
 				s.SlideBar.Enable()
+			} else if s.Screencast {
+				s.TranscodeCheckBox.Disable()
 			}
 
 			ffmpegErr := utils.CheckFFmpeg(s.ffmpegPath)
 			if ffmpegErr != nil {
 				s.TranscodeCheckBox.SetChecked(false)
 				s.TranscodeCheckBox.Disable()
+				if s.ScreencastCheckBox != nil {
+					s.ScreencastCheckBox.SetChecked(false)
+					s.ScreencastCheckBox.Disable()
+				}
 				setInternalSubsDropdownNoSubs(s)
 			}
 
@@ -198,6 +212,9 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
 		s.TranscodeCheckBox.Disable()
+		if s.ScreencastCheckBox != nil {
+			s.ScreencastCheckBox.Disable()
+		}
 		s.rtmpServerCheck.Disable()
 	}
 
@@ -602,6 +619,10 @@ func NewFyneScreen(version string) *FyneScreen {
 
 func onDropFiles(screen *FyneScreen) func(p fyne.Position, u []fyne.URI) {
 	return func(p fyne.Position, u []fyne.URI) {
+		if screen.Screencast {
+			return
+		}
+
 		var mfiles, sfiles []fyne.URI
 
 	out:

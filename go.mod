@@ -18,6 +18,7 @@ require (
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	github.com/vishen/go-chromecast v0.3.4
+	go2tv.app/screencast v0.0.0
 	golang.org/x/mod v0.32.0
 	golang.org/x/time v0.14.0
 )
@@ -88,3 +89,5 @@ require (
 )
 
 replace fyne.io/fyne/v2 => github.com/alexballas/fyne/v2 v2.3.3-0.20260214003640-c68aed308565
+
+replace go2tv.app/screencast => ../screencast

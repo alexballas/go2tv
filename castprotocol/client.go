@@ -243,19 +243,28 @@ func (c *CastClient) Load(mediaURL string, contentType string, startTime int, du
 		// This "fast play" behavior avoids the aggressive buffering that autoplay=true causes
 		if live {
 			c.Log().Debug().Str("Method", "Load").Msg("live stream loaded paused, sending immediate PLAY to simulate fast click")
-			// Refresh app state to get the mediaSessionId from the LOAD response
-			// The library stores this in a.media.MediaSessionId which Unpause() needs
-			if err := c.app.Update(); err != nil {
-				c.Log().Warn().Str("Method", "Load").Err(err).Msg("failed to update app state before play")
+			var playErr error
+			for i := range 3 {
+				// Refresh app state to get the mediaSessionId from LOAD response.
+				// app.Unpause() needs this.
+				if err := c.app.Update(); err != nil {
+					playErr = err
+					time.Sleep(time.Duration(i+1) * 200 * time.Millisecond)
+					continue
+				}
+
+				// Use app.Unpause() instead of standalone Play() because:
+				// 1. PLAY requires mediaSessionId from LOAD response.
+				// 2. app.Unpause() uses that stored session id.
+				playErr = c.app.Unpause()
+				if playErr == nil {
+					c.Log().Debug().Str("Method", "Load").Int("Attempt", i+1).Msg("play command sent successfully")
+					break
+				}
+				time.Sleep(time.Duration(i+1) * 200 * time.Millisecond)
 			}
-			// Use app.Unpause() instead of standalone Play() because:
-			// 1. The PLAY command requires mediaSessionId which comes from LOAD response
-			// 2. app.Unpause() has access to this (stored in a.media.MediaSessionId)
-			// 3. Standalone Play() was missing mediaSessionId, causing command to be ignored
-			if err := c.app.Unpause(); err != nil {
-				c.Log().Warn().Str("Method", "Load").Err(err).Msg("play command failed")
-			} else {
-				c.Log().Debug().Str("Method", "Load").Msg("play command sent successfully")
+			if playErr != nil {
+				c.Log().Warn().Str("Method", "Load").Err(playErr).Msg("play command failed after retries")
 			}
 		}
 
