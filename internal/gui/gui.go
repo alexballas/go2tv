@@ -96,6 +96,8 @@ type FyneScreen struct {
 	screencastPrevTranscode  bool
 	screencastPrevExternal   bool
 	screencastPrevManualSubs bool
+	screencastPrevLoop       bool
+	screencastPrevNext       bool
 	ErrorVisible             bool
 	Hotkeys                  bool
 	hotkeysSuspendCount      int32
@@ -282,6 +284,10 @@ func (p *FyneScreen) SetMediaType(mediaType string) {
 // not when we explicitly click the Stop button.
 func (p *FyneScreen) Fini() {
 	fyne.Do(func() {
+		if p.Screencast {
+			return
+		}
+
 		gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
 
 		// For Chromecast, ignore gapless setting (it's DLNA-specific)

@@ -719,11 +719,17 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			s.screencastPrevTranscode = transcode.Checked
 			s.screencastPrevExternal = externalmedia.Checked
 			s.screencastPrevManualSubs = sfilecheck.Checked
+			s.screencastPrevLoop = medialoop.Checked
+			s.screencastPrevNext = nextmedia.Checked
 
 			s.Screencast = true
 			s.Transcode = true
 			transcode.SetChecked(true)
 			transcode.Disable()
+			medialoop.SetChecked(false)
+			nextmedia.SetChecked(false)
+			medialoop.Disable()
+			nextmedia.Disable()
 			if s.rtmpServerCheck != nil {
 				s.rtmpServerCheck.SetChecked(false)
 				s.rtmpServerCheck.Disable()
@@ -748,6 +754,18 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			transcode.SetChecked(s.screencastPrevTranscode)
 			externalmedia.SetChecked(s.screencastPrevExternal)
 			sfilecheck.SetChecked(s.screencastPrevManualSubs)
+			medialoop.SetChecked(s.screencastPrevLoop)
+			nextmedia.SetChecked(s.screencastPrevNext)
+
+			if s.ExternalMediaURL != nil && !s.ExternalMediaURL.Checked {
+				if !nextmedia.Checked {
+					medialoop.Enable()
+				}
+				if !medialoop.Checked {
+					nextmedia.Enable()
+				}
+			}
+
 			if s.ExternalMediaURL != nil && s.ExternalMediaURL.Checked {
 				mbrowse.Disable()
 				s.MediaText.Enable()
