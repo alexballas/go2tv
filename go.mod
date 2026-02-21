@@ -90,4 +90,3 @@ require (
 
 replace fyne.io/fyne/v2 => github.com/alexballas/fyne/v2 v2.3.3-0.20260214003640-c68aed308565
 
-replace go2tv.app/screencast => ../screencast
