@@ -522,7 +522,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
 	nextmedia := widget.NewCheck(lang.L("Auto-Play Next File"), func(b bool) {})
 	transcode := widget.NewCheck(lang.L("Transcode"), func(b bool) {})
-	screencast := widget.NewCheck(lang.L("Cast Desktop"), func(b bool) {})
+	screencast := widget.NewCheck(lang.L("Cast Desktop (experimental)"), func(b bool) {})
 	rtmpServerCheck := widget.NewCheck(lang.L("Enable RTMP Server"), func(b bool) {
 		if b {
 			startRTMPServer(s)
@@ -645,7 +645,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	commonCard := widget.NewCard(lang.L("Common Options"), "", container.NewVBox(medialoop, nextmedia))
 
-	advancedCard := widget.NewCard(lang.L("Advanced Options"), "", container.NewVBox(externalmedia, sfilecheck, transcode, screencast, rtmpServerCheck))
+	advancedCard := widget.NewCard(lang.L("Advanced Options"), "", container.NewGridWithColumns(2, container.NewVBox(externalmedia, sfilecheck, transcode), container.NewVBox(screencast, rtmpServerCheck)))
 
 	playCard := widget.NewCard(lang.L("Playback"), "", container.NewVBox(sliderArea, actionbuttons))
 
