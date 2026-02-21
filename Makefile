@@ -28,7 +28,7 @@ wayland: clean
 	go build -tags "$(TAGS),wayland" -trimpath -ldflags $(LDFLAGS) -o $(BIN) ./cmd/go2tv
 
 windows: clean
-	env CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ GOOS=windows GOARCH=amd64 go build -tags "$(TAGS)" -trimpath -ldflags $(LDFLAGS_WINDOWS) -o $(BIN_WIN) ./cmd/go2tv
+	env CGO_ENABLED=1 CC=$$(command -v x86_64-w64-mingw32-gcc-win32 || echo x86_64-w64-mingw32-gcc) CXX=$$(command -v x86_64-w64-mingw32-g++-win32 || echo x86_64-w64-mingw32-g++) CGO_LDFLAGS="-static -static-libgcc -static-libstdc++ -Wl,-Bstatic -l:libstdc++.a -Wl,-Bdynamic" GOOS=windows GOARCH=amd64 go build -tags "$(TAGS)" -trimpath -ldflags "$(LDFLAGS_WINDOWS) -linkmode external -extldflags '-static'" -o $(BIN_WIN) ./cmd/go2tv
 
 
 install: build
