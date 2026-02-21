@@ -18,7 +18,7 @@ require (
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	github.com/vishen/go-chromecast v0.3.4
-	go2tv.app/screencast v0.0.0-20260221090706-c8286400c3e6
+	go2tv.app/screencast v0.0.0-20260221111442-25182db8895f
 	golang.org/x/mod v0.33.0
 	golang.org/x/time v0.14.0
 )
