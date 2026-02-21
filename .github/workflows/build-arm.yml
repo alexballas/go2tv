@@ -21,7 +21,7 @@ jobs:
             cd /
             df -h
             sudo apt update
-            sudo apt install -y xorg-dev
+            sudo apt install -y xorg-dev libpipewire-0.3-dev pkg-config
             sudo apt clean
             sudo rm -rf /var/lib/apt/lists/*
             wget -nv https://go.dev/dl/go1.25.1.linux-armv6l.tar.gz

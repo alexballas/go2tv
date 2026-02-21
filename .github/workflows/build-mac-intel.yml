@@ -27,7 +27,7 @@ jobs:
       run: |
         cd cmd/go2tv
         sed -i '' "s/version      = \"dev\"/version      = \"$(echo ${{ env.GO2TV_VERSION }} | sed 's/^v//')\"/" go2tv.go
-        fyne package --release --os darwin --icon ../../assets/go2tv-icon.png
+        MACOSX_DEPLOYMENT_TARGET=10.14 GOARCH=amd64 fyne package --release --os darwin --icon ../../assets/go2tv-icon.png
         mv go2tv.app ../../
 
     - uses: actions/upload-artifact@v6
