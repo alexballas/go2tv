@@ -40,7 +40,7 @@ jobs:
         sed -i "s/version      = \"dev\"/version      = \"$(echo ${{ env.GO2TV_VERSION }} | sed 's/^v//')\"/" go2tv.go
         CC_BIN="$(command -v x86_64-w64-mingw32-gcc-win32 || command -v gcc)"
         CXX_BIN="$(command -v x86_64-w64-mingw32-g++-win32 || command -v g++)"
-        CGO_ENABLED=1 CC="$CC_BIN" CXX="$CXX_BIN" CGO_LDFLAGS="-static -static-libgcc -static-libstdc++ -Wl,-Bstatic -l:libstdc++.a -Wl,-Bdynamic" GOFLAGS="-ldflags=-linkmode=external -ldflags=-extldflags=-static" go run fyne.io/tools/cmd/fyne@latest package --release --app-id app.go2tv.go2tv --os windows --icon ../../assets/go2tv-icon.png
+        CGO_ENABLED=1 CC="$CC_BIN" CXX="$CXX_BIN" CGO_LDFLAGS="-static -static-libgcc -static-libstdc++ -Wl,-Bstatic -l:libstdc++.a -l:libwinpthread.a" GOFLAGS="-ldflags=-linkmode=external -ldflags=-extldflags=-static" go run fyne.io/tools/cmd/fyne@latest package --release --app-id app.go2tv.go2tv --os windows --icon ../../assets/go2tv-icon.png
         objdump -p go2tv.exe | grep "DLL Name" | tee /tmp/go2tv-imports.txt
         ! grep -Eq "libwinpthread-1.dll|libstdc\+\+-6.dll" /tmp/go2tv-imports.txt
         mv go2tv.exe ../../
