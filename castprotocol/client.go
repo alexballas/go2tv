@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/vishen/go-chromecast/application"
-	"github.com/vishen/go-chromecast/cast"
+	"go2tv.app/go2tv/v2/castprotocol/v2/application"
+	"go2tv.app/go2tv/v2/castprotocol/v2/cast"
 )
 
 // CastClient wraps go-chromecast Application for simplified API

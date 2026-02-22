@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/vishen/go-chromecast/cast"
+	"go2tv.app/go2tv/v2/castprotocol/v2/cast"
 )
 
 // Request ID counter for Chromecast messages
