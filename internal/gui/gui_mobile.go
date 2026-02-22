@@ -31,6 +31,7 @@ type FyneScreen struct {
 	Current              fyne.Window
 	tvdata               *soapcalls.TVPayload
 	chromecastClient     *castprotocol.CastClient
+	chromecastActionID   uint64
 	Stop                 *widget.Button
 	MuteUnmute           *widget.Button
 	CheckVersion         *widget.Button
@@ -164,6 +165,19 @@ func (p *FyneScreen) getScreenState() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.State
+}
+
+func (p *FyneScreen) nextChromecastActionID() uint64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.chromecastActionID++
+	return p.chromecastActionID
+}
+
+func (p *FyneScreen) isChromecastActionCurrent(actionID uint64) bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.chromecastActionID == actionID
 }
 
 func setPlayPauseView(s string, screen *FyneScreen) {

@@ -371,7 +371,8 @@ func playAction(screen *FyneScreen) {
 	// Branch based on device type - MUST be first, before any DLNA-specific logic
 	// Chromecast has its own status watcher, doesn't need the DLNA timeout mechanism
 	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
-		go chromecastPlayAction(screen)
+		actionID := screen.nextChromecastActionID()
+		go chromecastPlayAction(screen, actionID)
 		return
 	}
 
@@ -743,7 +744,11 @@ func stopScreencastSession(screen *FyneScreen) {
 
 // chromecastPlayAction handles playback on Chromecast devices.
 // Supports both local files (via internal HTTP server) and external URLs (direct).
-func chromecastPlayAction(screen *FyneScreen) {
+func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
+	if !screen.isChromecastActionCurrent(actionID) {
+		return
+	}
+
 	// Handle pause/resume if already playing
 	if screen.chromecastClient != nil && screen.chromecastClient.IsConnected() {
 		currentState := screen.getScreenState()
@@ -834,6 +839,9 @@ func chromecastPlayAction(screen *FyneScreen) {
 	if screen.Screencast {
 		mediaURL, mediaType, serverStoppedCTX, err := startChromecastScreencast(screen)
 		if err != nil {
+			if !screen.isChromecastActionCurrent(actionID) {
+				return
+			}
 			fyne.Do(func() {
 				if screen.ScreencastCheckBox != nil && screen.ScreencastCheckBox.Checked {
 					screen.ScreencastCheckBox.SetChecked(false)
@@ -846,11 +854,17 @@ func chromecastPlayAction(screen *FyneScreen) {
 
 		go func() {
 			if err := client.Load(mediaURL, mediaType, 0, 0, "", true); err != nil {
+				if !screen.isChromecastActionCurrent(actionID) {
+					return
+				}
 				if screen.httpserver != nil {
 					screen.httpserver.StopServer()
 				}
 				check(screen, fmt.Errorf("chromecast load: %w", err))
 				startAfreshPlayButton(screen)
+				return
+			}
+			if !screen.isChromecastActionCurrent(actionID) {
 				return
 			}
 			// For live screencast, set UI state immediately on successful load.
@@ -859,7 +873,7 @@ func chromecastPlayAction(screen *FyneScreen) {
 			setPlayPauseView("Pause", screen)
 		}()
 
-		go chromecastStatusWatcher(serverStoppedCTX, screen)
+		go chromecastStatusWatcher(serverStoppedCTX, screen, actionID)
 		return
 	}
 
@@ -1110,7 +1124,7 @@ func chromecastPlayAction(screen *FyneScreen) {
 		}
 	}()
 
-	go chromecastStatusWatcher(serverStoppedCTX, screen)
+	go chromecastStatusWatcher(serverStoppedCTX, screen, actionID)
 }
 
 // chromecastTranscodedSeek performs a seek on transcoded Chromecast streams
@@ -1118,6 +1132,8 @@ func chromecastPlayAction(screen *FyneScreen) {
 // This is much faster than stopAction+playAction which closes/reopens the connection.
 // Runs fully async to prevent UI freeze during buffering.
 func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
+	actionID := screen.nextChromecastActionID()
+
 	// Capture client reference before async operation
 	client := screen.chromecastClient
 	if client == nil || !client.IsConnected() {
@@ -1174,13 +1190,13 @@ func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
 			return
 		}
 		// Restart status watcher
-		go chromecastStatusWatcher(serverStoppedCTX, screen)
+		go chromecastStatusWatcher(serverStoppedCTX, screen, actionID)
 	}()
 }
 
 // chromecastStatusWatcher polls Chromecast status and updates UI.
 // Triggers auto-play next via Fini() when media ends, consistent with DLNA.
-func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
+func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID uint64) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
@@ -1193,6 +1209,9 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			if !screen.isChromecastActionCurrent(actionID) {
+				return
+			}
 			// Capture client once to avoid race with stopAction nilling it
 			client := screen.chromecastClient
 			if client == nil || !client.IsConnected() {
@@ -1590,7 +1609,7 @@ func skipNextAction(screen *FyneScreen) {
 
 			// Restart status watcher if transcoding (server was restarted)
 			if transcode && serverStoppedCTX != nil {
-				go chromecastStatusWatcher(serverStoppedCTX, screen)
+				go chromecastStatusWatcher(serverStoppedCTX, screen, screen.nextChromecastActionID())
 			}
 
 		}()
@@ -1662,6 +1681,8 @@ func previewmedia(screen *FyneScreen) {
 }
 
 func stopAction(screen *FyneScreen) {
+	screen.nextChromecastActionID()
+
 	setPlayPauseView("Play", screen)
 	screen.updateScreenState("Stopped")
 

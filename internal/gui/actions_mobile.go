@@ -220,7 +220,8 @@ func playAction(screen *FyneScreen) {
 
 	// Branch based on device type - MUST be first, before any DLNA-specific logic
 	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
-		go chromecastPlayAction(screen)
+		actionID := screen.nextChromecastActionID()
+		go chromecastPlayAction(screen, actionID)
 		return
 	}
 
@@ -462,6 +463,8 @@ func clearsubsAction(screen *FyneScreen) {
 }
 
 func stopAction(screen *FyneScreen) {
+	screen.nextChromecastActionID()
+
 	setPlayPauseView("Play", screen)
 	screen.updateScreenState("Stopped")
 
@@ -615,7 +618,11 @@ func startAfreshPlayButton(screen *FyneScreen) {
 
 // chromecastPlayAction handles playback on Chromecast devices.
 // Supports both local files (via internal HTTP server) and external URLs (direct).
-func chromecastPlayAction(screen *FyneScreen) {
+func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
+	if !screen.isChromecastActionCurrent(actionID) {
+		return
+	}
+
 	w := screen.Current
 
 	// Handle pause/resume if already playing - query Chromecast status directly
@@ -833,17 +840,20 @@ func chromecastPlayAction(screen *FyneScreen) {
 	go func() {
 		live := screen.ExternalMediaURL.Checked
 		if err := client.Load(mediaURL, mediaType, 0, 0, subtitleURL, live); err != nil {
+			if !screen.isChromecastActionCurrent(actionID) {
+				return
+			}
 			check(w, fmt.Errorf("chromecast load: %w", err))
 			startAfreshPlayButton(screen)
 			return
 		}
 	}()
 
-	go chromecastStatusWatcher(serverStoppedCTX, screen)
+	go chromecastStatusWatcher(serverStoppedCTX, screen, actionID)
 }
 
 // chromecastStatusWatcher polls Chromecast status and updates UI.
-func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
+func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID uint64) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
@@ -854,6 +864,9 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			if !screen.isChromecastActionCurrent(actionID) {
+				return
+			}
 			// Capture client once to avoid race with stopAction nilling it
 			client := screen.chromecastClient
 			if client == nil || !client.IsConnected() {

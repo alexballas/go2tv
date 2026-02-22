@@ -68,6 +68,7 @@ type FyneScreen struct {
 	selectedDevice           devType
 	selectedDeviceType       string
 	chromecastClient         *castprotocol.CastClient // Active Chromecast connection
+	chromecastActionID       uint64
 	State                    string
 	mediafile                string
 	version                  string
@@ -533,6 +534,19 @@ func (p *FyneScreen) getScreenState() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.State
+}
+
+func (p *FyneScreen) nextChromecastActionID() uint64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.chromecastActionID++
+	return p.chromecastActionID
+}
+
+func (p *FyneScreen) isChromecastActionCurrent(actionID uint64) bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.chromecastActionID == actionID
 }
 
 // checkChromecastCompatibility checks if loaded media needs transcoding for Chromecast.
