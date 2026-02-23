@@ -13,6 +13,7 @@ import (
 
 const (
 	imageAutoSkipSecondsPref = "ImageAutoSkipSeconds"
+	imageAutoSkipSecondsMin  = 5
 	imageAutoSkipSecondsMax  = 300
 )
 
@@ -20,6 +21,8 @@ func clampImageAutoSkipSeconds(seconds int) int {
 	switch {
 	case seconds < 0:
 		return 0
+	case seconds > 0 && seconds < imageAutoSkipSecondsMin:
+		return imageAutoSkipSecondsMin
 	case seconds > imageAutoSkipSecondsMax:
 		return imageAutoSkipSecondsMax
 	default:

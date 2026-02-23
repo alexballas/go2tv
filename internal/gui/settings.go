@@ -240,7 +240,12 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	setImageAutoSkipCurrent(initialImageAutoSkip)
 
 	imageAutoSkipSlider.OnChanged = func(v float64) {
-		seconds := clampImageAutoSkipSeconds(int(v + 0.5))
+		rawSeconds := int(v + 0.5)
+		seconds := clampImageAutoSkipSeconds(rawSeconds)
+		if seconds != rawSeconds {
+			imageAutoSkipSlider.SetValue(float64(seconds))
+			return
+		}
 		fyne.CurrentApp().Preferences().SetInt(imageAutoSkipSecondsPref, seconds)
 		setImageAutoSkipCurrent(seconds)
 		s.refreshImageAutoSkipTimer()
