@@ -147,6 +147,20 @@ yt-dlp -o - "https://youtu.be/..." | go2tv -tc -t http://192.168.1.50:8009
 - **RTMP Server** - Cast live streams from OBS directly to Chromecast (requires FFmpeg)
 - **GUI and CLI** - Use the graphical interface or command line
 
+## Companion Project: mcp-beam MCP Server (Powered by Go2TV)
+
+[mcp-beam](https://go2tv.app/mcp-beam/) is a companion MCP server (stdio transport) built on top of Go2TV core packages.
+
+Use it when you want MCP clients/agents to:
+
+- Discover Chromecast and DLNA/UPnP devices on your LAN
+- Cast local media files
+- Cast remote media URLs
+- Stop active playback sessions
+
+If you want direct end-user control, use Go2TV GUI/CLI.  
+If you want tool-driven casting from MCP-compatible workflows, use mcp-beam.
+
 ### Supported File Types (GUI)
 
 mp4, avi, mkv, mpeg, mov, webm, m4v, mpv, mp3, flac, wav, jpg, jpeg, png
