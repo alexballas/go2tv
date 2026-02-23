@@ -83,6 +83,21 @@ Go2TV can act as an RTMP server, allowing you to stream from OBS or other softwa
 
 ---
 
+## Cast Desktop (Experimental, Chromecast only)
+
+Go2TV can cast your desktop as a live stream to Chromecast devices. **This feature is experimental and requires FFmpeg.**
+
+1. Select a **Chromecast** device.
+2. Check **Cast Desktop (experimental)**.
+3. Click **Cast**.
+
+Notes:
+- Experimental: behavior/performance may vary by system.
+- Chromecast only (not DLNA/UPnP TVs).
+- Not supported on audio-only Chromecast devices.
+
+---
+
 ## CLI Usage
 
 ``` console
@@ -145,7 +160,16 @@ yt-dlp -o - "https://youtu.be/..." | go2tv -tc -t http://192.168.1.50:8009
 - **Loop and auto-play** - Loop a single file or auto-play the next file in folder
 - **Gapless playback** - Supported for DLNA devices
 - **RTMP Server** - Cast live streams from OBS directly to Chromecast (requires FFmpeg)
+- **Cast Desktop (experimental)** - Cast desktop as live stream to Chromecast (requires FFmpeg)
 - **GUI and CLI** - Use the graphical interface or command line
+
+### Supported File Types (GUI)
+
+mp4, avi, mkv, mpeg, mov, webm, m4v, mpv, mp3, flac, wav, jpg, jpeg, png
+
+The CLI accepts any file type.
+
+---
 
 ## Companion Project: mcp-beam MCP Server (Powered by Go2TV)
 
@@ -160,12 +184,6 @@ Use it when you want MCP clients/agents to:
 
 If you want direct end-user control, use Go2TV GUI/CLI.  
 If you want tool-driven casting from MCP-compatible workflows, use mcp-beam.
-
-### Supported File Types (GUI)
-
-mp4, avi, mkv, mpeg, mov, webm, m4v, mpv, mp3, flac, wav, jpg, jpeg, png
-
-The CLI accepts any file type.
 
 ---
 
