@@ -63,6 +63,7 @@
     "Disabled": "已禁用",
     "Auto-Play": "自动播放",
     "Same File Types Only": "仅相同文件类型",
+    "Image Auto-Skip Timeout": "图片自动跳过时间",
     "Extracting Subtitles": "提取字幕",
     "Drag and Drop is not supported in Flatpak builds.\nPlease use the 'Select Media File' button instead.": "Flatpak 构建不支持拖放操作。\n请使用“选择媒体文件”按钮。",
     "Show Hidden Files": "显示隐藏文件",

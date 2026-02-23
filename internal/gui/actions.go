@@ -33,6 +33,70 @@ import (
 
 const filePickerFillSize = 10000
 
+func armChromecastImageAutoSkipAfterReady(screen *FyneScreen, client *castprotocol.CastClient, actionID uint64, mediaType, mediaPath string) {
+	if !strings.HasPrefix(mediaType, "image/") {
+		return
+	}
+
+	go func() {
+		deadline := time.Now().Add(8 * time.Second)
+		var readySince time.Time
+
+		for {
+			if !screen.isChromecastActionCurrent(actionID) {
+				return
+			}
+			if client == nil || !client.IsConnected() {
+				return
+			}
+
+			status, err := client.GetStatus()
+			if err == nil {
+				if chromecastImageStatusReady(status) && status.PlayerState != "BUFFERING" {
+					screen.configureImageAutoSkipTimer(mediaType, mediaPath)
+					return
+				}
+
+				// Some Chromecast devices keep reporting BUFFERING for static images.
+				// If metadata is ready for a bit, arm anyway.
+				if chromecastImageStatusReady(status) && status.PlayerState == "BUFFERING" {
+					if readySince.IsZero() {
+						readySince = time.Now()
+					}
+					if time.Since(readySince) >= 2*time.Second {
+						screen.configureImageAutoSkipTimer(mediaType, mediaPath)
+						return
+					}
+				} else {
+					readySince = time.Time{}
+				}
+			}
+
+			if time.Now().After(deadline) {
+				// Fallback: keep feature working even if device doesn't expose ContentType reliably.
+				screen.configureImageAutoSkipTimer(mediaType, mediaPath)
+				return
+			}
+
+			time.Sleep(250 * time.Millisecond)
+		}
+	}()
+}
+
+func chromecastImageStatusReady(status *castprotocol.CastStatus) bool {
+	if status == nil {
+		return false
+	}
+	if strings.HasPrefix(status.ContentType, "image/") {
+		return true
+	}
+	if status.MediaTitle != "" {
+		return true
+	}
+
+	return status.PlayerState == "PLAYING" || status.PlayerState == "PAUSED"
+}
+
 func muteAction(screen *FyneScreen) {
 	// Handle icon toggle (mute -> unmute)
 	if screen.MuteUnmute.Icon == theme.VolumeMuteIcon() {
@@ -600,6 +664,11 @@ func playAction(screen *FyneScreen) {
 			})
 			stopAction(screen)
 		}
+		if strings.HasPrefix(mediaType, "image/") {
+			screen.updateScreenState("Playing")
+			setPlayPauseView("Pause", screen)
+		}
+		screen.configureImageAutoSkipTimer(mediaType, screen.mediafile)
 
 		gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
 		if screen.NextMediaCheck.Checked && gaplessOption == "Enabled" {
@@ -635,6 +704,7 @@ func playAction(screen *FyneScreen) {
 		case "PLAYING":
 			setPlayPauseView("Pause", screen)
 			screen.updateScreenState("Playing")
+			screen.refreshImageAutoSkipTimer()
 		case "PAUSED_PLAYBACK":
 			setPlayPauseView("Play", screen)
 			screen.updateScreenState("Paused")
@@ -871,6 +941,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 			// Relying only on status polling can leave button text at "Cast" for a while.
 			screen.updateScreenState("Playing")
 			setPlayPauseView("Pause", screen)
+			screen.configureImageAutoSkipTimer(mediaType, screen.mediafile)
 		}()
 
 		go chromecastStatusWatcher(serverStoppedCTX, screen, actionID)
@@ -1118,10 +1189,19 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 		// Use LIVE stream type for URL streams (DMR shows LIVE badge, but buffer unchanged)
 		live := screen.ExternalMediaURL.Checked
 		if err := client.Load(mediaURL, mediaType, ffmpegSeek, screen.mediaDuration, subtitleURL, live); err != nil {
+			if !screen.isChromecastActionCurrent(actionID) {
+				return
+			}
 			check(screen, fmt.Errorf("chromecast load: %w", err))
 			startAfreshPlayButton(screen)
 			return
 		}
+		if !screen.isChromecastActionCurrent(actionID) {
+			return
+		}
+		screen.updateScreenState("Playing")
+		setPlayPauseView("Pause", screen)
+		armChromecastImageAutoSkipAfterReady(screen, client, actionID, mediaType, screen.mediafile)
 	}()
 
 	go chromecastStatusWatcher(serverStoppedCTX, screen, actionID)
@@ -1225,6 +1305,17 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 			if err != nil {
 				continue
 			}
+			if !screen.isChromecastActionCurrent(actionID) {
+				return
+			}
+
+			screen.mu.RLock()
+			currentCastingType := screen.castingMediaType
+			screen.mu.RUnlock()
+			if strings.HasPrefix(currentCastingType, "image/") && chromecastImageStatusReady(status) {
+				screen.refreshImageAutoSkipTimer()
+			}
+
 			// Update state based on player state
 			switch status.PlayerState {
 			case "BUFFERING":
@@ -1239,6 +1330,7 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 						screen.updateScreenState("Playing")
 					}
 				}
+				screen.refreshImageAutoSkipTimer()
 			case "PAUSED":
 				mediaStarted = true
 				if screen.getScreenState() != "Paused" {
@@ -1249,6 +1341,10 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 				// Only treat IDLE as "finished" if media had actually started playing
 				// Ignore initial IDLE states while media is loading
 				if mediaStarted {
+					if !screen.isChromecastActionCurrent(actionID) {
+						return
+					}
+
 					// Screencast is a live session with no natural "end".
 					// Ignore transient IDLE reports to avoid accidental replay loops.
 					if isScreencast {
@@ -1299,6 +1395,9 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 				// go-chromecast doesn't always report IDLE when media finishes
 				// Using 1.5 second threshold since Chromecast stops updating ~1-2s early
 				if !isScreencast && currentTime >= duration-1.5 && duration > 0 {
+					if !screen.isChromecastActionCurrent(actionID) {
+						return
+					}
 					screen.Fini()
 					// Only reset UI if not looping or auto-playing next
 					if !screen.Medialoop && !screen.NextMediaCheck.Checked {
@@ -1315,6 +1414,7 @@ func startAfreshPlayButton(screen *FyneScreen) {
 	if screen.cancelEnablePlay != nil {
 		screen.cancelEnablePlay()
 	}
+	screen.cancelImageAutoSkipTimer()
 
 	setPlayPauseView("Play", screen)
 	screen.updateScreenState("Stopped")
@@ -1478,6 +1578,7 @@ func skipNextAction(screen *FyneScreen) {
 	// For Chromecast: reuse existing connection for faster skip
 	if screen.selectedDeviceType == devices.DeviceTypeChromecast &&
 		screen.chromecastClient != nil && screen.chromecastClient.IsConnected() {
+		actionID := screen.currentChromecastActionID()
 
 		// Get media type
 		mediaType, err := utils.GetMimeDetailsFromPath(screen.mediafile)
@@ -1599,12 +1700,25 @@ func skipNextAction(screen *FyneScreen) {
 
 			// Load new media on existing connection (async to avoid blocking)
 			// live=false for skip-next (local files don't need LIVE stream type)
+			client := screen.chromecastClient
 			go func() {
-				if err := screen.chromecastClient.Load(mediaURL, mediaType, 0, screen.mediaDuration, subtitleURL, false); err != nil {
+				if client == nil || !client.IsConnected() {
+					return
+				}
+				if err := client.Load(mediaURL, mediaType, 0, screen.mediaDuration, subtitleURL, false); err != nil {
+					if !screen.isChromecastActionCurrent(actionID) {
+						return
+					}
 					check(screen, fmt.Errorf("chromecast load: %w", err))
 					startAfreshPlayButton(screen)
 					return
 				}
+				if !screen.isChromecastActionCurrent(actionID) {
+					return
+				}
+				screen.updateScreenState("Playing")
+				setPlayPauseView("Pause", screen)
+				armChromecastImageAutoSkipAfterReady(screen, client, actionID, mediaType, screen.mediafile)
 			}()
 
 			// Restart status watcher if transcoding (server was restarted)
@@ -1682,6 +1796,7 @@ func previewmedia(screen *FyneScreen) {
 
 func stopAction(screen *FyneScreen) {
 	screen.nextChromecastActionID()
+	screen.cancelImageAutoSkipTimer()
 
 	setPlayPauseView("Play", screen)
 	screen.updateScreenState("Stopped")
@@ -1693,6 +1808,12 @@ func stopAction(screen *FyneScreen) {
 		// Capture references before clearing
 		client := screen.chromecastClient
 		server := screen.httpserver
+
+		if screen.cancelServerStop != nil {
+			screen.cancelServerStop()
+			screen.cancelServerStop = nil
+		}
+		screen.serverStopCTX = nil
 
 		// Clear references immediately to prevent status watcher from continuing
 		screen.chromecastClient = nil

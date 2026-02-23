@@ -877,6 +877,9 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 			if err != nil {
 				continue
 			}
+			if !screen.isChromecastActionCurrent(actionID) {
+				return
+			}
 
 			switch status.PlayerState {
 			case "BUFFERING":
@@ -898,6 +901,9 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 				}
 			case "IDLE":
 				if mediaStarted {
+					if !screen.isChromecastActionCurrent(actionID) {
+						return
+					}
 					screen.Fini()
 					if !screen.Medialoop {
 						startAfreshPlayButton(screen)
@@ -908,6 +914,9 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 
 			// Fallback: Detect media completion when CurrentTime reaches Duration
 			if mediaStarted && status.Duration > 0 && status.CurrentTime >= status.Duration-1.5 {
+				if !screen.isChromecastActionCurrent(actionID) {
+					return
+				}
 				screen.Fini()
 				if !screen.Medialoop {
 					startAfreshPlayButton(screen)

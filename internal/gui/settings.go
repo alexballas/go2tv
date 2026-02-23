@@ -4,6 +4,7 @@ package gui
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -220,6 +221,33 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	sameTypeAutoNextOption := fyne.CurrentApp().Preferences().BoolWithFallback("AutoPlaySameTypes", true)
 	sameTypeAutoNextCheck.SetChecked(sameTypeAutoNextOption)
 
+	imageAutoSkipText := widget.NewLabel(lang.L("Image Auto-Skip Timeout"))
+	imageAutoSkipCurrent := widget.NewLabel("")
+	imageAutoSkipSlider := widget.NewSlider(0, imageAutoSkipSecondsMax)
+	imageAutoSkipSlider.Step = 1
+
+	setImageAutoSkipCurrent := func(seconds int) {
+		if seconds == 0 {
+			imageAutoSkipCurrent.SetText(lang.L("Disabled"))
+			return
+		}
+
+		imageAutoSkipCurrent.SetText(fmt.Sprintf("%ds", seconds))
+	}
+
+	initialImageAutoSkip := getImageAutoSkipSecondsPref()
+	imageAutoSkipSlider.SetValue(float64(initialImageAutoSkip))
+	setImageAutoSkipCurrent(initialImageAutoSkip)
+
+	imageAutoSkipSlider.OnChanged = func(v float64) {
+		seconds := clampImageAutoSkipSeconds(int(v + 0.5))
+		fyne.CurrentApp().Preferences().SetInt(imageAutoSkipSecondsPref, seconds)
+		setImageAutoSkipCurrent(seconds)
+		s.refreshImageAutoSkipTimer()
+	}
+
+	imageAutoSkipControls := container.NewBorder(nil, nil, nil, imageAutoSkipCurrent, imageAutoSkipSlider)
+
 	rtmpPortLabel := widget.NewLabel(lang.L("RTMP Port"))
 	rtmpPortEntry := newNumericalEntry()
 	rtmpPortEntry.Text = fyne.CurrentApp().Preferences().StringWithFallback("RTMPPort", "1935")
@@ -259,7 +287,35 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 
 	rtmpKeyContainer := container.NewBorder(nil, nil, nil, container.NewHBox(regenKeyBtn), streamKeyEntry)
 
-	return container.New(layout.NewFormLayout(), themeText, dropdownTheme, languageText, dropdownLanguage, gaplessText, gaplessdropdown, ffmpegText, ffmpegPathControls, sameTypeAutoNext, sameTypeAutoNextCheck, debugText, debugExport, rtmpPortLabel, rtmpPortEntry, rtmpKeyLabel, rtmpKeyContainer)
+	generalSettings := container.New(layout.NewFormLayout(),
+		themeText, dropdownTheme,
+		languageText, dropdownLanguage,
+		ffmpegText, ffmpegPathControls,
+	)
+
+	autoNextSettings := container.New(layout.NewFormLayout(),
+		gaplessText, gaplessdropdown,
+		sameTypeAutoNext, sameTypeAutoNextCheck,
+		imageAutoSkipText, imageAutoSkipControls,
+	)
+
+	rtmpSettings := container.New(layout.NewFormLayout(),
+		rtmpPortLabel, rtmpPortEntry,
+		rtmpKeyLabel, rtmpKeyContainer,
+	)
+
+	debugSettings := container.New(layout.NewFormLayout(),
+		debugText, debugExport,
+	)
+
+	settingsCategories := container.NewVBox(
+		widget.NewCard(lang.L("Common Options"), "", generalSettings),
+		widget.NewCard(lang.L("Auto-Play Next File"), "", autoNextSettings),
+		widget.NewCard(lang.L("RTMP Server"), "", rtmpSettings),
+		widget.NewCard(lang.L("Debug"), "", debugSettings),
+	)
+
+	return container.NewVScroll(settingsCategories)
 }
 
 func saveDebugLogs(f fyne.URIWriteCloser, s *FyneScreen) {

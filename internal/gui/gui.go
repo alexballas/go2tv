@@ -69,6 +69,7 @@ type FyneScreen struct {
 	selectedDeviceType       string
 	chromecastClient         *castprotocol.CastClient // Active Chromecast connection
 	chromecastActionID       uint64
+	imageAutoSkipID          uint64
 	State                    string
 	mediafile                string
 	version                  string
@@ -93,6 +94,7 @@ type FyneScreen struct {
 	ffmpegPathChanged        bool
 	Medialoop                bool
 	sliderActive             bool
+	imageAutoSkipTimeout     int
 	Transcode                bool
 	Screencast               bool
 	screencastPrevTranscode  bool
@@ -121,6 +123,8 @@ type FyneScreen struct {
 	rtmpPrevExternalMediaURL bool
 	rtmpPrevMediaText        string
 	rtmpPrevMediaFile        string
+	imageAutoSkipMediaPath   string
+	imageAutoSkipCancel      context.CancelFunc
 	rtmpMu                   sync.Mutex
 }
 
@@ -547,6 +551,12 @@ func (p *FyneScreen) isChromecastActionCurrent(actionID uint64) bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.chromecastActionID == actionID
+}
+
+func (p *FyneScreen) currentChromecastActionID() uint64 {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.chromecastActionID
 }
 
 // checkChromecastCompatibility checks if loaded media needs transcoding for Chromecast.

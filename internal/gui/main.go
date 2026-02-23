@@ -872,8 +872,10 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		case true:
 			medialoop.SetChecked(false)
 			medialoop.Disable()
+			s.refreshImageAutoSkipTimer()
 		case false:
 			medialoop.Enable()
+			s.cancelImageAutoSkipTimer()
 		}
 
 		go func() {
