@@ -22,9 +22,8 @@ import (
 )
 
 type States struct {
-	PreviousState string
-	NewState      string
-	ProcessStop   bool
+	NewState    string
+	ProcessStop bool
 }
 
 var (
@@ -1525,10 +1524,9 @@ func (p *TVPayload) SendtoTV(action string) error {
 	return nil
 }
 
-// UpdateMRstate updates the mediaRenderersStates map with the state.
-// Returns true or false to verify that the actual update took place.
-func (p *TVPayload) UpdateMRstate(previous, new, uuid string) bool {
-	// Some devices send EventCurrentTransportActions only once
+// UpdateMRstate updates media renderer state from an event transport state.
+// Returns true when the update took place.
+func (p *TVPayload) UpdateMRstate(new, uuid string) bool {
 	if new == "" {
 		return false
 	}
@@ -1546,12 +1544,6 @@ func (p *TVPayload) UpdateMRstate(previous, new, uuid string) bool {
 		if state == nil {
 			return false
 		}
-		if previous == "" {
-			state.PreviousState = state.NewState
-			state.NewState = new
-			return true
-		}
-		state.PreviousState = previous
 		state.NewState = new
 		return true
 	}

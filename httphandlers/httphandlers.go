@@ -294,12 +294,14 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 		uuid := strings.TrimPrefix(sidVal[0], "uuid:")
 
 		reqParsedUnescape := html.UnescapeString(string(reqParsed))
-		previousstate, newstate, err := soapcalls.EventNotifyParser(reqParsedUnescape)
+		event, err := soapcalls.ParseEventNotify(reqParsedUnescape)
 
 		if err != nil {
 			http.NotFound(w, req)
 			return
 		}
+
+		newstate := event.TransportState
 
 		// Apparently we should ignore the first message
 		// On some media renderers we receive a STOPPED message
@@ -316,7 +318,7 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 			return
 		}
 
-		if !tv.UpdateMRstate(previousstate, newstate, uuid) {
+		if !tv.UpdateMRstate(newstate, uuid) {
 			http.NotFound(w, req)
 			return
 		}

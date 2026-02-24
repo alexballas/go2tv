@@ -54,6 +54,11 @@ type eventPropertySet struct {
 	} `xml:"property>LastChange>Event>InstanceID"`
 }
 
+type EventNotify struct {
+	TransportState          string
+	CurrentTransportActions string
+}
+
 // DMRextracted stores the services urls and device identification
 type DMRextracted struct {
 	AvtransportControlURL  string
@@ -269,15 +274,17 @@ func toAbsoluteServiceURL(baseURL *url.URL, rawServiceURL string) string {
 	return baseURL.ResolveReference(parsedServiceURL).String()
 }
 
-// EventNotifyParser parses the Notify messages from the DMR device.
-func EventNotifyParser(xmlbody string) (string, string, error) {
+// ParseEventNotify parses the Notify messages from the DMR device.
+// Transport state drives playback transitions; actions are optional.
+func ParseEventNotify(xmlbody string) (EventNotify, error) {
 	var root eventPropertySet
 	err := xml.Unmarshal([]byte(xmlbody), &root)
 	if err != nil {
-		return "", "", fmt.Errorf("EventNotifyParser unmarshal error: %w", err)
+		return EventNotify{}, fmt.Errorf("ParseEventNotify unmarshal error: %w", err)
 	}
-	previousstate := root.EventInstance.EventCurrentTransportActions.Value
-	newstate := root.EventInstance.EventTransportState.Value
 
-	return previousstate, newstate, nil
+	return EventNotify{
+		TransportState:          root.EventInstance.EventTransportState.Value,
+		CurrentTransportActions: root.EventInstance.EventCurrentTransportActions.Value,
+	}, nil
 }

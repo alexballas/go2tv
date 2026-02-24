@@ -8,6 +8,49 @@ import (
 	"testing"
 )
 
+func TestParseEventNotify(t *testing.T) {
+	tt := []struct {
+		name   string
+		input  string
+		state  string
+		action string
+	}{
+		{
+			name: "State And Actions",
+			input: `<propertyset><property><LastChange><Event><InstanceID val="0">` +
+				`<TransportState val="PLAYING"/><CurrentTransportActions val="Play,Pause,Stop"/>` +
+				`</InstanceID></Event></LastChange></property></propertyset>`,
+			state:  "PLAYING",
+			action: "Play,Pause,Stop",
+		},
+		{
+			name: "State Only",
+			input: `<propertyset><property><LastChange><Event><InstanceID val="0">` +
+				`<TransportState val="PAUSED_PLAYBACK"/>` +
+				`</InstanceID></Event></LastChange></property></propertyset>`,
+			state:  "PAUSED_PLAYBACK",
+			action: "",
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			event, err := ParseEventNotify(tc.input)
+			if err != nil {
+				t.Fatalf("ParseEventNotify failed: %v", err)
+			}
+
+			if event.TransportState != tc.state {
+				t.Fatalf("TransportState = %q, want %q", event.TransportState, tc.state)
+			}
+
+			if event.CurrentTransportActions != tc.action {
+				t.Fatalf("CurrentTransportActions = %q, want %q", event.CurrentTransportActions, tc.action)
+			}
+		})
+	}
+}
+
 func TestDMRextractor(t *testing.T) {
 	raw := `<?xml version="1.0"?>
 	<root>
