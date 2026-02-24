@@ -1528,7 +1528,8 @@ func (p *TVPayload) SendtoTV(action string) error {
 // UpdateMRstate updates the mediaRenderersStates map with the state.
 // Returns true or false to verify that the actual update took place.
 func (p *TVPayload) UpdateMRstate(previous, new, uuid string) bool {
-	if previous == "" || new == "" {
+	// Some devices send EventCurrentTransportActions only once
+	if new == "" {
 		return false
 	}
 
@@ -1545,7 +1546,11 @@ func (p *TVPayload) UpdateMRstate(previous, new, uuid string) bool {
 		if state == nil {
 			return false
 		}
-
+		if previous == "" {
+			state.PreviousState = state.NewState
+			state.NewState = new
+			return true
+		}
 		state.PreviousState = previous
 		state.NewState = new
 		return true
