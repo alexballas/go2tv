@@ -131,6 +131,10 @@
     "Music": "音樂",
     "Pictures": "圖片",
     "Videos": "影片",
-    "ffmpeg path (default: ffmpeg)": "ffmpeg 路径 (默认: ffmpeg)",
-    "FFmpeg Path": "FFmpeg 路径"
+    "ffmpeg path (default: ffmpeg)": "ffmpeg 路徑 (預設: ffmpeg)",
+    "FFmpeg Path": "FFmpeg 路徑",
+    "ffmpeg is required for screencast": "螢幕錄製需要 ffmpeg",
+    "screencast currently supports Chromecast only": "螢幕錄製僅支援 Chromecast",
+    "screencast is not supported by audio-only device": "螢幕錄製不支援純音訊裝置",
+    "screencast stream stopped unexpectedly": "螢幕錄製串流意外中斷"
 }

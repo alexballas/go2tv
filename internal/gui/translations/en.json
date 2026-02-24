@@ -132,5 +132,9 @@
     "Pictures": "Pictures",
     "Videos": "Videos",
     "ffmpeg path (default: ffmpeg)": "ffmpeg path (default: ffmpeg)",
-    "FFmpeg Path": "FFmpeg Path"
+    "FFmpeg Path": "FFmpeg Path",
+    "ffmpeg is required for screencast": "ffmpeg is required for screencast",
+    "screencast currently supports Chromecast only": "screencast currently supports Chromecast only",
+    "screencast is not supported by audio-only device": "screencast is not supported by audio-only device",
+    "screencast stream stopped unexpectedly": "screencast stream stopped unexpectedly"
 }
