@@ -50,6 +50,7 @@ Go2TV is a single executable with no installation required. Just download and ru
 ### Optional: FFmpeg for Transcoding
 
 For maximum compatibility with all devices and file formats, install [FFmpeg](https://ffmpeg.org/download.html). Go2TV will automatically use it when needed.
+When transcoding is enabled, Go2TV probes available GPU H.264 encoders first and falls back to `libx264` if hardware encoding is unavailable or fails at startup.
 
 - **Linux**: `sudo apt install ffmpeg` or equivalent for your distro
 - **macOS**: `brew install ffmpeg`

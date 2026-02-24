@@ -62,7 +62,7 @@ func ServeChromecastTranscodedStream(
 	}
 
 	// Build video filter chain
-	vf := "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2"
+	baseFilter := "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2"
 
 	// Add subtitle burning if configured.
 	// Raw screencast input doesn't carry subtitle tracks.
@@ -88,124 +88,96 @@ func ServeChromecastTranscodedStream(
 			escapedPath := escapeFFmpegPath(opts.SubsPath)
 
 			if charenc == "UTF-8" {
-				vf = fmt.Sprintf("subtitles='%s'%s,%s", escapedPath, forceStyle, vf)
+				baseFilter = fmt.Sprintf("subtitles='%s'%s,%s", escapedPath, forceStyle, baseFilter)
 			} else {
-				vf = fmt.Sprintf("subtitles='%s':charenc=%s%s,%s", escapedPath, charenc, forceStyle, vf)
+				baseFilter = fmt.Sprintf("subtitles='%s':charenc=%s%s,%s", escapedPath, charenc, forceStyle, baseFilter)
 			}
 		}
 	}
 
-	// Build ffmpeg arguments
-	// For piped input, skip -ss parameter entirely (even -ss 0) as it can cause issues
-	// Also skip -re for piped input as it interacts badly with streams
-	args := []string{opts.FFmpegPath}
-	if in != "pipe:0" {
-		args = append(args, "-re")
-	}
-
-	if in != "pipe:0" && opts.SeekSeconds > 0 {
-		args = append(args, "-ss", strconv.Itoa(opts.SeekSeconds), "-copyts")
-	}
-
+	profile := videoEncoderProfileChromecastFile
 	if isRawInput {
-		if opts.RawInput.Width == 0 || opts.RawInput.Height == 0 {
-			return ErrInvalidInput
+		profile = videoEncoderProfileChromecastRaw
+	}
+	encoderPlan := selectTranscodeVideoEncoder(opts.FFmpegPath, profile)
+	buildArgs := func(plan videoEncoderPlan) []string {
+		vf := joinVideoFilters(baseFilter, plan.filterTail)
+
+		// For piped input, skip -ss parameter entirely (even -ss 0) as it can cause issues
+		// Also skip -re for piped input as it interacts badly with streams
+		args := []string{opts.FFmpegPath}
+		if in != "pipe:0" {
+			args = append(args, "-re")
 		}
-		pixelFormat := strings.ToLower(opts.RawInput.PixelFormat)
-		if pixelFormat == "" {
-			pixelFormat = "bgra"
+
+		if in != "pipe:0" && opts.SeekSeconds > 0 {
+			args = append(args, "-ss", strconv.Itoa(opts.SeekSeconds), "-copyts")
 		}
-		frameRate := opts.RawInput.FrameRate
-		if frameRate == 0 {
-			frameRate = 60
+		args = append(args, plan.globalArgs...)
+
+		if isRawInput {
+			pixelFormat := strings.ToLower(opts.RawInput.PixelFormat)
+			if pixelFormat == "" {
+				pixelFormat = "bgra"
+			}
+			frameRate := opts.RawInput.FrameRate
+			if frameRate == 0 {
+				frameRate = 60
+			}
+			args = append(args,
+				"-f", "rawvideo",
+				"-pix_fmt", pixelFormat,
+				"-s", fmt.Sprintf("%dx%d", opts.RawInput.Width, opts.RawInput.Height),
+				"-r", strconv.FormatUint(uint64(frameRate), 10),
+			)
 		}
+
 		args = append(args,
-			"-f", "rawvideo",
-			"-pix_fmt", pixelFormat,
-			"-s", fmt.Sprintf("%dx%d", opts.RawInput.Width, opts.RawInput.Height),
-			"-r", strconv.FormatUint(uint64(frameRate), 10),
+			"-i", in,
+			"-vf", vf,
 		)
-	}
+		args = append(args, plan.codecArgs...)
 
-	vf = vf + ",format=yuv420p"
+		if isRawInput {
+			args = append(args, "-frag_duration", "250000")
 
-	args = append(args,
-		"-i", in,
-		"-c:v", "libx264",
-		"-profile:v", "high",
-		"-level", "4.1",
-		"-preset", "ultrafast",
-		"-tune", "zerolatency",
-		"-crf", "23",
-		"-vf", vf,
-	)
-
-	if isRawInput {
-		// Low-latency screencast tuning:
-		// - frequent keyframes and no B-frames to reduce decoder wait time
-		// - tighter VBV and shorter fragment duration to reduce periodic buffering
-		args = append(args,
-			"-g", "30",
-			"-keyint_min", "30",
-			"-sc_threshold", "0",
-			"-bf", "0",
-			"-maxrate", "5M",
-			"-bufsize", "1M",
-			"-frag_duration", "250000",
-		)
-
-		// Screen capture stream contains video only.
-		args = append(args, "-an")
-	} else {
-		args = append(args,
-			"-maxrate", "10M",
-			"-bufsize", "20M",
-			"-c:a", "aac",
-			"-b:a", "192k",
-			"-ar", "48000",
-			"-ac", "2",
-		)
-	}
-
-	args = append(args,
-		"-movflags", "+frag_keyframe+empty_moov+default_base_moof",
-		"-f", "mp4",
-		"pipe:1",
-	)
-
-	// Use regular Command instead of CommandContext to avoid nil pointer crash
-	// when context cancels before process starts
-	cmd := exec.Command(args[0], args[1:]...)
-	setSysProcAttr(cmd)
-
-	*ff = *cmd
-
-	if in == "pipe:0" {
-		ff.Stdin = input.(io.Reader)
-	}
-
-	ff.Stdout = w
-
-	// Start the process first
-	if err := ff.Start(); err != nil {
-		return err
-	}
-
-	// Now handle context cancellation (process is guaranteed to be non-nil)
-	done := make(chan error, 1)
-	go func() {
-		done <- ff.Wait()
-	}()
-
-	select {
-	case <-ctx.Done():
-		// Context cancelled, kill the process
-		if ff.Process != nil {
-			_ = ff.Process.Kill()
+			// Screen capture stream contains video only.
+			args = append(args, "-an")
+		} else {
+			args = append(args,
+				"-c:a", "aac",
+				"-b:a", "192k",
+				"-ar", "48000",
+				"-ac", "2",
+			)
 		}
-		<-done // Wait for process to exit
-		return ctx.Err()
-	case err := <-done:
-		return err
+
+		args = append(args,
+			"-movflags", "+frag_keyframe+empty_moov+default_base_moof",
+			"-f", "mp4",
+			"pipe:1",
+		)
+		return args
 	}
+
+	if isRawInput && (opts.RawInput.Width == 0 || opts.RawInput.Height == 0) {
+		return ErrInvalidInput
+	}
+
+	bytesWritten, err := runFFmpegTranscode(ctx, ff, input, in, w, buildArgs(encoderPlan))
+	if err == nil {
+		return nil
+	}
+
+	// If HW encoder fails before stream starts, retry file-based transcode with software for this request.
+	if encoderPlan.hardware && in != "pipe:0" && bytesWritten == 0 && ctx.Err() == nil {
+		software := transcodeSoftwareEncoderPlan(profile)
+		_, swErr := runFFmpegTranscode(ctx, ff, input, in, w, buildArgs(software))
+		if swErr == nil {
+			return nil
+		}
+		return swErr
+	}
+
+	return err
 }

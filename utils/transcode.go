@@ -43,7 +43,7 @@ func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec
 		_ = ff.Process.Kill()
 	}
 
-	vf := "format=yuv420p"
+	subFilter := ""
 	charenc, err := getCharDet(subs)
 
 	// For now I'm just using Medium as default.
@@ -58,76 +58,67 @@ func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec
 		}
 
 		forceStyle := fmt.Sprintf(":force_style='FontSize=%d,Outline=1'", fontSize)
+		escapedPath := escapeFFmpegPath(subs)
 
 		if charenc == "UTF-8" {
-			vf = fmt.Sprintf("subtitles='%s'%s,format=yuv420p", subs, forceStyle)
+			subFilter = fmt.Sprintf("subtitles='%s'%s", escapedPath, forceStyle)
 		} else {
-			vf = fmt.Sprintf("subtitles='%s':charenc=%s%s,format=yuv420p", subs, charenc, forceStyle)
+			subFilter = fmt.Sprintf("subtitles='%s':charenc=%s%s", escapedPath, charenc, forceStyle)
 		}
 	}
 
-	vf = "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2," + vf
+	encoderPlan := selectTranscodeVideoEncoder(ffmpegPath, videoEncoderProfileDLNA)
+	buildArgs := func(plan videoEncoderPlan) []string {
+		vf := joinVideoFilters(
+			"scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease",
+			"scale=trunc(iw/2)*2:trunc(ih/2)*2",
+			subFilter,
+			plan.filterTail,
+		)
 
-	// Build ffmpeg arguments
-	// For piped input, skip -ss parameter entirely (even -ss 0) as it can cause issues
-	args := []string{ffmpegPath, "-re"}
-
-	if in != "pipe:0" && seekSeconds > 0 {
-		args = append(args, "-ss", strconv.Itoa(seekSeconds), "-copyts")
-	}
-
-	args = append(args,
-		"-i", in,
-		"-vcodec", "h264",
-		"-acodec", "aac",
-		"-ac", "2",
-		"-vf", vf,
-		"-preset", "ultrafast",
-		"-tune", "zerolatency",
-		"-g", "30",
-		"-keyint_min", "15",
-		"-sc_threshold", "0",
-		"-movflags", "+faststart",
-		"-fflags", "nobuffer",
-		"-flags", "low_delay",
-		"-max_delay", "0",
-		"-f", "mpegts",
-		"pipe:1",
-	)
-
-	// Use regular Command instead of CommandContext to avoid nil pointer crash
-	// when context cancels before process starts
-	cmd := exec.Command(args[0], args[1:]...)
-	setSysProcAttr(cmd)
-
-	*ff = *cmd
-
-	if in == "pipe:0" {
-		ff.Stdin = input.(io.Reader)
-	}
-
-	ff.Stdout = w
-
-	// Start the process first
-	if err := ff.Start(); err != nil {
-		return err
-	}
-
-	// Now handle context cancellation in a goroutine (process is guaranteed to be non-nil)
-	done := make(chan error, 1)
-	go func() {
-		done <- ff.Wait()
-	}()
-
-	select {
-	case <-ctx.Done():
-		// Context cancelled, kill the process
-		if ff.Process != nil {
-			_ = ff.Process.Kill()
+		// For piped input, skip -ss parameter entirely (even -ss 0) as it can cause issues
+		args := []string{ffmpegPath}
+		if in != "pipe:0" {
+			args = append(args, "-re")
 		}
-		<-done // Wait for process to exit
-		return ctx.Err()
-	case err := <-done:
-		return err
+		args = append(args, plan.globalArgs...)
+
+		if in != "pipe:0" && seekSeconds > 0 {
+			args = append(args, "-ss", strconv.Itoa(seekSeconds), "-copyts")
+		}
+
+		args = append(args,
+			"-i", in,
+			"-vf", vf,
+		)
+		args = append(args, plan.codecArgs...)
+		args = append(args,
+			"-acodec", "aac",
+			"-ac", "2",
+			"-movflags", "+faststart",
+			"-fflags", "nobuffer",
+			"-flags", "low_delay",
+			"-max_delay", "0",
+			"-f", "mpegts",
+			"pipe:1",
+		)
+		return args
 	}
+
+	bytesWritten, err := runFFmpegTranscode(ctx, ff, input, in, w, buildArgs(encoderPlan))
+	if err == nil {
+		return nil
+	}
+
+	// If HW encoder fails before streaming starts, retry once with software for this request.
+	if encoderPlan.hardware && in != "pipe:0" && bytesWritten == 0 && ctx.Err() == nil {
+		software := transcodeSoftwareEncoderPlan(videoEncoderProfileDLNA)
+		_, swErr := runFFmpegTranscode(ctx, ff, input, in, w, buildArgs(software))
+		if swErr == nil {
+			return nil
+		}
+		return swErr
+	}
+
+	return err
 }
