@@ -37,6 +37,7 @@ type deviceNode struct {
 
 type rootNode struct {
 	XMLName xml.Name   `xml:"root"`
+	URLBase string     `xml:"URLBase"`
 	Device  deviceNode `xml:"device"`
 }
 
@@ -89,7 +90,6 @@ func DMRextractor(ctx context.Context, dmrurl string) (*DMRextracted, error) {
 	if err != nil {
 		return nil, fmt.Errorf("DMRextractor read error: %w", err)
 	}
-
 	return ParseDMRFromXML(xmlbody, parsedURL)
 }
 
@@ -133,6 +133,12 @@ func ParseDMRFromXML(xmlbody []byte, baseURL *url.URL) (*DMRextracted, error) {
 		return nil, fmt.Errorf("ParseDMRFromXML unmarshal error: %w", err)
 	}
 
+	if root.URLBase != "" {
+		if parsedURLBase, err := url.Parse(root.URLBase); err == nil {
+			baseURL = parsedURLBase
+		}
+	}
+
 	ex := extractServicesFromDevice(&root.Device, baseURL)
 	if ex != nil && ex.AvtransportControlURL != "" {
 		return ex, nil
@@ -149,6 +155,12 @@ func ParseAllDMRFromXML(xmlbody []byte, baseURL *url.URL) ([]*DMRextracted, erro
 	err := xml.Unmarshal(xmlbody, &root)
 	if err != nil {
 		return nil, fmt.Errorf("ParseAllDMRFromXML unmarshal error: %w", err)
+	}
+
+	if root.URLBase != "" {
+		if parsedURLBase, err := url.Parse(root.URLBase); err == nil {
+			baseURL = parsedURLBase
+		}
 	}
 
 	var results []*DMRextracted
@@ -207,7 +219,6 @@ func buildDMRExtracted(device *deviceNode, baseURL *url.URL) *DMRextracted {
 	for _, service := range device.ServiceList.Services {
 		eventSubURL := toAbsoluteServiceURL(baseURL, service.EventSubURL)
 		controlURL := toAbsoluteServiceURL(baseURL, service.ControlURL)
-
 		switch service.ID {
 		case "urn:upnp-org:serviceId:AVTransport":
 			ex.AvtransportControlURL = controlURL
@@ -251,6 +262,13 @@ func toAbsoluteServiceURL(baseURL *url.URL, rawServiceURL string) string {
 	serviceURL := strings.TrimSpace(rawServiceURL)
 	if serviceURL == "" {
 		return ""
+	}
+
+	// If the serviceURL is not absolute and contains a colon in the first segment,
+	// url.Parse will fail with "first path segment in URL cannot contain colon".
+	// We can workaround this by prepending "./" if it doesn't have a scheme.
+	if !strings.Contains(serviceURL, "://") && strings.Contains(strings.Split(serviceURL, "/")[0], ":") {
+		serviceURL = "./" + serviceURL
 	}
 
 	parsedServiceURL, err := url.Parse(serviceURL)
