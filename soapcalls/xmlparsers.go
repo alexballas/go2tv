@@ -37,6 +37,7 @@ type deviceNode struct {
 
 type rootNode struct {
 	XMLName xml.Name   `xml:"root"`
+	URLBase string     `xml:"URLBase"`
 	Device  deviceNode `xml:"device"`
 }
 
@@ -137,7 +138,7 @@ func ParseDMRFromXML(xmlbody []byte, baseURL *url.URL) (*DMRextracted, error) {
 		return nil, fmt.Errorf("ParseDMRFromXML unmarshal error: %w", err)
 	}
 
-	ex := extractServicesFromDevice(&root.Device, baseURL)
+	ex := extractServicesFromDevice(&root.Device, resolveDescriptionBaseURL(baseURL, root.URLBase))
 	if ex != nil && ex.AvtransportControlURL != "" {
 		return ex, nil
 	}
@@ -156,7 +157,7 @@ func ParseAllDMRFromXML(xmlbody []byte, baseURL *url.URL) ([]*DMRextracted, erro
 	}
 
 	var results []*DMRextracted
-	extractAllServicesFromDevice(&root.Device, baseURL, &results)
+	extractAllServicesFromDevice(&root.Device, resolveDescriptionBaseURL(baseURL, root.URLBase), &results)
 
 	if len(results) == 0 {
 		return nil, ErrWrongDMR
@@ -277,6 +278,36 @@ func toAbsoluteServiceURL(baseURL *url.URL, rawServiceURL string) string {
 	}
 
 	return baseURL.ResolveReference(parsedServiceURL).String()
+}
+
+func resolveDescriptionBaseURL(locationBase *url.URL, rawURLBase string) *url.URL {
+	urlBase := strings.TrimSpace(rawURLBase)
+	if urlBase == "" {
+		return locationBase
+	}
+
+	parsedURLBase, err := url.Parse(urlBase)
+	if err != nil {
+		return locationBase
+	}
+
+	if parsedURLBase.IsAbs() {
+		if (parsedURLBase.Scheme == "http" || parsedURLBase.Scheme == "https") && parsedURLBase.Host != "" {
+			return parsedURLBase
+		}
+		return locationBase
+	}
+
+	if locationBase == nil {
+		return nil
+	}
+
+	resolvedURLBase := locationBase.ResolveReference(parsedURLBase)
+	if resolvedURLBase == nil || resolvedURLBase.Scheme == "" || resolvedURLBase.Host == "" {
+		return locationBase
+	}
+
+	return resolvedURLBase
 }
 
 // ParseEventNotify parses the Notify messages from the DMR device.

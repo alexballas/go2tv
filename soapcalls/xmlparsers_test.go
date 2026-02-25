@@ -345,6 +345,111 @@ func TestParseDMRFromXMLResolvesRelativeServiceURLs(t *testing.T) {
 	}
 }
 
+func TestParseDMRFromXMLURLBaseHandling(t *testing.T) {
+	tests := []struct {
+		name         string
+		raw          string
+		wantControl  string
+		wantEventSub string
+	}{
+		{
+			name: "Absolute URLBase Overrides Location Base",
+			raw: `<?xml version="1.0"?>
+<root>
+	<URLBase>http://example.com:8080/upnp/</URLBase>
+	<device>
+		<serviceList>
+			<service>
+				<serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
+				<serviceId>urn:upnp-org:serviceId:AVTransport</serviceId>
+				<controlURL>ctrl</controlURL>
+				<eventSubURL>event</eventSubURL>
+			</service>
+		</serviceList>
+	</device>
+</root>`,
+			wantControl:  "http://example.com:8080/upnp/ctrl",
+			wantEventSub: "http://example.com:8080/upnp/event",
+		},
+		{
+			name: "Relative URLBase Resolved Against Location Base",
+			raw: `<?xml version="1.0"?>
+<root>
+	<URLBase>/upnp/</URLBase>
+	<device>
+		<serviceList>
+			<service>
+				<serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
+				<serviceId>urn:upnp-org:serviceId:AVTransport</serviceId>
+				<controlURL>ctrl</controlURL>
+				<eventSubURL>event</eventSubURL>
+			</service>
+		</serviceList>
+	</device>
+</root>`,
+			wantControl:  "http://example.com:8080/upnp/ctrl",
+			wantEventSub: "http://example.com:8080/upnp/event",
+		},
+		{
+			name: "Malformed URLBase Falls Back To Location Base",
+			raw: `<?xml version="1.0"?>
+<root>
+	<URLBase>http:/upnp</URLBase>
+	<device>
+		<serviceList>
+			<service>
+				<serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
+				<serviceId>urn:upnp-org:serviceId:AVTransport</serviceId>
+				<controlURL>/ctrl</controlURL>
+				<eventSubURL>/event</eventSubURL>
+			</service>
+		</serviceList>
+	</device>
+</root>`,
+			wantControl:  "http://example.com:8080/ctrl",
+			wantEventSub: "http://example.com:8080/event",
+		},
+		{
+			name: "Malformed Service URL Uses URLBase After Sanitization",
+			raw: `<?xml version="1.0"?>
+<root>
+	<URLBase>http://example.com:8080/upnp/</URLBase>
+	<device>
+		<serviceList>
+			<service>
+				<serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
+				<serviceId>urn:upnp-org:serviceId:AVTransport</serviceId>
+				<controlURL>_urn:schemas-upnp-org:service:AVTransport_control</controlURL>
+				<eventSubURL>_urn:schemas-upnp-org:service:AVTransport_event</eventSubURL>
+			</service>
+		</serviceList>
+	</device>
+</root>`,
+			wantControl:  "http://example.com:8080/upnp/_urn:schemas-upnp-org:service:AVTransport_control",
+			wantEventSub: "http://example.com:8080/upnp/_urn:schemas-upnp-org:service:AVTransport_event",
+		},
+	}
+
+	locationBase, _ := url.Parse("http://example.com:8080/xml/device_description.xml")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := ParseDMRFromXML([]byte(tt.raw), locationBase)
+			if err != nil {
+				t.Fatalf("ParseDMRFromXML() unexpected error: %v", err)
+			}
+
+			if result.AvtransportControlURL != tt.wantControl {
+				t.Fatalf("AvtransportControlURL = %q, want %q", result.AvtransportControlURL, tt.wantControl)
+			}
+
+			if result.AvtransportEventSubURL != tt.wantEventSub {
+				t.Fatalf("AvtransportEventSubURL = %q, want %q", result.AvtransportEventSubURL, tt.wantEventSub)
+			}
+		})
+	}
+}
+
 func TestDMRextractorEmbeddedDevice(t *testing.T) {
 	// Test full HTTP flow with embedded device XML
 	raw := `<?xml version="1.0" encoding="utf-8"?>
@@ -517,6 +622,64 @@ func TestParseAllDMRFromXML(t *testing.T) {
 	}
 	if !foundZone2 {
 		t.Error("Zone 2 not found in results")
+	}
+}
+
+func TestParseAllDMRFromXMLUsesURLBase(t *testing.T) {
+	raw := `<?xml version="1.0"?>
+<root>
+	<URLBase>http://example.com:8080/upnp/</URLBase>
+	<device>
+		<deviceList>
+			<device>
+				<friendlyName>Zone 1</friendlyName>
+				<serviceList>
+					<service>
+						<serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
+						<serviceId>urn:upnp-org:serviceId:AVTransport</serviceId>
+						<controlURL>zone1/AVTransport</controlURL>
+						<eventSubURL>zone1/event</eventSubURL>
+					</service>
+				</serviceList>
+			</device>
+			<device>
+				<friendlyName>Zone 2</friendlyName>
+				<serviceList>
+					<service>
+						<serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
+						<serviceId>urn:upnp-org:serviceId:AVTransport</serviceId>
+						<controlURL>zone2/AVTransport</controlURL>
+						<eventSubURL>zone2/event</eventSubURL>
+					</service>
+				</serviceList>
+			</device>
+		</deviceList>
+	</device>
+</root>`
+
+	baseURL, _ := url.Parse("http://example.com:8080/xml/device_description.xml")
+	results, err := ParseAllDMRFromXML([]byte(raw), baseURL)
+	if err != nil {
+		t.Fatalf("ParseAllDMRFromXML() unexpected error: %v", err)
+	}
+
+	if len(results) != 2 {
+		t.Fatalf("ParseAllDMRFromXML() returned %d devices, want 2", len(results))
+	}
+
+	expectedControls := map[string]string{
+		"Zone 1": "http://example.com:8080/upnp/zone1/AVTransport",
+		"Zone 2": "http://example.com:8080/upnp/zone2/AVTransport",
+	}
+
+	for _, dev := range results {
+		want, ok := expectedControls[dev.FriendlyName]
+		if !ok {
+			t.Fatalf("unexpected device in results: %q", dev.FriendlyName)
+		}
+		if dev.AvtransportControlURL != want {
+			t.Fatalf("AvtransportControlURL for %q = %q, want %q", dev.FriendlyName, dev.AvtransportControlURL, want)
+		}
 	}
 }
 
