@@ -37,7 +37,6 @@ type deviceNode struct {
 
 type rootNode struct {
 	XMLName xml.Name   `xml:"root"`
-	URLBase string     `xml:"URLBase"`
 	Device  deviceNode `xml:"device"`
 }
 
@@ -133,12 +132,6 @@ func ParseDMRFromXML(xmlbody []byte, baseURL *url.URL) (*DMRextracted, error) {
 		return nil, fmt.Errorf("ParseDMRFromXML unmarshal error: %w", err)
 	}
 
-	if root.URLBase != "" {
-		if parsedURLBase, err := url.Parse(root.URLBase); err == nil {
-			baseURL = parsedURLBase
-		}
-	}
-
 	ex := extractServicesFromDevice(&root.Device, baseURL)
 	if ex != nil && ex.AvtransportControlURL != "" {
 		return ex, nil
@@ -155,12 +148,6 @@ func ParseAllDMRFromXML(xmlbody []byte, baseURL *url.URL) ([]*DMRextracted, erro
 	err := xml.Unmarshal(xmlbody, &root)
 	if err != nil {
 		return nil, fmt.Errorf("ParseAllDMRFromXML unmarshal error: %w", err)
-	}
-
-	if root.URLBase != "" {
-		if parsedURLBase, err := url.Parse(root.URLBase); err == nil {
-			baseURL = parsedURLBase
-		}
 	}
 
 	var results []*DMRextracted
