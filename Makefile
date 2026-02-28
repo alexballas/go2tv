@@ -23,7 +23,7 @@ FFMPEG_STATIC_DIR=$(BUILD_DIR)/ffmpeg-static
 FFMPEG_APP_LIBDIR=$(APPDIR)/usr/lib/ffmpeg
 APPIMAGE_FFMPEG_MODE?=auto
 
-.PHONY: build wayland windows install uninstall clean run test appimage appimage-ffmpeg appimage-clean
+.PHONY: build wayland windows install uninstall clean run test appimage appimage-ffmpeg
 
 build: clean
 	go build -tags "$(TAGS)" -trimpath -ldflags $(LDFLAGS) -o $(BIN) ./cmd/go2tv
@@ -204,5 +204,4 @@ appimage-ffmpeg: build
 	# Clean up ffmpeg build/download files
 	rm -rf $(FFMPEG_STATIC_DIR) $(FFMPEG_STATIC_ARCHIVE) $(BUILD_DIR)/ffmpeg-src $(BUILD_DIR)/ffmpeg.tar.xz
 
-appimage-clean:
-	rm -rf $(APPDIR) $(APPIMAGETOOL) $(BUILD_DIR)/*.AppImage $(FFMPEG_STATIC_DIR) $(FFMPEG_STATIC_ARCHIVE) $(BUILD_DIR)/ffmpeg-src $(BUILD_DIR)/ffmpeg.tar.xz
+
