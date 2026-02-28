@@ -215,6 +215,26 @@ cd go2tv
 make build
 ```
 
+**AppImage build (Linux)**
+
+``` console
+make appimage
+```
+
+`v2.1` style build. No bundled `ffmpeg`/`ffprobe`.
+
+**AppImage build (with ffmpeg, Linux)**
+
+``` console
+make appimage-ffmpeg
+```
+
+- `APPIMAGE_FFMPEG_MODE=auto` (default): use host `ffmpeg`/`ffprobe` if static; else download prebuilt bundle
+- `APPIMAGE_FFMPEG_MODE=system`: require host `ffmpeg`/`ffprobe`
+- `APPIMAGE_FFMPEG_MODE=download`: always download prebuilt bundle
+- `APPIMAGE_FFMPEG_MODE=none`: build AppImage without ffmpeg binaries
+- Optional explicit paths: `APPIMAGE_FFMPEG_BIN=/path/ffmpeg APPIMAGE_FFPROBE_BIN=/path/ffprobe`
+
 **Using Docker**
 
 Build the image:
