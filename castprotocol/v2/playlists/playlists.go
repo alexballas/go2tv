@@ -97,7 +97,7 @@ func newM3UIterator(uri string) (*m3uIterator, error) {
 	}
 	var lines []string
 	// convert windows linebreaks, and split
-	for _, l := range strings.Split(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n") {
+	for l := range strings.SplitSeq(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n") {
 		// This is a very simple m3u decoder, ignores all extended info
 		l = strings.TrimSpace(l)
 		if len(l) > 0 && !strings.HasPrefix(l, "#") {

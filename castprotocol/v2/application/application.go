@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -604,11 +605,9 @@ func (a *Application) Seek(value int) error {
 		"CC1AD845", // Default media
 	}
 
-	for _, app := range appsSeekTo {
-		if app == a.application.AppId {
-			absolute := a.media.CurrentTime + float32(value)
-			return a.SeekToTime(absolute)
-		}
+	if slices.Contains(appsSeekTo, a.application.AppId) {
+		absolute := a.media.CurrentTime + float32(value)
+		return a.SeekToTime(absolute)
 	}
 
 	return a.sendMediaRecv(&cast.MediaHeader{
@@ -1250,7 +1249,7 @@ func (a *Application) serveLiveStreaming(w http.ResponseWriter, r *http.Request,
 	}
 }
 
-func (a *Application) log(message string, args ...interface{}) {
+func (a *Application) log(message string, args ...any) {
 	if a.debug {
 		log.WithField("package", "application").Infof(message, args...)
 	}

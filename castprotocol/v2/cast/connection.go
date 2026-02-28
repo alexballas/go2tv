@@ -109,7 +109,7 @@ func (c *Connection) RemotePort() (port string, err error) {
 	return port, err
 }
 
-func (c *Connection) log(message string, args ...interface{}) {
+func (c *Connection) log(message string, args ...any) {
 	if c.debug {
 		log.WithField("package", "cast").Debugf(message, args...)
 	}

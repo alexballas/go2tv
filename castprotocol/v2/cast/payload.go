@@ -96,11 +96,11 @@ type LaunchRequest struct {
 
 type LoadMediaCommand struct {
 	PayloadHeader
-	Media       MediaItem   `json:"media"`
-	CurrentTime int         `json:"currentTime"`
-	Autoplay    bool        `json:"autoplay"`
-	QueueData   QueueData   `json:"queueData"`
-	CustomData  interface{} `json:"customData"`
+	Media       MediaItem `json:"media"`
+	CurrentTime int       `json:"currentTime"`
+	Autoplay    bool      `json:"autoplay"`
+	QueueData   QueueData `json:"queueData"`
+	CustomData  any       `json:"customData"`
 }
 
 type QueueData struct {

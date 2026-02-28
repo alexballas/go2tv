@@ -10,7 +10,7 @@ import (
 // FetchResource fetches the given url and returns the response body. The url can either
 // be an HTTP url or a file:// url.
 func FetchResource(url string) ([]byte, error) {
-	if filep := strings.TrimPrefix(url, "file://"); filep != url {
+	if filep, ok := strings.CutPrefix(url, "file://"); ok {
 		return os.ReadFile(filep)
 	}
 	res, err := http.Get(url)
