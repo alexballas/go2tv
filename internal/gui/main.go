@@ -18,6 +18,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
@@ -521,20 +522,24 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	externalmedia := widget.NewCheck(lang.L("Media from URL"), func(b bool) {})
 	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
 	nextmedia := widget.NewCheck(lang.L("Auto-Play Next File"), func(b bool) {})
-	transcode := widget.NewCheck(lang.L("Transcode"), func(b bool) {})
-	screencast := widget.NewCheck(lang.L("Cast Desktop (experimental)"), func(b bool) {})
-	rtmpServerCheck := widget.NewCheck(lang.L("Enable RTMP Server"), func(b bool) {
+	transcode := ttwidget.NewCheck(lang.L("Transcode"), func(b bool) {})
+	screencast := ttwidget.NewCheck(lang.L("Cast Desktop (experimental)"), func(b bool) {})
+	rtmpServerCheck := ttwidget.NewCheck(lang.L("Enable RTMP Server"), func(b bool) {
 		if b {
 			startRTMPServer(s)
 		} else {
 			stopRTMPServer(s)
 		}
 	})
-	s.rtmpServerCheck = rtmpServerCheck
+	s.rtmpServerCheck = &rtmpServerCheck.Check
+	s.transcodeToolTipCheck = transcode
+	s.screencastToolTipCheck = screencast
+	s.rtmpServerToolTipCheck = rtmpServerCheck
 	if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
 		s.rtmpServerCheck.Disable()
 		screencast.Disable()
 	}
+	s.updateFFmpegDependentCheckTooltips()
 
 	s.rtmpURLEntry = widget.NewEntry()
 	s.rtmpURLEntry.Disable()
@@ -611,8 +616,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.CurrentPos = curPos
 	s.EndPos = endPos
 	s.SelectInternalSubs = selectInternalSubs
-	s.TranscodeCheckBox = transcode
-	s.ScreencastCheckBox = screencast
+	s.TranscodeCheckBox = &transcode.Check
+	s.ScreencastCheckBox = &screencast.Check
 	s.LoopSelectedCheck = medialoop
 	s.MediaBrowse = mbrowse
 	s.ClearMedia = clearmedia

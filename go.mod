@@ -8,6 +8,7 @@ require (
 	github.com/alexballas/xfilepicker v0.0.0-20260206213252-e8f58cac8729
 	github.com/buger/jsonparser v1.1.1
 	github.com/charmbracelet/bubbletea v1.3.10
+	github.com/dweymouth/fyne-tooltip v0.4.0
 	github.com/gdamore/tcell/v2 v2.13.8
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/gogo/protobuf v1.3.2

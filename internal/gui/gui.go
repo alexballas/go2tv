@@ -23,6 +23,8 @@ import (
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	fynetooltip "github.com/dweymouth/fyne-tooltip"
+	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 	"go2tv.app/go2tv/v2/castprotocol"
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
@@ -116,6 +118,9 @@ type FyneScreen struct {
 	ActiveDeviceCard         *widget.Card
 	rtmpServer               *rtmp.Server
 	rtmpServerCheck          *widget.Check
+	transcodeToolTipCheck    *ttwidget.Check
+	screencastToolTipCheck   *ttwidget.Check
+	rtmpServerToolTipCheck   *ttwidget.Check
 	rtmpURLCard              *widget.Card
 	rtmpURLEntry             *widget.Entry
 	rtmpKeyEntry             *widget.Entry
@@ -137,6 +142,30 @@ type devType struct {
 	addr        string
 	deviceType  string
 	isAudioOnly bool
+}
+
+func (s *FyneScreen) updateFFmpegDependentCheckTooltips() {
+	if s == nil {
+		return
+	}
+
+	ffmpegMissing := utils.CheckFFmpeg(s.ffmpegPath) != nil
+	toolTipMsg := lang.L("ffmpeg is required. install it or update ffmpeg path in Settings")
+
+	setToolTip := func(ttCheck *ttwidget.Check, baseCheck *widget.Check) {
+		if ttCheck == nil || baseCheck == nil {
+			return
+		}
+		if ffmpegMissing && baseCheck.Disabled() {
+			ttCheck.SetToolTip(toolTipMsg)
+			return
+		}
+		ttCheck.SetToolTip("")
+	}
+
+	setToolTip(s.transcodeToolTipCheck, s.TranscodeCheckBox)
+	setToolTip(s.screencastToolTipCheck, s.ScreencastCheckBox)
+	setToolTip(s.rtmpServerToolTipCheck, s.rtmpServerCheck)
 }
 
 func (f *debugWriter) Write(b []byte) (int, error) {
@@ -206,6 +235,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 					s.rtmpServerCheck.Enable()
 				}
 			}
+			s.updateFFmpegDependentCheckTooltips()
 
 			if s.ffmpegPathChanged {
 				furi, err := storage.ParseURI("file://" + s.mediafile)
@@ -229,10 +259,11 @@ func Start(ctx context.Context, s *FyneScreen) {
 		}
 		s.rtmpServerCheck.Disable()
 	}
+	s.updateFFmpegDependentCheckTooltips()
 
 	s.tabs = tabs
 
-	w.SetContent(tabs)
+	w.SetContent(fynetooltip.AddWindowToolTipLayer(tabs, w.Canvas()))
 	w.Resize(fyne.NewSize(1000, 0))
 	w.CenterOnScreen()
 	w.SetMaster()

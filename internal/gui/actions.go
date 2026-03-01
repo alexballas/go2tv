@@ -2195,6 +2195,7 @@ func resetRTMPUI(screen *FyneScreen) {
 	screen.MediaText.SetText(screen.rtmpPrevMediaText)
 	screen.mediafile = screen.rtmpPrevMediaFile
 
+	screen.updateFFmpegDependentCheckTooltips()
 	setPlayPauseView("", screen)
 }
 
