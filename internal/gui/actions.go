@@ -2089,6 +2089,11 @@ func startRTMPServer(screen *FyneScreen) {
 		fyne.Do(func() {
 			screen.rtmpServerCheck.Enable()
 			screen.rtmpPrevExternalMediaURL = screen.ExternalMediaURL.Checked
+			if screen.LoopSelectedCheck != nil {
+				screen.rtmpPrevLoop = screen.LoopSelectedCheck.Checked
+				screen.LoopSelectedCheck.SetChecked(false)
+				screen.LoopSelectedCheck.Disable()
+			}
 			screen.rtmpPrevMediaText = screen.MediaText.Text
 			screen.rtmpPrevMediaFile = screen.mediafile
 
@@ -2194,6 +2199,14 @@ func resetRTMPUI(screen *FyneScreen) {
 
 	screen.MediaText.SetText(screen.rtmpPrevMediaText)
 	screen.mediafile = screen.rtmpPrevMediaFile
+	if screen.LoopSelectedCheck != nil {
+		screen.LoopSelectedCheck.SetChecked(screen.rtmpPrevLoop)
+		if !screen.ExternalMediaURL.Checked && (screen.NextMediaCheck == nil || !screen.NextMediaCheck.Checked) {
+			screen.LoopSelectedCheck.Enable()
+		} else {
+			screen.LoopSelectedCheck.Disable()
+		}
+	}
 
 	screen.updateFFmpegDependentCheckTooltips()
 	setPlayPauseView("", screen)

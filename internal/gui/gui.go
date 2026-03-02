@@ -126,6 +126,7 @@ type FyneScreen struct {
 	rtmpKeyEntry             *widget.Entry
 	rtmpHLSURL               string // The local HLS HLS URL
 	rtmpPrevExternalMediaURL bool
+	rtmpPrevLoop             bool
 	rtmpPrevMediaText        string
 	rtmpPrevMediaFile        string
 	imageAutoSkipMediaPath   string
