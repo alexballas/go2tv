@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 
 	"github.com/go-viper/mapstructure/v2"
@@ -42,8 +41,13 @@ func GetSubs(ffmpeg string, f string) ([]string, error) {
 		return nil, err
 	}
 
+	ffprobePath, err := ResolveFFprobePath(ffmpeg)
+	if err != nil {
+		return nil, err
+	}
+
 	cmd := exec.Command(
-		filepath.Join(filepath.Dir(ffmpeg), "ffprobe"),
+		ffprobePath,
 		"-loglevel", "error",
 		"-show_streams",
 		"-of", "json",
@@ -106,8 +110,13 @@ func ExtractSub(ffmpeg string, n int, f string) (string, error) {
 		return "", err
 	}
 
+	resolvedFFmpeg, err := ResolveFFmpegPath(ffmpeg)
+	if err != nil {
+		return "", err
+	}
+
 	cmd := exec.Command(
-		ffmpeg,
+		resolvedFFmpeg,
 		"-y",
 		"-i", f,
 		"-map", "0:s:"+strconv.Itoa(n),

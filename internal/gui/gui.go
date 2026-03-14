@@ -8,7 +8,6 @@ import (
 	"embed"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -671,7 +670,7 @@ func NewFyneScreen(version string) *FyneScreen {
 			}
 		}
 
-		path, _ := exec.LookPath("ffmpeg")
+		path, _ := utils.ResolveFFmpegPath("")
 		return path
 	}()
 

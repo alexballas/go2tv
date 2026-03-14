@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -58,8 +57,13 @@ func DurationForMediaSeconds(ffmpeg string, f string) (float64, error) {
 		return 0, err
 	}
 
+	ffprobePath, err := ResolveFFprobePath(ffmpeg)
+	if err != nil {
+		return 0, err
+	}
+
 	cmd := exec.Command(
-		filepath.Join(filepath.Dir(ffmpeg), "ffprobe"),
+		ffprobePath,
 		"-loglevel", "error",
 		"-show_format",
 		"-of", "json",
@@ -90,8 +94,13 @@ func GetMediaCodecInfo(ffmpeg string, f string) (*MediaCodecInfo, error) {
 		return nil, err
 	}
 
+	ffprobePath, err := ResolveFFprobePath(ffmpeg)
+	if err != nil {
+		return nil, err
+	}
+
 	cmd := exec.Command(
-		filepath.Join(filepath.Dir(ffmpeg), "ffprobe"),
+		ffprobePath,
 		"-loglevel", "error",
 		"-show_format",
 		"-show_streams",

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 
@@ -20,6 +19,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	xfilepicker "github.com/alexballas/xfilepicker/dialog"
 	"go2tv.app/go2tv/v2/rtmp"
+	"go2tv.app/go2tv/v2/utils"
 )
 
 type numericalEntry struct {
@@ -65,7 +65,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	ffmpegTextEntry := widget.NewEntry()
 
 	ffmpegFolderReset := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		path, err := exec.LookPath("ffmpeg")
+		path, err := utils.ResolveFFmpegPath("")
 		ffmpegTextEntry.SetText(path)
 		if err != nil {
 			ffmpegTextEntry.SetText("ffmpeg")
