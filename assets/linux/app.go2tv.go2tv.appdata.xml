@@ -51,6 +51,19 @@
   </branding>
 
   <releases>
+      <release version="2.2.0" date="2026-03-14" type="stable">
+        <description>
+          <ul>
+            <li>Added experimental desktop casting.</li>
+            <li>New image slideshow support (configurable in Settings).</li>
+            <li>GPU accelerated ffmpeg transcoding if available.</li>
+            <li>DLNA/UPnP protocol improvements - Fix callback due to UpdateMRstate.</li>
+            <li>Added Linux AppImages (FFmpeg included).</li>
+            <li>UX improvements</li>
+          </ul>
+        </description>
+        <url type="details">https://github.com/alexballas/go2tv/releases/tag/v2.2.0</url>
+      </release>
         <release version="2.1.0" date="2026-02-02" type="stable">
         <description>
           <ul>
