@@ -129,9 +129,9 @@ appimage-ffmpeg: build
 				exit 1; \
 			fi; \
 			case "$(ARCH)" in \
-				x86_64) FFMPEG_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz" ;; \
-				aarch64|arm64) FFMPEG_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz" ;; \
-				armv7l|armhf) FFMPEG_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarmhf-gpl.tar.xz" ;; \
+				x86_64) FFMPEG_URL="https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz" ;; \
+				aarch64|arm64) FFMPEG_URL="https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz" ;; \
+				armv7l|armhf) FFMPEG_URL="https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarmhf-gpl.tar.xz" ;; \
 				*) echo "Unsupported arch for auto ffmpeg download: $(ARCH)"; exit 1 ;; \
 			esac; \
 			FFMPEG_URL="$${APPIMAGE_FFMPEG_URL:-$$FFMPEG_URL}"; \
