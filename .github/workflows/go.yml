@@ -12,8 +12,8 @@ jobs:
       with:
         go-version: 'stable'
 
-    - name: Install xorg-dev
-      run: sudo apt update && sudo apt install xorg-dev
+    - name: Install Linux deps
+      run: sudo apt update && sudo apt install xorg-dev libpipewire-0.3-dev pkg-config
 
     - name: Build
       run: go build -v ./...

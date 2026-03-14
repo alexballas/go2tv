@@ -37,6 +37,7 @@ type deviceNode struct {
 
 type rootNode struct {
 	XMLName xml.Name   `xml:"root"`
+	URLBase string     `xml:"URLBase"`
 	Device  deviceNode `xml:"device"`
 }
 
@@ -52,6 +53,11 @@ type eventPropertySet struct {
 			Value string `xml:"val,attr"`
 		} `xml:"TransportState"`
 	} `xml:"property>LastChange>Event>InstanceID"`
+}
+
+type EventNotify struct {
+	TransportState          string
+	CurrentTransportActions string
 }
 
 // DMRextracted stores the services urls and device identification
@@ -89,7 +95,6 @@ func DMRextractor(ctx context.Context, dmrurl string) (*DMRextracted, error) {
 	if err != nil {
 		return nil, fmt.Errorf("DMRextractor read error: %w", err)
 	}
-
 	return ParseDMRFromXML(xmlbody, parsedURL)
 }
 
@@ -133,7 +138,7 @@ func ParseDMRFromXML(xmlbody []byte, baseURL *url.URL) (*DMRextracted, error) {
 		return nil, fmt.Errorf("ParseDMRFromXML unmarshal error: %w", err)
 	}
 
-	ex := extractServicesFromDevice(&root.Device, baseURL)
+	ex := extractServicesFromDevice(&root.Device, resolveDescriptionBaseURL(baseURL, root.URLBase))
 	if ex != nil && ex.AvtransportControlURL != "" {
 		return ex, nil
 	}
@@ -152,7 +157,7 @@ func ParseAllDMRFromXML(xmlbody []byte, baseURL *url.URL) ([]*DMRextracted, erro
 	}
 
 	var results []*DMRextracted
-	extractAllServicesFromDevice(&root.Device, baseURL, &results)
+	extractAllServicesFromDevice(&root.Device, resolveDescriptionBaseURL(baseURL, root.URLBase), &results)
 
 	if len(results) == 0 {
 		return nil, ErrWrongDMR
@@ -207,7 +212,6 @@ func buildDMRExtracted(device *deviceNode, baseURL *url.URL) *DMRextracted {
 	for _, service := range device.ServiceList.Services {
 		eventSubURL := toAbsoluteServiceURL(baseURL, service.EventSubURL)
 		controlURL := toAbsoluteServiceURL(baseURL, service.ControlURL)
-
 		switch service.ID {
 		case "urn:upnp-org:serviceId:AVTransport":
 			ex.AvtransportControlURL = controlURL
@@ -253,6 +257,13 @@ func toAbsoluteServiceURL(baseURL *url.URL, rawServiceURL string) string {
 		return ""
 	}
 
+	// If the serviceURL is not absolute and contains a colon in the first segment,
+	// url.Parse will fail with "first path segment in URL cannot contain colon".
+	// We can workaround this by prepending "./" if it doesn't have a scheme.
+	if !strings.Contains(serviceURL, "://") && strings.Contains(strings.Split(serviceURL, "/")[0], ":") {
+		serviceURL = "./" + serviceURL
+	}
+
 	parsedServiceURL, err := url.Parse(serviceURL)
 	if err != nil {
 		return ""
@@ -269,15 +280,47 @@ func toAbsoluteServiceURL(baseURL *url.URL, rawServiceURL string) string {
 	return baseURL.ResolveReference(parsedServiceURL).String()
 }
 
-// EventNotifyParser parses the Notify messages from the DMR device.
-func EventNotifyParser(xmlbody string) (string, string, error) {
+func resolveDescriptionBaseURL(locationBase *url.URL, rawURLBase string) *url.URL {
+	urlBase := strings.TrimSpace(rawURLBase)
+	if urlBase == "" {
+		return locationBase
+	}
+
+	parsedURLBase, err := url.Parse(urlBase)
+	if err != nil {
+		return locationBase
+	}
+
+	if parsedURLBase.IsAbs() {
+		if (parsedURLBase.Scheme == "http" || parsedURLBase.Scheme == "https") && parsedURLBase.Host != "" {
+			return parsedURLBase
+		}
+		return locationBase
+	}
+
+	if locationBase == nil {
+		return nil
+	}
+
+	resolvedURLBase := locationBase.ResolveReference(parsedURLBase)
+	if resolvedURLBase == nil || resolvedURLBase.Scheme == "" || resolvedURLBase.Host == "" {
+		return locationBase
+	}
+
+	return resolvedURLBase
+}
+
+// ParseEventNotify parses the Notify messages from the DMR device.
+// Transport state drives playback transitions; actions are optional.
+func ParseEventNotify(xmlbody string) (EventNotify, error) {
 	var root eventPropertySet
 	err := xml.Unmarshal([]byte(xmlbody), &root)
 	if err != nil {
-		return "", "", fmt.Errorf("EventNotifyParser unmarshal error: %w", err)
+		return EventNotify{}, fmt.Errorf("ParseEventNotify unmarshal error: %w", err)
 	}
-	previousstate := root.EventInstance.EventCurrentTransportActions.Value
-	newstate := root.EventInstance.EventTransportState.Value
 
-	return previousstate, newstate, nil
+	return EventNotify{
+		TransportState:          root.EventInstance.EventTransportState.Value,
+		CurrentTransportActions: root.EventInstance.EventCurrentTransportActions.Value,
+	}, nil
 }

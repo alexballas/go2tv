@@ -8,7 +8,6 @@ import (
 	"embed"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -23,12 +22,15 @@ import (
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	fynetooltip "github.com/dweymouth/fyne-tooltip"
+	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 	"go2tv.app/go2tv/v2/castprotocol"
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
 	"go2tv.app/go2tv/v2/rtmp"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
+	"go2tv.app/screencast/hls"
 )
 
 // FyneScreen .
@@ -53,6 +55,7 @@ type FyneScreen struct {
 	NextMediaCheck           *widget.Check
 	LoopSelectedCheck        *widget.Check
 	TranscodeCheckBox        *widget.Check
+	ScreencastCheckBox       *widget.Check
 	Stop                     *widget.Button
 	DeviceList               *deviceList
 	httpserver               *httphandlers.HTTPserver
@@ -66,6 +69,8 @@ type FyneScreen struct {
 	selectedDevice           devType
 	selectedDeviceType       string
 	chromecastClient         *castprotocol.CastClient // Active Chromecast connection
+	chromecastActionID       uint64
+	imageAutoSkipID          uint64
 	State                    string
 	mediafile                string
 	version                  string
@@ -90,7 +95,18 @@ type FyneScreen struct {
 	ffmpegPathChanged        bool
 	Medialoop                bool
 	sliderActive             bool
+	imageAutoSkipTimeout     int
 	Transcode                bool
+	Screencast               bool
+	screencastPrevTranscode  bool
+	screencastPrevExternal   bool
+	screencastPrevManualSubs bool
+	screencastPrevLoop       bool
+	screencastPrevNext       bool
+	screencastPrevMediaText  string
+	screencastPrevMediaFile  string
+	screencastSession        *hls.Session
+	screencastMu             sync.Mutex
 	ErrorVisible             bool
 	Hotkeys                  bool
 	hotkeysSuspendCount      int32
@@ -101,13 +117,19 @@ type FyneScreen struct {
 	ActiveDeviceCard         *widget.Card
 	rtmpServer               *rtmp.Server
 	rtmpServerCheck          *widget.Check
+	transcodeToolTipCheck    *ttwidget.Check
+	screencastToolTipCheck   *ttwidget.Check
+	rtmpServerToolTipCheck   *ttwidget.Check
 	rtmpURLCard              *widget.Card
 	rtmpURLEntry             *widget.Entry
 	rtmpKeyEntry             *widget.Entry
 	rtmpHLSURL               string // The local HLS HLS URL
 	rtmpPrevExternalMediaURL bool
+	rtmpPrevLoop             bool
 	rtmpPrevMediaText        string
 	rtmpPrevMediaFile        string
+	imageAutoSkipMediaPath   string
+	imageAutoSkipCancel      context.CancelFunc
 	rtmpMu                   sync.Mutex
 }
 
@@ -120,6 +142,30 @@ type devType struct {
 	addr        string
 	deviceType  string
 	isAudioOnly bool
+}
+
+func (s *FyneScreen) updateFFmpegDependentCheckTooltips() {
+	if s == nil {
+		return
+	}
+
+	ffmpegMissing := utils.CheckFFmpeg(s.ffmpegPath) != nil
+	toolTipMsg := lang.L("ffmpeg is required. install it or update ffmpeg path in Settings")
+
+	setToolTip := func(ttCheck *ttwidget.Check, baseCheck *widget.Check) {
+		if ttCheck == nil || baseCheck == nil {
+			return
+		}
+		if ffmpegMissing && baseCheck.Disabled() {
+			ttCheck.SetToolTip(toolTipMsg)
+			return
+		}
+		ttCheck.SetToolTip("")
+	}
+
+	setToolTip(s.transcodeToolTipCheck, s.TranscodeCheckBox)
+	setToolTip(s.screencastToolTipCheck, s.ScreencastCheckBox)
+	setToolTip(s.rtmpServerToolTipCheck, s.rtmpServerCheck)
 }
 
 func (f *debugWriter) Write(b []byte) (int, error) {
@@ -160,15 +206,24 @@ func Start(ctx context.Context, s *FyneScreen) {
 	tabs.OnSelected = func(t *container.TabItem) {
 		if t.Text == "Go2TV" {
 			s.Hotkeys = true
-			if s.rtmpServer == nil {
+			if s.rtmpServer == nil && !s.Screencast {
 				s.TranscodeCheckBox.Enable()
+				if s.ScreencastCheckBox != nil && !s.Screencast {
+					s.ScreencastCheckBox.Enable()
+				}
 				s.SlideBar.Enable()
+			} else if s.Screencast {
+				s.TranscodeCheckBox.Disable()
 			}
 
 			ffmpegErr := utils.CheckFFmpeg(s.ffmpegPath)
 			if ffmpegErr != nil {
 				s.TranscodeCheckBox.SetChecked(false)
 				s.TranscodeCheckBox.Disable()
+				if s.ScreencastCheckBox != nil {
+					s.ScreencastCheckBox.SetChecked(false)
+					s.ScreencastCheckBox.Disable()
+				}
 				setInternalSubsDropdownNoSubs(s)
 			}
 
@@ -180,6 +235,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 					s.rtmpServerCheck.Enable()
 				}
 			}
+			s.updateFFmpegDependentCheckTooltips()
 
 			if s.ffmpegPathChanged {
 				furi, err := storage.ParseURI("file://" + s.mediafile)
@@ -198,12 +254,16 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
 		s.TranscodeCheckBox.Disable()
+		if s.ScreencastCheckBox != nil {
+			s.ScreencastCheckBox.Disable()
+		}
 		s.rtmpServerCheck.Disable()
 	}
+	s.updateFFmpegDependentCheckTooltips()
 
 	s.tabs = tabs
 
-	w.SetContent(tabs)
+	w.SetContent(fynetooltip.AddWindowToolTipLayer(tabs, w.Canvas()))
 	w.Resize(fyne.NewSize(1000, 0))
 	w.CenterOnScreen()
 	w.SetMaster()
@@ -218,6 +278,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 			s.rtmpServer.Stop()
 		}
 		s.rtmpMu.Unlock()
+		stopScreencastSession(s)
 		os.Exit(0)
 	}()
 
@@ -227,6 +288,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 			s.rtmpServer.Stop()
 		}
 		s.rtmpMu.Unlock()
+		stopScreencastSession(s)
 	})
 
 	go silentCheckVersion(s)
@@ -265,6 +327,10 @@ func (p *FyneScreen) SetMediaType(mediaType string) {
 // not when we explicitly click the Stop button.
 func (p *FyneScreen) Fini() {
 	fyne.Do(func() {
+		if p.Screencast {
+			return
+		}
+
 		gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
 
 		// For Chromecast, ignore gapless setting (it's DLNA-specific)
@@ -505,6 +571,25 @@ func (p *FyneScreen) getScreenState() string {
 	return p.State
 }
 
+func (p *FyneScreen) nextChromecastActionID() uint64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.chromecastActionID++
+	return p.chromecastActionID
+}
+
+func (p *FyneScreen) isChromecastActionCurrent(actionID uint64) bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.chromecastActionID == actionID
+}
+
+func (p *FyneScreen) currentChromecastActionID() uint64 {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.chromecastActionID
+}
+
 // checkChromecastCompatibility checks if loaded media needs transcoding for Chromecast.
 // Auto-enables transcode checkbox if media is incompatible and FFmpeg is available.
 // Only auto-enables once per file - tracks checked file to respect user's manual disable.
@@ -580,10 +665,13 @@ func NewFyneScreen(version string) *FyneScreen {
 
 	ffmpegPath := func() string {
 		if go2tv.Preferences().String("ffmpeg") != "" {
-			return go2tv.Preferences().String("ffmpeg")
+			path, err := utils.ResolveFFmpegPath(go2tv.Preferences().String("ffmpeg"))
+			if err == nil {
+				return path
+			}
 		}
 
-		path, _ := exec.LookPath("ffmpeg")
+		path, _ := utils.ResolveFFmpegPath("")
 		return path
 	}()
 
@@ -602,6 +690,10 @@ func NewFyneScreen(version string) *FyneScreen {
 
 func onDropFiles(screen *FyneScreen) func(p fyne.Position, u []fyne.URI) {
 	return func(p fyne.Position, u []fyne.URI) {
+		if screen.Screencast {
+			return
+		}
+
 		var mfiles, sfiles []fyne.URI
 
 	out:

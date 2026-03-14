@@ -18,6 +18,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
@@ -521,18 +522,24 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	externalmedia := widget.NewCheck(lang.L("Media from URL"), func(b bool) {})
 	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
 	nextmedia := widget.NewCheck(lang.L("Auto-Play Next File"), func(b bool) {})
-	transcode := widget.NewCheck(lang.L("Transcode"), func(b bool) {})
-	rtmpServerCheck := widget.NewCheck(lang.L("Enable RTMP Server"), func(b bool) {
+	transcode := ttwidget.NewCheck(lang.L("Transcode"), func(b bool) {})
+	screencast := ttwidget.NewCheck(lang.L("Cast Desktop (experimental)"), func(b bool) {})
+	rtmpServerCheck := ttwidget.NewCheck(lang.L("Enable RTMP Server"), func(b bool) {
 		if b {
 			startRTMPServer(s)
 		} else {
 			stopRTMPServer(s)
 		}
 	})
-	s.rtmpServerCheck = rtmpServerCheck
+	s.rtmpServerCheck = &rtmpServerCheck.Check
+	s.transcodeToolTipCheck = transcode
+	s.screencastToolTipCheck = screencast
+	s.rtmpServerToolTipCheck = rtmpServerCheck
 	if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
 		s.rtmpServerCheck.Disable()
+		screencast.Disable()
 	}
+	s.updateFFmpegDependentCheckTooltips()
 
 	s.rtmpURLEntry = widget.NewEntry()
 	s.rtmpURLEntry.Disable()
@@ -609,7 +616,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.CurrentPos = curPos
 	s.EndPos = endPos
 	s.SelectInternalSubs = selectInternalSubs
-	s.TranscodeCheckBox = transcode
+	s.TranscodeCheckBox = &transcode.Check
+	s.ScreencastCheckBox = &screencast.Check
 	s.LoopSelectedCheck = medialoop
 	s.MediaBrowse = mbrowse
 	s.ClearMedia = clearmedia
@@ -642,7 +650,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	commonCard := widget.NewCard(lang.L("Common Options"), "", container.NewVBox(medialoop, nextmedia))
 
-	advancedCard := widget.NewCard(lang.L("Advanced Options"), "", container.NewVBox(externalmedia, sfilecheck, transcode, rtmpServerCheck))
+	advancedCard := widget.NewCard(lang.L("Advanced Options"), "", container.NewGridWithColumns(2, container.NewVBox(externalmedia, sfilecheck, transcode), container.NewVBox(screencast, rtmpServerCheck)))
 
 	playCard := widget.NewCard(lang.L("Playback"), "", container.NewVBox(sliderArea, actionbuttons))
 
@@ -703,6 +711,89 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	transcode.OnChanged = func(b bool) {
 		s.Transcode = b
+	}
+
+	screencast.OnChanged = func(b bool) {
+		if b {
+			if err := utils.CheckFFmpeg(s.ffmpegPath); err != nil {
+				check(s, errors.New(lang.L("ffmpeg is required for screencast")))
+				screencast.SetChecked(false)
+				return
+			}
+
+			s.screencastPrevTranscode = transcode.Checked
+			s.screencastPrevExternal = externalmedia.Checked
+			s.screencastPrevManualSubs = sfilecheck.Checked
+			s.screencastPrevLoop = medialoop.Checked
+			s.screencastPrevNext = nextmedia.Checked
+			s.screencastPrevMediaText = s.MediaText.Text
+			s.screencastPrevMediaFile = s.mediafile
+
+			s.Screencast = true
+			s.Transcode = true
+			transcode.SetChecked(true)
+			transcode.Disable()
+			medialoop.SetChecked(false)
+			nextmedia.SetChecked(false)
+			medialoop.Disable()
+			nextmedia.Disable()
+			if s.rtmpServerCheck != nil {
+				s.rtmpServerCheck.SetChecked(false)
+				s.rtmpServerCheck.Disable()
+			}
+			s.SlideBar.Disable()
+			externalmedia.SetChecked(true)
+			externalmedia.Disable()
+			mbrowse.Disable()
+			clearmedia.Disable()
+			s.MediaText.Disable()
+			s.MediaText.SetPlaceHolder("")
+			s.MediaText.SetText(lang.L("Cast Desktop Live Stream"))
+			s.mediafile = lang.L("Cast Desktop Live Stream")
+			sfilecheck.SetChecked(false)
+			s.subsfile = ""
+			s.SubsText.SetText("")
+			setPlayPauseView("", s)
+			return
+		}
+
+		s.Screencast = false
+		go stopScreencastSession(s)
+		if err := utils.CheckFFmpeg(s.ffmpegPath); err == nil && s.rtmpServer == nil {
+			transcode.Enable()
+			externalmedia.Enable()
+			sfilecheck.Enable()
+			transcode.SetChecked(s.screencastPrevTranscode)
+			externalmedia.SetChecked(s.screencastPrevExternal)
+			sfilecheck.SetChecked(s.screencastPrevManualSubs)
+			medialoop.SetChecked(s.screencastPrevLoop)
+			nextmedia.SetChecked(s.screencastPrevNext)
+
+			if s.ExternalMediaURL != nil && !s.ExternalMediaURL.Checked {
+				if !nextmedia.Checked {
+					medialoop.Enable()
+				}
+				if !medialoop.Checked {
+					nextmedia.Enable()
+				}
+			}
+
+			if s.ExternalMediaURL != nil && s.ExternalMediaURL.Checked {
+				mbrowse.Disable()
+				s.MediaText.Enable()
+			} else {
+				mbrowse.Enable()
+				s.MediaText.Disable()
+			}
+			clearmedia.Enable()
+			s.SlideBar.Enable()
+			s.MediaText.SetPlaceHolder("")
+			s.MediaText.SetText(s.screencastPrevMediaText)
+			s.mediafile = s.screencastPrevMediaFile
+			if s.rtmpServerCheck != nil {
+				s.rtmpServerCheck.Enable()
+			}
+		}
 	}
 
 	sfilecheck.OnChanged = func(b bool) {
@@ -787,8 +878,10 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		case true:
 			medialoop.SetChecked(false)
 			medialoop.Disable()
+			s.refreshImageAutoSkipTimer()
 		case false:
 			medialoop.Enable()
+			s.cancelImageAutoSkipTimer()
 		}
 
 		go func() {

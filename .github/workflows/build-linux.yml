@@ -18,7 +18,7 @@ jobs:
         go-version: 'stable'
 
     - name: Get dependencies
-      run: sudo apt update && sudo apt install xorg-dev
+      run: sudo apt update && sudo apt install xorg-dev libpipewire-0.3-dev pkg-config
 
     - name: Package (Linux)
       run: GOOS=linux GOARCH=amd64 go build -tags migrated_fynedo -ldflags "-s -w -X main.version=$(echo ${{ env.GO2TV_VERSION }} | sed 's/^v//')" -o go2tv cmd/go2tv/go2tv.go

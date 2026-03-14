@@ -204,3 +204,37 @@ func TestSetAVTransportSoapCallRetriesWithLegacyMetadataOnFault(t *testing.T) {
 		t.Fatalf("did not observe compatibility DIDL metadata in requests: %#v", requests)
 	}
 }
+
+func TestUpdateMRstate(t *testing.T) {
+	p := &TVPayload{
+		MediaRenderersStates:        make(map[string]*States),
+		InitialMediaRenderersStates: make(map[string]bool),
+	}
+
+	uuid := "u-1"
+	p.CreateMRstate(uuid)
+
+	if !p.UpdateMRstate("PLAYING", uuid) {
+		t.Fatal("UpdateMRstate should succeed on first event")
+	}
+
+	if got := p.MediaRenderersStates[uuid]; got.NewState != "PLAYING" {
+		t.Fatalf("first update got new=%q", got.NewState)
+	}
+
+	if !p.UpdateMRstate("PLAYING", uuid) {
+		t.Fatal("UpdateMRstate should succeed on repeated state")
+	}
+
+	if got := p.MediaRenderersStates[uuid]; got.NewState != "PLAYING" {
+		t.Fatalf("second update got new=%q", got.NewState)
+	}
+
+	if !p.UpdateMRstate("PAUSED_PLAYBACK", uuid) {
+		t.Fatal("UpdateMRstate should succeed on transition")
+	}
+
+	if got := p.MediaRenderersStates[uuid]; got.NewState != "PAUSED_PLAYBACK" {
+		t.Fatalf("third update got new=%q", got.NewState)
+	}
+}

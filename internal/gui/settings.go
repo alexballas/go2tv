@@ -4,10 +4,11 @@ package gui
 
 import (
 	"errors"
+	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -19,6 +20,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	xfilepicker "github.com/alexballas/xfilepicker/dialog"
 	"go2tv.app/go2tv/v2/rtmp"
+	"go2tv.app/go2tv/v2/utils"
 )
 
 type numericalEntry struct {
@@ -35,6 +37,36 @@ func (e *numericalEntry) TypedRune(r rune) {
 	if r >= '0' && r <= '9' {
 		e.Entry.TypedRune(r)
 	}
+}
+
+func ffmpegDirDisplayPath(pref string) string {
+	pref = strings.TrimSpace(pref)
+	if pref == "" {
+		path, err := utils.ResolveFFmpegPath("")
+		if err != nil {
+			return ""
+		}
+		return filepath.ToSlash(filepath.Dir(path))
+	}
+
+	if info, err := os.Stat(pref); err == nil {
+		if info.IsDir() {
+			return filepath.ToSlash(pref)
+		}
+
+		return filepath.ToSlash(filepath.Dir(pref))
+	}
+
+	if filepath.Base(pref) != pref {
+		return filepath.ToSlash(filepath.Dir(pref))
+	}
+
+	path, err := utils.ResolveFFmpegPath(pref)
+	if err != nil {
+		return ""
+	}
+
+	return filepath.ToSlash(filepath.Dir(path))
 }
 
 func settingsWindow(s *FyneScreen) fyne.CanvasObject {
@@ -62,14 +94,16 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 
 	ffmpegText := widget.NewLabel("ffmpeg " + lang.L("Path"))
 	ffmpegTextEntry := widget.NewEntry()
+	var updatingFFmpegEntry bool
 
 	ffmpegFolderReset := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		path, err := exec.LookPath("ffmpeg")
+		fyne.CurrentApp().Preferences().SetString("ffmpeg", "")
+		path := ffmpegDirDisplayPath("")
+		updatingFFmpegEntry = true
 		ffmpegTextEntry.SetText(path)
-		if err != nil {
-			ffmpegTextEntry.SetText("ffmpeg")
-		}
-		s.ffmpegPath = ffmpegTextEntry.Text
+		updatingFFmpegEntry = false
+		s.ffmpegPath, _ = utils.ResolveFFmpegPath("")
+		s.ffmpegPathChanged = true
 	})
 
 	ffmpegFolderSelect := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
@@ -87,15 +121,18 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 				return
 			}
 
-			p := filepath.ToSlash(lu.Path() + string(filepath.Separator) + "ffmpeg")
+			p := filepath.ToSlash(lu.Path())
 			ffmpegTextEntry.SetText(p)
 		}, w)
 
 		if f, ok := fd.(xfilepicker.FilePicker); ok {
-			ffmpegURI := storage.NewFileURI(filepath.Dir(s.ffmpegPath))
-			ffmpegLister, err := storage.ListerForURI(ffmpegURI)
-			if err == nil {
-				f.SetLocation(ffmpegLister)
+			ffmpegDir := strings.TrimSpace(ffmpegTextEntry.Text)
+			if ffmpegDir != "" {
+				ffmpegURI := storage.NewFileURI(filepath.FromSlash(ffmpegDir))
+				ffmpegLister, err := storage.ListerForURI(ffmpegURI)
+				if err == nil {
+					f.SetLocation(ffmpegLister)
+				}
 			}
 		}
 
@@ -108,13 +145,21 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	ffmpegRightButtons := container.NewHBox(ffmpegFolderSelect, ffmpegFolderReset)
 	ffmpegPathControls := container.New(layout.NewBorderLayout(nil, nil, nil, ffmpegRightButtons), ffmpegRightButtons, ffmpegTextEntry)
 
-	ffmpegTextEntry.Text = s.ffmpegPath
+	ffmpegTextEntry.Text = ffmpegDirDisplayPath(fyne.CurrentApp().Preferences().String("ffmpeg"))
 	ffmpegTextEntry.Refresh()
 
-	s.ffmpegPath = ffmpegTextEntry.Text
-
 	ffmpegTextEntry.OnChanged = func(update string) {
-		s.ffmpegPath = update
+		if updatingFFmpegEntry {
+			return
+		}
+
+		if strings.TrimSpace(update) == "" {
+			s.ffmpegPath = ""
+		} else if path, err := utils.ResolveFFmpegPath(update); err == nil {
+			s.ffmpegPath = path
+		} else {
+			s.ffmpegPath = update
+		}
 		fyne.CurrentApp().Preferences().SetString("ffmpeg", update)
 		s.ffmpegPathChanged = true
 	}
@@ -220,6 +265,38 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	sameTypeAutoNextOption := fyne.CurrentApp().Preferences().BoolWithFallback("AutoPlaySameTypes", true)
 	sameTypeAutoNextCheck.SetChecked(sameTypeAutoNextOption)
 
+	imageAutoSkipText := widget.NewLabel(lang.L("Image Auto-Skip Timeout"))
+	imageAutoSkipCurrent := widget.NewLabel("")
+	imageAutoSkipSlider := widget.NewSlider(0, imageAutoSkipSecondsMax)
+	imageAutoSkipSlider.Step = 1
+
+	setImageAutoSkipCurrent := func(seconds int) {
+		if seconds == 0 {
+			imageAutoSkipCurrent.SetText(lang.L("Disabled"))
+			return
+		}
+
+		imageAutoSkipCurrent.SetText(fmt.Sprintf("%ds", seconds))
+	}
+
+	initialImageAutoSkip := getImageAutoSkipSecondsPref()
+	imageAutoSkipSlider.SetValue(float64(initialImageAutoSkip))
+	setImageAutoSkipCurrent(initialImageAutoSkip)
+
+	imageAutoSkipSlider.OnChanged = func(v float64) {
+		rawSeconds := int(v + 0.5)
+		seconds := clampImageAutoSkipSeconds(rawSeconds)
+		if seconds != rawSeconds {
+			imageAutoSkipSlider.SetValue(float64(seconds))
+			return
+		}
+		fyne.CurrentApp().Preferences().SetInt(imageAutoSkipSecondsPref, seconds)
+		setImageAutoSkipCurrent(seconds)
+		s.refreshImageAutoSkipTimer()
+	}
+
+	imageAutoSkipControls := container.NewBorder(nil, nil, nil, imageAutoSkipCurrent, imageAutoSkipSlider)
+
 	rtmpPortLabel := widget.NewLabel(lang.L("RTMP Port"))
 	rtmpPortEntry := newNumericalEntry()
 	rtmpPortEntry.Text = fyne.CurrentApp().Preferences().StringWithFallback("RTMPPort", "1935")
@@ -259,7 +336,35 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 
 	rtmpKeyContainer := container.NewBorder(nil, nil, nil, container.NewHBox(regenKeyBtn), streamKeyEntry)
 
-	return container.New(layout.NewFormLayout(), themeText, dropdownTheme, languageText, dropdownLanguage, gaplessText, gaplessdropdown, ffmpegText, ffmpegPathControls, sameTypeAutoNext, sameTypeAutoNextCheck, debugText, debugExport, rtmpPortLabel, rtmpPortEntry, rtmpKeyLabel, rtmpKeyContainer)
+	generalSettings := container.New(layout.NewFormLayout(),
+		themeText, dropdownTheme,
+		languageText, dropdownLanguage,
+		ffmpegText, ffmpegPathControls,
+	)
+
+	autoNextSettings := container.New(layout.NewFormLayout(),
+		gaplessText, gaplessdropdown,
+		sameTypeAutoNext, sameTypeAutoNextCheck,
+		imageAutoSkipText, imageAutoSkipControls,
+	)
+
+	rtmpSettings := container.New(layout.NewFormLayout(),
+		rtmpPortLabel, rtmpPortEntry,
+		rtmpKeyLabel, rtmpKeyContainer,
+	)
+
+	debugSettings := container.New(layout.NewFormLayout(),
+		debugText, debugExport,
+	)
+
+	settingsCategories := container.NewVBox(
+		widget.NewCard(lang.L("Common Options"), "", generalSettings),
+		widget.NewCard(lang.L("Auto-Play Next File"), "", autoNextSettings),
+		widget.NewCard(lang.L("RTMP Server"), "", rtmpSettings),
+		widget.NewCard(lang.L("Debug"), "", debugSettings),
+	)
+
+	return container.NewVScroll(settingsCategories)
 }
 
 func saveDebugLogs(f fyne.URIWriteCloser, s *FyneScreen) {

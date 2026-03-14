@@ -2,6 +2,7 @@ package httphandlers
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -293,12 +294,14 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 		uuid := strings.TrimPrefix(sidVal[0], "uuid:")
 
 		reqParsedUnescape := html.UnescapeString(string(reqParsed))
-		previousstate, newstate, err := soapcalls.EventNotifyParser(reqParsedUnescape)
+		event, err := soapcalls.ParseEventNotify(reqParsedUnescape)
 
 		if err != nil {
 			http.NotFound(w, req)
 			return
 		}
+
+		newstate := event.TransportState
 
 		// Apparently we should ignore the first message
 		// On some media renderers we receive a STOPPED message
@@ -315,7 +318,7 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 			return
 		}
 
-		if !tv.UpdateMRstate(previousstate, newstate, uuid) {
+		if !tv.UpdateMRstate(newstate, uuid) {
 			http.NotFound(w, req)
 			return
 		}
@@ -354,8 +357,13 @@ func (s *HTTPserver) AddHLSHandler(urlPrefix, dir string) {
 		if strings.HasSuffix(r.URL.Path, ".m3u8") {
 			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
 		} else if strings.HasSuffix(r.URL.Path, ".ts") {
 			w.Header().Set("Content-Type", "video/MP2T")
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
 		} else if strings.HasSuffix(r.URL.Path, ".mp4") || strings.HasSuffix(r.URL.Path, ".m4s") {
 			w.Header().Set("Content-Type", "video/mp4")
 		}
@@ -454,6 +462,8 @@ func serveContentBytes(w http.ResponseWriter, r *http.Request, mediaType string,
 }
 
 func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode bool, f io.ReadCloser, ff *exec.Cmd) {
+	defer f.Close()
+
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
 		contentFeatures, err := utils.BuildContentFeatures(mediaType, "00", transcode)
 		if err != nil {
@@ -474,6 +484,10 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			err := utils.ServeChromecastTranscodedStream(r.Context(), w, f, ff, tcOpts)
 			if err != nil {
+				if errors.Is(err, utils.ErrTranscodeBusy) {
+					http.Error(w, "busy", http.StatusServiceUnavailable)
+					return
+				}
 				tcOpts.LogError("serveContentReadClose", "ChromecastTranscode", err)
 			}
 		case tv != nil:
@@ -490,8 +504,6 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 	if r.Method == http.MethodGet {
 		_, _ = io.Copy(w, f)
 	}
-
-	f.Close()
 }
 
 func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode, seek bool, f osFileType, ff *exec.Cmd) {
@@ -528,6 +540,10 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcall
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			err := utils.ServeChromecastTranscodedStream(r.Context(), w, input, ff, tcOpts)
 			if err != nil {
+				if errors.Is(err, utils.ErrTranscodeBusy) {
+					http.Error(w, "busy", http.StatusServiceUnavailable)
+					return
+				}
 				tcOpts.LogError("serveContentCustomType", "ChromecastTranscode", err)
 			}
 		case tv != nil:

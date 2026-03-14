@@ -12,7 +12,6 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -158,7 +157,7 @@ func run() error {
 	}
 
 	// Get ffmpeg path for transcoding
-	ffmpegPath, _ := exec.LookPath("ffmpeg")
+	ffmpegPath, _ := utils.ResolveFFmpegPath("")
 
 	// Branch based on device type
 	if devices.IsChromecastURL(flagRes.targetURL) {
@@ -517,7 +516,7 @@ func checkSflag() error {
 
 func checkTCflag() error {
 	if *transcodePtr {
-		_, err := exec.LookPath("ffmpeg")
+		_, err := utils.ResolveFFmpegPath("")
 		if err != nil {
 			return fmt.Errorf("checkTCflag parse error: %w", err)
 		}

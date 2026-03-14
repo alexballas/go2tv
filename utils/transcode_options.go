@@ -40,9 +40,18 @@ type TranscodeOptions struct {
 	SeekSeconds  int
 	SubtitleSize SubtitleSize
 	LogOutput    io.Writer
+	RawInput     *RawVideoInput
 
 	initLogOnce sync.Once
 	logger      zerolog.Logger
+}
+
+// RawVideoInput describes a raw video stream piped to ffmpeg stdin.
+type RawVideoInput struct {
+	Width       uint32
+	Height      uint32
+	FrameRate   uint32
+	PixelFormat string
 }
 
 // LogError logs an error using the same pattern as TVPayload.Log().

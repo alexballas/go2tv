@@ -50,6 +50,7 @@ Go2TV is a single executable with no installation required. Just download and ru
 ### Optional: FFmpeg for Transcoding
 
 For maximum compatibility with all devices and file formats, install [FFmpeg](https://ffmpeg.org/download.html). Go2TV will automatically use it when needed.
+When transcoding is enabled, Go2TV probes available GPU H.264 encoders first and falls back to `libx264` if hardware encoding is unavailable or fails at startup.
 
 - **Linux**: `sudo apt install ffmpeg` or equivalent for your distro
 - **macOS**: `brew install ffmpeg`
@@ -80,6 +81,21 @@ Go2TV can act as an RTMP server, allowing you to stream from OBS or other softwa
 3. Click **Play** in Go2TV (the app will wait for the stream).
 4. Use the provided URL in your streaming software (e.g., OBS Settings > Stream).
 5. Start streaming in your software.
+
+---
+
+## Cast Desktop (Experimental, Chromecast only)
+
+Go2TV can cast your desktop as a live stream to Chromecast devices. **This feature is experimental and requires FFmpeg.**
+
+1. Select a **Chromecast** device.
+2. Check **Cast Desktop (experimental)**.
+3. Click **Cast**.
+
+Notes:
+- Experimental: behavior/performance may vary by system.
+- Chromecast only (not DLNA/UPnP TVs).
+- Not supported on audio-only Chromecast devices.
 
 ---
 
@@ -145,6 +161,7 @@ yt-dlp -o - "https://youtu.be/..." | go2tv -tc -t http://192.168.1.50:8009
 - **Loop and auto-play** - Loop a single file or auto-play the next file in folder
 - **Gapless playback** - Supported for DLNA devices
 - **RTMP Server** - Cast live streams from OBS directly to Chromecast (requires FFmpeg)
+- **Cast Desktop (experimental)** - Cast desktop as live stream to Chromecast (requires FFmpeg)
 - **GUI and CLI** - Use the graphical interface or command line
 
 ### Supported File Types (GUI)
@@ -152,6 +169,22 @@ yt-dlp -o - "https://youtu.be/..." | go2tv -tc -t http://192.168.1.50:8009
 mp4, avi, mkv, mpeg, mov, webm, m4v, mpv, mp3, flac, wav, jpg, jpeg, png
 
 The CLI accepts any file type.
+
+---
+
+## Companion Project: mcp-beam MCP Server (Powered by Go2TV)
+
+[mcp-beam](https://go2tv.app/mcp-beam/) is a companion MCP server (stdio transport) built on top of Go2TV core packages.
+
+Use it when you want MCP clients/agents to:
+
+- Discover Chromecast and DLNA/UPnP devices on your LAN
+- Cast local media files
+- Cast remote media URLs
+- Stop active playback sessions
+
+If you want direct end-user control, use Go2TV GUI/CLI.  
+If you want tool-driven casting from MCP-compatible workflows, use mcp-beam.
 
 ---
 
@@ -181,6 +214,26 @@ git clone https://github.com/alexballas/go2tv
 cd go2tv
 make build
 ```
+
+**AppImage build (Linux)**
+
+``` console
+make appimage
+```
+
+`v2.1` style build. No bundled `ffmpeg`/`ffprobe`.
+
+**AppImage build (with ffmpeg, Linux)**
+
+``` console
+make appimage-ffmpeg
+```
+
+- `APPIMAGE_FFMPEG_MODE=auto` (default): use host `ffmpeg`/`ffprobe` if static; else download prebuilt bundle
+- `APPIMAGE_FFMPEG_MODE=system`: require host `ffmpeg`/`ffprobe`
+- `APPIMAGE_FFMPEG_MODE=download`: always download prebuilt bundle
+- `APPIMAGE_FFMPEG_MODE=none`: build AppImage without ffmpeg binaries
+- Optional explicit paths: `APPIMAGE_FFMPEG_BIN=/path/ffmpeg APPIMAGE_FFPROBE_BIN=/path/ffprobe`
 
 **Using Docker**
 

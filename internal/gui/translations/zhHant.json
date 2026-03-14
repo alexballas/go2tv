@@ -63,6 +63,7 @@
     "Disabled": "已停用",
     "Auto-Play": "自動播放",
     "Same File Types Only": "仅相同文件类型",
+    "Image Auto-Skip Timeout": "圖片自動跳過時間",
     "Extracting Subtitles": "提取字幕",
     "Drag and Drop is not supported in Flatpak builds.\nPlease use the 'Select Media File' button instead.": "Flatpak 構建不支援拖放操作。\n請使用「選擇媒體檔案」按鈕。",
     "Show Hidden Files": "顯示隱藏檔案",
@@ -98,6 +99,8 @@
     "RTMP stream not found. Please start streaming from OBS first.": "未找到 RTMP 串流。請先從 OBS 開始串流。",
     "RTMP server not started": "RTMP 伺服器未啟動",
     "Cast": "投放",
+    "Cast Desktop (experimental)": "投放桌面 (試驗性)",
+    "Cast Desktop Live Stream": "桌面即時投放",
     "Image Casting": "圖片投放",
     "Start RTMP Session": "開始 RTMP 會話",
     "Next": "下一個",
@@ -128,6 +131,11 @@
     "Music": "音樂",
     "Pictures": "圖片",
     "Videos": "影片",
-    "ffmpeg path (default: ffmpeg)": "ffmpeg 路径 (默认: ffmpeg)",
-    "FFmpeg Path": "FFmpeg 路径"
+    "ffmpeg path (default: ffmpeg)": "ffmpeg 路徑 (預設: ffmpeg)",
+    "FFmpeg Path": "FFmpeg 路徑",
+    "ffmpeg is required for screencast": "螢幕錄製需要 ffmpeg",
+    "ffmpeg is required. install it or update ffmpeg path in Settings": "需要 ffmpeg。請安裝它或在設定中更新 ffmpeg 路徑",
+    "screencast currently supports Chromecast only": "螢幕錄製僅支援 Chromecast",
+    "screencast is not supported by audio-only device": "螢幕錄製不支援純音訊裝置",
+    "screencast stream stopped unexpectedly": "螢幕錄製串流意外中斷"
 }
