@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -41,9 +40,9 @@ func ResolveFFmpegPath(preferred string) (string, error) {
 func ResolveFFprobePath(ffmpegPath string) (string, error) {
 	if ffmpegPath != "" {
 		resolvedFFmpeg, err := resolveCommandPath(ffmpegPath)
-		if err == nil {
+		if err == nil && filepath.Base(resolvedFFmpeg) != resolvedFFmpeg {
 			sibling := filepath.Join(filepath.Dir(resolvedFFmpeg), "ffprobe")
-			if isExecutableFile(sibling) {
+			if isExistingFile(sibling) {
 				return sibling, nil
 			}
 		}
@@ -73,20 +72,14 @@ func resolvePathCandidate(path string) (string, error) {
 		}
 	}
 
-	for _, candidate := range executablePathCandidates(path) {
-		if isExecutableFile(candidate) {
-			return candidate, nil
-		}
+	if isExistingFile(path) {
+		return path, nil
 	}
 
 	return "", fmt.Errorf("%s: %w", path, exec.ErrNotFound)
 }
 
 func resolveToolPath(name string) (string, error) {
-	if path := bundledToolPath(name); path != "" {
-		return path, nil
-	}
-
 	path, err := exec.LookPath(name)
 	if err == nil {
 		return path, nil
@@ -107,31 +100,6 @@ func resolveToolPath(name string) (string, error) {
 	return "", fmt.Errorf("%s: %w", name, exec.ErrNotFound)
 }
 
-func bundledToolPath(name string) string {
-	exePath, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-
-	exeDir := filepath.Dir(exePath)
-	candidates := []string{
-		filepath.Join(exeDir, name),
-		filepath.Join(exeDir, "..", "Resources", name),
-		filepath.Join(exeDir, "..", "Resources", "bin", name),
-	}
-
-	for _, candidate := range candidates {
-		candidate = filepath.Clean(candidate)
-		for _, pathCandidate := range executablePathCandidates(candidate) {
-			if isExecutableFile(pathCandidate) {
-				return pathCandidate
-			}
-		}
-	}
-
-	return ""
-}
-
 func commonDarwinToolPath(name string) string {
 	if runtime.GOOS != "darwin" {
 		return ""
@@ -144,7 +112,7 @@ func commonDarwinToolPath(name string) string {
 	}
 
 	for _, candidate := range candidates {
-		if isExecutableFile(candidate) {
+		if isExistingFile(candidate) {
 			return candidate
 		}
 	}
@@ -175,7 +143,7 @@ func loginShellToolPath(name string) (string, error) {
 		if !filepath.IsAbs(line) {
 			continue
 		}
-		if isExecutableFile(line) {
+		if isExistingFile(line) {
 			return line, nil
 		}
 	}
@@ -190,8 +158,10 @@ func prependPathDir(dir string) {
 
 	pathEnv := os.Getenv("PATH")
 	entries := filepath.SplitList(pathEnv)
-	if slices.Contains(entries, dir) {
-		return
+	for _, entry := range entries {
+		if entry == dir {
+			return
+		}
 	}
 
 	if pathEnv == "" {
@@ -202,59 +172,17 @@ func prependPathDir(dir string) {
 	_ = os.Setenv("PATH", dir+string(os.PathListSeparator)+pathEnv)
 }
 
-func isExecutableFile(path string) bool {
+func isExistingFile(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {
 		return false
 	}
 
 	if runtime.GOOS == "windows" {
-		return hasWindowsExecutableExt(path)
+		return true
 	}
 
 	return info.Mode()&0o111 != 0
-}
-
-func executablePathCandidates(path string) []string {
-	candidates := []string{path}
-
-	if runtime.GOOS != "windows" || filepath.Ext(path) != "" {
-		return candidates
-	}
-
-	for _, ext := range windowsExecutableExts() {
-		candidates = append(candidates, path+ext)
-	}
-
-	return candidates
-}
-
-func hasWindowsExecutableExt(path string) bool {
-	ext := strings.ToUpper(filepath.Ext(path))
-	if ext == "" {
-		return false
-	}
-
-	return slices.Contains(windowsExecutableExts(), ext)
-}
-
-func windowsExecutableExts() []string {
-	pathExt := os.Getenv("PATHEXT")
-	if pathExt == "" {
-		pathExt = ".COM;.EXE;.BAT;.CMD"
-	}
-
-	parts := strings.Split(pathExt, ";")
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.ToUpper(strings.TrimSpace(part))
-		if part == "" {
-			continue
-		}
-		out = append(out, part)
-	}
-
-	return out
 }
 
 func shellQuote(s string) string {

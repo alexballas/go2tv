@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 
 	"fyne.io/fyne/v2"
@@ -89,12 +88,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 				return
 			}
 
-			ffmpegName := "ffmpeg"
-			if runtime.GOOS == "windows" {
-				ffmpegName = "ffmpeg.exe"
-			}
-
-			p := filepath.ToSlash(lu.Path() + string(filepath.Separator) + ffmpegName)
+			p := filepath.ToSlash(lu.Path() + string(filepath.Separator) + "ffmpeg")
 			ffmpegTextEntry.SetText(p)
 		}, w)
 
