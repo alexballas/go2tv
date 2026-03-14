@@ -73,11 +73,13 @@ func resolvePathCandidate(path string) (string, error) {
 		}
 	}
 
-	if !isExecutableFile(path) {
-		return "", fmt.Errorf("%s: %w", path, exec.ErrNotFound)
+	for _, candidate := range executablePathCandidates(path) {
+		if isExecutableFile(candidate) {
+			return candidate, nil
+		}
 	}
 
-	return path, nil
+	return "", fmt.Errorf("%s: %w", path, exec.ErrNotFound)
 }
 
 func resolveToolPath(name string) (string, error) {
@@ -120,8 +122,10 @@ func bundledToolPath(name string) string {
 
 	for _, candidate := range candidates {
 		candidate = filepath.Clean(candidate)
-		if isExecutableFile(candidate) {
-			return candidate
+		for _, pathCandidate := range executablePathCandidates(candidate) {
+			if isExecutableFile(pathCandidate) {
+				return pathCandidate
+			}
 		}
 	}
 
@@ -204,7 +208,53 @@ func isExecutableFile(path string) bool {
 		return false
 	}
 
+	if runtime.GOOS == "windows" {
+		return hasWindowsExecutableExt(path)
+	}
+
 	return info.Mode()&0o111 != 0
+}
+
+func executablePathCandidates(path string) []string {
+	candidates := []string{path}
+
+	if runtime.GOOS != "windows" || filepath.Ext(path) != "" {
+		return candidates
+	}
+
+	for _, ext := range windowsExecutableExts() {
+		candidates = append(candidates, path+ext)
+	}
+
+	return candidates
+}
+
+func hasWindowsExecutableExt(path string) bool {
+	ext := strings.ToUpper(filepath.Ext(path))
+	if ext == "" {
+		return false
+	}
+
+	return slices.Contains(windowsExecutableExts(), ext)
+}
+
+func windowsExecutableExts() []string {
+	pathExt := os.Getenv("PATHEXT")
+	if pathExt == "" {
+		pathExt = ".COM;.EXE;.BAT;.CMD"
+	}
+
+	parts := strings.Split(pathExt, ";")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.ToUpper(strings.TrimSpace(part))
+		if part == "" {
+			continue
+		}
+		out = append(out, part)
+	}
+
+	return out
 }
 
 func shellQuote(s string) string {
