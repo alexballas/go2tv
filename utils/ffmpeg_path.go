@@ -18,6 +18,7 @@ var (
 	defaultFFmpegOnce sync.Once
 	defaultFFmpegPath string
 	defaultFFmpegErr  error
+	pathLookupMu      sync.Mutex
 )
 
 // ResolveFFmpegPath returns an executable ffmpeg path.
@@ -25,7 +26,7 @@ var (
 func ResolveFFmpegPath(preferred string) (string, error) {
 	preferred = strings.TrimSpace(preferred)
 	if preferred != "" {
-		return resolveCommandPath(preferred)
+		return resolveCommandPath("ffmpeg", preferred)
 	}
 
 	defaultFFmpegOnce.Do(func() {
@@ -39,7 +40,7 @@ func ResolveFFmpegPath(preferred string) (string, error) {
 // If ffmpegPath resolves to an absolute binary, its sibling ffprobe is preferred.
 func ResolveFFprobePath(ffmpegPath string) (string, error) {
 	if ffmpegPath != "" {
-		resolvedFFmpeg, err := resolveCommandPath(ffmpegPath)
+		resolvedFFmpeg, err := resolveCommandPath("ffmpeg", ffmpegPath)
 		if err == nil && filepath.Base(resolvedFFmpeg) != resolvedFFmpeg {
 			sibling := filepath.Join(filepath.Dir(resolvedFFmpeg), "ffprobe")
 			if isExistingFile(sibling) {
@@ -51,20 +52,20 @@ func ResolveFFprobePath(ffmpegPath string) (string, error) {
 	return resolveToolPath("ffprobe")
 }
 
-func resolveCommandPath(command string) (string, error) {
-	command = strings.TrimSpace(command)
-	if command == "" {
+func resolveCommandPath(toolName, preferred string) (string, error) {
+	preferred = strings.TrimSpace(preferred)
+	if preferred == "" {
 		return "", exec.ErrNotFound
 	}
 
-	if filepath.Base(command) != command {
-		return resolvePathCandidate(command)
+	if filepath.Base(preferred) != preferred {
+		return resolvePathCandidate(toolName, preferred)
 	}
 
-	return resolveToolPath(command)
+	return resolveToolPath(preferred)
 }
 
-func resolvePathCandidate(path string) (string, error) {
+func resolvePathCandidate(toolName, path string) (string, error) {
 	if !filepath.IsAbs(path) {
 		absPath, err := filepath.Abs(path)
 		if err == nil {
@@ -74,6 +75,10 @@ func resolvePathCandidate(path string) (string, error) {
 
 	if isExistingFile(path) {
 		return path, nil
+	}
+
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		return lookPathWithDirOnly(toolName, path)
 	}
 
 	return "", fmt.Errorf("%s: %w", path, exec.ErrNotFound)
@@ -170,6 +175,24 @@ func prependPathDir(dir string) {
 	}
 
 	_ = os.Setenv("PATH", dir+string(os.PathListSeparator)+pathEnv)
+}
+
+func lookPathWithDirOnly(toolName, dir string) (string, error) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return "", exec.ErrNotFound
+	}
+
+	pathLookupMu.Lock()
+	defer pathLookupMu.Unlock()
+
+	oldPath := os.Getenv("PATH")
+	_ = os.Setenv("PATH", dir)
+	defer func() {
+		_ = os.Setenv("PATH", oldPath)
+	}()
+
+	return exec.LookPath(toolName)
 }
 
 func isExistingFile(path string) bool {

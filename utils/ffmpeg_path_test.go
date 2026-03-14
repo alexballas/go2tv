@@ -64,6 +64,41 @@ func TestResolveFFprobePathUsesPATHForCommandName(t *testing.T) {
 	}
 }
 
+func TestResolveFFmpegPathPreferredDirectory(t *testing.T) {
+	dir := t.TempDir()
+	ffmpegPath := filepath.Join(dir, "ffmpeg")
+	writeExecutableFile(t, ffmpegPath)
+
+	got, err := ResolveFFmpegPath(dir)
+	if err != nil {
+		t.Fatalf("ResolveFFmpegPath() error = %v", err)
+	}
+
+	if got != ffmpegPath {
+		t.Fatalf("ResolveFFmpegPath() = %q, want %q", got, ffmpegPath)
+	}
+}
+
+func TestResolveFFmpegPathPreferredDirectoryDoesNotFallBackToPATH(t *testing.T) {
+	dir := t.TempDir()
+	otherDir := t.TempDir()
+	otherFFmpegPath := filepath.Join(otherDir, "ffmpeg")
+	writeExecutableFile(t, otherFFmpegPath)
+
+	oldPath := os.Getenv("PATH")
+	t.Cleanup(func() {
+		_ = os.Setenv("PATH", oldPath)
+	})
+
+	if err := os.Setenv("PATH", otherDir); err != nil {
+		t.Fatalf("Setenv(PATH) error = %v", err)
+	}
+
+	if _, err := ResolveFFmpegPath(dir); err == nil {
+		t.Fatalf("ResolveFFmpegPath(%q) error = nil, want error", dir)
+	}
+}
+
 func writeExecutableFile(t *testing.T, path string) {
 	t.Helper()
 

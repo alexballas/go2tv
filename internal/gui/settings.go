@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -38,6 +39,36 @@ func (e *numericalEntry) TypedRune(r rune) {
 	}
 }
 
+func ffmpegDirDisplayPath(pref string) string {
+	pref = strings.TrimSpace(pref)
+	if pref == "" {
+		path, err := utils.ResolveFFmpegPath("")
+		if err != nil {
+			return ""
+		}
+		return filepath.ToSlash(filepath.Dir(path))
+	}
+
+	if info, err := os.Stat(pref); err == nil {
+		if info.IsDir() {
+			return filepath.ToSlash(pref)
+		}
+
+		return filepath.ToSlash(filepath.Dir(pref))
+	}
+
+	if filepath.Base(pref) != pref {
+		return filepath.ToSlash(filepath.Dir(pref))
+	}
+
+	path, err := utils.ResolveFFmpegPath(pref)
+	if err != nil {
+		return ""
+	}
+
+	return filepath.ToSlash(filepath.Dir(path))
+}
+
 func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 
 	w := s.Current
@@ -63,14 +94,16 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 
 	ffmpegText := widget.NewLabel("ffmpeg " + lang.L("Path"))
 	ffmpegTextEntry := widget.NewEntry()
+	var updatingFFmpegEntry bool
 
 	ffmpegFolderReset := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		path, err := utils.ResolveFFmpegPath("")
+		fyne.CurrentApp().Preferences().SetString("ffmpeg", "")
+		path := ffmpegDirDisplayPath("")
+		updatingFFmpegEntry = true
 		ffmpegTextEntry.SetText(path)
-		if err != nil {
-			ffmpegTextEntry.SetText("ffmpeg")
-		}
-		s.ffmpegPath = ffmpegTextEntry.Text
+		updatingFFmpegEntry = false
+		s.ffmpegPath, _ = utils.ResolveFFmpegPath("")
+		s.ffmpegPathChanged = true
 	})
 
 	ffmpegFolderSelect := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
@@ -88,15 +121,18 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 				return
 			}
 
-			p := filepath.ToSlash(lu.Path() + string(filepath.Separator) + "ffmpeg")
+			p := filepath.ToSlash(lu.Path())
 			ffmpegTextEntry.SetText(p)
 		}, w)
 
 		if f, ok := fd.(xfilepicker.FilePicker); ok {
-			ffmpegURI := storage.NewFileURI(filepath.Dir(s.ffmpegPath))
-			ffmpegLister, err := storage.ListerForURI(ffmpegURI)
-			if err == nil {
-				f.SetLocation(ffmpegLister)
+			ffmpegDir := strings.TrimSpace(ffmpegTextEntry.Text)
+			if ffmpegDir != "" {
+				ffmpegURI := storage.NewFileURI(filepath.FromSlash(ffmpegDir))
+				ffmpegLister, err := storage.ListerForURI(ffmpegURI)
+				if err == nil {
+					f.SetLocation(ffmpegLister)
+				}
 			}
 		}
 
@@ -109,13 +145,21 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	ffmpegRightButtons := container.NewHBox(ffmpegFolderSelect, ffmpegFolderReset)
 	ffmpegPathControls := container.New(layout.NewBorderLayout(nil, nil, nil, ffmpegRightButtons), ffmpegRightButtons, ffmpegTextEntry)
 
-	ffmpegTextEntry.Text = s.ffmpegPath
+	ffmpegTextEntry.Text = ffmpegDirDisplayPath(fyne.CurrentApp().Preferences().String("ffmpeg"))
 	ffmpegTextEntry.Refresh()
 
-	s.ffmpegPath = ffmpegTextEntry.Text
-
 	ffmpegTextEntry.OnChanged = func(update string) {
-		s.ffmpegPath = update
+		if updatingFFmpegEntry {
+			return
+		}
+
+		if strings.TrimSpace(update) == "" {
+			s.ffmpegPath = ""
+		} else if path, err := utils.ResolveFFmpegPath(update); err == nil {
+			s.ffmpegPath = path
+		} else {
+			s.ffmpegPath = update
+		}
 		fyne.CurrentApp().Preferences().SetString("ffmpeg", update)
 		s.ffmpegPathChanged = true
 	}

@@ -665,8 +665,9 @@ func NewFyneScreen(version string) *FyneScreen {
 
 	ffmpegPath := func() string {
 		if go2tv.Preferences().String("ffmpeg") != "" {
-			if err := utils.CheckFFmpeg(go2tv.Preferences().String("ffmpeg")); err == nil {
-				return go2tv.Preferences().String("ffmpeg")
+			path, err := utils.ResolveFFmpegPath(go2tv.Preferences().String("ffmpeg"))
+			if err == nil {
+				return path
 			}
 		}
 
