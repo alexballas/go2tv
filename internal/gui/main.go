@@ -741,6 +741,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 				s.rtmpServerCheck.SetChecked(false)
 				s.rtmpServerCheck.Disable()
 			}
+			s.SlideBar.Disable()
 			externalmedia.SetChecked(true)
 			externalmedia.Disable()
 			mbrowse.Disable()
@@ -750,7 +751,6 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			s.MediaText.SetText(lang.L("Cast Desktop Live Stream"))
 			s.mediafile = lang.L("Cast Desktop Live Stream")
 			sfilecheck.SetChecked(false)
-			sfilecheck.Disable()
 			s.subsfile = ""
 			s.SubsText.SetText("")
 			setPlayPauseView("", s)
@@ -786,6 +786,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 				s.MediaText.Disable()
 			}
 			clearmedia.Enable()
+			s.SlideBar.Enable()
 			s.MediaText.SetPlaceHolder("")
 			s.MediaText.SetText(s.screencastPrevMediaText)
 			s.mediafile = s.screencastPrevMediaFile
