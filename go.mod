@@ -6,7 +6,7 @@ require (
 	fyne.io/fyne/v2 v2.7.3
 	github.com/alexballas/go-ssdp v0.0.3
 	github.com/alexballas/xfilepicker v0.0.0-20260206213252-e8f58cac8729
-	github.com/buger/jsonparser v1.1.1
+	github.com/buger/jsonparser v1.1.2
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/dweymouth/fyne-tooltip v0.4.0
 	github.com/gdamore/tcell/v2 v2.13.8
