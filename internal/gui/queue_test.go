@@ -25,6 +25,34 @@ func newTraversalTestScreen(t *testing.T, currentPath string) *FyneScreen {
 	}
 }
 
+func newQueueMediaSelectionTestScreen() *FyneScreen {
+	return &FyneScreen{
+		mediaFormats:       []string{".mp4"},
+		videoFormats:       []string{".mp4"},
+		MediaText:          widget.NewEntry(),
+		SubsText:           widget.NewEntry(),
+		SelectInternalSubs: widget.NewSelect(nil, nil),
+		CustomSubsCheck:    widget.NewCheck("", nil),
+		PlayPause:          widget.NewButton("", nil),
+	}
+}
+
+func assertQueuePaths(t *testing.T, screen *FyneScreen, want []string) {
+	t.Helper()
+
+	if screen.SessionQueue == nil {
+		t.Fatalf("expected queue")
+	}
+	if len(screen.SessionQueue.Items) != len(want) {
+		t.Fatalf("expected %d queue items, got %d", len(want), len(screen.SessionQueue.Items))
+	}
+	for i, wantPath := range want {
+		if got := screen.SessionQueue.Items[i].Path; got != wantPath {
+			t.Fatalf("queue item %d: got %q want %q", i, got, wantPath)
+		}
+	}
+}
+
 func TestGetAdjacentQueuedMediaSameTypeOnly(t *testing.T) {
 	dir := t.TempDir()
 	videoOne := filepath.Join(dir, "01.mp4")
@@ -342,6 +370,53 @@ func TestSelectMediaPathsUppercaseExtensionCreatesQueue(t *testing.T) {
 	if screen.MediaText.Text != filepath.Base(mediaPath) {
 		t.Fatalf("expected media text %q, got %q", filepath.Base(mediaPath), screen.MediaText.Text)
 	}
+	if screen.SessionQueue.CurrentIndex != 0 {
+		t.Fatalf("expected current queue index 0, got %d", screen.SessionQueue.CurrentIndex)
+	}
+}
+
+func TestSelectMediaPathsSortsQueueByName(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	dir := t.TempDir()
+	first := filepath.Join(dir, "01-first.mp4")
+	second := filepath.Join(dir, "02-second.mp4")
+	third := filepath.Join(dir, "03-third.mp4")
+	screen := newQueueMediaSelectionTestScreen()
+
+	if err := selectMediaPaths(screen, []string{third, first, second}); err != nil {
+		t.Fatalf("selectMediaPaths failed: %v", err)
+	}
+	fyne.DoAndWait(func() {})
+
+	assertQueuePaths(t, screen, []string{first, second, third})
+	if screen.mediafile != first {
+		t.Fatalf("expected current media %q, got %q", first, screen.mediafile)
+	}
+}
+
+func TestAppendMediaPathsSortsAddedItems(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	dir := t.TempDir()
+	existing := filepath.Join(dir, "00-existing.mp4")
+	first := filepath.Join(dir, "01-first.mp4")
+	second := filepath.Join(dir, "02-second.mp4")
+	third := filepath.Join(dir, "03-third.mp4")
+	screen := newQueueMediaSelectionTestScreen()
+	screen.mediafile = existing
+	screen.SessionQueue = newSessionQueue([]QueueItem{
+		{Path: existing, BaseName: filepath.Base(existing), ParentFolder: dir, MediaType: "video"},
+	}, 0)
+
+	if err := appendMediaPaths(screen, []string{third, first, second}); err != nil {
+		t.Fatalf("appendMediaPaths failed: %v", err)
+	}
+	fyne.DoAndWait(func() {})
+
+	assertQueuePaths(t, screen, []string{existing, first, second, third})
 	if screen.SessionQueue.CurrentIndex != 0 {
 		t.Fatalf("expected current queue index 0, got %d", screen.SessionQueue.CurrentIndex)
 	}

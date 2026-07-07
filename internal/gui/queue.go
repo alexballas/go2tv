@@ -215,7 +215,7 @@ func (screen *FyneScreen) newQueueItem(mediaPath string) (QueueItem, bool) {
 
 func (screen *FyneScreen) buildQueueItems(paths []string) []QueueItem {
 	items := make([]QueueItem, 0, len(paths))
-	for _, mediaPath := range paths {
+	for _, mediaPath := range sortedMediaPaths(paths) {
 		item, ok := screen.newQueueItem(mediaPath)
 		if !ok {
 			continue
@@ -224,6 +224,28 @@ func (screen *FyneScreen) buildQueueItems(paths []string) []QueueItem {
 	}
 
 	return items
+}
+
+func sortedMediaPaths(paths []string) []string {
+	sorted := slices.Clone(paths)
+	slices.SortFunc(sorted, compareMediaPaths)
+	return sorted
+}
+
+func compareMediaPaths(a, b string) int {
+	aName := strings.ToLower(filepath.Base(filepath.Clean(a)))
+	bName := strings.ToLower(filepath.Base(filepath.Clean(b)))
+	if cmp := strings.Compare(aName, bName); cmp != 0 {
+		return cmp
+	}
+
+	aPath := strings.ToLower(filepath.Clean(a))
+	bPath := strings.ToLower(filepath.Clean(b))
+	if cmp := strings.Compare(aPath, bPath); cmp != 0 {
+		return cmp
+	}
+
+	return strings.Compare(filepath.Clean(a), filepath.Clean(b))
 }
 
 func (screen *FyneScreen) bumpQueueRevisionLocked() {

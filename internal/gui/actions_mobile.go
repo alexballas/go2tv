@@ -1120,6 +1120,31 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 	go chromecastStatusWatcher(serverStoppedCTX, screen, actionID)
 }
 
+const (
+	// chromecastStallWindowSeconds scopes the stall safety net to the tail
+	// of the media, where a wedged session is indistinguishable from a
+	// finished one.
+	chromecastStallWindowSeconds = 5.0
+	// chromecastStallTicksPlaying is the poll count before a frozen PLAYING
+	// position near the end is treated as finished. A genuinely playing
+	// video advances on every poll, so this can act fast.
+	chromecastStallTicksPlaying = 3
+	// chromecastStallTicksWedged is the poll count before any other
+	// non-advancing near-end state (e.g. a BUFFERING that never receives
+	// more data, or a session that stopped reporting a duration) is treated
+	// as finished. Higher than the PLAYING threshold so a slow network
+	// cannot cut a video short.
+	chromecastStallTicksWedged = 10
+	// chromecastLostConnPolls is the consecutive GetStatus failure count
+	// before the connection to the device is considered dead. Each failure
+	// already went through the library's internal retries, so this
+	// represents an extended period without any response.
+	chromecastLostConnPolls = 3
+	// chromecastStartupIdleTicks is the poll count before a new Chromecast
+	// action that never leaves pre-playback IDLE is considered wedged.
+	chromecastStartupIdleTicks = 20
+)
+
 // chromecastStatusWatcher polls Chromecast status and updates UI.
 func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID uint64) {
 	ticker := time.NewTicker(time.Second)
@@ -1129,7 +1154,12 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 
 	// Stall detection state for the near-end safety net below.
 	var stallLastTime float32 = -1
+	var stallDuration float32
 	stallTicks := 0
+
+	// Consecutive GetStatus failures, see the dead-connection handling.
+	statusErrs := 0
+	startupIdleTicks := 0
 
 	for {
 		select {
@@ -1147,17 +1177,60 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 
 			status, err := client.GetStatus()
 			if err != nil {
-				continue
+				statusErrs++
+				if statusErrs < chromecastLostConnPolls {
+					continue
+				}
+				if !screen.isChromecastActionCurrent(actionID) {
+					return
+				}
+				nearEnd := mediaStarted &&
+					stallLastTime >= 0 && stallDuration > 0 &&
+					stallLastTime >= stallDuration-chromecastStallWindowSeconds
+
+				// Drop the dead client so follow-up actions reconnect
+				// from scratch instead of reusing it.
+				if screen.chromecastClient == client {
+					screen.chromecastClient = nil
+				}
+				go client.Close(false)
+
+				if nearEnd {
+					// Last good sample was already at EOF, so a dead status
+					// channel is equivalent to the receiver never sending IDLE.
+					screen.Fini()
+					if !screen.Medialoop {
+						startAfreshPlayButton(screen)
+					}
+					return
+				}
+
+				// Mid-media status loss is not completion.
+				if screen.httpserver != nil {
+					server := screen.httpserver
+					screen.httpserver = nil
+					go server.StopServer()
+				}
+				if screen.cancelServerStop != nil {
+					screen.cancelServerStop()
+					screen.cancelServerStop = nil
+				}
+				startAfreshPlayButton(screen)
+				return
 			}
+			statusErrs = 0
 			if !screen.isChromecastActionCurrent(actionID) {
 				return
 			}
 
 			switch status.PlayerState {
 			case "BUFFERING":
-				mediaStarted = true
+				// Media is loading; wait for PLAYING/PAUSED before treating
+				// later IDLE/status-loss as a finished playback.
+				startupIdleTicks = 0
 			case "PLAYING":
 				mediaStarted = true
+				startupIdleTicks = 0
 				if screen.getScreenState() != "Playing" {
 					// Double check to avoid a race condition when clicking the stop button
 					if client.IsConnected() {
@@ -1167,6 +1240,7 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 				}
 			case "PAUSED":
 				mediaStarted = true
+				startupIdleTicks = 0
 				if screen.getScreenState() != "Paused" {
 					setPlayPauseView("Play", screen)
 					screen.updateScreenState("Paused")
@@ -1182,31 +1256,79 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 					}
 					return
 				}
-			}
-
-			// Safety net: natural completion is detected via the IDLE state
-			// above once the receiver tears the session down. This catches a
-			// session that lingers reporting a frozen PLAYING position after
-			// the stream actually ends — a genuinely playing video advances
-			// on every poll.
-			nearEnd := mediaStarted && status.PlayerState == "PLAYING" &&
-				status.Duration > 0 && status.CurrentTime >= status.Duration-5
-			if nearEnd && status.CurrentTime == stallLastTime {
-				stallTicks++
-				if stallTicks >= 3 {
+				startupIdleTicks++
+				if startupIdleTicks >= chromecastStartupIdleTicks {
 					if !screen.isChromecastActionCurrent(actionID) {
 						return
 					}
-					screen.Fini()
-					if !screen.Medialoop {
-						startAfreshPlayButton(screen)
+					if screen.chromecastClient == client {
+						screen.chromecastClient = nil
 					}
+					go client.Close(false)
+					if screen.httpserver != nil {
+						server := screen.httpserver
+						screen.httpserver = nil
+						go server.StopServer()
+					}
+					if screen.cancelServerStop != nil {
+						screen.cancelServerStop()
+						screen.cancelServerStop = nil
+					}
+					if screen.Medialoop {
+						screen.Fini()
+						return
+					}
+					startAfreshPlayButton(screen)
 					return
 				}
-			} else {
-				stallLastTime = status.CurrentTime
-				stallTicks = 0
 			}
+
+			// Near-end stall safety net: natural completion is detected via
+			// the IDLE state above once the receiver tears the session down.
+			// This catches sessions that wedge close to the end of the
+			// stream instead: a frozen PLAYING position, a BUFFERING state
+			// that never receives more data, or a session that stops
+			// reporting a duration. A healthy video advances on every poll.
+			if !mediaStarted {
+				continue
+			}
+			if status.PlayerState == "PAUSED" {
+				// A paused video legitimately holds its position.
+				stallTicks = 0
+				continue
+			}
+			// Chromecast reports 0 duration/time during buffering, so only
+			// non-buffering reports with a duration carry a usable position.
+			sampleValid := status.PlayerState != "BUFFERING" && status.Duration > 0
+			if sampleValid && status.CurrentTime != stallLastTime {
+				// Progress (or a seek): remember the latest good sample.
+				stallLastTime = status.CurrentTime
+				stallDuration = status.Duration
+				stallTicks = 0
+				continue
+			}
+			if stallLastTime < 0 || stallDuration <= 0 || stallLastTime < stallDuration-chromecastStallWindowSeconds {
+				continue
+			}
+			stallTicks++
+			// A frozen PLAYING report is unambiguous, so act fast. Anything
+			// else can also be a slow network, so give it more time before
+			// treating it as finished.
+			threshold := chromecastStallTicksWedged
+			if sampleValid && status.PlayerState == "PLAYING" {
+				threshold = chromecastStallTicksPlaying
+			}
+			if stallTicks < threshold {
+				continue
+			}
+			if !screen.isChromecastActionCurrent(actionID) {
+				return
+			}
+			screen.Fini()
+			if !screen.Medialoop {
+				startAfreshPlayButton(screen)
+			}
+			return
 		}
 	}
 }
