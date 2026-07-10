@@ -68,6 +68,20 @@ func TestBuildContentFeatures(t *testing.T) {
 			"DLNA.ORG_OP=11;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000",
 			false,
 		},
+		{
+			`JPEG profile`,
+			`image/jpeg`,
+			`00`,
+			"DLNA.ORG_PN=JPEG_LRG;DLNA.ORG_OP=00;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000",
+			false,
+		},
+		{
+			`PNG profile`,
+			`image/png`,
+			`00`,
+			"DLNA.ORG_PN=PNG_LRG;DLNA.ORG_OP=00;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000",
+			false,
+		},
 	}
 
 	for _, tc := range tt {

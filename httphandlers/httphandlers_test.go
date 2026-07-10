@@ -5,7 +5,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -106,4 +108,123 @@ func TestServeMediaHandlerUppercaseSubtitleAddsCORS(t *testing.T) {
 	if got := w.Result().Header.Get("Access-Control-Allow-Origin"); got != "*" {
 		t.Fatalf("expected CORS header '*', got %q", got)
 	}
+}
+
+func TestStaticHandlerMethodsMIMEAndCORS(t *testing.T) {
+	payload := []byte("normalized artwork")
+	srv := NewServer("127.0.0.1:0")
+	srv.AddStaticHandler("/artwork/hash.jpg", "image/jpeg", payload)
+	handler := srv.ServeMediaHandler()
+
+	tt := []struct {
+		method     string
+		wantStatus int
+		wantBody   string
+	}{
+		{method: http.MethodGet, wantStatus: http.StatusOK, wantBody: string(payload)},
+		{method: http.MethodHead, wantStatus: http.StatusOK},
+		{method: http.MethodOptions, wantStatus: http.StatusOK},
+		{method: http.MethodPost, wantStatus: http.StatusMethodNotAllowed},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.method, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(tc.method, "/artwork/hash.jpg", nil)
+			handler(w, r)
+
+			result := w.Result()
+			if result.StatusCode != tc.wantStatus {
+				t.Fatalf("status = %d, want %d", result.StatusCode, tc.wantStatus)
+			}
+			if got := result.Header.Get("Content-Type"); got != "image/jpeg" {
+				t.Fatalf("Content-Type = %q", got)
+			}
+			if got := result.Header.Get("Access-Control-Allow-Origin"); got != "*" {
+				t.Fatalf("CORS = %q", got)
+			}
+			if got := w.Body.String(); got != tc.wantBody {
+				t.Fatalf("body = %q, want %q", got, tc.wantBody)
+			}
+		})
+	}
+}
+
+func TestStaticHandlerMediaInputs(t *testing.T) {
+	payload := []byte("fresh artwork")
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "cover.bin")
+	if err := os.WriteFile(filePath, payload, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	readerCalls := 0
+	tt := []struct {
+		name  string
+		media any
+	}{
+		{name: "bytes", media: payload},
+		{name: "file", media: filePath},
+		{
+			name: "fresh reader",
+			media: MediaReaderSeeker(func() (io.ReadSeekCloser, error) {
+				readerCalls++
+				return &testReadSeekCloser{Reader: bytes.NewReader(payload)}, nil
+			}),
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := NewServer("127.0.0.1:0")
+			srv.AddStaticHandler("/artwork/hash.bin", "image/jpeg", tc.media)
+			handler := srv.ServeMediaHandler()
+
+			for range 2 {
+				w := httptest.NewRecorder()
+				r := httptest.NewRequest(http.MethodGet, "/artwork/hash.bin", nil)
+				handler(w, r)
+				if w.Result().StatusCode != http.StatusOK || !bytes.Equal(w.Body.Bytes(), payload) {
+					t.Fatalf("status = %d, body = %q", w.Result().StatusCode, w.Body.Bytes())
+				}
+				if got := w.Result().Header.Get("Content-Type"); got != "image/jpeg" {
+					t.Fatalf("Content-Type = %q", got)
+				}
+			}
+		})
+	}
+
+	if readerCalls != 2 {
+		t.Fatalf("fresh reader calls = %d, want 2", readerCalls)
+	}
+}
+
+func TestStaticHandlerUnknownPath(t *testing.T) {
+	srv := NewServer("127.0.0.1:0")
+	srv.AddStaticHandler("/artwork/known.jpg", "image/jpeg", []byte("known"))
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/artwork/missing.jpg", nil)
+	srv.ServeMediaHandler()(w, r)
+	if w.Result().StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", w.Result().StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestStaticHandlerExplicitMIMEOverridesExtension(t *testing.T) {
+	srv := NewServer("127.0.0.1:0")
+	srv.AddStaticHandler("/artwork/hash.mp4", "image/jpeg", []byte("art"))
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/artwork/hash.mp4", nil)
+	srv.ServeMediaHandler()(w, r)
+	if got := w.Result().Header.Get("Content-Type"); got != "image/jpeg" {
+		t.Fatalf("Content-Type = %q, want explicit MIME", got)
+	}
+}
+
+type testReadSeekCloser struct {
+	*bytes.Reader
+}
+
+func (t *testReadSeekCloser) Close() error {
+	return nil
 }

@@ -41,6 +41,8 @@ type handler struct {
 	payload   *soapcalls.TVPayload    // For DLNA (may be nil for Chromecast)
 	transcode *utils.TranscodeOptions // For Chromecast transcoding (may be nil)
 	media     any
+	mediaType string
+	static    bool
 }
 
 // Screen interface is used to push message back to the user
@@ -68,6 +70,14 @@ type osFileType struct {
 func (s *HTTPserver) AddHandler(path string, payload *soapcalls.TVPayload, transcode *utils.TranscodeOptions, media any) {
 	s.mu.Lock()
 	s.handlers[path] = handler{payload: payload, transcode: transcode, media: media}
+	s.mu.Unlock()
+}
+
+// AddStaticHandler adds GET/HEAD static content with explicit MIME and CORS.
+// media may be a file path, []byte, or MediaReaderSeeker.
+func (s *HTTPserver) AddStaticHandler(path, mediaType string, media any) {
+	s.mu.Lock()
+	s.handlers[path] = handler{media: media, mediaType: mediaType, static: true}
 	s.mu.Unlock()
 }
 
@@ -242,13 +252,31 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 			return
 		}
 
-		// Explicitly set Content-Type for HLS files
-		if strings.HasSuffix(requestPathLower, ".m3u8") {
-			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-		} else if strings.HasSuffix(requestPathLower, ".ts") {
-			w.Header().Set("Content-Type", "video/mp2t")
-		} else if strings.HasSuffix(requestPathLower, ".mp4") || strings.HasSuffix(requestPathLower, ".m4s") {
-			w.Header().Set("Content-Type", "video/mp4")
+		if out.static {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.Header().Set("Content-Type", out.mediaType)
+			switch r.Method {
+			case http.MethodOptions:
+				w.WriteHeader(http.StatusOK)
+				return
+			case http.MethodGet, http.MethodHead:
+			default:
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+		}
+
+		// Explicitly set Content-Type for HLS files.
+		if !out.static {
+			if strings.HasSuffix(requestPathLower, ".m3u8") {
+				w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+			} else if strings.HasSuffix(requestPathLower, ".ts") {
+				w.Header().Set("Content-Type", "video/mp2t")
+			} else if strings.HasSuffix(requestPathLower, ".mp4") || strings.HasSuffix(requestPathLower, ".m4s") {
+				w.Header().Set("Content-Type", "video/mp4")
+			}
 		}
 
 		switch f := out.media.(type) {

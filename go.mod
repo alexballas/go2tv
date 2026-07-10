@@ -8,6 +8,7 @@ require (
 	github.com/alexballas/refyne/v2 v2.0.0-20260709143520-88cd85f20823
 	github.com/alexballas/xfilepicker v0.0.0-20260707112625-568d849323ed
 	github.com/buger/jsonparser v1.2.0
+	github.com/cabbagekobe/tunetag v0.1.4
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/gdamore/tcell/v2 v2.13.10
@@ -24,6 +25,7 @@ require (
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	github.com/stretchr/testify v1.11.1
 	go2tv.app/screencast v0.0.0-20260415182719-6f13c7343d9c
+	golang.org/x/image v0.44.0
 	golang.org/x/mod v0.38.0
 	golang.org/x/sys v0.47.0
 	golang.org/x/time v0.15.0
@@ -78,7 +80,6 @@ require (
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yuin/goldmark v1.8.2 // indirect
-	golang.org/x/image v0.44.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/term v0.45.0 // indirect

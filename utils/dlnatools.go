@@ -41,8 +41,8 @@ var (
 		"video/x-flv":             "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
 		"video/x-ms-wmv":          "DLNA.ORG_PN=WMVHIGH_FULL",
 		"audio/mpeg":              "DLNA.ORG_PN=MP3",
-		"image/jpeg":              "JPEG_LRG",
-		"image/png":               "PNG_LRG",
+		"image/jpeg":              "DLNA.ORG_PN=JPEG_LRG",
+		"image/png":               "DLNA.ORG_PN=PNG_LRG",
 	}
 
 	ErrInvalidSeekFlag    = errors.New("invalid seek flag")
