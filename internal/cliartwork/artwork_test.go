@@ -97,6 +97,66 @@ func TestPrepareIgnoresInvalidArtwork(t *testing.T) {
 	}
 }
 
+func TestResolveExplicitArtworkPrecedenceAndFallback(t *testing.T) {
+	directory := t.TempDir()
+	mediaPath := filepath.Join(directory, "track.mp3")
+	if err := os.WriteFile(mediaPath, []byte("audio"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	automaticPath := filepath.Join(directory, "track.jpg")
+	overridePath := filepath.Join(directory, "manual.png")
+	writeJPEG(t, automaticPath, 30, 30)
+	writeJPEG(t, overridePath, 40, 20)
+
+	tests := []struct {
+		name         string
+		overridePath string
+		local        bool
+		wantSource   string
+		wantWidth    int
+		wantHeight   int
+	}{
+		{name: "explicit overrides automatic", overridePath: overridePath, local: true, wantSource: overridePath, wantWidth: 40, wantHeight: 20},
+		{name: "explicit works for remote media", overridePath: overridePath, local: false, wantSource: overridePath, wantWidth: 40, wantHeight: 20},
+		{name: "invalid explicit falls back", overridePath: filepath.Join(directory, "missing.jpg"), local: true, wantSource: automaticPath, wantWidth: 30, wantHeight: 30},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			asset := Resolve(mediaPath, test.overridePath, test.local)
+			if asset == nil {
+				t.Fatal("artwork = nil")
+			}
+			if asset.Source != test.wantSource || asset.Width != test.wantWidth || asset.Height != test.wantHeight {
+				t.Fatalf("artwork = %+v", asset)
+			}
+		})
+	}
+}
+
+func TestPrepareWithOverrideRegistersExplicitArtwork(t *testing.T) {
+	directory := t.TempDir()
+	overridePath := filepath.Join(directory, "manual.jpg")
+	writeJPEG(t, overridePath, 50, 25)
+
+	server := httphandlers.NewServer("127.0.0.1:1234")
+	artwork := PrepareWithOverride(server, "https://example.com/track.mp3", overridePath, server.GetAddr(), false)
+	if artwork == nil || artwork.Width != 50 || artwork.Height != 25 {
+		t.Fatalf("artwork = %+v", artwork)
+	}
+
+	artworkURL, err := url.Parse(artwork.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodHead, artworkURL.Path, nil)
+	response := httptest.NewRecorder()
+	server.ServeMediaHandler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("status = %d, Content-Type = %q", response.Code, response.Header().Get("Content-Type"))
+	}
+}
+
 func writeJPEG(t *testing.T, path string, width, height int) {
 	t.Helper()
 	file, err := os.Create(path)

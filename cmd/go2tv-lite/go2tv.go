@@ -41,6 +41,7 @@ var (
 	urlArg    = flag.String("u", "", "URL to media file (triggers CLI mode).")
 
 	subsArg      = flag.String("s", "", "Path to subtitles file (.srt or .vtt).")
+	artworkArg   = flag.String("artwork", "", "Path to JPEG/PNG artwork override.")
 	targetPtr    = flag.String("t", "", "Device URL to cast to (from -l output).")
 	transcodePtr = flag.Bool("tc", false, "Force transcoding with ffmpeg.")
 	listPtr      = flag.Bool("l", false, "List available devices (Smart TVs and Chromecasts).")
@@ -219,7 +220,7 @@ func run(crash *crashlog.Session) error {
 
 	// Branch based on device type
 	if isChromecastTarget {
-		return runChromecastCLI(exitCTX, cancel, flagRes.targetURL, absMediaFile, mediaFile, mediaType, absSubtitlesFile, ffmpegPath, transcode, *mediaArg == "" && *urlArg != "")
+		return runChromecastCLI(exitCTX, cancel, flagRes.targetURL, absMediaFile, mediaFile, mediaType, absSubtitlesFile, *artworkArg, ffmpegPath, transcode, *mediaArg == "" && *urlArg != "")
 	}
 
 	scr := &dummyScreen{ctxCancel: cancel}
@@ -242,7 +243,7 @@ func run(crash *crashlog.Session) error {
 	}
 
 	s = httphandlers.NewServer(tvdata.ListenAddress())
-	tvdata.Metadata.Artwork = cliartwork.Prepare(s, absMediaFile, tvdata.ListenAddress(), localMedia)
+	tvdata.Metadata.Artwork = cliartwork.PrepareWithOverride(s, absMediaFile, *artworkArg, tvdata.ListenAddress(), localMedia)
 	serverStarted := make(chan error)
 
 	// We pass the tvdata here as we need the callback handlers to be able to react
@@ -273,7 +274,7 @@ func run(crash *crashlog.Session) error {
 	return nil
 }
 
-func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL, mediaPath string, mediaFile any, mediaType, subsPath, ffmpegPath string, transcode, externalURL bool) error {
+func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL, mediaPath string, mediaFile any, mediaType, subsPath, artworkPath, ffmpegPath string, transcode, externalURL bool) error {
 	if externalURL {
 		transcode = playback.ChromecastExternalURLPolicy(mediaPath, mediaType, transcode, subsPath).Transcode
 	} else {
@@ -323,7 +324,9 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 	subtitleURL := ""
 	subtitlesPath, hasSubtitles := playback.ChromecastSubtitlePath(subsPath)
 	needsMediaServer := !externalURL || transcode
-	needsLocalServer := needsMediaServer || (hasSubtitles && !transcode)
+	_, localMedia := mediaFile.(string)
+	artworkAsset := cliartwork.Resolve(mediaPath, artworkPath, localMedia)
+	needsLocalServer := needsMediaServer || (hasSubtitles && !transcode) || artworkAsset != nil
 	var httpServer *httphandlers.HTTPserver
 	mediaMetadata := metadata.Media{Title: mediaPath}
 
@@ -335,8 +338,7 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 
 		httpServer = httphandlers.NewServer(whereToListen)
 		defer httpServer.StopServer()
-		_, localMedia := mediaFile.(string)
-		mediaMetadata.Artwork = cliartwork.Prepare(httpServer, mediaPath, whereToListen, localMedia)
+		mediaMetadata.Artwork = cliartwork.Register(httpServer, artworkAsset, whereToListen)
 
 		if hasSubtitles && !transcode {
 			switch strings.ToLower(filepath.Ext(subtitlesPath)) {

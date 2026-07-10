@@ -125,6 +125,8 @@ Notes:
 ``` console
 $ go2tv -h
 Usage of go2tv:
+  -artwork string
+        Path to JPEG/PNG artwork override.
   -l    List available devices (Smart TVs and Chromecasts).
   -s string
         Path to subtitles file (.srt or .vtt).
@@ -151,6 +153,9 @@ go2tv -v movie.mp4 -t http://192.168.1.100:8060/
 
 # Play with subtitles
 go2tv -v movie.mp4 -s movie.srt -t http://192.168.1.100:8060/
+
+# Override automatic music artwork
+go2tv -v track.mp3 -artwork custom-cover.png -t http://192.168.1.100:8060/
 
 # Force transcoding for incompatible formats
 go2tv -v video.avi -tc -t http://192.168.1.100:8060/

@@ -1,6 +1,6 @@
 # Music Artwork Implementation Plan
 
-Status: Phase 5 complete
+Status: Phase 6 complete
 
 Owner: primary integration agent
 
@@ -23,7 +23,8 @@ Automatically send correct per-track music artwork to DLNA and Chromecast render
 Deferred:
 
 - Remote URL artwork discovery.
-- Explicit artwork picker/CLI flag.
+- Explicit GUI artwork picker.
+- Explicit remote artwork URL.
 - Artist/album tag propagation beyond fields needed by protocol models.
 - Formats without embedded-art parser support.
 
@@ -331,9 +332,17 @@ Exit:
 
 ### Phase 6: optional explicit override
 
-Status: deferred; requires explicit approval.
+Status: complete; explicitly approved.
 
-Only add picker, CLI flag, or remote artwork URL if automatic embedded/sidecar resolution proves insufficient. Any explicit source would take precedence over automatic discovery.
+Implemented local CLI override only:
+
+- Add `-artwork <path>` to full and lite CLI.
+- Accept valid local JPEG/PNG input for local, remote, and stdin media.
+- Normalize and serve through existing content-addressed artwork contracts.
+- Prefer valid explicit artwork over automatic discovery.
+- Ignore invalid explicit artwork; fall back to automatic discovery for local media.
+- Start Chromecast HTTP server when explicit artwork is its only local resource.
+- Keep GUI picker and remote artwork URL deferred.
 
 ### Phase 7: compatibility verification
 
@@ -457,31 +466,31 @@ Keep context durable through code, commits, tests, and this file. Do not rely on
 
 ## Current handoff
 
-Phase: 5
+Phase: 6
 
 State: complete
 
-Last commit: `preserve artwork across queues` (this commit)
+Last commit: `bb6b5ad preserve artwork across queues`
 
 Completed:
 
-- Added per-media-identity artwork caching, including no-art results; identical normalized covers reuse one hash URL.
-- Selecting desktop/mobile targets clears stale artwork immediately; background resolution cannot overwrite a newer selection.
-- DLNA `queueNext` resolves and registers target artwork before SOAP, carries target `MediaPath`, and keeps current/next routes together.
-- Gapless promotion removes old artwork only after transition confirmation; queue clear/overwrite removes only routes no renderer can still request.
-- Chromecast previous/next/skip now reload with target artwork metadata; old artwork remains until successful LOAD. Transcoded restarts register target artwork too.
-- Seek/reload/loop reuse cached current artwork; art-to-no-art transitions clear metadata and routes.
-- Added queue lifecycle tests for distinct covers, shared hashes, art-to-no-art, stale selection races, route-before-SOAP ordering, and SOAP payloads.
-- Passed focused race tests, `go test -v ./...`, `make build`, Fyne check, refyne Android package/sign/verify, and `make windows`.
-- Repo-wide modernize ran; reports the same seven pre-existing findings outside Phase 5 files.
+- Added `-artwork <path>` to full and lite CLI; README usage updated.
+- Valid explicit local JPEG/PNG overrides automatic artwork for DLNA and Chromecast.
+- Explicit artwork works with local, remote, and stdin media; Chromecast hosts artwork even when it is the only local resource.
+- Explicit input uses existing 20 MiB validation, normalization, content hash, JPEG route, MIME, CORS, dimensions, and protocol metadata.
+- Missing, unreadable, corrupt, unsupported, or oversized override never blocks playback; local media falls back to automatic artwork.
+- Preserved legacy `cliartwork.Prepare`; added focused precedence, fallback, remote-media, registration, HEAD, and MIME tests.
+- Passed repeated focused tests, `go test -v ./...`, `make build`, Fyne check, refyne Android package/sign/verify, and `make windows`.
+- Repo-wide modernize ran; reports the same seven pre-existing findings, none in Phase 6 files.
 
 Next:
 
-1. Keep Phase 6 deferred unless explicitly approved.
-2. Start Phase 7 compatibility verification only when directed.
+1. Start Phase 7 compatibility verification only when directed.
 
 Known risks:
 
+- Override is CLI-only; GUI picker and explicit remote artwork URL remain deferred.
+- Invalid override is intentionally silent so artwork failure cannot block playback.
 - Mobile seekable-descriptor artwork extraction is package-verified, not hardware-verified.
 - DLNA artwork has no `dlna:profileID` by fixed design.
 - Modernize findings remain in Phase 1/2 and unrelated files.
