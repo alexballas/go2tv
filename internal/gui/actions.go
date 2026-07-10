@@ -26,6 +26,7 @@ import (
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
 	"go2tv.app/go2tv/v2/internal/playback"
+	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/rtmp"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
@@ -613,6 +614,8 @@ func playAction(screen *FyneScreen) {
 	screen.cancelEnablePlay = cancelEnablePlay
 
 	go func() {
+		screen.setCurrentArtwork(nil)
+
 		// RTMP wait mechanism
 		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
 			if err := waitForRTMPStream(screen); err != nil {
@@ -666,6 +669,7 @@ func playAction(screen *FyneScreen) {
 					startAfreshPlayButton(screen)
 					return
 				}
+				screen.setCurrentArtwork(resolveGUIArtwork(screen.mediafile, mediaType, true))
 
 				// Set casting media type
 				screen.SetMediaType(mediaType)
@@ -806,6 +810,9 @@ func playAction(screen *FyneScreen) {
 		}
 
 		screen.httpserver = httphandlers.NewServer(whereToListen)
+		artworkAsset := screen.getCurrentArtwork()
+		registerGUIArtwork(screen.httpserver, artworkAsset)
+		screen.tvdata.Metadata = guiMediaMetadata("", whereToListen, artworkAsset)
 		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
 			screen.httpserver.AddDirectoryHandler("/rtmp/", screen.rtmpHLSURL)
 		}
@@ -1022,6 +1029,8 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 			return
 		}
 	}
+	screen.setCurrentArtwork(nil)
+	var artworkAsset *metadata.ArtworkAsset
 
 	sessionDevice := screen.selectedDevice
 	screen.setActiveDevice(sessionDevice)
@@ -1309,6 +1318,8 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 			return
 		}
 		mediaType = detectedMediaType
+		artworkAsset = resolveGUIArtwork(screen.mediafile, mediaType, true)
+		screen.setCurrentArtwork(artworkAsset)
 
 		// Chromecast handles images and audio natively - never transcode these
 		mediaTypeSlice := strings.Split(mediaType, "/")
@@ -1344,6 +1355,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 		}
 
 		screen.httpserver = httphandlers.NewServer(whereToListen)
+		registerGUIArtwork(screen.httpserver, artworkAsset)
 		serverStarted := make(chan error)
 		var serverCTXStop context.CancelFunc
 		serverStoppedCTX, serverCTXStop = context.WithCancel(context.Background())
@@ -1424,7 +1436,19 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 	go func() {
 		// Use LIVE stream type for URL streams (DMR shows LIVE badge, but buffer unchanged)
 		live := screen.ExternalMediaURL.Checked
-		if err := client.Load(mediaURL, mediaType, chromecastMediaTitle(screen, mediaURL), ffmpegSeek, screen.mediaDuration, subtitleURL, live); err != nil {
+		listenAddress := ""
+		if parsedMediaURL, err := url.Parse(mediaURL); err == nil {
+			listenAddress = parsedMediaURL.Host
+		}
+		if err := client.LoadMedia(castprotocol.LoadRequest{
+			MediaURL:    mediaURL,
+			ContentType: mediaType,
+			Metadata:    guiMediaMetadata(chromecastMediaTitle(screen, mediaURL), listenAddress, artworkAsset),
+			StartTime:   ffmpegSeek,
+			Duration:    screen.mediaDuration,
+			SubtitleURL: subtitleURL,
+			Live:        live,
+		}); err != nil {
 			if !screen.isChromecastActionCurrent(actionID) {
 				return
 			}
@@ -1477,6 +1501,8 @@ func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
 		}
 		// Create new HTTP server with new seek position
 		screen.httpserver = httphandlers.NewServer(whereToListen)
+		artworkAsset := screen.getCurrentArtwork()
+		registerGUIArtwork(screen.httpserver, artworkAsset)
 		serverStarted := make(chan error)
 		serverStoppedCTX, serverCTXStop := context.WithCancel(context.Background())
 		screen.serverStopCTX = serverStoppedCTX
@@ -1506,7 +1532,12 @@ func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
 		// Load media on existing connection (skips 2-second receiver launch delay)
 		// No subtitles needed since they're burned in during transcoding
 		// live=false because this is local file playback (seeking)
-		if err := client.LoadOnExisting(mediaURL, mediaType, chromecastMediaTitle(screen, mediaURL), 0, screen.mediaDuration, "", false); err != nil {
+		if err := client.LoadMediaOnExisting(castprotocol.LoadRequest{
+			MediaURL:    mediaURL,
+			ContentType: mediaType,
+			Metadata:    guiMediaMetadata(chromecastMediaTitle(screen, mediaURL), whereToListen, artworkAsset),
+			Duration:    screen.mediaDuration,
+		}); err != nil {
 			check(screen, fmt.Errorf("chromecast seek load: %w", err))
 			return
 		}
