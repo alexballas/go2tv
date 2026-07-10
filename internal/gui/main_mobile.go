@@ -232,6 +232,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		mfiletext.SetPlaceHolder("")
 		s.MediaText.Text = mediafileOldText
 		s.mediafile = mediafileOld
+		resolveSelectedMobileArtwork(s, mediafileOld)
 		mediafilelabel.Refresh()
 		mfiletext.Disable()
 	}

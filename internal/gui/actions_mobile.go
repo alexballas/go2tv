@@ -147,6 +147,7 @@ func mediaAction(screen *FyneScreen) {
 
 		screen.MediaText.Text = reader.URI().Name()
 		screen.mediafile = reader.URI()
+		resolveSelectedMobileArtwork(screen, reader.URI())
 
 		screen.MediaText.Refresh()
 	}, w)
@@ -155,6 +156,29 @@ func mediaAction(screen *FyneScreen) {
 
 	resumeHotkeys = suspendHotkeys(screen)
 	fd.Show()
+}
+
+func resolveSelectedMobileArtwork(screen *FyneScreen, mediaURI fyne.URI) {
+	identity := mobileGUIArtworkIdentity(mediaURI)
+	screen.setCurrentArtworkTarget(identity)
+	if identity == "" {
+		return
+	}
+	go func() {
+		mediaReader, err := storage.Reader(mediaURI)
+		if err != nil {
+			screen.setResolvedCurrentArtwork(identity, nil)
+			return
+		}
+		mediaType, err := utils.GetMimeDetailsFromStream(mediaReader)
+		mediaReader.Close()
+		if err != nil {
+			screen.setResolvedCurrentArtwork(identity, nil)
+			return
+		}
+		asset := resolveMobileGUIArtwork(mediaURI, mediaType, nil)
+		screen.setResolvedCurrentArtwork(identity, asset)
+	}()
 }
 
 func subsAction(screen *FyneScreen) {
@@ -284,8 +308,6 @@ func playAction(screen *FyneScreen) {
 		check(w, err)
 		return
 	}
-	screen.setCurrentArtwork(nil)
-
 	// With this check we're covering the edge case
 	// where we're able to click 'Play' while a media
 	// is looping repeatedly and throws an error that
@@ -371,12 +393,13 @@ func playAction(screen *FyneScreen) {
 				return
 			}
 			if !screen.ExternalMediaURL.Checked {
-				screen.setCurrentArtwork(resolveMobileGUIArtwork(screen.mediafile, mediaType, mediaFile))
+				screen.resolveCurrentMobileGUIArtwork(screen.mediafile, mediaType, mediaFile)
 			}
 		}
 	}
 
 	if screen.ExternalMediaURL.Checked {
+		screen.setCurrentArtwork(nil)
 		// We're not using any context here. The reason is
 		// that when the webserver shuts down it causes the
 		// the io.Copy operation to fail with "broken pipe".
@@ -483,6 +506,7 @@ func playAction(screen *FyneScreen) {
 func clearmediaAction(screen *FyneScreen) {
 	screen.MediaText.SetText("")
 	screen.mediafile = nil
+	screen.setCurrentArtwork(nil)
 }
 
 func clearsubsAction(screen *FyneScreen) {
@@ -891,7 +915,6 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 			}
 		}
 	}
-	screen.setCurrentArtwork(nil)
 	var artworkAsset *metadata.ArtworkAsset
 
 	// Validate media file or URL
@@ -932,6 +955,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 	screen.mediaDuration = 0
 
 	if screen.ExternalMediaURL.Checked {
+		screen.setCurrentArtwork(nil)
 		mediaURL = screen.MediaText.Text
 
 		mediaURLinfo, inferredMediaType, err := utils.StreamURLWithMime(context.Background(), mediaURL)
@@ -1051,8 +1075,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 			startAfreshPlayButton(screen)
 			return
 		}
-		artworkAsset = resolveMobileGUIArtwork(screen.mediafile, mediaType, media)
-		screen.setCurrentArtwork(artworkAsset)
+		artworkAsset = screen.resolveCurrentMobileGUIArtwork(screen.mediafile, mediaType, media)
 
 		var tcOpts *utils.TranscodeOptions
 		if transcode {

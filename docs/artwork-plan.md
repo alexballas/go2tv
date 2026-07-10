@@ -1,6 +1,6 @@
 # Music Artwork Implementation Plan
 
-Status: Phase 4 complete
+Status: Phase 5 complete
 
 Owner: primary integration agent
 
@@ -457,33 +457,31 @@ Keep context durable through code, commits, tests, and this file. Do not rely on
 
 ## Current handoff
 
-Phase: 4
+Phase: 5
 
 State: complete
 
-Last commit: `integrate mobile artwork discovery` (this commit)
+Last commit: `preserve artwork across queues` (this commit)
 
 Completed:
 
-- Added GUI artwork state, local-audio resolution, content-addressed registration, and receiver metadata construction without UI controls/translations.
-- Desktop DLNA and Chromecast initial loads resolve/register artwork before server start; external/invalid/no-art loads clear stale artwork.
-- Desktop pause/resume keeps current artwork; Chromecast transcoded seek recreates the route and reloads identical metadata.
-- Mobile uses `fyne.URI`: filesystem URIs allow sidecars; content URIs use isolated seekable-descriptor links or the existing temp media copy for embedded art only.
-- Mobile artwork work runs through background playback actions; DLNA/Chromecast servers register artwork before serving.
-- Added GUI state tests for local/no-art/external/non-audio replacement, normalized metadata, CORS route serving, and server restart retention.
-- Preserved queue/gapless code and shared contracts; no Phase 5 work started.
-- Passed `go test -v ./...`, `make build`, Fyne check, refyne Android package/sign/verify, and `make windows`.
-- Repo-wide modernize ran; reports seven pre-existing findings in untouched files.
+- Added per-media-identity artwork caching, including no-art results; identical normalized covers reuse one hash URL.
+- Selecting desktop/mobile targets clears stale artwork immediately; background resolution cannot overwrite a newer selection.
+- DLNA `queueNext` resolves and registers target artwork before SOAP, carries target `MediaPath`, and keeps current/next routes together.
+- Gapless promotion removes old artwork only after transition confirmation; queue clear/overwrite removes only routes no renderer can still request.
+- Chromecast previous/next/skip now reload with target artwork metadata; old artwork remains until successful LOAD. Transcoded restarts register target artwork too.
+- Seek/reload/loop reuse cached current artwork; art-to-no-art transitions clear metadata and routes.
+- Added queue lifecycle tests for distinct covers, shared hashes, art-to-no-art, stale selection races, route-before-SOAP ordering, and SOAP payloads.
+- Passed focused race tests, `go test -v ./...`, `make build`, Fyne check, refyne Android package/sign/verify, and `make windows`.
+- Repo-wide modernize ran; reports the same seven pre-existing findings outside Phase 5 files.
 
 Next:
 
-1. Start Phase 5 in fresh session only.
-2. Add per-target queue artwork lifecycle.
-3. Keep current/next handlers through transitions.
+1. Keep Phase 6 deferred unless explicitly approved.
+2. Start Phase 7 compatibility verification only when directed.
 
 Known risks:
 
-- Queue/gapless lifecycle remains deferred to Phase 5.
 - Mobile seekable-descriptor artwork extraction is package-verified, not hardware-verified.
 - DLNA artwork has no `dlna:profileID` by fixed design.
 - Modernize findings remain in Phase 1/2 and unrelated files.

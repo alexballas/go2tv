@@ -91,6 +91,10 @@ type FyneScreen struct {
 	castingMediaType         string  // MIME type of currently casting media (e.g., "image/jpeg", "video/mp4")
 	mediaDuration            float64 // Actual media duration in seconds (from ffprobe, for transcoded streams)
 	currentArtwork           *metadata.ArtworkAsset
+	currentArtworkIdentity   string
+	queuedArtwork            *metadata.ArtworkAsset
+	queuedArtworkIdentity    string
+	artworkCache             map[string]artworkCacheEntry
 	chromecastCheckedFile    string // Tracks which file was already auto-checked for Chromecast compatibility
 	systemTheme              fyne.ThemeVariant
 	mediaFormats             []string

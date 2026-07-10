@@ -320,6 +320,10 @@ func setCurrentMediaPath(screen *FyneScreen, mediaPath string) error {
 	screen.mediafile = absMediaFile
 	screen.currentmfolder = filepath.Dir(absMediaFile)
 	screen.syncQueueCurrentWithMedia(absMediaFile)
+	screen.setCurrentArtworkTarget(guiArtworkIdentity(absMediaFile))
+	if screen.mediaKindForPath(absMediaFile) == "audio" {
+		go screen.resolveCurrentGUIArtwork(absMediaFile, "audio/unknown", true)
+	}
 
 	fyne.Do(func() {
 		if screen.SelectInternalSubs != nil {
@@ -350,6 +354,7 @@ func clearCurrentMediaSelection(screen *FyneScreen) {
 		screen.MediaText.SetText("")
 	}
 	screen.mediafile = ""
+	screen.setCurrentArtwork(nil)
 	screen.clearQueueCurrent()
 	setInternalSubsDropdownNoSubs(screen)
 	screen.refreshQueueStateUI()
@@ -614,8 +619,6 @@ func playAction(screen *FyneScreen) {
 	screen.cancelEnablePlay = cancelEnablePlay
 
 	go func() {
-		screen.setCurrentArtwork(nil)
-
 		// RTMP wait mechanism
 		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
 			if err := waitForRTMPStream(screen); err != nil {
@@ -660,6 +663,7 @@ func playAction(screen *FyneScreen) {
 
 		if !screen.ExternalMediaURL.Checked {
 			if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
+				screen.setCurrentArtwork(nil)
 				mediaType = "application/vnd.apple.mpegurl"
 				screen.SetMediaType(mediaType)
 			} else {
@@ -669,7 +673,7 @@ func playAction(screen *FyneScreen) {
 					startAfreshPlayButton(screen)
 					return
 				}
-				screen.setCurrentArtwork(resolveGUIArtwork(screen.mediafile, mediaType, true))
+				screen.resolveCurrentGUIArtwork(screen.mediafile, mediaType, true)
 
 				// Set casting media type
 				screen.SetMediaType(mediaType)
@@ -692,6 +696,7 @@ func playAction(screen *FyneScreen) {
 		mediaFile = screen.mediafile
 
 		if screen.ExternalMediaURL.Checked {
+			screen.setCurrentArtwork(nil)
 			// We need to define the screen.mediafile
 			// as this is the core item in our structure
 			// that defines that something is being streamed.
@@ -808,6 +813,7 @@ func playAction(screen *FyneScreen) {
 		if screen.httpserver != nil {
 			screen.httpserver.StopServer()
 		}
+		screen.resetQueuedArtworkState()
 
 		screen.httpserver = httphandlers.NewServer(whereToListen)
 		artworkAsset := screen.getCurrentArtwork()
@@ -1029,7 +1035,6 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 			return
 		}
 	}
-	screen.setCurrentArtwork(nil)
 	var artworkAsset *metadata.ArtworkAsset
 
 	sessionDevice := screen.selectedDevice
@@ -1104,6 +1109,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 	}
 
 	if screen.Screencast {
+		screen.setCurrentArtwork(nil)
 		mediaURL, mediaType, serverStoppedCTX, err := startChromecastScreencast(screen)
 		if err != nil {
 			if !screen.isChromecastActionCurrent(actionID) {
@@ -1152,6 +1158,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 	subtitleHost := ""
 
 	if screen.ExternalMediaURL.Checked {
+		screen.setCurrentArtwork(nil)
 		mediaURL = screen.MediaText.Text
 		screen.mediafile = mediaURL
 
@@ -1318,8 +1325,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 			return
 		}
 		mediaType = detectedMediaType
-		artworkAsset = resolveGUIArtwork(screen.mediafile, mediaType, true)
-		screen.setCurrentArtwork(artworkAsset)
+		artworkAsset = screen.resolveCurrentGUIArtwork(screen.mediafile, mediaType, true)
 
 		// Chromecast handles images and audio natively - never transcode these
 		mediaTypeSlice := strings.Split(mediaType, "/")
@@ -1920,19 +1926,24 @@ out:
 					srv.RemoveHandler(mPath.Path)
 					srv.RemoveHandler(sPath.Path)
 
-					_, mediaPath, err := getNextAutoPlayMediaOrError(screen)
-					if err != nil {
-						if isTraversalBoundaryError(err) {
+					mediaPath := payload.MediaPath
+					if mediaPath == "" {
+						_, mediaPath, err = getNextAutoPlayMediaOrError(screen)
+						if err != nil {
+							if isTraversalBoundaryError(err) {
+								screen.GaplessMediaWatcher = nil
+								break out
+							}
+							check(screen, err)
+							fyne.Do(func() {
+								screen.NextMediaCheck.SetChecked(false)
+							})
 							screen.GaplessMediaWatcher = nil
 							break out
 						}
-						check(screen, err)
-						fyne.Do(func() {
-							screen.NextMediaCheck.SetChecked(false)
-						})
-						screen.GaplessMediaWatcher = nil
-						break out
 					}
+
+					screen.promoteQueuedArtwork(guiArtworkIdentity(mediaPath), srv)
 
 					if err := setCurrentMediaPath(screen, mediaPath); err != nil {
 						check(screen, err)
@@ -2010,6 +2021,7 @@ func skipTraversalAction(screen *FyneScreen, delta int) {
 
 func skipToMediaPathAction(screen *FyneScreen, mediaPath string) {
 	oldMediaPath := screen.mediafile
+	oldArtwork := screen.getCurrentArtwork()
 	screen.persistDisplayedResumeProgress(true)
 	screen.clearResumeSession()
 
@@ -2025,6 +2037,7 @@ func skipToMediaPathAction(screen *FyneScreen, mediaPath string) {
 		check(screen, err)
 		return
 	}
+	targetMediaPath := screen.mediafile
 
 	// For Chromecast: reuse existing connection for faster skip on the same device.
 	client := screen.reusableChromecastClientForSelectedDevice()
@@ -2039,6 +2052,10 @@ func skipToMediaPathAction(screen *FyneScreen, mediaPath string) {
 		actionID := screen.nextChromecastActionID()
 
 		go func() {
+			artworkAsset := screen.resolveCurrentGUIArtwork(targetMediaPath, mediaType, true)
+			if !screen.isChromecastActionCurrent(actionID) {
+				return
+			}
 			// Determine if transcoding is enabled
 			transcode := screen.Transcode
 			ffmpegSeek := 0
@@ -2076,7 +2093,7 @@ func skipToMediaPathAction(screen *FyneScreen, mediaPath string) {
 				server.StopServer()
 
 				// Get actual media duration from ffprobe (Chromecast can't report it for transcoded streams)
-				if duration, err := utils.DurationForMediaSeconds(screen.ffmpegPath, screen.mediafile); err == nil {
+				if duration, err := utils.DurationForMediaSeconds(screen.ffmpegPath, targetMediaPath); err == nil {
 					screen.mediaDuration = duration
 				}
 
@@ -2104,7 +2121,7 @@ func skipToMediaPathAction(screen *FyneScreen, mediaPath string) {
 				screen.cancelServerStop = serverCTXStop
 
 				go func() {
-					server.StartSimpleServerWithTranscode(serverStarted, screen.mediafile, tcOpts)
+					server.StartSimpleServerWithTranscode(serverStarted, targetMediaPath, tcOpts)
 					serverCTXStop()
 				}()
 
@@ -2115,7 +2132,7 @@ func skipToMediaPathAction(screen *FyneScreen, mediaPath string) {
 
 				// Transcoded output is always video/mp4
 				mediaType = "video/mp4"
-				mediaURL = "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile)
+				mediaURL = "http://" + whereToListen + "/" + utils.ConvertFilename(targetMediaPath)
 				// Subtitles are burned in during transcoding, no separate URL needed
 
 			} else {
@@ -2144,12 +2161,12 @@ func skipToMediaPathAction(screen *FyneScreen, mediaPath string) {
 				// Handler paths use filepath.Base (decoded) because r.URL.Path is decoded by Go's HTTP server
 				// URL uses ConvertFilename (encoded) for valid HTTP URL with special characters
 				oldHandlerPath := "/" + filepath.Base(oldMediaPath)
-				newHandlerPath := "/" + filepath.Base(screen.mediafile)
+				newHandlerPath := "/" + filepath.Base(targetMediaPath)
 				server.RemoveHandler(oldHandlerPath)
-				server.AddHandler(newHandlerPath, nil, nil, screen.mediafile)
+				server.AddHandler(newHandlerPath, nil, nil, targetMediaPath)
 
 				// Build media URL using URL-encoded filename (for special chars like brackets)
-				mediaURL = "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile)
+				mediaURL = "http://" + whereToListen + "/" + utils.ConvertFilename(targetMediaPath)
 
 				// Use existing server context
 				serverStoppedCTX = screen.serverStopCTX
@@ -2157,11 +2174,20 @@ func skipToMediaPathAction(screen *FyneScreen, mediaPath string) {
 
 			// Set state to Waiting to ensure status watcher triggers UI update when playing starts
 			screen.updateScreenState("Waiting")
+			registerGUIArtwork(server, artworkAsset)
 
 			if client == nil || !client.IsConnected() {
 				return
 			}
-			if err := client.LoadOnExisting(mediaURL, mediaType, chromecastMediaTitle(screen, mediaURL), ffmpegSeek, screen.mediaDuration, subtitleURL, false); err != nil {
+			if err := client.LoadMediaOnExisting(castprotocol.LoadRequest{
+				MediaURL:    mediaURL,
+				ContentType: mediaType,
+				Metadata:    guiMediaMetadata(chromecastMediaTitle(screen, mediaURL), whereToListen, artworkAsset),
+				StartTime:   ffmpegSeek,
+				Duration:    screen.mediaDuration,
+				SubtitleURL: subtitleURL,
+			}); err != nil {
+				removeGUIArtworkHandler(server, artworkAsset, oldArtwork)
 				if !screen.isChromecastActionCurrent(actionID) {
 					return
 				}
@@ -2172,9 +2198,10 @@ func skipToMediaPathAction(screen *FyneScreen, mediaPath string) {
 			if !screen.isChromecastActionCurrent(actionID) {
 				return
 			}
+			removeGUIArtworkHandler(server, oldArtwork, artworkAsset)
 			screen.updateScreenState("Playing")
 			setPlayPauseView("Pause", screen)
-			armChromecastImageAutoSkipAfterReady(screen, client, actionID, mediaType, screen.mediafile)
+			armChromecastImageAutoSkipAfterReady(screen, client, actionID, mediaType, targetMediaPath)
 			go chromecastStatusWatcher(serverStoppedCTX, screen, actionID)
 		}()
 		return
@@ -2265,6 +2292,7 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 	screen.nextChromecastActionID()
 	screen.cancelImageAutoSkipTimer()
 	screen.clearActiveDevice()
+	screen.resetQueuedArtworkState()
 
 	setPlayPauseView("Play", screen)
 	screen.updateScreenState("Stopped")
@@ -2443,6 +2471,7 @@ func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 		if err := screen.tvdata.SendtoTV("ClearQueue"); err != nil {
 			return nil, err
 		}
+		screen.clearQueuedArtwork(screen.httpserver)
 
 		return nil, nil
 	}
@@ -2464,6 +2493,7 @@ func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 	if !screen.Transcode {
 		isSeek = true
 	}
+	artworkIdentity, artworkAsset := screen.resolveCachedGUIArtwork(fpath, mediaType, true)
 
 	var mediaFile any = fpath
 	oldMediaURL, err := url.Parse(screen.tvdata.MediaURL)
@@ -2485,13 +2515,14 @@ func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 		SubtitlesURL:                "http://" + oldSubsURL.Host + "/" + utils.ConvertFilename(spath),
 		CallbackURL:                 screen.tvdata.CallbackURL,
 		MediaType:                   mediaType,
-		MediaPath:                   screen.mediafile,
+		MediaPath:                   fpath,
 		CurrentTimers:               make(map[string]*time.Timer),
 		MediaRenderersStates:        make(map[string]*soapcalls.States),
 		InitialMediaRenderersStates: make(map[string]bool),
 		Transcode:                   screen.Transcode,
 		Seekable:                    isSeek,
 		LogOutput:                   screen.Debug,
+		Metadata:                    guiMediaMetadata("", oldMediaURL.Host, artworkAsset),
 	}
 
 	//screen.httpNexterver.StartServer(serverStarted, mediaFile, spath, nextTvData, screen)
@@ -2505,12 +2536,20 @@ func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 		return nil, err
 	}
 
+	if screen.httpserver == nil {
+		return nil, errors.New("queueNext, nil httpserver")
+	}
 	screen.httpserver.AddHandler(mURL.Path, nextTvData, nil, mediaFile)
 	screen.httpserver.AddHandler(sURL.Path, nil, nil, spath)
+	registerGUIArtwork(screen.httpserver, artworkAsset)
 
+	_, oldQueuedArtwork := screen.queuedArtworkSnapshot()
 	if err := nextTvData.SendtoTV("Queue"); err != nil {
+		removeGUIArtworkHandler(screen.httpserver, artworkAsset, screen.getCurrentArtwork(), oldQueuedArtwork)
 		return nil, err
 	}
+	oldQueuedArtwork, currentArtwork := screen.commitQueuedArtwork(artworkIdentity, artworkAsset)
+	removeGUIArtworkHandler(screen.httpserver, oldQueuedArtwork, currentArtwork, artworkAsset)
 
 	return nextTvData, nil
 }

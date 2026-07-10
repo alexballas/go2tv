@@ -46,6 +46,28 @@ func resolveMobileGUIArtwork(uri fyne.URI, mediaType string, servedMedia any) *m
 	return resolveMobileEmbeddedArtwork(filepath.Join(fdRoot, strconv.FormatUint(uint64(file.Fd()), 10)), uri.Name())
 }
 
+func mobileGUIArtworkIdentity(uri fyne.URI) string {
+	if uri == nil {
+		return ""
+	}
+	return uri.String()
+}
+
+func (s *FyneScreen) resolveCurrentMobileGUIArtwork(uri fyne.URI, mediaType string, servedMedia any) *metadata.ArtworkAsset {
+	identity := mobileGUIArtworkIdentity(uri)
+	if identity == "" {
+		s.setCurrentArtwork(nil)
+		return nil
+	}
+
+	s.ensureCurrentArtworkTarget(identity)
+	asset := s.cachedGUIArtwork(identity, func() *metadata.ArtworkAsset {
+		return resolveMobileGUIArtwork(uri, mediaType, servedMedia)
+	})
+	s.setResolvedCurrentArtwork(identity, asset)
+	return asset
+}
+
 func resolveMobileEmbeddedArtwork(sourcePath, mediaName string) *metadata.ArtworkAsset {
 	cacheDir, err := mobileCacheDir()
 	if err != nil {

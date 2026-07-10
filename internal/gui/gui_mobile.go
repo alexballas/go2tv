@@ -27,50 +27,52 @@ import (
 
 // FyneScreen .
 type FyneScreen struct {
-	mu                   sync.RWMutex
-	Debug                *debugWriter
-	DiscoveryDebug       *debugWriter
-	Current              fyne.Window
-	tvdata               *soapcalls.TVPayload
-	chromecastClient     *castprotocol.CastClient
-	chromecastActionID   uint64
-	Stop                 *widget.Button
-	MuteUnmute           *widget.Button
-	CheckVersion         *widget.Button
-	CustomSubsCheck      *widget.Check
-	ExternalMediaURL     *widget.Check
-	cancelEnablePlay     context.CancelFunc
-	serverStopCTX        context.Context
-	cancelServerStop     context.CancelFunc
-	MediaText            *widget.Entry
-	SubsText             *widget.Entry
-	DeviceList           *deviceList
-	httpserver           *httphandlers.HTTPserver
-	PlayPause            *widget.Button
-	TranscodeCheckBox    *widget.Check
-	mediafile            fyne.URI
-	subsfile             fyne.URI
-	selectedDevice       devType
-	selectedDeviceType   string
-	NextMediaCheck       *widget.Check
-	State                string
-	controlURL           string
-	eventlURL            string
-	renderingControlURL  string
-	connectionManagerURL string
-	version              string
-	mediaFormats         []string
-	tempMediaFile        string // Temp file path for mobile media serving (cleanup on stop)
-	tempSubsFile         string // Temp subtitle path for ffmpeg burn-in (cleanup on stop)
-	ffmpegPath           string
-	mediaDuration        float64
-	currentArtwork       *metadata.ArtworkAsset
-	Transcode            bool
-	Medialoop            bool
-	castingMediaType     string // MIME type of currently casting media
-	hotkeysSuspendCount  int32
-	Crash                *crashlog.Session
-	PendingCrashPath     string
+	mu                     sync.RWMutex
+	Debug                  *debugWriter
+	DiscoveryDebug         *debugWriter
+	Current                fyne.Window
+	tvdata                 *soapcalls.TVPayload
+	chromecastClient       *castprotocol.CastClient
+	chromecastActionID     uint64
+	Stop                   *widget.Button
+	MuteUnmute             *widget.Button
+	CheckVersion           *widget.Button
+	CustomSubsCheck        *widget.Check
+	ExternalMediaURL       *widget.Check
+	cancelEnablePlay       context.CancelFunc
+	serverStopCTX          context.Context
+	cancelServerStop       context.CancelFunc
+	MediaText              *widget.Entry
+	SubsText               *widget.Entry
+	DeviceList             *deviceList
+	httpserver             *httphandlers.HTTPserver
+	PlayPause              *widget.Button
+	TranscodeCheckBox      *widget.Check
+	mediafile              fyne.URI
+	subsfile               fyne.URI
+	selectedDevice         devType
+	selectedDeviceType     string
+	NextMediaCheck         *widget.Check
+	State                  string
+	controlURL             string
+	eventlURL              string
+	renderingControlURL    string
+	connectionManagerURL   string
+	version                string
+	mediaFormats           []string
+	tempMediaFile          string // Temp file path for mobile media serving (cleanup on stop)
+	tempSubsFile           string // Temp subtitle path for ffmpeg burn-in (cleanup on stop)
+	ffmpegPath             string
+	mediaDuration          float64
+	currentArtwork         *metadata.ArtworkAsset
+	currentArtworkIdentity string
+	artworkCache           map[string]artworkCacheEntry
+	Transcode              bool
+	Medialoop              bool
+	castingMediaType       string // MIME type of currently casting media
+	hotkeysSuspendCount    int32
+	Crash                  *crashlog.Session
+	PendingCrashPath       string
 }
 
 type devType struct {
