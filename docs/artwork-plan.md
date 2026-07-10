@@ -1,6 +1,6 @@
 # Music Artwork Implementation Plan
 
-Status: Phase 2 complete
+Status: Phase 3 complete
 
 Owner: primary integration agent
 
@@ -457,33 +457,36 @@ Keep context durable through code, commits, tests, and this file. Do not rely on
 
 ## Current handoff
 
-Phase: 2
+Phase: 3
 
 State: complete
 
-Last commit: `add Chromecast artwork metadata` (this commit)
+Last commit: `add CLI music artwork` (this commit)
 
 Completed:
 
-- Added protocol-neutral metadata to DLNA payload/options and one shared current/next DIDL builder.
-- Added optional DLNA title, artist, album, and `upnp:albumArtURI`; subtitle branches retain metadata; clearing next omits artwork.
-- Added Chromecast `LoadRequest`, request-based load methods, compatibility wrappers, music metadata type `3`, and artwork images with optional dimensions.
-- Artwork forces custom Chromecast LOAD and survives existing-receiver loads.
-- Added exact XML/JSON tests with/without artwork, current/next, subtitles, standard/Samsung escaping, audio/non-audio, and wrapper behavior.
-- Preserved shared foundation, UI, and playback call sites; no Phase 3 work started.
-- Passed `go test -v ./...`, `make build`, Fyne check, and refyne Android package gate.
+- Added shared CLI artwork preparation for full/lite binaries: local resolution, normalization, static registration, and receiver URL/dimensions.
+- DLNA registers artwork before `StartServer` and supplies `TVPayload.Metadata.Artwork` before SOAP load.
+- Chromecast registers artwork before server start and uses `LoadMedia` with per-item metadata before Cast LOAD.
+- Remote URL and stdin paths stay artwork-free; invalid/missing artwork returns nil without blocking playback.
+- Added CLI-path tests for normalized dimensions, hash route, JPEG MIME/CORS serving, remote/stdin exclusion, invalid artwork, and no-art fallback.
+- Manual payload inspection: generated `/artwork/<sha256>.jpg` feeds DLNA `upnp:albumArtURI`; Chromecast audio LOAD uses metadata type `3` and image width/height through existing exact payload tests.
+- Preserved GUI, queue, and shared contracts; no Phase 4 work started.
+- Passed `go test -v ./...`, `make build`, Fyne check, refyne Android package/sign/verify, and `make windows`.
+- Repo-wide modernize ran; reports seven pre-existing findings in untouched files.
 
 Next:
 
-1. Start Phase 3 in fresh session only.
-2. Resolve/register local CLI artwork before protocol load.
-3. Keep remote/stdin and invalid-art playback artwork-free.
+1. Start Phase 4 in fresh session only.
+2. Integrate current-item artwork in desktop/mobile GUI paths.
+3. Keep queue/gapless work for Phase 5.
 
 Known risks:
 
-- Playback paths do not supply/register artwork until Phase 3 and later.
-- Multiple playback paths recreate servers and must later re-register artwork.
+- GUI playback paths do not supply/register artwork until Phase 4.
+- Queue/gapless lifecycle remains deferred to Phase 5.
 - DLNA artwork has no `dlna:profileID` by fixed design.
+- Modernize findings remain in Phase 1/2 and unrelated files.
 - Hardware compatibility remains unverified.
 
 ## Unresolved questions

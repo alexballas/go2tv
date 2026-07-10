@@ -24,11 +24,13 @@ import (
 	"go2tv.app/go2tv/v2/castprotocol"
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
+	"go2tv.app/go2tv/v2/internal/cliartwork"
 	"go2tv.app/go2tv/v2/internal/crashlog"
 	"go2tv.app/go2tv/v2/internal/devicecolors"
 	"go2tv.app/go2tv/v2/internal/gui"
 	"go2tv.app/go2tv/v2/internal/interactive"
 	"go2tv.app/go2tv/v2/internal/playback"
+	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
 )
@@ -77,6 +79,7 @@ func run(crash *crashlog.Session) error {
 		absMediaFile, mediaType string
 		mediaFile               any
 		isSeek                  bool
+		localMedia              bool
 		transcode               bool
 	)
 
@@ -178,6 +181,7 @@ func run(crash *crashlog.Session) error {
 
 	switch t := mediaFile.(type) {
 	case string:
+		localMedia = true
 		absMediaFile, err = filepath.Abs(t)
 		if err != nil {
 			return err
@@ -234,6 +238,7 @@ func run(crash *crashlog.Session) error {
 	}
 
 	s := httphandlers.NewServer(tvdata.ListenAddress())
+	tvdata.Metadata.Artwork = cliartwork.Prepare(s, absMediaFile, tvdata.ListenAddress(), localMedia)
 	serverStarted := make(chan error)
 
 	// We pass the tvdata here as we need the callback handlers to be able to react
@@ -311,6 +316,7 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 	needsMediaServer := !externalURL || transcode
 	needsLocalServer := needsMediaServer || (hasSubtitles && !transcode)
 	var httpServer *httphandlers.HTTPserver
+	mediaMetadata := metadata.Media{Title: mediaPath}
 
 	if needsLocalServer {
 		whereToListen, err := utils.URLtoListenIPandPort(deviceURL)
@@ -320,6 +326,8 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 
 		httpServer = httphandlers.NewServer(whereToListen)
 		defer httpServer.StopServer()
+		_, localMedia := mediaFile.(string)
+		mediaMetadata.Artwork = cliartwork.Prepare(httpServer, mediaPath, whereToListen, localMedia)
 
 		if hasSubtitles && !transcode {
 			switch strings.ToLower(filepath.Ext(subtitlesPath)) {
@@ -383,7 +391,15 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 	go func() {
 		// Use LIVE stream type for URL/stdin streams to avoid ~30s buffering delay
 		_, isStream := mediaFile.(io.ReadCloser)
-		if err := client.Load(mediaURL, mediaType, mediaPath, 0, mediaDuration, subtitleURL, externalURL || isStream); err != nil {
+		if err := client.LoadMedia(castprotocol.LoadRequest{
+			MediaURL:    mediaURL,
+			ContentType: mediaType,
+			Metadata:    mediaMetadata,
+			StartTime:   0,
+			Duration:    mediaDuration,
+			SubtitleURL: subtitleURL,
+			Live:        externalURL || isStream,
+		}); err != nil {
 			fmt.Fprintf(os.Stderr, "chromecast load: %v\n", err)
 		}
 	}()
