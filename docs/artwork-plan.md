@@ -1,6 +1,6 @@
 # Music Artwork Implementation Plan
 
-Status: Phase 1 complete
+Status: Phase 2 complete
 
 Owner: primary integration agent
 
@@ -457,32 +457,33 @@ Keep context durable through code, commits, tests, and this file. Do not rely on
 
 ## Current handoff
 
-Phase: 1
+Phase: 2
 
 State: complete
 
-Last commit: `artwork discovery core and static serving` (this commit)
+Last commit: `add Chromecast artwork metadata` (this commit)
 
 Completed:
 
-- Added frozen `metadata` contracts, deterministic sidecar resolution, embedded extraction, JPEG normalization, limits, hashing, and tests.
-- Pinned `github.com/cabbagekobe/tunetag v0.1.4`; pure Go, MIT; MP3 APIC, MP4/M4A covr, FLAC PICTURE, Ogg/Opus METADATA_BLOCK_PICTURE.
-- Added typed static HTTP serving for file paths, bytes, and fresh mobile readers with GET, HEAD, explicit MIME, and CORS.
-- Fixed JPEG/PNG DLNA profile prefixes.
-- Preserved playback call sites; no Phase 2 work started.
+- Added protocol-neutral metadata to DLNA payload/options and one shared current/next DIDL builder.
+- Added optional DLNA title, artist, album, and `upnp:albumArtURI`; subtitle branches retain metadata; clearing next omits artwork.
+- Added Chromecast `LoadRequest`, request-based load methods, compatibility wrappers, music metadata type `3`, and artwork images with optional dimensions.
+- Artwork forces custom Chromecast LOAD and survives existing-receiver loads.
+- Added exact XML/JSON tests with/without artwork, current/next, subtitles, standard/Samsung escaping, audio/non-audio, and wrapper behavior.
+- Preserved shared foundation, UI, and playback call sites; no Phase 3 work started.
 - Passed `go test -v ./...`, `make build`, Fyne check, and refyne Android package gate.
 
 Next:
 
-1. Start Phase 2 in fresh session only.
-2. Add DLNA protocol metadata/payload tests.
-3. Add Chromecast request-based loads/metadata tests.
+1. Start Phase 3 in fresh session only.
+2. Resolve/register local CLI artwork before protocol load.
+3. Keep remote/stdin and invalid-art playback artwork-free.
 
 Known risks:
 
-- Parser is pre-v1; dependency pinned and shared wrapper contracts frozen.
-- Playback paths do not resolve/register artwork until later phases.
+- Playback paths do not supply/register artwork until Phase 3 and later.
 - Multiple playback paths recreate servers and must later re-register artwork.
+- DLNA artwork has no `dlna:profileID` by fixed design.
 - Hardware compatibility remains unverified.
 
 ## Unresolved questions
