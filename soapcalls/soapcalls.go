@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"time"
 
+	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/utils"
 )
 
@@ -22,6 +23,7 @@ type Options struct {
 	Transcode      bool
 	Seek           bool
 	FFmpegSeek     int
+	Metadata       metadata.Media
 }
 
 // NewTVPayload creates a new TVPayload based on the provided options.
@@ -69,6 +71,7 @@ func NewTVPayload(o *Options) (*TVPayload, error) {
 		FFmpegSeek:                  o.FFmpegSeek,
 		Seekable:                    o.Seek,
 		LogOutput:                   o.LogOutput,
+		Metadata:                    o.Metadata,
 	}, nil
 }
 

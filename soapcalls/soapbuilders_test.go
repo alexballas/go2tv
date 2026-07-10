@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/utils"
 )
 
@@ -88,6 +89,92 @@ func TestSetNextAVTransportSoapBuild(t *testing.T) {
 				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, want)
 			}
 		})
+	}
+}
+
+func TestBuildDIDLLiteMetadataExact(t *testing.T) {
+	tv := &TVPayload{
+		MediaURL:     "http://host/track.mp3",
+		MediaType:    "audio/mpeg",
+		SubtitlesURL: "http://host/track.srt",
+		Seekable:     true,
+	}
+	mediaMetadata := metadata.Media{
+		Title:  "Title & One",
+		Artist: "Artist <One>",
+		Album:  "Album",
+		Artwork: &metadata.Artwork{
+			URL: "http://host/artwork/hash.jpg?x=1&y=2",
+		},
+	}
+
+	contentFeatures, err := utils.BuildContentFeatures(tv.MediaType, "01", false)
+	if err != nil {
+		t.Fatalf("BuildContentFeatures() error = %v", err)
+	}
+	want := `<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:sec="http://www.sec.co.kr/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><sec:CaptionInfo sec:type="srt">http://host/track.srt</sec:CaptionInfo><sec:CaptionInfoEx sec:type="srt">http://host/track.srt</sec:CaptionInfoEx><dc:title>Title &amp; One</dc:title><upnp:artist>Artist &lt;One&gt;</upnp:artist><upnp:album>Album</upnp:album><upnp:class>object.item.audioItem.musicTrack</upnp:class><upnp:albumArtURI>http://host/artwork/hash.jpg?x=1&amp;y=2</upnp:albumArtURI><res protocolInfo="http-get:*:audio/mpeg:` + contentFeatures + `">http://host/track.mp3</res><res protocolInfo="http-get:*:text/srt:*">http://host/track.srt</res></item></DIDL-Lite>`
+
+	got, err := buildDIDLLite(tv, tv.MediaURL, mediaMetadata)
+	if err != nil {
+		t.Fatalf("buildDIDLLite() error = %v", err)
+	}
+	if string(got) != want {
+		t.Fatalf("DIDL = %s, want %s", got, want)
+	}
+}
+
+func TestSetNextAVTransportArtworkAndClear(t *testing.T) {
+	tv := &TVPayload{
+		MediaURL:  "http://host/track.mp3",
+		MediaType: "audio/mpeg",
+		Metadata: metadata.Media{
+			Title:   "Track",
+			Artwork: &metadata.Artwork{URL: "http://host/artwork/hash.jpg"},
+		},
+	}
+
+	withArtwork, err := setNextAVTransportSoapBuild(tv, false)
+	if err != nil {
+		t.Fatalf("setNextAVTransportSoapBuild(false) error = %v", err)
+	}
+	if !strings.Contains(string(withArtwork), `&lt;upnp:albumArtURI&gt;http://host/artwork/hash.jpg&lt;/upnp:albumArtURI&gt;`) {
+		t.Fatalf("next metadata missing artwork: %s", withArtwork)
+	}
+
+	cleared, err := setNextAVTransportSoapBuild(tv, true)
+	if err != nil {
+		t.Fatalf("setNextAVTransportSoapBuild(true) error = %v", err)
+	}
+	if strings.Contains(string(cleared), "albumArtURI") {
+		t.Fatalf("cleared next metadata retained artwork: %s", cleared)
+	}
+}
+
+func TestSetAVTransportArtworkEscaping(t *testing.T) {
+	tv := &TVPayload{
+		MediaURL:  "http://host/track.mp3",
+		MediaType: "audio/mpeg",
+		Metadata: metadata.Media{
+			Artwork: &metadata.Artwork{URL: "http://host/artwork/hash.jpg?x=1&y=2"},
+		},
+	}
+
+	standard, err := setAVTransportSoapBuild(tv)
+	if err != nil {
+		t.Fatalf("setAVTransportSoapBuild() error = %v", err)
+	}
+	standardArtwork := `&lt;upnp:albumArtURI&gt;http://host/artwork/hash.jpg?x=1&amp;amp;y=2&lt;/upnp:albumArtURI&gt;`
+	if !strings.Contains(string(standard), standardArtwork) {
+		t.Fatalf("standard metadata artwork escaping = %s", standard)
+	}
+
+	compat, err := setAVTransportSoapBuildWithCompat(tv, true)
+	if err != nil {
+		t.Fatalf("setAVTransportSoapBuildWithCompat() error = %v", err)
+	}
+	compatArtwork := `&lt;upnp:albumArtURI&gt;http://host/artwork/hash.jpg?x=1&amp;y=2&lt;/upnp:albumArtURI&gt;`
+	if !strings.Contains(string(compat), compatArtwork) {
+		t.Fatalf("compat metadata artwork escaping = %s", compat)
 	}
 }
 

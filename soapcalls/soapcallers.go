@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+
+	"go2tv.app/go2tv/v2/metadata"
 )
 
 var discardLogger = newJSONLogger(io.Discard)
@@ -54,6 +56,7 @@ type TVPayload struct {
 	CallbackURL                 string
 	ConnectionManagerURL        string
 	RenderingControlURL         string
+	Metadata                    metadata.Media
 	mu                          sync.RWMutex
 	initLogOnce                 sync.Once
 	Transcode                   bool
