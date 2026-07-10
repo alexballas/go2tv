@@ -1,6 +1,6 @@
 # Music Artwork Implementation Plan
 
-Status: Phase 3 complete
+Status: Phase 4 complete
 
 Owner: primary integration agent
 
@@ -457,34 +457,34 @@ Keep context durable through code, commits, tests, and this file. Do not rely on
 
 ## Current handoff
 
-Phase: 3
+Phase: 4
 
 State: complete
 
-Last commit: `add CLI music artwork` (this commit)
+Last commit: `integrate mobile artwork discovery` (this commit)
 
 Completed:
 
-- Added shared CLI artwork preparation for full/lite binaries: local resolution, normalization, static registration, and receiver URL/dimensions.
-- DLNA registers artwork before `StartServer` and supplies `TVPayload.Metadata.Artwork` before SOAP load.
-- Chromecast registers artwork before server start and uses `LoadMedia` with per-item metadata before Cast LOAD.
-- Remote URL and stdin paths stay artwork-free; invalid/missing artwork returns nil without blocking playback.
-- Added CLI-path tests for normalized dimensions, hash route, JPEG MIME/CORS serving, remote/stdin exclusion, invalid artwork, and no-art fallback.
-- Manual payload inspection: generated `/artwork/<sha256>.jpg` feeds DLNA `upnp:albumArtURI`; Chromecast audio LOAD uses metadata type `3` and image width/height through existing exact payload tests.
-- Preserved GUI, queue, and shared contracts; no Phase 4 work started.
+- Added GUI artwork state, local-audio resolution, content-addressed registration, and receiver metadata construction without UI controls/translations.
+- Desktop DLNA and Chromecast initial loads resolve/register artwork before server start; external/invalid/no-art loads clear stale artwork.
+- Desktop pause/resume keeps current artwork; Chromecast transcoded seek recreates the route and reloads identical metadata.
+- Mobile uses `fyne.URI`: filesystem URIs allow sidecars; content URIs use isolated seekable-descriptor links or the existing temp media copy for embedded art only.
+- Mobile artwork work runs through background playback actions; DLNA/Chromecast servers register artwork before serving.
+- Added GUI state tests for local/no-art/external/non-audio replacement, normalized metadata, CORS route serving, and server restart retention.
+- Preserved queue/gapless code and shared contracts; no Phase 5 work started.
 - Passed `go test -v ./...`, `make build`, Fyne check, refyne Android package/sign/verify, and `make windows`.
 - Repo-wide modernize ran; reports seven pre-existing findings in untouched files.
 
 Next:
 
-1. Start Phase 4 in fresh session only.
-2. Integrate current-item artwork in desktop/mobile GUI paths.
-3. Keep queue/gapless work for Phase 5.
+1. Start Phase 5 in fresh session only.
+2. Add per-target queue artwork lifecycle.
+3. Keep current/next handlers through transitions.
 
 Known risks:
 
-- GUI playback paths do not supply/register artwork until Phase 4.
 - Queue/gapless lifecycle remains deferred to Phase 5.
+- Mobile seekable-descriptor artwork extraction is package-verified, not hardware-verified.
 - DLNA artwork has no `dlna:profileID` by fixed design.
 - Modernize findings remain in Phase 1/2 and unrelated files.
 - Hardware compatibility remains unverified.

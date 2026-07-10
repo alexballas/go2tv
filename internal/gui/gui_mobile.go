@@ -20,6 +20,7 @@ import (
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
 	"go2tv.app/go2tv/v2/internal/crashlog"
+	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
 )
@@ -63,6 +64,7 @@ type FyneScreen struct {
 	tempSubsFile         string // Temp subtitle path for ffmpeg burn-in (cleanup on stop)
 	ffmpegPath           string
 	mediaDuration        float64
+	currentArtwork       *metadata.ArtworkAsset
 	Transcode            bool
 	Medialoop            bool
 	castingMediaType     string // MIME type of currently casting media
@@ -150,7 +152,7 @@ func (p *FyneScreen) SetMediaType(mediaType string) {
 func (p *FyneScreen) Fini() {
 	// Main media loop logic
 	if p.Medialoop {
-		playAction(p)
+		go playAction(p)
 	}
 }
 

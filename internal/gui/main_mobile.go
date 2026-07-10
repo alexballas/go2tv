@@ -96,7 +96,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	sfiletext.Disable()
 
 	playpause := widget.NewButtonWithIcon(lang.L("Play"), theme.MediaPlayIcon(), func() {
-		playAction(s)
+		go playAction(s)
 	})
 
 	stop := widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {

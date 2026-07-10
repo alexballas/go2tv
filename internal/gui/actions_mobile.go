@@ -24,6 +24,7 @@ import (
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
 	"go2tv.app/go2tv/v2/internal/playback"
+	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
 )
@@ -283,6 +284,7 @@ func playAction(screen *FyneScreen) {
 		check(w, err)
 		return
 	}
+	screen.setCurrentArtwork(nil)
 
 	// With this check we're covering the edge case
 	// where we're able to click 'Play' while a media
@@ -368,6 +370,9 @@ func playAction(screen *FyneScreen) {
 				startAfreshPlayButton(screen)
 				return
 			}
+			if !screen.ExternalMediaURL.Checked {
+				screen.setCurrentArtwork(resolveMobileGUIArtwork(screen.mediafile, mediaType, mediaFile))
+			}
 		}
 	}
 
@@ -445,6 +450,9 @@ func playAction(screen *FyneScreen) {
 	}
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)
+	artworkAsset := screen.getCurrentArtwork()
+	registerGUIArtwork(screen.httpserver, artworkAsset)
+	screen.tvdata.Metadata = guiMediaMetadata("", whereToListen, artworkAsset)
 	serverStarted := make(chan error)
 
 	// We pass the tvdata here as we need the callback handlers to be able to react
@@ -570,7 +578,7 @@ func mobileTranscodeOptions(screen *FyneScreen) (*utils.TranscodeOptions, error)
 // startChromecastMediaServer (re)starts the local HTTP server that serves the
 // media to the Chromecast. It returns the served media URL together with a
 // context that is cancelled once the server stops.
-func startChromecastMediaServer(screen *FyneScreen, mediaFilename string, tcOpts *utils.TranscodeOptions, media any) (string, context.Context, error) {
+func startChromecastMediaServer(screen *FyneScreen, mediaFilename string, tcOpts *utils.TranscodeOptions, media any, artworkAsset *metadata.ArtworkAsset) (string, context.Context, error) {
 	whereToListen, err := utils.URLtoListenIPandPort(screen.selectedDevice.addr)
 	if err != nil {
 		return "", nil, err
@@ -581,6 +589,7 @@ func startChromecastMediaServer(screen *FyneScreen, mediaFilename string, tcOpts
 	}
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)
+	registerGUIArtwork(screen.httpserver, artworkAsset)
 	serverStoppedCTX, serverCTXStop := context.WithCancel(context.Background())
 	screen.serverStopCTX = serverStoppedCTX
 	screen.cancelServerStop = serverCTXStop
@@ -882,6 +891,8 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 			}
 		}
 	}
+	screen.setCurrentArtwork(nil)
+	var artworkAsset *metadata.ArtworkAsset
 
 	// Validate media file or URL
 	if screen.mediafile == nil && screen.MediaText.Text == "" {
@@ -967,7 +978,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 				return
 			}
 
-			servedURL, serverCTX, err := startChromecastMediaServer(screen, "/"+utils.ConvertFilename(mediaURL), tcOpts, stream)
+			servedURL, serverCTX, err := startChromecastMediaServer(screen, "/"+utils.ConvertFilename(mediaURL), tcOpts, stream, artworkAsset)
 			if err != nil {
 				stream.Close()
 				check(w, err)
@@ -1040,6 +1051,8 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 			startAfreshPlayButton(screen)
 			return
 		}
+		artworkAsset = resolveMobileGUIArtwork(screen.mediafile, mediaType, media)
+		screen.setCurrentArtwork(artworkAsset)
 
 		var tcOpts *utils.TranscodeOptions
 		if transcode {
@@ -1057,7 +1070,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 			mediaType = "video/mp4"
 		}
 
-		servedURL, serverCTX, err := startChromecastMediaServer(screen, "/"+utils.ConvertFilename(screen.MediaText.Text), tcOpts, media)
+		servedURL, serverCTX, err := startChromecastMediaServer(screen, "/"+utils.ConvertFilename(screen.MediaText.Text), tcOpts, media, artworkAsset)
 		if err != nil {
 			check(w, err)
 			startAfreshPlayButton(screen)
@@ -1107,7 +1120,18 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 	// Use LIVE stream type for URL streams (DMR shows LIVE badge, but buffer unchanged)
 	go func() {
 		live := screen.ExternalMediaURL.Checked
-		if err := client.Load(mediaURL, mediaType, chromecastMediaTitle(screen, mediaURL), 0, screen.mediaDuration, subtitleURL, live); err != nil {
+		listenAddress := ""
+		if parsedMediaURL, err := url.Parse(mediaURL); err == nil {
+			listenAddress = parsedMediaURL.Host
+		}
+		if err := client.LoadMedia(castprotocol.LoadRequest{
+			MediaURL:    mediaURL,
+			ContentType: mediaType,
+			Metadata:    guiMediaMetadata(chromecastMediaTitle(screen, mediaURL), listenAddress, artworkAsset),
+			Duration:    screen.mediaDuration,
+			SubtitleURL: subtitleURL,
+			Live:        live,
+		}); err != nil {
 			if !screen.isChromecastActionCurrent(actionID) {
 				return
 			}
