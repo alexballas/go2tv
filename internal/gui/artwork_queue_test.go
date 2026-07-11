@@ -162,6 +162,32 @@ func TestQueueArtworkClearsOnNoArtTransition(t *testing.T) {
 	}
 }
 
+func TestQueueNextKeepsActiveDLNAEndpoints(t *testing.T) {
+	dir := t.TempDir()
+	trackOne := writeQueueArtworkTrack(t, dir, "one.mp3", color.RGBA{R: 120, A: 255})
+	trackTwo := writeQueueArtworkTrack(t, dir, "two.mp3", color.RGBA{G: 120, A: 255})
+	screen, _ := newQueueArtworkTestScreen(t, []string{trackOne, trackTwo})
+
+	screen.tvdata.EventURL = "http://active/event"
+	screen.tvdata.RenderingControlURL = "http://active/rendering"
+	screen.tvdata.ConnectionManagerURL = "http://active/connection"
+	screen.controlURL = "http://selected.invalid/control"
+	screen.eventURL = "http://selected.invalid/event"
+	screen.renderingControlURL = "http://selected.invalid/rendering"
+	screen.connectionManagerURL = "http://selected.invalid/connection"
+
+	next, err := queueNext(screen, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.ControlURL != screen.tvdata.ControlURL ||
+		next.EventURL != screen.tvdata.EventURL ||
+		next.RenderingControlURL != screen.tvdata.RenderingControlURL ||
+		next.ConnectionManagerURL != screen.tvdata.ConnectionManagerURL {
+		t.Fatalf("queued endpoints = %+v, active = %+v", next, screen.tvdata)
+	}
+}
+
 type queueSOAPBodies struct {
 	mu              sync.Mutex
 	values          []string

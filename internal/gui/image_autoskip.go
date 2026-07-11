@@ -64,7 +64,7 @@ func (p *FyneScreen) configureImageAutoSkipTimer(mediaType, mediaPath string) {
 		return
 	}
 
-	isChromecastImageSession := p.selectedDeviceType == devices.DeviceTypeChromecast &&
+	isChromecastImageSession := p.getActiveDevice().deviceType == devices.DeviceTypeChromecast &&
 		p.chromecastClient != nil &&
 		p.chromecastClient.IsConnected()
 

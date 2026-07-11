@@ -535,7 +535,65 @@ func subsAction(screen *FyneScreen) {
 	fd.Resize(fyne.NewSize(filePickerFillSize, filePickerFillSize))
 }
 
+type playbackTarget struct {
+	device               devType
+	controlURL           string
+	eventURL             string
+	renderingControlURL  string
+	connectionManagerURL string
+}
+
+func selectedPlaybackTarget(screen *FyneScreen) playbackTarget {
+	return playbackTarget{
+		device:               screen.selectedDevice,
+		controlURL:           screen.controlURL,
+		eventURL:             screen.eventURL,
+		renderingControlURL:  screen.renderingControlURL,
+		connectionManagerURL: screen.connectionManagerURL,
+	}
+}
+
+func activeSessionPlaybackTarget(screen *FyneScreen) (playbackTarget, bool) {
+	activeDevice := screen.getActiveDevice()
+	if activeDevice.addr == "" {
+		return playbackTarget{}, false
+	}
+
+	target := playbackTarget{device: activeDevice}
+	if activeDevice.deviceType == devices.DeviceTypeDLNA && screen.tvdata != nil {
+		target.controlURL = screen.tvdata.ControlURL
+		target.eventURL = screen.tvdata.EventURL
+		target.renderingControlURL = screen.tvdata.RenderingControlURL
+		target.connectionManagerURL = screen.tvdata.ConnectionManagerURL
+	}
+
+	return target, true
+}
+
+func traversalPlaybackTarget(screen *FyneScreen) playbackTarget {
+	switch screen.getScreenState() {
+	case "Playing", "Paused":
+		if target, ok := activeSessionPlaybackTarget(screen); ok {
+			return target
+		}
+	}
+
+	return selectedPlaybackTarget(screen)
+}
+
+func autoPlayPlaybackTarget(screen *FyneScreen) playbackTarget {
+	if target, ok := activeSessionPlaybackTarget(screen); ok {
+		return target
+	}
+
+	return selectedPlaybackTarget(screen)
+}
+
 func playAction(screen *FyneScreen) {
+	playActionOnTarget(screen, selectedPlaybackTarget(screen))
+}
+
+func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 	var mediaFile any
 
 	fyne.Do(func() {
@@ -589,13 +647,13 @@ func playAction(screen *FyneScreen) {
 		return
 	}
 
-	if screen.selectedDevice.addr == "" {
+	if target.device.addr == "" {
 		check(screen, errors.New(lang.L("please select a device")))
 		startAfreshPlayButton(screen)
 		return
 	}
 
-	if screen.Screencast && screen.selectedDeviceType != devices.DeviceTypeChromecast {
+	if screen.Screencast && target.device.deviceType != devices.DeviceTypeChromecast {
 		check(screen, errors.New(lang.L("screencast currently supports Chromecast only")))
 		startAfreshPlayButton(screen)
 		return
@@ -603,9 +661,9 @@ func playAction(screen *FyneScreen) {
 
 	// Branch based on device type - MUST be first, before any DLNA-specific logic
 	// Chromecast has its own status watcher, doesn't need the DLNA timeout mechanism
-	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
+	if target.device.deviceType == devices.DeviceTypeChromecast {
 		actionID := screen.nextChromecastActionID()
-		go chromecastPlayAction(screen, actionID)
+		go chromecastPlayAction(screen, actionID, target.device)
 		return
 	}
 
@@ -613,7 +671,7 @@ func playAction(screen *FyneScreen) {
 	if screen.cancelEnablePlay != nil {
 		screen.cancelEnablePlay()
 	}
-	sessionDevice := screen.selectedDevice
+	sessionDevice := target.device
 
 	ctx, cancelEnablePlay := context.WithTimeout(context.Background(), 3*time.Second)
 	screen.cancelEnablePlay = cancelEnablePlay
@@ -636,13 +694,13 @@ func playAction(screen *FyneScreen) {
 			return
 		}
 
-		if screen.controlURL == "" {
+		if target.controlURL == "" {
 			check(screen, errors.New(lang.L("please select a device")))
 			startAfreshPlayButton(screen)
 			return
 		}
 
-		whereToListen, err := utils.URLtoListenIPandPort(screen.controlURL)
+		whereToListen, err := utils.URLtoListenIPandPort(target.controlURL)
 		check(screen, err)
 		if err != nil {
 			startAfreshPlayButton(screen)
@@ -770,10 +828,10 @@ func playAction(screen *FyneScreen) {
 
 		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
 			screen.tvdata = &soapcalls.TVPayload{
-				ControlURL:                  screen.controlURL,
-				EventURL:                    screen.eventURL,
-				RenderingControlURL:         screen.renderingControlURL,
-				ConnectionManagerURL:        screen.connectionManagerURL,
+				ControlURL:                  target.controlURL,
+				EventURL:                    target.eventURL,
+				RenderingControlURL:         target.renderingControlURL,
+				ConnectionManagerURL:        target.connectionManagerURL,
 				MediaURL:                    "http://" + whereToListen + "/rtmp/playlist.m3u8",
 				SubtitlesURL:                "http://" + whereToListen + "/rtmp/subs.srt",
 				CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
@@ -789,10 +847,10 @@ func playAction(screen *FyneScreen) {
 			}
 		} else {
 			screen.tvdata = &soapcalls.TVPayload{
-				ControlURL:                  screen.controlURL,
-				EventURL:                    screen.eventURL,
-				RenderingControlURL:         screen.renderingControlURL,
-				ConnectionManagerURL:        screen.connectionManagerURL,
+				ControlURL:                  target.controlURL,
+				EventURL:                    target.eventURL,
+				RenderingControlURL:         target.renderingControlURL,
+				ConnectionManagerURL:        target.connectionManagerURL,
 				MediaURL:                    "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile),
 				SubtitlesURL:                "http://" + whereToListen + "/" + utils.ConvertFilename(screen.subsfile),
 				CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
@@ -904,18 +962,18 @@ func playAction(screen *FyneScreen) {
 	}()
 }
 
-func startChromecastScreencast(screen *FyneScreen) (string, string, context.Context, error) {
+func startChromecastScreencast(screen *FyneScreen, device devType) (string, string, context.Context, error) {
 	if err := screen.validateFFmpeg(); err != nil {
 		return "", "", nil, errors.New(lang.L("ffmpeg is required for screencast"))
 	}
 
-	if screen.selectedDevice.isAudioOnly {
+	if device.isAudioOnly {
 		return "", "", nil, errors.New(lang.L("screencast is not supported by audio-only device"))
 	}
 
 	stopScreencastSession(screen)
 
-	whereToListen, err := utils.URLtoListenIPandPort(screen.selectedDevice.addr)
+	whereToListen, err := utils.URLtoListenIPandPort(device.addr)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -1005,7 +1063,7 @@ func stopScreencastSession(screen *FyneScreen) {
 
 // chromecastPlayAction handles playback on Chromecast devices.
 // Supports both local files (via internal HTTP server) and external URLs (direct).
-func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
+func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice devType) {
 	if !screen.isChromecastActionCurrent(actionID) {
 		return
 	}
@@ -1037,7 +1095,6 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 	}
 	var artworkAsset *metadata.ArtworkAsset
 
-	sessionDevice := screen.selectedDevice
 	screen.setActiveDevice(sessionDevice)
 
 	// RTMP wait mechanism
@@ -1079,8 +1136,8 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 		}
 	}
 
-	// Reuse existing client only for the same selected Chromecast device.
-	client := screen.reusableChromecastClientForSelectedDevice()
+	// Reuse an existing client only for the target Chromecast device.
+	client := screen.reusableChromecastClientForDevice(sessionDevice)
 	if client == nil {
 		staleClient := screen.chromecastClient
 		if staleClient != nil && staleClient.IsConnected() && !chromecastClientOwnsDevice(staleClient, sessionDevice) {
@@ -1110,7 +1167,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 
 	if screen.Screencast {
 		screen.setCurrentArtwork(nil)
-		mediaURL, mediaType, serverStoppedCTX, err := startChromecastScreencast(screen)
+		mediaURL, mediaType, serverStoppedCTX, err := startChromecastScreencast(screen, sessionDevice)
 		if err != nil {
 			if !screen.isChromecastActionCurrent(actionID) {
 				return
@@ -2000,8 +2057,8 @@ func skipTraversalAction(screen *FyneScreen, delta int) {
 		return
 	}
 
-	// Check if any device is selected (DLNA uses controlURL, Chromecast uses selectedDevice)
-	if screen.controlURL == "" && screen.selectedDeviceType != devices.DeviceTypeChromecast {
+	target := traversalPlaybackTarget(screen)
+	if target.device.addr == "" || (target.device.deviceType == devices.DeviceTypeDLNA && target.controlURL == "") {
 		check(screen, errors.New(lang.L("please select a device")))
 		return
 	}
@@ -2016,10 +2073,14 @@ func skipTraversalAction(screen *FyneScreen, delta int) {
 		return
 	}
 
-	skipToMediaPathAction(screen, nextMediaPath)
+	skipToMediaPathOnTargetAction(screen, nextMediaPath, target)
 }
 
 func skipToMediaPathAction(screen *FyneScreen, mediaPath string) {
+	skipToMediaPathOnTargetAction(screen, mediaPath, traversalPlaybackTarget(screen))
+}
+
+func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target playbackTarget) {
 	oldMediaPath := screen.mediafile
 	oldArtwork := screen.getCurrentArtwork()
 	screen.persistDisplayedResumeProgress(true)
@@ -2040,8 +2101,8 @@ func skipToMediaPathAction(screen *FyneScreen, mediaPath string) {
 	targetMediaPath := screen.mediafile
 
 	// For Chromecast: reuse existing connection for faster skip on the same device.
-	client := screen.reusableChromecastClientForSelectedDevice()
-	if screen.selectedDeviceType == devices.DeviceTypeChromecast && client != nil {
+	client := screen.reusableChromecastClientForDevice(target.device)
+	if target.device.deviceType == devices.DeviceTypeChromecast && client != nil {
 		// Get media type
 		mediaType, err := utils.GetMimeDetailsFromPath(screen.mediafile)
 		if err != nil {
@@ -2234,7 +2295,7 @@ func skipToMediaPathAction(screen *FyneScreen, mediaPath string) {
 			server.StopServer()
 		}
 
-		playAction(screen)
+		playActionOnTarget(screen, target)
 	}()
 }
 
@@ -2507,10 +2568,10 @@ func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 	}
 
 	nextTvData := &soapcalls.TVPayload{
-		ControlURL:                  screen.controlURL,
-		EventURL:                    screen.eventURL,
-		RenderingControlURL:         screen.renderingControlURL,
-		ConnectionManagerURL:        screen.connectionManagerURL,
+		ControlURL:                  screen.tvdata.ControlURL,
+		EventURL:                    screen.tvdata.EventURL,
+		RenderingControlURL:         screen.tvdata.RenderingControlURL,
+		ConnectionManagerURL:        screen.tvdata.ConnectionManagerURL,
 		MediaURL:                    "http://" + oldMediaURL.Host + "/" + utils.ConvertFilename(fname),
 		SubtitlesURL:                "http://" + oldSubsURL.Host + "/" + utils.ConvertFilename(spath),
 		CallbackURL:                 screen.tvdata.CallbackURL,

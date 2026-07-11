@@ -413,13 +413,14 @@ func (p *FyneScreen) Fini() {
 		}
 
 		gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
+		target := autoPlayPlaybackTarget(p)
 
 		// Finished-media transitions should always restart from a stopped state.
 		// Otherwise playAction may interpret the follow-up as pause/resume.
 		p.updateScreenState("Stopped")
 
 		// For Chromecast, ignore gapless setting (it's DLNA-specific)
-		isChromecast := p.selectedDeviceType == devices.DeviceTypeChromecast
+		isChromecast := target.device.deviceType == devices.DeviceTypeChromecast
 
 		if p.NextMediaCheck.Checked && (isChromecast || gaplessOption == "Disabled") {
 			_, nextMediaPath, err := getNextAutoPlayMediaOrError(p)
@@ -433,8 +434,8 @@ func (p *FyneScreen) Fini() {
 				return
 			}
 
-			if isChromecast && p.reusableChromecastClientForSelectedDevice() != nil {
-				go skipToMediaPathAction(p, nextMediaPath)
+			if isChromecast && p.reusableChromecastClientForDevice(target.device) != nil {
+				go skipToMediaPathOnTargetAction(p, nextMediaPath, target)
 				return
 			}
 
@@ -444,12 +445,12 @@ func (p *FyneScreen) Fini() {
 				return
 			}
 
-			go playAction(p)
+			go playActionOnTarget(p, target)
 			return
 		}
 		// Main media loop logic
 		if p.Medialoop {
-			go playAction(p)
+			go playActionOnTarget(p, target)
 		}
 	})
 }
@@ -729,12 +730,16 @@ func (p *FyneScreen) activeChromecastPlaybackClient() *castprotocol.CastClient {
 }
 
 func (p *FyneScreen) reusableChromecastClientForSelectedDevice() *castprotocol.CastClient {
+	return p.reusableChromecastClientForDevice(p.selectedDevice)
+}
+
+func (p *FyneScreen) reusableChromecastClientForDevice(device devType) *castprotocol.CastClient {
 	client := p.chromecastClient
 	if client == nil || !client.IsConnected() {
 		return nil
 	}
 
-	if !chromecastClientOwnsDevice(client, p.selectedDevice) {
+	if !chromecastClientOwnsDevice(client, device) {
 		return nil
 	}
 

@@ -221,6 +221,34 @@ func TestStaticHandlerExplicitMIMEOverridesExtension(t *testing.T) {
 	}
 }
 
+func TestArtworkStaticHandlerImmutableCache(t *testing.T) {
+	id := strings.Repeat("a", 64)
+	path := "/artwork/" + id + ".jpg"
+	srv := NewServer("127.0.0.1:0")
+	srv.AddStaticHandler(path, "image/jpeg", []byte("art"))
+
+	request := httptest.NewRequest(http.MethodGet, path, nil)
+	response := httptest.NewRecorder()
+	srv.ServeMediaHandler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
+	}
+	if got := response.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
+		t.Fatalf("Cache-Control = %q", got)
+	}
+	if got := response.Header().Get("ETag"); got != `"`+id+`"` {
+		t.Fatalf("ETag = %q", got)
+	}
+
+	request = httptest.NewRequest(http.MethodGet, path, nil)
+	request.Header.Set("If-None-Match", `"`+id+`"`)
+	response = httptest.NewRecorder()
+	srv.ServeMediaHandler().ServeHTTP(response, request)
+	if response.Code != http.StatusNotModified || response.Body.Len() != 0 {
+		t.Fatalf("conditional response = %d, body length = %d", response.Code, response.Body.Len())
+	}
+}
+
 type testReadSeekCloser struct {
 	*bytes.Reader
 }

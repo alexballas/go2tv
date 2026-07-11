@@ -698,7 +698,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 				s.eventURL = t.AvtransportEventSubURL
 				s.renderingControlURL = t.RenderingControlURL
 				s.connectionManagerURL = t.ConnectionManagerURL
-				if s.tvdata != nil {
+				if s.tvdata != nil && !isActivePlayback {
 					s.tvdata.RenderingControlURL = s.renderingControlURL
 				}
 			}
@@ -881,10 +881,11 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 		go func() {
 			gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
+			target := traversalPlaybackTarget(s)
 
 			if b {
-				if gaplessOption == "Enabled" {
-					switch s.State {
+				if gaplessOption == "Enabled" && target.device.deviceType == devices.DeviceTypeDLNA {
+					switch s.getScreenState() {
 					case "Playing", "Paused":
 						newTVPayload, err := queueNext(s, false)
 						if err == nil && s.GaplessMediaWatcher == nil {
@@ -896,7 +897,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 				return
 			}
 
-			if s.tvdata != nil && s.tvdata.CallbackURL != "" {
+			if target.device.deviceType == devices.DeviceTypeDLNA && s.tvdata != nil && s.tvdata.CallbackURL != "" {
 				_, err := queueNext(s, true)
 				if err != nil {
 					stopAction(s)

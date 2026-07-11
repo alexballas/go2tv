@@ -1,6 +1,6 @@
 # Music Artwork Implementation Plan
 
-Status: Phase 6 complete
+Status: Phase 7 software verification complete; hardware pending
 
 Owner: primary integration agent
 
@@ -23,8 +23,7 @@ Automatically send correct per-track music artwork to DLNA and Chromecast render
 Deferred:
 
 - Remote URL artwork discovery.
-- Explicit GUI artwork picker.
-- Explicit remote artwork URL.
+- Explicit artwork picker/CLI flag.
 - Artist/album tag propagation beyond fields needed by protocol models.
 - Formats without embedded-art parser support.
 
@@ -332,21 +331,15 @@ Exit:
 
 ### Phase 6: optional explicit override
 
-Status: complete; explicitly approved.
+Status: not required.
 
-Implemented local CLI override only:
-
-- Add `-artwork <path>` to full and lite CLI.
-- Accept valid local JPEG/PNG input for local, remote, and stdin media.
-- Normalize and serve through existing content-addressed artwork contracts.
-- Prefer valid explicit artwork over automatic discovery.
-- Ignore invalid explicit artwork; fall back to automatic discovery for local media.
-- Start Chromecast HTTP server when explicit artwork is its only local resource.
-- Keep GUI picker and remote artwork URL deferred.
+Automatic embedded/sidecar resolution is the intended seamless UX. Do not add a picker, CLI flag, or remote artwork URL unless future compatibility evidence proves automatic discovery insufficient.
 
 ### Phase 7: compatibility verification
 
 Owner: primary agent; optional read-only reviewer agent.
+
+Status: software verification complete; hardware pending.
 
 Work:
 
@@ -365,24 +358,24 @@ Exit:
 
 ## Playback-path checklist
 
-- [ ] DLNA CLI initial load
+- [x] DLNA CLI initial load
 - [ ] Chromecast CLI initial load
 - [ ] DLNA desktop initial load
 - [ ] Chromecast desktop initial load
 - [ ] DLNA mobile initial load
 - [ ] Chromecast mobile initial load
-- [ ] Track-stem sidecar precedence
-- [ ] Embedded front-cover fallback
-- [ ] Generic named sidecar fallback
-- [ ] Remote/stdin no-art behavior
+- [x] Track-stem sidecar precedence
+- [x] Embedded front-cover fallback
+- [x] Generic named sidecar fallback
+- [x] Remote/stdin no-art behavior
 - [ ] Chromecast transcoded reload/seek
 - [ ] Chromecast warm-session previous/next
-- [ ] DLNA `SetNextAVTransportURI`
+- [x] DLNA `SetNextAVTransportURI`
 - [ ] Loop selected
-- [ ] Queue tracks with different covers
-- [ ] Art track followed by no-art track
+- [x] Queue tracks with different covers
+- [x] Art track followed by no-art track
 - [ ] Audio-only Chromecast device
-- [ ] No-art regression
+- [x] No-art regression
 
 ## Test matrix
 
@@ -407,9 +400,15 @@ Hardware results:
 
 | Device | Protocol | Current art | Next art | Notes |
 |---|---|---:|---:|---|
-| TBD | DLNA | TBD | TBD | |
-| TBD | Chromecast | TBD | TBD | |
-| TBD | Cast audio | TBD | TBD | |
+| gmediarender on zeus | DLNA | Metadata accepted; route 200 | Automated only | Live CLI accepted embedded-art DIDL; playback returned 704 because renderer has no ALSA sink |
+| [TV] UE50JU6400 | DLNA | Not run | Not run | Discovered; physical TV not controlled |
+| Living Room TV | Chromecast | Not run | Not run | Discovered; physical TV not woken or controlled |
+| No target discovered | Cast audio | N/A | N/A | Hardware unavailable |
+
+Known renderer exceptions:
+
+- `gmediarender on zeus` cannot open its configured ALSA output. It accepts the media URI and artwork metadata before unrelated playback error 704.
+- No artwork-specific exception observed. No `dlna:profileID` added.
 
 ## Verification gates
 
@@ -466,36 +465,37 @@ Keep context durable through code, commits, tests, and this file. Do not rely on
 
 ## Current handoff
 
-Phase: 6
+Phase: 7
 
-State: complete
+State: software verification complete; hardware pending
 
-Last commit: `bb6b5ad preserve artwork across queues`
+Last commit: `45c99c0 add explicit artwork override CLI flag`; current worktree reverts Phase 6 and contains Phase 7 fixes
 
 Completed:
 
-- Added `-artwork <path>` to full and lite CLI; README usage updated.
-- Valid explicit local JPEG/PNG overrides automatic artwork for DLNA and Chromecast.
-- Explicit artwork works with local, remote, and stdin media; Chromecast hosts artwork even when it is the only local resource.
-- Explicit input uses existing 20 MiB validation, normalization, content hash, JPEG route, MIME, CORS, dimensions, and protocol metadata.
-- Missing, unreadable, corrupt, unsupported, or oversized override never blocks playback; local media falls back to automatic artwork.
-- Preserved legacy `cliartwork.Prepare`; added focused precedence, fallback, remote-media, registration, HEAD, and MIME tests.
-- Passed repeated focused tests, `go test -v ./...`, `make build`, Fyne check, refyne Android package/sign/verify, and `make windows`.
-- Repo-wide modernize ran; reports the same seven pre-existing findings, none in Phase 6 files.
+- Retained automatic-only artwork discovery; Phase 6 override remains removed.
+- Reviewed URL/XML/JSON escaping. Only hash URLs enter protocols; XML/JSON serializers escape them; filesystem paths and bytes remain HTTP-owned.
+- Compared public pre-artwork APIs. Existing `Load`, `LoadOnExisting`, and `AddHandler` signatures remain compatible wrappers/contracts.
+- Reviewed mobile URI lifetime. Normalized bytes are copied before URI reader/file-descriptor and temporary symlink cleanup; Android packaging passes.
+- Added immutable one-year caching and SHA-256 ETags only for valid content-addressed `/artwork/<hash>.jpg` routes; conditional GET returns 304.
+- Live DLNA CLI sent embedded artwork to `gmediarender on zeus`; renderer logs confirmed `upnp:albumArtURI`; HEAD returned JPEG, CORS, and 200.
+- Ran focused race suite, `go test -v ./...`, `make build`, Fyne check, Windows package, and signed/verified refyne Android package successfully.
+- Repo-wide modernize reports the same seven pre-existing findings; none touch Phase 7 files.
 
 Next:
 
-1. Start Phase 7 compatibility verification only when directed.
+1. Optional user-confirmed visual test on discovered Samsung/Chromecast hardware.
+2. Cast-audio test when hardware becomes available.
 
 Known risks:
 
-- Override is CLI-only; GUI picker and explicit remote artwork URL remain deferred.
-- Invalid override is intentionally silent so artwork failure cannot block playback.
-- Mobile seekable-descriptor artwork extraction is package-verified, not hardware-verified.
+- Mobile seekable-descriptor artwork extraction is package/build-verified, not device-verified.
+- Physical Samsung/Chromecast artwork display and Cast-audio behavior remain unverified.
+- `gmediarender on zeus` playback is blocked by its missing ALSA sink, unrelated to artwork.
 - DLNA artwork has no `dlna:profileID` by fixed design.
 - Modernize findings remain in Phase 1/2 and unrelated files.
-- Hardware compatibility remains unverified.
 
 ## Unresolved questions
 
-- Hardware targets available?
+- Approve Samsung/Chromecast control?
+- Cast-audio target available?

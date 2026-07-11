@@ -257,6 +257,10 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 			w.Header().Set("Content-Type", out.mediaType)
+			if etag := artworkETag(r.URL.Path); etag != "" {
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				w.Header().Set("ETag", etag)
+			}
 			switch r.Method {
 			case http.MethodOptions:
 				w.WriteHeader(http.StatusOK)
@@ -303,6 +307,27 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 
 		serveContent(w, r, out.payload, out.transcode, out.media, s.ffmpeg)
 	}
+}
+
+func artworkETag(requestPath string) string {
+	const (
+		artworkPrefix = "/artwork/"
+		sha256Length  = 64
+	)
+
+	if !strings.HasPrefix(requestPath, artworkPrefix) || !strings.HasSuffix(requestPath, ".jpg") {
+		return ""
+	}
+	id := strings.TrimSuffix(strings.TrimPrefix(requestPath, artworkPrefix), ".jpg")
+	if len(id) != sha256Length {
+		return ""
+	}
+	for _, char := range id {
+		if !('0' <= char && char <= '9' || 'a' <= char && char <= 'f') {
+			return ""
+		}
+	}
+	return `"` + id + `"`
 }
 
 func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) http.HandlerFunc {
