@@ -3,7 +3,9 @@
 package gui
 
 import (
+	"bytes"
 	"fmt"
+	"image/jpeg"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -277,17 +279,45 @@ func (screen *FyneScreen) prewarmQueueThumbnails(items []QueueItem) {
 	}
 
 	uris := make([]fyne.URI, 0, len(items))
+	audioPaths := make([]string, 0, len(items))
 	for _, item := range items {
 		switch item.MediaType {
+		case "audio":
+			audioPaths = append(audioPaths, item.Path)
 		case "image", "video":
 			uris = append(uris, storage.NewFileURI(item.Path))
 		}
 	}
 
-	if len(uris) == 0 {
-		return
+	if len(uris) > 0 {
+		xfilepicker.GetThumbnailManager().PrewarmDirectory(uris)
 	}
-	xfilepicker.GetThumbnailManager().PrewarmDirectory(uris)
+	if len(audioPaths) > 0 {
+		go func() {
+			for _, path := range audioPaths {
+				screen.resolveCachedGUIArtwork(path, "audio/unknown", true)
+			}
+		}()
+	}
+}
+
+func (screen *FyneScreen) queueAudioThumbnail(path string) *canvas.Image {
+	_, asset := screen.resolveCachedGUIArtwork(path, "audio/unknown", true)
+	if asset == nil {
+		return nil
+	}
+
+	artwork, err := jpeg.Decode(bytes.NewReader(asset.Data))
+	if err != nil {
+		return nil
+	}
+	thumbnail := canvas.NewImageFromImage(artwork)
+	thumbnail.FillMode = canvas.ImageFillContain
+	return thumbnail
+}
+
+func queueItemNeedsThumbnail(mediaType string) bool {
+	return mediaType == "audio" || mediaType == "image" || mediaType == "video"
 }
 
 func (screen *FyneScreen) queueSnapshot() (*SessionQueue, int) {
@@ -929,7 +959,7 @@ func (r *queueRow) setRow(index int, item QueueItem, isCurrent bool) {
 		r.fallbackIcon.Resource = theme.FileIcon()
 	}
 
-	needsThumb := item.MediaType == "image" || item.MediaType == "video"
+	needsThumb := queueItemNeedsThumbnail(item.MediaType)
 	reuseThumb := samePath && r.thumbPath == item.Path && r.thumbnail.Image != nil
 
 	if !reuseThumb {
@@ -941,16 +971,15 @@ func (r *queueRow) setRow(index int, item QueueItem, isCurrent bool) {
 		r.fallbackIcon.Show()
 
 		if needsThumb && item.Path != "" {
-			if img := xfilepicker.GetThumbnailManager().LoadMemoryOnly(item.Path); img != nil {
+			if img := xfilepicker.GetThumbnailManager().LoadMemoryOnly(item.Path); item.MediaType != "audio" && img != nil {
 				r.pendingThumbPath = ""
 				r.applyThumbnail(item.Path, img)
 			} else if r.pendingThumbPath != item.Path {
 				r.thumbnailRequestID++
 				requestID := r.thumbnailRequestID
 				r.pendingThumbPath = item.Path
-				uri := storage.NewFileURI(item.Path)
 				path := item.Path
-				go xfilepicker.GetThumbnailManager().Load(uri, func(img *canvas.Image) {
+				apply := func(img *canvas.Image) {
 					fyne.Do(func() {
 						if r.currentPath != path || r.pendingThumbPath != path || r.thumbnailRequestID != requestID {
 							return
@@ -958,7 +987,15 @@ func (r *queueRow) setRow(index int, item QueueItem, isCurrent bool) {
 						r.pendingThumbPath = ""
 						r.applyThumbnail(path, img)
 					})
-				})
+				}
+				if item.MediaType == "audio" {
+					go func() {
+						apply(r.screen.queueAudioThumbnail(path))
+					}()
+				} else {
+					uri := storage.NewFileURI(item.Path)
+					go xfilepicker.GetThumbnailManager().Load(uri, apply)
+				}
 			}
 		}
 	} else {
