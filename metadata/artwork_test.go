@@ -132,6 +132,62 @@ func TestLoadArtworkFlattensTransparencyOntoBlack(t *testing.T) {
 	}
 }
 
+func TestLoadArtworkAppliesJPEGOrientation(t *testing.T) {
+	source := image.NewNRGBA(image.Rect(0, 0, 16, 8))
+	for y := range 8 {
+		for x := range 16 {
+			pixel := color.NRGBA{R: 255, A: 255}
+			if x >= 8 {
+				pixel = color.NRGBA{B: 255, A: 255}
+			}
+			source.SetNRGBA(x, y, pixel)
+		}
+	}
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, source, &jpeg.Options{Quality: 100}); err != nil {
+		t.Fatal(err)
+	}
+	if got := jpegOrientation(encoded.Bytes()); got != 1 {
+		t.Fatalf("untagged orientation = %d, want 1", got)
+	}
+
+	// APP1 EXIF segment: big-endian TIFF, IFD0 with a single orientation
+	// entry set to 6 (stored rotated, display requires 90 degrees clockwise).
+	exif := []byte{
+		0xFF, 0xE1, 0x00, 0x22,
+		'E', 'x', 'i', 'f', 0x00, 0x00,
+		'M', 'M', 0x00, 0x2A, 0x00, 0x00, 0x00, 0x08,
+		0x00, 0x01,
+		0x01, 0x12, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x06, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+	}
+	data := append(append(append([]byte(nil), encoded.Bytes()[:2]...), exif...), encoded.Bytes()[2:]...)
+	if got := jpegOrientation(data); got != 6 {
+		t.Fatalf("orientation = %d, want 6", got)
+	}
+
+	asset, err := LoadArtwork(data, "portrait.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if asset.Width != 8 || asset.Height != 16 {
+		t.Fatalf("dimensions = %dx%d, want 8x16", asset.Width, asset.Height)
+	}
+	output, err := jpeg.Decode(bytes.NewReader(asset.Data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The stored left half is red; rotated upright it becomes the top half.
+	topR, _, topB, _ := output.At(4, 3).RGBA()
+	bottomR, _, bottomB, _ := output.At(4, 12).RGBA()
+	if topR < 0x8000 || topB > 0x8000 {
+		t.Fatalf("top pixel = %#04x %#04x, want red", topR, topB)
+	}
+	if bottomR > 0x8000 || bottomB < 0x8000 {
+		t.Fatalf("bottom pixel = %#04x %#04x, want blue", bottomR, bottomB)
+	}
+}
+
 func TestLoadArtworkHashReuse(t *testing.T) {
 	input := encodeTestImage(t, "png", 100, 50, color.NRGBA{R: 50, G: 80, B: 120, A: 255})
 	first, err := LoadArtwork(input, "first.png")

@@ -397,6 +397,20 @@ func TestCommandStableQueueIDsAndStrictPayload(t *testing.T) {
 	if result := command("library.select_media", "select", `{"root_id":"`+rootID+`","entry_id":"`+entryID+`"}`); !result.OK() {
 		t.Fatal(result)
 	}
+	selected, _ := control.Snapshot(context.Background())
+	if len(selected.Queue) != 1 || !selected.Queue[0].IsSelected || selected.SelectedMedia != "movie.mp4" {
+		t.Fatalf("selected media not queued: %#v", selected)
+	}
+	if result := command("library.select_media", "select-next", `{"root_id":"`+rootID+`","entry_id":"`+entryID+`"}`); !result.OK() {
+		t.Fatal(result)
+	}
+	selectedNext, _ := control.Snapshot(context.Background())
+	if len(selectedNext.Queue) != 2 || selectedNext.Queue[0].ID != selected.Queue[0].ID || selectedNext.Queue[0].IsSelected || !selectedNext.Queue[1].IsSelected || selectedNext.SelectedMedia != "movie.mp4" {
+		t.Fatalf("next media not queued and selected: %#v", selectedNext)
+	}
+	if result := command("queue.clear", "clear-selected", `{}`); !result.OK() {
+		t.Fatal(result)
+	}
 	if result := command("queue.add", "add1", `{"root_id":"`+rootID+`","entry_id":"`+entryID+`"}`); !result.OK() {
 		t.Fatal(result)
 	}
@@ -415,6 +429,13 @@ func TestCommandStableQueueIDsAndStrictPayload(t *testing.T) {
 	if moved.Queue[0].ID != second.Queue[1].ID || moved.Queue[1].ID != first.Queue[0].ID {
 		t.Fatalf("move changed IDs: %#v", moved.Queue)
 	}
+	if result := command("queue.clear", "clear", `{}`); !result.OK() {
+		t.Fatal(result)
+	}
+	cleared, _ := control.Snapshot(context.Background())
+	if len(cleared.Queue) != 0 {
+		t.Fatalf("queue not cleared: %#v", cleared.Queue)
+	}
 	if result := command("player.volume", "bad", `{"volume":101}`); result.Code != controller.CodeInvalid {
 		t.Fatal(result)
 	}
@@ -429,6 +450,17 @@ func TestCommandStableQueueIDsAndStrictPayload(t *testing.T) {
 	}
 	if result := command("player.mute", "unknown", `{"muted":true,"extra":1}`); result.Code != controller.CodeInvalid {
 		t.Fatal(result)
+	}
+}
+
+func TestQueuedPlaybackActive(t *testing.T) {
+	playing := controller.Snapshot{PlaybackState: "PLAYING", Queue: []controller.QueueItem{{IsActive: true}}}
+	if !queuedPlaybackActive(playing) {
+		t.Fatal("playing queue not active")
+	}
+	playing.PlaybackState = "PAUSED"
+	if queuedPlaybackActive(playing) || queuedPlaybackActive(controller.Snapshot{PlaybackState: "PLAYING"}) {
+		t.Fatal("inactive queue reported active")
 	}
 }
 

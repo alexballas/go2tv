@@ -343,21 +343,33 @@ func (c *Controller) AddQueueItem(ctx context.Context, request QueueAddRequest) 
 		if !ok {
 			return fail(request.RequestID, s.revision, ErrInvalidOperation)
 		}
-		items, current := []mediamodel.QueueItem{item}, -1
-		if s.queue != nil {
-			items = append(s.queue.Items(), item)
-			current = s.queue.CurrentIndex()
-		}
-		s.queue = mediamodel.NewQueue(items, current)
-		if s.queueRefs == nil {
-			s.queueRefs = make(map[string]MediaRef)
-		}
-		s.queueRefs[item.ID()] = request.Media
+		s.appendQueueItem(item, request.Media, request.Select)
 		itemID = item.ID()
 		s.commit()
 		return Result{RequestID: request.RequestID, Revision: s.revision}
 	})
 	return QueueAddResult{Result: result, ItemID: itemID}
+}
+
+func (s *actorState) appendQueueItem(item mediamodel.QueueItem, media MediaRef, selectItem bool) {
+	items, current := []mediamodel.QueueItem{item}, -1
+	if s.queue != nil {
+		items = append(s.queue.Items(), item)
+		current = s.queue.CurrentIndex()
+	}
+	if selectItem {
+		current = len(items) - 1
+	}
+	s.queue = mediamodel.NewQueue(items, current)
+	if s.queueRefs == nil {
+		s.queueRefs = make(map[string]MediaRef)
+	}
+	s.queueRefs[item.ID()] = media
+	if selectItem {
+		s.media = media
+		s.mediaQueueID = item.ID()
+		s.artworkID = mediaArtworkID(media)
+	}
 }
 
 func (c *Controller) ClearQueue(ctx context.Context, mutation Mutation) Result {
@@ -403,6 +415,10 @@ func (c *Controller) RemoveQueueItem(ctx context.Context, mutation Mutation, id 
 		index := queueIndex(s.queue, id)
 		if index < 0 {
 			return fail(mutation.RequestID, s.revision, ErrNotFound)
+		}
+		selected, _ := s.queue.Current()
+		if selected.ID() == id || s.active != nil && s.active.itemID == id {
+			return fail(mutation.RequestID, s.revision, ErrInvalidOperation)
 		}
 		s.queue.Remove(index)
 		delete(s.queueRefs, id)
@@ -517,6 +533,12 @@ func (s *actorState) choosePlay(request PlayRequest) (playback.Device, mediamode
 			return target, item, MediaRef{}, ErrNotFound
 		}
 		item, _ = s.queue.Item(index)
+	} else if s.mediaQueueID != "" {
+		index := queueIndex(s.queue, s.mediaQueueID)
+		if index < 0 {
+			return target, item, MediaRef{}, ErrNotFound
+		}
+		item, _ = s.queue.Item(index)
 	} else if s.media.valid() {
 		item, _ = mediamodel.NewQueueReference(s.media.ID, s.media.Name, s.media.Parent, s.media.Kind)
 	} else if s.queue != nil {
@@ -534,7 +556,7 @@ func (s *actorState) choosePlay(request PlayRequest) (playback.Device, mediamode
 		return target, item, resolved, nil
 	}
 	media, ok := s.queueRefs[item.ID()]
-	if request.QueueItemID == "" && s.media.valid() {
+	if request.QueueItemID == "" && s.mediaQueueID == "" && s.media.valid() {
 		media, ok = s.media, true
 	}
 	if !ok {
@@ -544,6 +566,14 @@ func (s *actorState) choosePlay(request PlayRequest) (playback.Device, mediamode
 }
 
 func (c *Controller) Play(ctx context.Context, request PlayRequest) Result {
+	return c.play(ctx, request)
+}
+
+func (c *Controller) QueueAndPlay(ctx context.Context, mutation Mutation, media MediaRef) Result {
+	return c.play(ctx, PlayRequest{Mutation: mutation, media: &media, queueMedia: true})
+}
+
+func (c *Controller) play(ctx context.Context, request PlayRequest) Result {
 	if ctx == nil {
 		return fail(request.RequestID, 0, ErrInvalidOperation)
 	}
@@ -576,6 +606,13 @@ func (s *actorState) beginPlay(request PlayRequest, response chan<- Result) {
 	if s.controller.cfg.TransportFactory == nil || s.controller.cfg.MediaServer == nil {
 		response <- fail(request.RequestID, s.revision, ErrInvalidOperation)
 		return
+	}
+	if request.queueMedia {
+		if s.queue != nil && s.queue.Len() >= MaxQueueItems {
+			response <- fail(request.RequestID, s.revision, ErrQueueLimit)
+			return
+		}
+		s.appendQueueItem(item, media, true)
 	}
 	s.mutation = true
 	s.state = "LOADING"

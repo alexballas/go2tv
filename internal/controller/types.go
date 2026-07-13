@@ -113,6 +113,7 @@ type PlayRequest struct {
 	QueueItemID string
 	target      *playback.Device
 	media       *MediaRef
+	queueMedia  bool
 }
 
 type MediaRef struct {
@@ -152,7 +153,8 @@ type PolicyRequest struct {
 
 type QueueAddRequest struct {
 	Mutation
-	Media MediaRef
+	Media  MediaRef
+	Select bool
 }
 
 type QueueAddResult struct {

@@ -398,7 +398,7 @@ func (h *Handler) command(ctx context.Context, message envelope) controller.Resu
 			if err != nil {
 				return invalid(message.ID)
 			}
-			return h.cfg.Controller.SelectMedia(ctx, expectedMutation(message.ID, p.ExpectedRevision), ref)
+			return h.selectMedia(ctx, expectedMutation(message.ID, p.ExpectedRevision), ref)
 		}
 		ref, err := h.subtitleRef(p.RootID, p.EntryID)
 		if err != nil {
@@ -455,6 +455,8 @@ func (h *Handler) command(ctx context.Context, message envelope) controller.Resu
 			return invalid(message.ID)
 		}
 		return h.cfg.Controller.MoveQueueItem(ctx, expectedMutation(message.ID, p.ExpectedRevision), p.ItemID, *p.Delta)
+	case "queue.clear":
+		return h.simplePayload(ctx, message, h.cfg.Controller.ClearQueue)
 	case "player.play":
 		var p struct {
 			ItemID           string  `json:"item_id"`
@@ -539,6 +541,25 @@ func (h *Handler) command(ctx context.Context, message envelope) controller.Resu
 		return invalid(message.ID)
 	}
 }
+
+func (h *Handler) selectMedia(ctx context.Context, mutation controller.Mutation, ref controller.MediaRef) controller.Result {
+	snapshot, err := h.cfg.Controller.Snapshot(ctx)
+	if err != nil {
+		return controller.Result{RequestID: mutation.RequestID, Code: controller.CodeInternal, Message: "snapshot failed"}
+	}
+	if queuedPlaybackActive(snapshot) {
+		return h.cfg.Controller.QueueAndPlay(ctx, mutation, ref)
+	}
+	if len(snapshot.Queue) == 0 {
+		return h.cfg.Controller.AddQueueItem(ctx, controller.QueueAddRequest{Mutation: mutation, Media: ref, Select: true}).Result
+	}
+	return h.cfg.Controller.AddQueueItem(ctx, controller.QueueAddRequest{Mutation: mutation, Media: ref, Select: true}).Result
+}
+
+func queuedPlaybackActive(snapshot controller.Snapshot) bool {
+	return snapshot.PlaybackState == "PLAYING" && slices.ContainsFunc(snapshot.Queue, func(item controller.QueueItem) bool { return item.IsActive })
+}
+
 func (h *Handler) simplePayload(ctx context.Context, m envelope, fn func(context.Context, controller.Mutation) controller.Result) controller.Result {
 	var p struct {
 		ExpectedRevision *uint64 `json:"expected_revision"`

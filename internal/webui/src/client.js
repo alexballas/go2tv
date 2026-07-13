@@ -6,7 +6,7 @@ export function startClient(env){
   const byID=id=>document.querySelector(`#${id}`);
   const status=byID("status"),connectionDot=byID("connection-dot"),devicePicker=byID("device-picker"),deviceTrigger=byID("device-trigger"),devices=byID("devices"),roots=byID("roots"),library=byID("library"),queue=byID("queue"),toast=byID("toast"),pendingNode=byID("pending"),breadcrumbs=byID("breadcrumbs");
   const state={revision:0,devices:[],queue:[],policy:{LoopSelected:false,AutoPlayNext:false,AutoPlaySameType:false,GaplessEnabled:false,ImageDurationSeconds:10},selected_device_id:"",selected_media:false,selected_media_name:"",active_media_name:"",selected_subtitle:false,selected_subtitle_name:"",transcode:false,has_session:false,playback_state:"",position:0,duration:0,volume:0,muted:false,media_type:"",artwork_id:""};
-  let ws,serial=0,reconnectTimer,shuttingDown=false,connected=false,deviceMenuOpen=false,selectedRoot="",selectedLibraryRow=null,selectedArtworkURL="",parents=[],libraryEntries=[],reloaded=sessionStorage.getItem("go2tv-protocol-reload")==="1";
+  let ws,serial=0,reconnectTimer,shuttingDown=false,connected=false,deviceMenuOpen=false,selectedRoot="",selectedLibraryRow=null,selectedArtworkURL="",parents=[],libraryEntries=[],libraryParent="",libraryCursor="",queueRenderKey="",reloaded=sessionStorage.getItem("go2tv-protocol-reload")==="1";
   const pending=new Map();
   const option=(value,label)=>{const node=document.createElement("option");node.value=value;node.textContent=label;return node};
   const button=(label,action,options={})=>{const node=document.createElement("button");node.type="button";node.textContent=label;node.disabled=!!options.disabled;node.className=options.className||"";node.title=options.title||"";node.ariaLabel=options.ariaLabel||"";node.addEventListener("click",action);return node};
@@ -51,16 +51,25 @@ export function startClient(env){
     if(item.active&&current==="STOPPING")return {label:"Stopping…",disabled:true,run:()=>{}};
     return {label:"Play",disabled:!connected||locked,run:()=>send("player.play",{item_id:item.id})};
   }
+  function selectQueueItem(item){
+    const anotherItemPlaying=playbackState()==="PLAYING"&&(state.queue||[]).some(queued=>queued.active&&queued.id!==item.id);
+    send(anotherItemPlaying?"player.play":"queue.select",{item_id:item.id});
+  }
   function renderQueue(){
-    queue.replaceChildren();text("queue-count",String((state.queue||[]).length));
-    if(!(state.queue||[]).length){const empty=document.createElement("li");empty.className="empty-state";empty.textContent="Queue is empty — add something from your library.";queue.append(empty);return}
-    const locked=queueLocked();
-    for(const [index,item] of state.queue.entries()){
+    const items=state.queue||[],locked=queueLocked(),starting=[...pending.values()].filter(request=>request?.type==="player.play").map(request=>request.payload?.item_id??"");
+    // Snapshots arrive several times per second during playback; rebuilding identical rows would destroy the button under the cursor and make its hover state flicker.
+    const key=JSON.stringify([items,locked,playbackState(),connected,starting]);
+    if(key===queueRenderKey)return;
+    queueRenderKey=key;
+    byID("queue-clear").disabled=!connected||locked||!items.length;
+    queue.replaceChildren();text("queue-count",String(items.length));
+    if(!items.length){const empty=document.createElement("li");empty.className="empty-state";empty.textContent="Queue is empty — add something from your library.";queue.append(empty);return}
+    for(const [index,item] of items.entries()){
       const row=document.createElement("li");row.className="queue-row";if(item.selected)row.dataset.selected="true";if(item.active)row.dataset.active="true";
       const number=document.createElement("span");number.className="queue-index";number.textContent=String(index+1);
       const copy=document.createElement("div");copy.className="entry-copy";const label=document.createElement("strong");label.className="entry-name";label.textContent=item.name||"Untitled media";label.title=label.textContent;copy.append(label);
       const meta=document.createElement("span");meta.className="entry-meta";meta.textContent=item.active?"Now playing":item.selected?"Selected":item.parent||kindLabel(item.kind);copy.append(meta);row.append(number,copy);
-      const primary=queueAction(item,locked);const actions=actionGroup(button(primary.label,primary.run,{disabled:primary.disabled,className:"queue-primary"}),button("Select",()=>send("queue.select",{item_id:item.id}),{disabled:locked||item.selected}),button("↑",()=>send("queue.move",{item_id:item.id,delta:-1}),{disabled:locked||index===0,className:"icon-action",title:"Move up",ariaLabel:`Move ${item.name} up`}),button("↓",()=>send("queue.move",{item_id:item.id,delta:1}),{disabled:locked||index===state.queue.length-1,className:"icon-action",title:"Move down",ariaLabel:`Move ${item.name} down`}),button("×",()=>send("queue.remove",{item_id:item.id}),{disabled:locked,className:"remove-action icon-action",title:"Remove",ariaLabel:`Remove ${item.name}`}));
+      const primary=queueAction(item,locked),removeProtected=item.selected||item.active,removeTitle=item.selected?"Cannot remove selected item":item.active?"Cannot remove active item":"Remove";const actions=actionGroup(button(primary.label,primary.run,{disabled:primary.disabled,className:"queue-primary"}),button("Select",()=>selectQueueItem(item),{disabled:locked||item.selected}),button("↑",()=>send("queue.move",{item_id:item.id,delta:-1}),{disabled:locked||index===0,className:"icon-action",title:"Move up",ariaLabel:`Move ${item.name} up`}),button("↓",()=>send("queue.move",{item_id:item.id,delta:1}),{disabled:locked||index===items.length-1,className:"icon-action",title:"Move down",ariaLabel:`Move ${item.name} down`}),button("×",()=>send("queue.remove",{item_id:item.id}),{disabled:locked||removeProtected,className:"remove-action icon-action",title:removeTitle,ariaLabel:`Remove ${item.name}`}));
       row.append(actions);queue.append(row);
     }
   }
@@ -103,19 +112,24 @@ export function startClient(env){
   function renderBreadcrumbs(){breadcrumbs.replaceChildren();breadcrumbs.append(button("Library",()=>{parents=[];browse()}));for(const [index,parent] of parents.entries())breadcrumbs.append(button(parent.name,()=>{parents=parents.slice(0,index+1);browse(parent.id)}))}
   function renderLibrary(){
     library.replaceChildren();const filter=byID("library-filter").value.trim().toLowerCase(),entries=filter?libraryEntries.filter(item=>item.name.toLowerCase().includes(filter)):libraryEntries;
-    if(!entries.length){const empty=document.createElement("li");empty.className="empty-state";empty.textContent=filter?"No matches in this folder.":"This folder is empty.";library.append(empty);return}
+    if(!entries.length){const empty=document.createElement("li");empty.className="empty-state";empty.textContent=filter?"No matches in this folder.":"This folder is empty.";library.append(empty);renderLoadMore();return}
     for(const item of entries){const row=document.createElement("li"),main=document.createElement("div"),copy=document.createElement("div"),label=document.createElement("strong"),meta=document.createElement("span");row.className="library-row";main.className="entry-main";copy.className="entry-copy";label.className="entry-name";label.textContent=item.name;label.title=item.name;meta.className="entry-meta";meta.textContent=item.kind==="directory"?"Folder":/\.(srt|vtt)$/i.test(item.name)?"Subtitle":kindLabel(item.media_kind)||entryKind(item.name);copy.append(label,meta);if(item.thumbnail_url)main.append(mediaThumbnail(item));else{const icon=document.createElement("span");icon.className="entry-icon";icon.textContent=item.kind==="directory"?"▸":"CC";icon.ariaHidden="true";main.append(icon)}main.append(copy);row.append(main);if(item.kind==="directory")row.append(actionGroup(button("Open",()=>{parents.push({id:item.id,name:item.name});browse(item.id)},{className:"primary-action"})));else if(/\.(srt|vtt)$/i.test(item.name))row.append(actionGroup(button("Use subtitle",()=>send("library.select_subtitle",{root_id:selectedRoot,entry_id:item.id}),{className:"primary-action"})));else row.append(actionGroup(button("Select",()=>selectLibraryMedia(row,item),{className:"primary-action"}),button("Add to queue",()=>send("queue.add",{root_id:selectedRoot,entry_id:item.id}))));library.append(row)}
+    renderLoadMore();
+  }
+  function renderLoadMore(){
+    if(!libraryCursor)return;
+    const nav=document.createElement("li");nav.className="browser-nav";const more=button("Load more",()=>{more.disabled=true;browse(libraryParent,libraryCursor,true)});nav.append(more);library.append(nav);
   }
   async function browse(parentID="",cursor="",append=false){
     const query=new URLSearchParams({root_id:selectedRoot,limit:"200"});if(parentID)query.set("parent_id",parentID);if(cursor)query.set("cursor",cursor);if(!append){library.replaceChildren();const loading=document.createElement("li");loading.className="empty-state loading-state";loading.textContent="Loading folder…";library.append(loading)}
-    try{const response=await fetch(`/api/library?${query}`,{headers:{Accept:"application/json"}}),data=await response.json();if(!response.ok)throw new Error(data.error||"Browse failed");libraryEntries=append?[...libraryEntries,...(data.entries||[])]:data.entries||[];renderBreadcrumbs();renderLibrary();if(data.cursor){const nav=document.createElement("li");nav.className="browser-nav";nav.append(button("Load more",()=>{nav.remove();browse(parentID,data.cursor,true)}));library.append(nav)}}catch(error){showToast(error.message,"error")}
+    try{const response=await fetch(`/api/library?${query}`,{headers:{Accept:"application/json"}}),data=await response.json();if(!response.ok)throw new Error(data.error||"Browse failed");libraryEntries=append?[...libraryEntries,...(data.entries||[])]:data.entries||[];libraryParent=parentID;libraryCursor=data.cursor||"";renderBreadcrumbs();renderLibrary()}catch(error){showToast(error.message,"error");if(append)renderLibrary()}
   }
   function sendPolicy(changed=""){if(changed==="loop"&&byID("loop").checked){byID("autoplay").checked=false;byID("same-type").checked=false;byID("gapless").checked=false}else if(changed==="autoplay"&&byID("autoplay").checked)byID("loop").checked=false;const auto=byID("autoplay").checked;send("playback.policy",{policy:{LoopSelected:byID("loop").checked,AutoPlayNext:auto,AutoPlaySameType:auto&&byID("same-type").checked,GaplessEnabled:auto&&byID("gapless").checked,ImageDurationSeconds:Number(byID("image-duration").value)}})}
   async function boot(){
     const response=await fetch("/api/bootstrap",{headers:{Accept:"application/json"}}),bootstrap=await response.json();if(!response.ok)throw new Error(bootstrap.error||"Bootstrap failed");if(bootstrap.protocol_version!==protocolVersion){if(!reloaded){sessionStorage.setItem("go2tv-protocol-reload","1");location.reload()}else connection("Incompatible server","error");return}
     sessionStorage.removeItem("go2tv-protocol-reload");mergeSnapshot(bootstrap.snapshot);roots.replaceChildren();for(const root of bootstrap.roots||[])roots.append(option(root.id,root.name));selectedRoot=roots.value;await browse();connect();
   }
-  roots.addEventListener("change",()=>{selectedRoot=roots.value;parents=[];browse()});byID("refresh").addEventListener("click",()=>send("devices.refresh"));
+  roots.addEventListener("change",()=>{selectedRoot=roots.value;parents=[];browse()});byID("refresh").addEventListener("click",()=>send("devices.refresh"));byID("queue-clear").addEventListener("click",()=>send("queue.clear"));
   deviceTrigger.addEventListener("click",()=>{deviceMenuOpen=!deviceMenuOpen;renderDevices()});document.addEventListener("click",event=>{if(deviceMenuOpen&&!event.composedPath().includes(devicePicker)){deviceMenuOpen=false;renderDevices()}});document.addEventListener("keydown",event=>{if(deviceMenuOpen&&event.key==="Escape"){deviceMenuOpen=false;renderDevices();deviceTrigger.focus()}});
   for(const node of document.querySelectorAll("[data-command]"))node.addEventListener("click",()=>send(node.dataset.command));
   byID("seek").addEventListener("change",event=>send("player.seek",{seconds:Number(event.target.value)}));byID("volume-down").addEventListener("click",()=>send("player.volume",{delta:-1}));byID("volume-up").addEventListener("click",()=>send("player.volume",{delta:1}));byID("mute").addEventListener("click",()=>send("player.mute",{muted:!state.muted}));byID("transcode").addEventListener("change",event=>send("player.transcode",{enabled:event.target.checked}));byID("subtitle-clear").addEventListener("click",()=>send("library.clear_subtitle"));byID("library-filter").addEventListener("input",renderLibrary);

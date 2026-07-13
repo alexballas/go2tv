@@ -3,6 +3,7 @@ package metadata
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -135,6 +136,15 @@ func loadArtwork(data []byte, source string) (*ArtworkAsset, uint64, error) {
 		draw.CatmullRom.Scale(normalized, normalized.Bounds(), sourceImage, bounds, draw.Over, nil)
 	}
 
+	// image/jpeg ignores the EXIF orientation tag, so camera photos stored
+	// rotated must be remapped or they render sideways.
+	if format == "jpeg" {
+		if orientation := jpegOrientation(data); orientation > 1 {
+			normalized = orientRGBA(normalized, orientation)
+			width, height = normalized.Bounds().Dx(), normalized.Bounds().Dy()
+		}
+	}
+
 	var output bytes.Buffer
 	if err := jpeg.Encode(&output, normalized, &jpeg.Options{Quality: jpegQuality}); err != nil {
 		return nil, 0, fmt.Errorf("encode artwork JPEG: %w", err)
@@ -175,6 +185,123 @@ func normalizedDimensions(width, height int) (int, int) {
 	)
 	return max(1, int(math.Round(float64(width)*scale))),
 		max(1, int(math.Round(float64(height)*scale)))
+}
+
+// jpegOrientation returns the EXIF orientation (1-8) of JPEG data, or 1 when
+// the tag is absent or the structure is malformed.
+func jpegOrientation(data []byte) int {
+	if len(data) < 4 || data[0] != 0xFF || data[1] != 0xD8 {
+		return 1
+	}
+	offset := 2
+	for offset+4 <= len(data) {
+		if data[offset] != 0xFF {
+			return 1
+		}
+		marker := data[offset+1]
+		switch {
+		case marker == 0xFF: // fill byte before a marker
+			offset++
+			continue
+		case marker == 0x01 || (marker >= 0xD0 && marker <= 0xD7): // standalone markers
+			offset += 2
+			continue
+		case marker == 0xDA || marker == 0xD9: // start of scan / end of image: EXIF cannot follow
+			return 1
+		}
+		length := int(data[offset+2])<<8 | int(data[offset+3])
+		if length < 2 || offset+2+length > len(data) {
+			return 1
+		}
+		if marker == 0xE1 {
+			if orientation := exifOrientation(data[offset+4 : offset+2+length]); orientation != 0 {
+				return orientation
+			}
+		}
+		offset += 2 + length
+	}
+	return 1
+}
+
+// exifOrientation reads IFD0 tag 0x0112 from an APP1 payload, returning 0
+// when the payload is not usable EXIF.
+func exifOrientation(segment []byte) int {
+	if len(segment) < 14 || string(segment[:6]) != "Exif\x00\x00" {
+		return 0
+	}
+	tiff := segment[6:]
+	var order binary.ByteOrder
+	switch {
+	case tiff[0] == 'I' && tiff[1] == 'I':
+		order = binary.LittleEndian
+	case tiff[0] == 'M' && tiff[1] == 'M':
+		order = binary.BigEndian
+	default:
+		return 0
+	}
+	if order.Uint16(tiff[2:4]) != 42 {
+		return 0
+	}
+	ifd := int(order.Uint32(tiff[4:8]))
+	if ifd < 8 || ifd+2 > len(tiff) {
+		return 0
+	}
+	count := int(order.Uint16(tiff[ifd : ifd+2]))
+	for i := range count {
+		entry := ifd + 2 + i*12
+		if entry+12 > len(tiff) {
+			return 0
+		}
+		if order.Uint16(tiff[entry:entry+2]) != 0x0112 {
+			continue
+		}
+		if order.Uint16(tiff[entry+2:entry+4]) != 3 || order.Uint32(tiff[entry+4:entry+8]) != 1 { // SHORT, one value
+			return 0
+		}
+		if value := int(order.Uint16(tiff[entry+8 : entry+10])); value >= 1 && value <= 8 {
+			return value
+		}
+		return 0
+	}
+	return 0
+}
+
+// orientRGBA remaps pixels so an image tagged with an EXIF orientation
+// displays upright.
+func orientRGBA(source *image.RGBA, orientation int) *image.RGBA {
+	if orientation <= 1 || orientation > 8 {
+		return source
+	}
+	bounds := source.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+	targetWidth, targetHeight := width, height
+	if orientation >= 5 { // orientations 5-8 swap the axes
+		targetWidth, targetHeight = height, width
+	}
+	target := image.NewRGBA(image.Rect(0, 0, targetWidth, targetHeight))
+	for y := range height {
+		for x := range width {
+			var tx, ty int
+			switch orientation {
+			case 2: // mirrored horizontally
+				tx, ty = width-1-x, y
+			case 3: // rotated 180°
+				tx, ty = width-1-x, height-1-y
+			case 4: // mirrored vertically
+				tx, ty = x, height-1-y
+			case 5: // transposed
+				tx, ty = y, x
+			case 6: // rotated 90° counter-clockwise in storage
+				tx, ty = height-1-y, x
+			case 7: // transversed
+				tx, ty = height-1-y, width-1-x
+			case 8: // rotated 90° clockwise in storage
+				tx, ty = y, width-1-x
+			}
+			target.SetRGBA(tx, ty, source.RGBAAt(bounds.Min.X+x, bounds.Min.Y+y))
+		}
+	}
+	return target
 }
 
 type sidecarCandidate struct {

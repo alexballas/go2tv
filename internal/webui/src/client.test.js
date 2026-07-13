@@ -15,7 +15,7 @@ class FakeSocket extends Node {
 }
 function fixture(){
   FakeSocket.instances=[];const ids={},commands=[];
-  for(const id of ["status","connection-dot","device-picker","device-trigger","devices","roots","library","queue","toast","pending","playback-state","now-playing-title","time","seek","volume-down","volume-up","mute","transcode","media-selected","subtitle-selected","subtitle-clear","artwork","artwork-placeholder","artwork-modal","artwork-modal-image","artwork-modal-title","artwork-modal-close","loop","autoplay","same-type","gapless","image-duration","refresh","queue-count","breadcrumbs","library-filter","play-toggle","stop-button"])ids[id]=new Node();
+  for(const id of ["status","connection-dot","device-picker","device-trigger","devices","roots","library","queue","toast","pending","playback-state","now-playing-title","time","seek","volume-down","volume-up","mute","transcode","media-selected","subtitle-selected","subtitle-clear","artwork","artwork-placeholder","artwork-modal","artwork-modal-image","artwork-modal-title","artwork-modal-close","loop","autoplay","same-type","gapless","image-duration","refresh","queue-count","queue-clear","breadcrumbs","library-filter","play-toggle","stop-button"])ids[id]=new Node();
   ids.roots.tag="select";
   ids["play-toggle"].dataset.command="player.play";ids["stop-button"].dataset.command="player.stop";commands.push(ids["play-toggle"],ids["stop-button"]);
   const document={listeners:{},querySelector:selector=>ids[selector.slice(1)],querySelectorAll:selector=>selector==="[data-command]"?commands:[],createElement:tag=>new Node(tag),addEventListener(type,fn){(this.listeners[type]??=[]).push(fn)},emit(type,event){for(const fn of this.listeners[type]||[])fn(event)}};
@@ -97,18 +97,57 @@ test("queue and primary transport follow loading and active state",async()=>{
   const {ids,env}=fixture();startClient(env);await settle();const ws=FakeSocket.instances[0];
   ws.message({protocol_version:1,type:"state.snapshot",payload:{revision:4,selected_media:true,selected_media_name:"next.flac",active_media_name:"current.flac",has_session:true,playback_state:"PLAYING",queue:[{id:"q1",name:"current.flac",kind:"audio",selected:true,active:true}]}});
   assert.equal(ids["now-playing-title"].textContent,"current.flac");assert.equal(ids["play-toggle"].textContent,"Pause");assert.equal(ids.queue.children[0].children[2].children[0].textContent,"Pause");
+  assert.equal(ids.queue.children[0].children[2].children[4].disabled,true);assert.equal(ids.queue.children[0].children[2].children[4].title,"Cannot remove selected item");
   ids.queue.children[0].children[2].children[0].emit("click");assert.equal(ws.sent.at(-1).type,"player.pause");
   ws.message({protocol_version:1,type:"state.snapshot",payload:{revision:5,selected_media:true,selected_media_name:"next.flac",active_media_name:"current.flac",has_session:true,playback_state:"LOADING",queue:[{id:"q1",name:"current.flac",kind:"audio",selected:false,active:true},{id:"q2",name:"next.flac",kind:"audio",selected:true,active:false}]}});
   assert.equal(ids["now-playing-title"].textContent,"next.flac");assert.equal(ids.queue.children[1].children[2].children[0].textContent,"Starting…");assert.equal(ids.queue.children[1].children[1].children[0].textContent,"next.flac");
 });
 
+test("selecting another queue item replaces active playback",async()=>{
+  const {ids,env}=fixture();startClient(env);await settle();const ws=FakeSocket.instances[0];ws.emit("open");
+  ws.message({protocol_version:1,type:"state.snapshot",payload:{revision:4,has_session:true,playback_state:"PLAYING",queue:[{id:"q1",name:"one.mp3",kind:"audio",selected:true,active:true},{id:"q2",name:"two.mp3",kind:"audio",selected:false,active:false}]}});
+  ids.queue.children[1].children[2].children[1].emit("click");
+  assert.equal(ws.sent.at(-1).type,"player.play");assert.deepEqual(ws.sent.at(-1).payload,{item_id:"q2",expected_revision:4});
+});
+
 test("queue locks every row during mutations and transitions",async()=>{
   const {ids,env}=fixture();startClient(env);await settle();const ws=FakeSocket.instances[0];ws.emit("open");
   ws.message({protocol_version:1,type:"state.queue",payload:{revision:4,queue:[{id:"q1",name:"one.mp3",kind:"audio",selected:true,active:false},{id:"q2",name:"two.mp3",kind:"audio",selected:false,active:false}]}});
+  assert.equal(ids.queue.children[0].children[2].children[4].disabled,true);assert.equal(ids.queue.children[0].children[2].children[4].title,"Cannot remove selected item");assert.equal(ids.queue.children[1].children[2].children[4].disabled,false);
   assert.equal(ids.queue.children[1].children[2].children[0].disabled,false);ids.queue.children[0].children[2].children[0].emit("click");
   for(const row of ids.queue.children)for(const control of row.children[2].children)assert.equal(control.disabled,true);
   const request=ws.sent.at(-1).id;ws.message({protocol_version:1,type:"ack",id:request,payload:{revision:5}});assert.equal(ids.queue.children[1].children[2].children[0].disabled,false);
   ws.message({protocol_version:1,type:"state.playback",payload:{revision:6,state:"LOADING",has_session:true}});for(const row of ids.queue.children)for(const control of row.children[2].children)assert.equal(control.disabled,true);
+});
+
+test("load more survives filtering and appends the next page",async()=>{
+  const {ids,env}=fixture();const bootstrapFetch=env.fetch;
+  env.fetch=async url=>{
+    if(!url.startsWith("/api/library"))return bootstrapFetch(url);
+    const cursor=new URL(`http://host${url}`).searchParams.get("cursor")||"";
+    return {ok:true,json:async()=>cursor?{entries:[{id:"media-2",name:"second.mp4",kind:"file",media_kind:"video"}]}:{entries:[{id:"media-1",name:"first.mp4",kind:"file",media_kind:"video"}],cursor:"next"}};
+  };
+  startClient(env);await settle();
+  const loadMore=()=>ids.library.children.find(node=>node.className==="browser-nav");
+  assert.ok(loadMore(),"load more visible after first page");
+  ids["library-filter"].value="zzz";ids["library-filter"].emit("input");
+  assert.equal(ids.library.children[0].textContent,"No matches in this folder.");assert.ok(loadMore(),"load more visible while filter hides everything");
+  ids["library-filter"].value="";ids["library-filter"].emit("input");
+  loadMore().children[0].emit("click");await settle();
+  assert.equal(loadMore(),undefined);assert.deepEqual(ids.library.children.map(row=>row.children[0]?.children[1]?.children[0]?.textContent),["first.mp4","second.mp4"]);
+});
+
+test("clear queue button sends queue.clear and tracks queue state",async()=>{
+  const {ids,env}=fixture();startClient(env);await settle();const ws=FakeSocket.instances[0];ws.emit("open");
+  assert.equal(ids["queue-clear"].disabled,true);
+  ws.message({protocol_version:1,type:"state.queue",payload:{revision:4,queue:[{id:"q1",name:"one.mp3",kind:"audio",selected:false,active:false}]}});
+  assert.equal(ids["queue-clear"].disabled,false);
+  ids["queue-clear"].emit("click");
+  assert.equal(ws.sent.at(-1).type,"queue.clear");assert.deepEqual(ws.sent.at(-1).payload,{expected_revision:4});
+  assert.equal(ids["queue-clear"].disabled,true);
+  ws.message({protocol_version:1,type:"ack",id:ws.sent.at(-1).id,payload:{revision:5}});
+  ws.message({protocol_version:1,type:"state.queue",payload:{revision:5,queue:[]}});
+  assert.equal(ids["queue-clear"].disabled,true);assert.equal(ids["queue-count"].textContent,"0");assert.equal(ids.queue.children[0].textContent,"Queue is empty — add something from your library.");
 });
 
 test("loop and autoplay remain mutually exclusive",async()=>{

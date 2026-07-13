@@ -328,6 +328,49 @@ func TestQueueAddPreservesIDsAndSelectsByID(t *testing.T) {
 	}
 }
 
+func TestSelectedQueueItemTopCardPlayPreservesIdentity(t *testing.T) {
+	c, _, _ := newTestController(playback.Device{ID: "one", Protocol: "DLNA"})
+	defer c.Close()
+	awaitDevices(t, c, 1)
+	c.SelectDevice(context.Background(), Mutation{}, "one")
+	added := c.AddQueueItem(context.Background(), QueueAddRequest{Media: testMedia("a.mp3", mediamodel.MediaKindAudio), Select: true})
+	if !added.OK() {
+		t.Fatal(added.Result)
+	}
+	snapshot, _ := c.Snapshot(context.Background())
+	if len(snapshot.Queue) != 1 || snapshot.Queue[0].ID != added.ItemID || !snapshot.Queue[0].IsSelected || snapshot.SelectedMedia != "a.mp3" {
+		t.Fatalf("snapshot = %#v", snapshot)
+	}
+	if result := c.Play(context.Background(), PlayRequest{}); !result.OK() {
+		t.Fatal(result)
+	}
+	playing, _ := c.Snapshot(context.Background())
+	if !playing.Queue[0].IsActive || playing.Queue[0].ID != added.ItemID {
+		t.Fatalf("top-card play lost queue identity: %#v", playing.Queue)
+	}
+}
+
+func TestQueueAndPlayAppendsAndReplaces(t *testing.T) {
+	c, log, _ := newTestController(playback.Device{ID: "one", Protocol: "DLNA"})
+	defer c.Close()
+	awaitDevices(t, c, 1)
+	c.SelectDevice(context.Background(), Mutation{}, "one")
+	first := c.AddQueueItem(context.Background(), QueueAddRequest{Media: testMedia("a.mp3", mediamodel.MediaKindAudio)})
+	if result := c.Play(context.Background(), PlayRequest{QueueItemID: first.ItemID}); !result.OK() {
+		t.Fatal(result)
+	}
+	if result := c.QueueAndPlay(context.Background(), Mutation{}, testMedia("b.mp3", mediamodel.MediaKindAudio)); !result.OK() {
+		t.Fatal(result)
+	}
+	snapshot, _ := c.Snapshot(context.Background())
+	if len(snapshot.Queue) != 2 || snapshot.Queue[0].IsActive || !snapshot.Queue[1].IsActive || !snapshot.Queue[1].IsSelected || snapshot.SelectedMedia != "b.mp3" {
+		t.Fatalf("snapshot = %#v", snapshot)
+	}
+	if count(log.snapshot(), "load:one") != 2 {
+		t.Fatalf("events = %v", log.snapshot())
+	}
+}
+
 func TestReplacementTeardownBeforeLoad(t *testing.T) {
 	c, log, _ := newTestController(playback.Device{ID: "one", Protocol: "DLNA"})
 	defer c.Close()
@@ -617,7 +660,7 @@ func TestStopCancelsPendingPlay(t *testing.T) {
 	}
 }
 
-func TestRemoveActiveQueueItemDoesNotStop(t *testing.T) {
+func TestRemoveActiveQueueItemRejected(t *testing.T) {
 	c, log, _ := newTestController(playback.Device{ID: "one", Protocol: "DLNA"})
 	defer c.Close()
 	awaitDevices(t, c, 1)
@@ -629,12 +672,33 @@ func TestRemoveActiveQueueItemDoesNotStop(t *testing.T) {
 		t.Fatal(result)
 	}
 	beforeStops := count(log.snapshot(), "stop:one")
-	if result := c.RemoveQueueItem(context.Background(), Mutation{}, id); !result.OK() {
-		t.Fatal(result)
+	if result := c.RemoveQueueItem(context.Background(), Mutation{}, id); result.Code != CodeInvalid {
+		t.Fatalf("remove = %#v", result)
 	}
 	after, _ := c.Snapshot(context.Background())
-	if !after.HasSession || after.SelectedMedia != "" || count(log.snapshot(), "stop:one") != beforeStops {
-		t.Fatalf("removal stopped playback: %v", log.snapshot())
+	if !after.HasSession || len(after.Queue) != 2 || !after.Queue[0].IsActive || after.SelectedMedia != "a.mp3" || count(log.snapshot(), "stop:one") != beforeStops {
+		t.Fatalf("active item changed: %#v %v", after, log.snapshot())
+	}
+}
+
+func TestRemoveSelectedQueueItemRejected(t *testing.T) {
+	c, _, _ := newTestController()
+	defer c.Close()
+	addTestQueue(t, c, testMedia("a.mp3", mediamodel.MediaKindAudio), testMedia("b.mp3", mediamodel.MediaKindAudio))
+	snapshot, _ := c.Snapshot(context.Background())
+	selectedID, otherID := snapshot.Queue[0].ID, snapshot.Queue[1].ID
+	if result := c.SelectQueueItem(context.Background(), Mutation{}, selectedID); !result.OK() {
+		t.Fatal(result)
+	}
+	if result := c.RemoveQueueItem(context.Background(), Mutation{}, selectedID); result.Code != CodeInvalid {
+		t.Fatalf("selected remove = %#v", result)
+	}
+	if result := c.RemoveQueueItem(context.Background(), Mutation{}, otherID); !result.OK() {
+		t.Fatalf("unselected remove = %#v", result)
+	}
+	after, _ := c.Snapshot(context.Background())
+	if len(after.Queue) != 1 || after.Queue[0].ID != selectedID || !after.Queue[0].IsSelected || after.SelectedMedia != "a.mp3" {
+		t.Fatalf("snapshot = %#v", after)
 	}
 }
 
