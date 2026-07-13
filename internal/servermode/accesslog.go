@@ -36,6 +36,11 @@ func accessLog(output io.Writer, next http.Handler) http.Handler {
 		if status == 0 {
 			status = http.StatusOK
 		}
+		// Successful browser traffic and missing optional artwork are expected and
+		// high-volume. Keep console output for failures that need attention.
+		if status < http.StatusBadRequest || status == http.StatusNotFound {
+			return
+		}
 		fmt.Fprintf(output, "HTTP %s %s %d\n", r.Method, routeTemplate(r.URL.Path), status)
 	})
 }
@@ -49,6 +54,10 @@ func routeTemplate(path string) string {
 		return "/api/bootstrap"
 	case path == "/api/library":
 		return "/api/library"
+	case path == "/api/thumbnail":
+		return "/api/thumbnail"
+	case path == "/api/media-artwork":
+		return "/api/media-artwork"
 	case strings.HasPrefix(path, "/api/artwork/"):
 		return "/api/artwork/{content-id}.jpg"
 	case path == "/api/ws":

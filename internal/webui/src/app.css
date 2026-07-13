@@ -40,11 +40,31 @@
 
   .devices-card { @apply h-full; }
   .device-controls { @apply grid gap-2; }
-  .device-controls select { @apply min-w-0 w-full; }
+  .device-picker { @apply relative min-w-0; }
+  .device-trigger, .device-option { @apply grid min-h-11 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl px-3 py-2 text-left shadow-none; }
+  .device-trigger { @apply w-full grid-cols-[minmax(0,1fr)_auto_auto]; }
+  .device-trigger::after { content: "⌄"; @apply ml-1 text-base leading-none text-slate-400 transition-transform; }
+  .device-trigger[aria-expanded="true"]::after { @apply rotate-180; }
+  .device-list { @apply absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 grid max-h-60 gap-2 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-2xl dark:border-white/15 dark:bg-slate-900; scrollbar-width: thin; }
+  .device-option { @apply w-full; }
+  .device-trigger[data-selected="true"],
+  .device-option[data-selected="true"] { @apply border-blue-500 bg-blue-50 ring-2 ring-blue-500/10 dark:border-blue-500/70 dark:bg-blue-500/10; }
+  .device-name { @apply min-w-0 truncate font-semibold; }
+  .device-badges { @apply flex shrink-0 flex-wrap justify-end gap-1; }
+  .device-badge { @apply rounded-lg px-2 py-1 text-[.65rem] font-bold leading-none; background: #eaeaea; color: #5f5f5f; }
+  .device-badge[data-kind="chromecast"] { background: #daeee7; color: #346d5f; }
+  .device-badge[data-kind="dlna"] { background: #e2e8fa; color: #465d96; }
+  .device-badge[data-kind="audio-only"] { background: #f6ead6; color: #83642f; }
+  @media (prefers-color-scheme: dark) {
+    .device-badge { background: #3a3a3a; color: #bebebe; }
+    .device-badge[data-kind="chromecast"] { background: #364742; color: #bdd4cb; }
+    .device-badge[data-kind="dlna"] { background: #3a4052; color: #c3cde8; }
+    .device-badge[data-kind="audio-only"] { background: #483c2d; color: #e1c092; }
+  }
 
   .player-card { @apply grid min-h-[15rem] gap-5 overflow-hidden p-4 sm:grid-cols-[12.5rem_minmax(0,1fr)] sm:p-5; }
   .artwork-shell { @apply relative aspect-square w-full overflow-hidden rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 sm:aspect-auto sm:min-h-[12.5rem]; }
-  .artwork-shell img { @apply absolute inset-0 size-full object-cover; }
+  .artwork-shell img { @apply absolute inset-0 size-full object-contain; }
   #artwork-placeholder { @apply grid size-full place-items-center text-5xl font-light text-white/80; }
   .player-body { @apply flex min-w-0 flex-col justify-center; }
   .player-heading { @apply mb-4 flex min-w-0 items-start justify-between gap-4; }
@@ -82,6 +102,13 @@
   .library-list { @apply divide-y divide-slate-100 dark:divide-white/[.07]; }
   .library-row { @apply grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-3; }
   .library-row[data-selected="true"] { @apply -mx-2 rounded-xl bg-blue-50 px-2 ring-1 ring-inset ring-blue-100 dark:bg-blue-500/10 dark:ring-blue-500/20; }
+  .entry-main { @apply flex min-w-0 items-center gap-3; }
+  .media-thumbnail, .entry-icon { @apply relative grid size-13 min-h-13 shrink-0 place-items-center overflow-hidden rounded-lg border border-slate-200 bg-slate-100 p-0 text-lg text-slate-500 shadow-none dark:border-white/10 dark:bg-white/[.06] dark:text-slate-300; }
+  .media-thumbnail { @apply hover:translate-y-0 hover:border-blue-400 hover:bg-slate-100 focus:ring-2 focus:ring-blue-500/20 dark:hover:border-blue-500/70 dark:hover:bg-white/[.06]; }
+  .media-thumbnail:disabled { @apply cursor-default opacity-100; }
+  .media-thumbnail img { @apply size-full object-cover; }
+  .thumbnail-fallback { @apply absolute inset-0 grid size-full place-items-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900; }
+  .entry-icon { @apply text-xs font-bold; }
   .entry-copy { @apply grid min-w-0 gap-0.5; }
   .entry-name { @apply min-w-0 truncate text-sm font-semibold; }
   .entry-meta { @apply min-w-0 truncate text-xs text-slate-500 dark:text-slate-400; }
@@ -119,6 +146,13 @@
   #toast p { @apply rounded-xl bg-slate-900 px-4 py-3 text-sm text-white shadow-xl dark:bg-slate-100 dark:text-slate-900; }
   #toast p[data-level="error"] { @apply bg-red-700 text-white dark:bg-red-700 dark:text-white; }
 
+  #artwork-modal { @apply m-auto max-h-[92vh] w-[min(92vw,52rem)] overflow-visible border-0 bg-transparent p-0 text-slate-950 outline-none dark:text-slate-100; }
+  #artwork-modal::backdrop { @apply bg-slate-950/80 backdrop-blur-sm; }
+  .artwork-modal-card { @apply relative grid max-h-[92vh] gap-3 overflow-hidden rounded-2xl border border-white/15 bg-slate-950 p-3 shadow-2xl; }
+  #artwork-modal-image { @apply max-h-[82vh] w-full rounded-xl object-contain; }
+  #artwork-modal-title { @apply truncate px-2 pb-1 text-center text-sm font-semibold text-slate-200; }
+  #artwork-modal-close { @apply absolute right-5 top-5 z-10 grid size-10 min-h-10 place-items-center rounded-full border-white/20 bg-slate-950/75 p-0 text-xl text-white shadow-lg backdrop-blur hover:translate-y-0 hover:bg-slate-900; }
+
   @media (max-width: 639px) {
     main { @apply px-3 py-4; }
     .app-header { @apply items-start; }
@@ -132,7 +166,7 @@
     .library-heading select { @apply w-full max-w-none; }
     .browser-toolbar { @apply grid-cols-1; }
     .library-row { @apply items-start; }
-    .library-row .entry-copy, .library-row .row-actions { @apply col-span-2; }
+    .library-row .entry-main, .library-row .row-actions { @apply col-span-2; }
     .library-row .row-actions { @apply justify-start; }
   }
 }

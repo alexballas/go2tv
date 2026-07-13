@@ -38,7 +38,8 @@ func newRuntime(cfg Config, logs io.Writer) (*runtime, error) {
 	media := &runtimeMediaServer{Server: base}
 	artwork := controller.NewArtworkCache(controller.ArtworkCacheBytes)
 	control := controller.New(controller.NewRuntimeConfig(controller.RuntimeConfig{MediaServer: media, Callbacks: callbacks, LogOutput: logs, Artwork: artwork}))
-	web, err := webui.New(webui.Config{Version: cfg.Version, Controller: control, Library: lib, Artwork: artwork})
+	ffmpeg, _ := utils.ResolveFFmpegPath("")
+	web, err := webui.New(webui.Config{Version: cfg.Version, Controller: control, Library: lib, Artwork: artwork, FFmpegPath: ffmpeg})
 	if err != nil {
 		control.Close()
 		callbacks.Close()

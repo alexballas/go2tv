@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import {startClient} from "./client.js";
 
 class Node {
-  constructor(tag="div"){this.tag=tag;this.children=[];this.listeners={};this.dataset={};this.value="";this.checked=false;this.disabled=false;this.hidden=false;this.textContent="";this.src=""}
+  constructor(tag="div"){this.tag=tag;this.children=[];this.listeners={};this.dataset={};this.value="";this.checked=false;this.disabled=false;this.hidden=false;this.textContent="";this.src="";this.open=false}
   append(...nodes){this.children.push(...nodes);if(this.tag==="select"&&!this.value&&nodes[0])this.value=nodes[0].value} replaceChildren(...nodes){this.children=[...nodes];if(this.tag==="select")this.value=nodes[0]?.value||""}
   addEventListener(type,fn){(this.listeners[type]??=[]).push(fn)} emit(type){for(const fn of this.listeners[type]||[])fn({target:this,data:this.data})}
-  remove(){this.removed=true} removeAttribute(name){this[name]=""}
+  remove(){this.removed=true} removeAttribute(name){this[name]=""} showModal(){this.open=true} close(){this.open=false} contains(node){return this===node||this.children.some(child=>child.contains?.(node))} focus(){this.focused=true}
 }
 class FakeSocket extends Node {
   static OPEN=1;static instances=[];
@@ -15,24 +15,26 @@ class FakeSocket extends Node {
 }
 function fixture(){
   FakeSocket.instances=[];const ids={},commands=[];
-  for(const id of ["status","connection-dot","devices","roots","library","queue","toast","pending","playback-state","now-playing-title","time","seek","volume-down","volume-up","mute","transcode","media-selected","subtitle-selected","subtitle-clear","artwork","artwork-placeholder","loop","autoplay","same-type","gapless","image-duration","refresh","queue-count","breadcrumbs","library-filter","play-toggle","stop-button"])ids[id]=new Node();
-  ids.devices.tag="select";ids.roots.tag="select";
+  for(const id of ["status","connection-dot","device-picker","device-trigger","devices","roots","library","queue","toast","pending","playback-state","now-playing-title","time","seek","volume-down","volume-up","mute","transcode","media-selected","subtitle-selected","subtitle-clear","artwork","artwork-placeholder","artwork-modal","artwork-modal-image","artwork-modal-title","artwork-modal-close","loop","autoplay","same-type","gapless","image-duration","refresh","queue-count","breadcrumbs","library-filter","play-toggle","stop-button"])ids[id]=new Node();
+  ids.roots.tag="select";
   ids["play-toggle"].dataset.command="player.play";ids["stop-button"].dataset.command="player.stop";commands.push(ids["play-toggle"],ids["stop-button"]);
-  const document={querySelector:selector=>ids[selector.slice(1)],querySelectorAll:selector=>selector==="[data-command]"?commands:[],createElement:tag=>new Node(tag)};
-  const snapshot={revision:3,devices:[{id:"dev-1",label:"<Kitchen>"}],selected_device_id:"dev-1",selected_media:false,selected_subtitle:false,queue:[],transcode:false,has_session:false,playback_state:"STOPPED",position:0,duration:0,volume:25,muted:false,policy:{LoopSelected:false,AutoPlayNext:false,AutoPlaySameType:false,GaplessEnabled:false,ImageDurationSeconds:10}};
-  const fetch=async url=>({ok:true,json:async()=>url==="/api/bootstrap"?{protocol_version:1,revision:3,snapshot,roots:[{id:"root-1",name:"Media"}]}:{entries:[{id:"media-1",name:"<movie>.mp4",kind:"file"},{id:"sub-1",name:"captions.srt",kind:"file"}]}});
+  const document={listeners:{},querySelector:selector=>ids[selector.slice(1)],querySelectorAll:selector=>selector==="[data-command]"?commands:[],createElement:tag=>new Node(tag),addEventListener(type,fn){(this.listeners[type]??=[]).push(fn)},emit(type,event){for(const fn of this.listeners[type]||[])fn(event)}};
+  const snapshot={revision:3,devices:[{id:"dev-1",label:"<Kitchen>",protocol:"Chromecast",capabilities:["audio_only"]},{id:"dev-2",label:"Living room",protocol:"DLNA"}],selected_device_id:"dev-1",selected_media:false,selected_subtitle:false,queue:[],transcode:false,has_session:false,playback_state:"STOPPED",position:0,duration:0,volume:25,muted:false,policy:{LoopSelected:false,AutoPlayNext:false,AutoPlaySameType:false,GaplessEnabled:false,ImageDurationSeconds:10}};
+  const fetch=async url=>({ok:true,json:async()=>url==="/api/bootstrap"?{protocol_version:1,revision:3,snapshot,roots:[{id:"root-1",name:"Media"}]}:{entries:[{id:"media-1",name:"<movie>.mp4",kind:"file",media_kind:"video",thumbnail_url:"/api/thumbnail?entry_id=media-1",artwork_url:"/api/media-artwork?entry_id=media-1"},{id:"sub-1",name:"captions.srt",kind:"file"}]}});
   const storage=new Map(),sessionStorage={getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)};
   const timers=[];const env={document,fetch,WebSocket:FakeSocket,location:{protocol:"http:",host:"test",reload(){this.reloaded=true}},sessionStorage,setTimeout:fn=>(timers.push(fn),timers.length),clearTimeout(){}};
-  return {ids,commands,env,timers};
+  return {ids,commands,document,env,timers};
 }
 const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
 
 test("renders safe labels and sends stable queue/media payloads",async()=>{
-  const {ids,env}=fixture();startClient(env);await settle();const ws=FakeSocket.instances[0];assert.ok(ws);
-  assert.equal(ids.devices.children[1].textContent,"<Kitchen>");assert.equal(ids.library.children[0].children[0].children[0].textContent,"<movie>.mp4");
-  ids.library.children[0].children[1].children[1].emit("click");assert.deepEqual(ws.sent[0].payload,{root_id:"root-1",entry_id:"media-1",expected_revision:3});
+  const {ids,document,env}=fixture();startClient(env);await settle();const ws=FakeSocket.instances[0];assert.ok(ws);
+  assert.equal(ids["device-trigger"].children[0].textContent,"<Kitchen>");assert.equal(ids["device-trigger"].children[1].children[0].textContent,"Chromecast");assert.equal(ids["device-trigger"].children[1].children[1].textContent,"Audio only");assert.equal(ids.devices.hidden,true);ids["device-trigger"].emit("click");document.emit("click",{composedPath:()=>[ids["device-trigger"],ids["device-picker"],document]});assert.equal(ids.devices.hidden,false);assert.equal(ids.devices.children[0].dataset.selected,"true");assert.equal(ids.devices.children[1].children[1].children[0].textContent,"DLNA");assert.equal(ids.library.children[0].children[0].children[1].children[0].textContent,"<movie>.mp4");
+  ids.devices.children[1].emit("click");assert.equal(ws.sent[0].type,"devices.select");assert.deepEqual(ws.sent[0].payload,{device_id:"dev-2",expected_revision:3});
+  assert.equal(ids.devices.hidden,true);
+  ids.library.children[0].children[1].children[1].emit("click");assert.deepEqual(ws.sent[1].payload,{root_id:"root-1",entry_id:"media-1",expected_revision:3});
   ws.message({protocol_version:1,type:"state.queue",payload:{revision:4,queue:[{id:"stable-q",name:"<queued>",kind:"video",selected:true,active:false}]}});
-  assert.equal(ids.queue.children[0].children[1].children[0].textContent,"<queued>");ids.queue.children[0].children[2].children[1].emit("click");assert.equal(ws.sent[1].type,"queue.select");assert.equal(ws.sent[1].payload.item_id,"stable-q");
+  assert.equal(ids.queue.children[0].children[1].children[0].textContent,"<queued>");ids.queue.children[0].children[2].children[1].emit("click");assert.equal(ws.sent[2].type,"queue.select");assert.equal(ws.sent[2].payload.item_id,"stable-q");
 });
 
 test("merges partial playback/policy, clears pending, reports errors and shutdown",async()=>{
@@ -55,8 +57,8 @@ test("control interactions emit typed payloads and subtitle selection",async()=>
   assert.deepEqual(ws.sent.map(message=>[message.type,message.payload]),[
     ["library.select_subtitle",{root_id:"root-1",entry_id:"sub-1",expected_revision:3}],
     ["player.seek",{seconds:42,expected_revision:3}],
-    ["player.volume",{volume:30,expected_revision:3}],
-    ["player.volume",{volume:20,expected_revision:3}],
+    ["player.volume",{delta:1,expected_revision:3}],
+    ["player.volume",{delta:-1,expected_revision:3}],
     ["player.mute",{muted:true,expected_revision:3}],
     ["player.transcode",{enabled:true,expected_revision:3}],
     ["playback.policy",{policy:{LoopSelected:false,AutoPlayNext:true,AutoPlaySameType:true,GaplessEnabled:false,ImageDurationSeconds:12},expected_revision:3}],
@@ -81,6 +83,14 @@ test("shows selected names and silently retries revision conflicts",async()=>{
   assert.deepEqual(ws.sent.at(-1).payload,{seconds:12,expected_revision:6});assert.equal(ids.toast.children.length,0);
   const finalRetry=ws.sent.at(-1).id;ws.message({protocol_version:1,type:"error",id:finalRetry,payload:{code:"conflict",message:"state changed",revision:7}});
   assert.equal(ids.toast.children[0].textContent,"The app kept changing. Please try that action again.");
+});
+
+test("loads browser thumbnails, opens artwork modal and updates player artwork",async()=>{
+  const {ids,env}=fixture();startClient(env);await settle();const row=ids.library.children[0],thumbnail=row.children[0].children[0];
+  assert.equal(thumbnail.children[0].src,"/api/thumbnail?entry_id=media-1");thumbnail.children[0].emit("load");assert.equal(thumbnail.children[0].hidden,false);thumbnail.emit("click");
+  assert.equal(ids["artwork-modal"].open,true);assert.equal(ids["artwork-modal-image"].src,"/api/media-artwork?entry_id=media-1");assert.equal(ids["artwork-modal-title"].textContent,"<movie>.mp4");
+  ids["artwork-modal-close"].emit("click");assert.equal(ids["artwork-modal"].open,false);row.children[1].children[0].emit("click");assert.equal(ids.artwork.src,"/api/media-artwork?entry_id=media-1");
+  FakeSocket.instances[0].message({protocol_version:1,type:"state.selection",payload:{revision:4,artwork_id:"cover-id",media_type:"video"}});assert.equal(ids.artwork.src,"/api/artwork/cover-id.jpg");assert.equal(ids["artwork-placeholder"].hidden,true);
 });
 
 test("queue and primary transport follow loading and active state",async()=>{

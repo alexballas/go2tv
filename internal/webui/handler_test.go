@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -26,6 +27,7 @@ import (
 	"github.com/gorilla/websocket"
 	"go2tv.app/go2tv/v2/internal/controller"
 	"go2tv.app/go2tv/v2/internal/library"
+	"go2tv.app/go2tv/v2/internal/playback"
 	"go2tv.app/go2tv/v2/metadata"
 )
 
@@ -134,6 +136,173 @@ func TestBootstrapAndLibrarySanitizedNoStore(t *testing.T) {
 	h.ServeHTTP(response, request)
 	if response.Code != 200 || !strings.Contains(response.Body.String(), "movie.mp4") {
 		t.Fatalf("library = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestSafeSnapshotDeviceMetadata(t *testing.T) {
+	tt := []struct {
+		name      string
+		device    playback.Device
+		protocol  string
+		audioOnly bool
+	}{
+		{name: "DLNA", device: playback.Device{ID: "dlna", Name: "TV", Protocol: "DLNA"}, protocol: "DLNA"},
+		{name: "audio Chromecast", device: playback.Device{ID: "cast", Name: "Speaker", Protocol: "Chromecast", AudioOnly: true}, protocol: "Chromecast", audioOnly: true},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			devices := safeSnapshot(controller.Snapshot{Devices: []playback.Device{tc.device}}).Devices
+			if len(devices) != 1 || devices[0].Protocol != tc.protocol {
+				t.Fatalf("devices = %#v", devices)
+			}
+			gotAudioOnly := len(devices[0].Capabilities) == 1 && devices[0].Capabilities[0] == "audio_only"
+			if gotAudioOnly != tc.audioOnly {
+				t.Fatalf("audio only = %t, want %t", gotAudioOnly, tc.audioOnly)
+			}
+		})
+	}
+}
+
+func TestLibraryImageThumbnailModalAndPlayerArtwork(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	root := t.TempDir()
+	var source bytes.Buffer
+	if err := jpeg.Encode(&source, solidWebUIArtwork(80, 40), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "picture.jpg"), source.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	lib, err := library.Open(library.Config{Roots: []string{root}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	control := controller.New(controller.Config{})
+	h, err := New(Config{Version: "test", Controller: control, Library: lib})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { h.Close(); control.Close(); _ = lib.Close() }()
+	rootID := lib.Roots()[0].ID
+
+	browse := httptest.NewRecorder()
+	h.ServeHTTP(browse, httptest.NewRequest(http.MethodGet, "/api/library?root_id="+rootID, nil))
+	var page struct {
+		Entries []entryDTO `json:"entries"`
+	}
+	if err = json.Unmarshal(browse.Body.Bytes(), &page); err != nil || len(page.Entries) != 1 {
+		t.Fatalf("browse = %s, err=%v", browse.Body.String(), err)
+	}
+	entry := page.Entries[0]
+	if entry.MediaKind != "image" || entry.ThumbnailURL == "" || entry.ArtworkURL == "" {
+		t.Fatalf("entry = %#v", entry)
+	}
+
+	thumbnail := httptest.NewRecorder()
+	h.ServeHTTP(thumbnail, httptest.NewRequest(http.MethodGet, entry.ThumbnailURL, nil))
+	assertJPEGDimensions(t, thumbnail, 128, 128)
+	if thumbnail.Header().Get("Cache-Control") != "private, no-cache" || thumbnail.Header().Get("ETag") == "" {
+		t.Fatalf("thumbnail headers = %#v", thumbnail.Header())
+	}
+	artwork := httptest.NewRecorder()
+	h.ServeHTTP(artwork, httptest.NewRequest(http.MethodGet, entry.ArtworkURL, nil))
+	assertJPEGDimensions(t, artwork, 80, 40)
+
+	result := h.command(context.Background(), envelope{Type: "library.select_media", ID: "select-image", Payload: json.RawMessage(`{"root_id":"` + rootID + `","entry_id":"` + entry.ID + `"}`)})
+	if !result.OK() {
+		t.Fatal(result)
+	}
+	snapshot, err := control.Snapshot(context.Background())
+	if err != nil || snapshot.ArtworkID == "" {
+		t.Fatalf("snapshot artwork = %q, err=%v", snapshot.ArtworkID, err)
+	}
+	player := httptest.NewRecorder()
+	h.ServeHTTP(player, httptest.NewRequest(http.MethodGet, "/api/artwork/"+snapshot.ArtworkID+".jpg", nil))
+	assertJPEGDimensions(t, player, 80, 40)
+}
+
+func TestLibraryVideoArtworkUsesFFmpegCache(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fake skipped on windows")
+	}
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	root := t.TempDir()
+	mediaPath := filepath.Join(root, "movie.mp4")
+	if err := os.WriteFile(mediaPath, []byte("video"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	framePath := filepath.Join(t.TempDir(), "frame.jpg")
+	frame, err := os.Create(framePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = jpeg.Encode(frame, solidWebUIArtwork(96, 54), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err = frame.Close(); err != nil {
+		t.Fatal(err)
+	}
+	counterPath := filepath.Join(t.TempDir(), "count")
+	ffmpegPath := filepath.Join(t.TempDir(), "ffmpeg")
+	script := "#!/bin/sh\ncase \"$*\" in\n  *-protocols*) printf 'Input:\\n  fd\\nOutput:\\n'; exit 0 ;;\n  *-frames:v*) printf x >> \"" + counterPath + "\"; cat \"" + framePath + "\"; exit 0 ;;\nesac\nprintf 'Duration: 00:00:10.00\\n' >&2\nexit 1\n"
+	if err = os.WriteFile(ffmpegPath, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	lib, err := library.Open(library.Config{Roots: []string{root}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	control := controller.New(controller.Config{})
+	h, err := New(Config{Version: "test", Controller: control, Library: lib, FFmpegPath: ffmpegPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { h.Close(); control.Close(); _ = lib.Close() }()
+	rootID := lib.Roots()[0].ID
+	page, err := lib.Browse(rootID, "", "", 10)
+	if err != nil || len(page.Entries) != 1 {
+		t.Fatalf("browse = %#v, err=%v", page, err)
+	}
+	entryID := page.Entries[0].ID
+	for _, path := range []string{
+		libraryArtworkURL("/api/thumbnail", rootID, entryID),
+		libraryArtworkURL("/api/media-artwork", rootID, entryID),
+	} {
+		response := httptest.NewRecorder()
+		h.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s = %d %s", path, response.Code, response.Body.String())
+		}
+	}
+	result := h.command(context.Background(), envelope{Type: "library.select_media", ID: "select-video", Payload: json.RawMessage(`{"root_id":"` + rootID + `","entry_id":"` + entryID + `"}`)})
+	if !result.OK() {
+		t.Fatal(result)
+	}
+	count, err := os.ReadFile(counterPath)
+	if err != nil || string(count) != "x" {
+		t.Fatalf("ffmpeg frame runs = %q, err=%v", count, err)
+	}
+}
+
+func solidWebUIArtwork(width, height int) image.Image {
+	result := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := range height {
+		for x := range width {
+			result.Set(x, y, color.RGBA{R: 70, G: 130, B: 200, A: 255})
+		}
+	}
+	return result
+}
+
+func assertJPEGDimensions(t *testing.T, response *httptest.ResponseRecorder, width, height int) {
+	t.Helper()
+	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("response = %d %#v %q", response.Code, response.Header(), response.Body.Bytes())
+	}
+	config, format, err := image.DecodeConfig(bytes.NewReader(response.Body.Bytes()))
+	if err != nil || format != "jpeg" || config.Width != width || config.Height != height {
+		t.Fatalf("image = %s %#v, err=%v", format, config, err)
 	}
 }
 
@@ -248,6 +417,15 @@ func TestCommandStableQueueIDsAndStrictPayload(t *testing.T) {
 	}
 	if result := command("player.volume", "bad", `{"volume":101}`); result.Code != controller.CodeInvalid {
 		t.Fatal(result)
+	}
+	if result := command("player.volume", "bad-delta", `{"delta":5}`); result.Code != controller.CodeInvalid {
+		t.Fatal(result)
+	}
+	if result := command("player.volume", "ambiguous", `{"volume":10,"delta":1}`); result.Code != controller.CodeInvalid {
+		t.Fatal(result)
+	}
+	if result := command("player.volume", "adjust", `{"delta":1}`); result.Code != controller.CodeNoDevice {
+		t.Fatalf("relative volume command rejected: %#v", result)
 	}
 	if result := command("player.mute", "unknown", `{"muted":true,"extra":1}`); result.Code != controller.CodeInvalid {
 		t.Fatal(result)

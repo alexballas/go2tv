@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"strconv"
@@ -246,6 +247,15 @@ func (d *DLNA) Resubscribe(ctx context.Context, sid string) error {
 func (d *DLNA) Unsubscribe(ctx context.Context, sid string) error {
 	return d.call(ctx, func(p *soapcalls.TVPayload) error { return p.UnsubscribeSoapCall(sid) })
 }
+func (d *DLNA) Volume(ctx context.Context) (int, error) {
+	var volume int
+	err := d.call(ctx, func(p *soapcalls.TVPayload) error {
+		var err error
+		volume, err = p.GetVolumeSoapCall()
+		return err
+	})
+	return volume, err
+}
 func (d *DLNA) SetVolume(ctx context.Context, volume int) error {
 	return d.call(ctx, func(p *soapcalls.TVPayload) error { return p.SetVolumeSoapCall(strconv.Itoa(volume)) })
 }
@@ -349,6 +359,18 @@ func (c *Chromecast) Seek(ctx context.Context, seconds int) error {
 }
 func (c *Chromecast) Close(ctx context.Context) error {
 	return c.call(ctx, func() error { return c.client.Close(false) })
+}
+func (c *Chromecast) Volume(ctx context.Context) (int, error) {
+	var volume int
+	err := c.call(ctx, func() error {
+		status, err := c.client.GetStatus()
+		if err != nil {
+			return err
+		}
+		volume = max(0, min(100, int(math.Round(float64(status.Volume)*100))))
+		return nil
+	})
+	return volume, err
 }
 func (c *Chromecast) SetVolume(ctx context.Context, volume int) error {
 	return c.call(ctx, func() error { return c.client.SetVolume(float32(volume) / 100) })

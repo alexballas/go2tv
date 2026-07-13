@@ -62,6 +62,7 @@ type Transport interface {
 	Pause(context.Context) error
 	Stop(context.Context) error
 	Close(context.Context) error
+	Volume(context.Context) (int, error)
 	SetVolume(context.Context, int) error
 	SetMute(context.Context, bool) error
 }

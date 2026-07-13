@@ -403,7 +403,7 @@ func (h *hub) snapshots() {
 				c.enqueue("state.devices", mustEnvelope("state.devices", "", map[string]any{"revision": snapshot.Revision, "devices": snapshot.Devices}))
 				c.enqueue("state.queue", mustEnvelope("state.queue", "", map[string]any{"revision": snapshot.Revision, "queue": snapshot.Queue}))
 				c.enqueue("state.playback", mustEnvelope("state.playback", "", map[string]any{"revision": snapshot.Revision, "state": snapshot.PlaybackState, "position": snapshot.Position, "duration": snapshot.Duration, "volume": snapshot.Volume, "muted": snapshot.Muted, "has_session": snapshot.HasSession}))
-				c.enqueue("state.selection", mustEnvelope("state.selection", "", map[string]any{"revision": snapshot.Revision, "device_id": snapshot.SelectedDeviceID, "media": snapshot.SelectedMedia, "media_name": snapshot.SelectedMediaName, "subtitle": snapshot.SelectedSubtitle, "subtitle_name": snapshot.SelectedSubtitleName, "transcode": snapshot.Transcode}))
+				c.enqueue("state.selection", mustEnvelope("state.selection", "", map[string]any{"revision": snapshot.Revision, "device_id": snapshot.SelectedDeviceID, "media": snapshot.SelectedMedia, "media_name": snapshot.SelectedMediaName, "subtitle": snapshot.SelectedSubtitle, "subtitle_name": snapshot.SelectedSubtitleName, "transcode": snapshot.Transcode, "media_type": snapshot.MediaType, "artwork_id": snapshot.ArtworkID}))
 				c.enqueue("state.policy", mustEnvelope("state.policy", "", map[string]any{"revision": snapshot.Revision, "policy": snapshot.Policy}))
 			}
 		}

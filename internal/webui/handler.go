@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -18,6 +19,7 @@ import (
 
 	"go2tv.app/go2tv/v2/internal/controller"
 	"go2tv.app/go2tv/v2/internal/library"
+	"go2tv.app/go2tv/v2/internal/mediaartwork"
 	"go2tv.app/go2tv/v2/internal/mediamodel"
 	"go2tv.app/go2tv/v2/internal/playback"
 	"go2tv.app/go2tv/v2/metadata"
@@ -94,6 +96,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.bootstrap(w, r)
 	case r.URL.Path == "/api/library":
 		h.browse(w, r)
+	case r.URL.Path == "/api/thumbnail":
+		h.libraryArtwork(w, r, true)
+	case r.URL.Path == "/api/media-artwork":
+		h.libraryArtwork(w, r, false)
 	case strings.HasPrefix(r.URL.Path, "/api/artwork/"):
 		h.artwork(w, r)
 	case r.URL.Path == "/api/ws":
@@ -169,12 +175,79 @@ func (h *Handler) browse(w http.ResponseWriter, r *http.Request) {
 	}
 	entries := make([]entryDTO, 0, len(page.Entries))
 	for _, entry := range page.Entries {
-		entries = append(entries, entryDTO{ID: entry.ID, Name: entry.Name, Kind: entry.Kind})
+		dto := entryDTO{ID: entry.ID, Name: entry.Name, Kind: entry.Kind}
+		if entry.Kind == "file" {
+			kind := mediamodel.KindForPath(entry.Name)
+			if kind != mediamodel.MediaKindUnknown {
+				dto.MediaKind = string(kind)
+				dto.ThumbnailURL = libraryArtworkURL("/api/thumbnail", q.Get("root_id"), entry.ID)
+				dto.ArtworkURL = libraryArtworkURL("/api/media-artwork", q.Get("root_id"), entry.ID)
+			}
+		}
+		entries = append(entries, dto)
 	}
 	writeJSON(w, http.StatusOK, struct {
 		Entries []entryDTO `json:"entries"`
 		Cursor  string     `json:"cursor,omitempty"`
 	}{entries, page.Cursor})
+}
+
+func libraryArtworkURL(path, rootID, entryID string) string {
+	query := url.Values{"root_id": []string{rootID}, "entry_id": []string{entryID}}
+	return path + "?" + query.Encode()
+}
+
+func (h *Handler) libraryArtwork(w http.ResponseWriter, r *http.Request, thumbnail bool) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		methodNotAllowed(w)
+		return
+	}
+	rootID, entryID, ok := mediaQuery(r.URL.Query())
+	if !ok {
+		apiError(w, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	file, meta, err := h.cfg.Library.Select(rootID, entryID)
+	if err != nil {
+		apiError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	defer file.Close()
+	kind := mediamodel.KindForPath(meta.Name)
+	if kind == mediamodel.MediaKindUnknown {
+		apiError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	request := h.mediaArtworkRequest(rootID, entryID, meta.Name, kind, file)
+	var data []byte
+	if thumbnail {
+		data, err = mediaartwork.ThumbnailWithResolver(r.Context(), request, func(ctx context.Context) (*metadata.ArtworkAsset, error) {
+			return h.resolveArtworkRequest(ctx, request)
+		})
+	} else {
+		var asset *metadata.ArtworkAsset
+		asset, err = h.resolveArtworkRequest(r.Context(), request)
+		if asset != nil {
+			data = asset.Data
+		}
+	}
+	if err != nil || len(data) == 0 {
+		apiError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	serveJPEG(w, r, data, "private, no-cache")
+}
+
+func mediaQuery(query url.Values) (string, string, bool) {
+	if len(query) != 2 {
+		return "", "", false
+	}
+	root, rootOK := query["root_id"]
+	entry, entryOK := query["entry_id"]
+	if !rootOK || !entryOK || len(root) != 1 || len(entry) != 1 || root[0] == "" || entry[0] == "" {
+		return "", "", false
+	}
+	return root[0], entry[0], true
 }
 
 func (h *Handler) artwork(w http.ResponseWriter, r *http.Request) {
@@ -197,17 +270,22 @@ func (h *Handler) artwork(w http.ResponseWriter, r *http.Request) {
 		apiError(w, 404, "not_found")
 		return
 	}
-	sum := sha256.Sum256(value)
+	serveJPEG(w, r, value, "private, max-age=31536000, immutable")
+}
+
+func serveJPEG(w http.ResponseWriter, r *http.Request, data []byte, cacheControl string) {
+	sum := sha256.Sum256(data)
 	etag := `"` + hex.EncodeToString(sum[:]) + `"`
 	w.Header().Set("ETag", etag)
-	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	w.Header().Set("Cache-Control", cacheControl)
 	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
 	if r.Method == http.MethodGet {
-		_, _ = w.Write(value)
+		_, _ = w.Write(data)
 	}
 }
 
@@ -232,7 +310,7 @@ func safeSnapshot(s controller.Snapshot) snapshotDTO {
 		if d.AudioOnly {
 			caps = append(caps, "audio_only")
 		}
-		result.Devices = append(result.Devices, deviceDTO{ID: d.ID, Label: d.Name, Capabilities: caps})
+		result.Devices = append(result.Devices, deviceDTO{ID: d.ID, Label: d.Name, Protocol: d.Protocol, Capabilities: caps})
 	}
 	result.Queue = make([]queueDTO, 0, len(s.Queue))
 	for _, q := range s.Queue {
@@ -316,7 +394,7 @@ func (h *Handler) command(ctx context.Context, message envelope) controller.Resu
 			return invalid(message.ID)
 		}
 		if message.Type == "library.select_media" {
-			ref, err := h.mediaRef(p.RootID, p.EntryID)
+			ref, err := h.mediaRef(ctx, p.RootID, p.EntryID)
 			if err != nil {
 				return invalid(message.ID)
 			}
@@ -344,7 +422,7 @@ func (h *Handler) command(ctx context.Context, message envelope) controller.Resu
 		if readStrict(message.Payload, &p) != nil {
 			return invalid(message.ID)
 		}
-		ref, err := h.mediaRef(p.RootID, p.EntryID)
+		ref, err := h.mediaRef(ctx, p.RootID, p.EntryID)
 		if err != nil {
 			return invalid(message.ID)
 		}
@@ -405,9 +483,19 @@ func (h *Handler) command(ctx context.Context, message envelope) controller.Resu
 	case "player.volume":
 		var p struct {
 			Volume           *int    `json:"volume"`
+			Delta            *int    `json:"delta"`
 			ExpectedRevision *uint64 `json:"expected_revision"`
 		}
-		if readStrict(message.Payload, &p) != nil || p.Volume == nil || *p.Volume < 0 || *p.Volume > 100 {
+		if readStrict(message.Payload, &p) != nil || (p.Volume == nil) == (p.Delta == nil) {
+			return invalid(message.ID)
+		}
+		if p.Delta != nil {
+			if *p.Delta != -1 && *p.Delta != 1 {
+				return invalid(message.ID)
+			}
+			return h.cfg.Controller.AdjustVolume(ctx, expectedMutation(message.ID, p.ExpectedRevision), *p.Delta)
+		}
+		if *p.Volume < 0 || *p.Volume > 100 {
 			return invalid(message.ID)
 		}
 		return h.cfg.Controller.SetVolume(ctx, expectedMutation(message.ID, p.ExpectedRevision), *p.Volume)
@@ -467,13 +555,13 @@ func invalid(id string) controller.Result {
 	return controller.Result{RequestID: id, Code: controller.CodeInvalid, Message: "invalid request"}
 }
 
-func (h *Handler) mediaRef(rootID, entryID string) (controller.MediaRef, error) {
+func (h *Handler) mediaRef(ctx context.Context, rootID, entryID string) (controller.MediaRef, error) {
 	file, meta, err := h.cfg.Library.Select(rootID, entryID)
 	if err != nil {
 		return controller.MediaRef{}, err
 	}
 	kind := mediamodel.KindForPath(meta.Name)
-	artwork := h.resolveArtwork(rootID, entryID, meta.Name, kind, file)
+	artwork := h.rememberArtwork(h.resolveArtwork(ctx, rootID, entryID, meta.Name, kind, file))
 	_ = file.Close()
 	return controller.MediaRef{RootID: rootID, ID: entryID, Name: meta.Name, Kind: kind, OpenDirect: h.opener(rootID, entryID, false), OpenTranscode: h.opener(rootID, entryID, true), Artwork: artwork}, nil
 }
@@ -505,20 +593,55 @@ func (h *Handler) opener(rootID, entryID string, transcode bool) playback.Source
 		return file, info.ModTime(), nil
 	}
 }
-func (h *Handler) resolveArtwork(rootID, mediaID, mediaName string, kind mediamodel.MediaKind, media *os.File) *metadata.ArtworkAsset {
-	if kind != mediamodel.MediaKindAudio {
-		return nil
+func (h *Handler) resolveArtwork(ctx context.Context, rootID, mediaID, mediaName string, kind mediamodel.MediaKind, media *os.File) *metadata.ArtworkAsset {
+	asset, _ := h.resolveArtworkRequest(ctx, h.mediaArtworkRequest(rootID, mediaID, mediaName, kind, media))
+	return asset
+}
+
+func (h *Handler) resolveArtworkRequest(ctx context.Context, request mediaartwork.Request) (*metadata.ArtworkAsset, error) {
+	id, err := mediaartwork.CacheID(request)
+	if err != nil {
+		return mediaartwork.Resolve(ctx, request)
 	}
+	value, err := h.cfg.Artwork.Get(ctx, id, func(ctx context.Context) ([]byte, string, error) {
+		asset, resolveErr := mediaartwork.Resolve(ctx, request)
+		if resolveErr != nil {
+			return nil, "", resolveErr
+		}
+		if asset == nil {
+			return nil, "", errors.New("artwork not found")
+		}
+		return asset.Data, asset.MIMEType, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mediaartwork.AssetFromJPEG(value.Data, request.Path)
+}
+
+func (h *Handler) mediaArtworkRequest(rootID, mediaID, mediaName string, kind mediamodel.MediaKind, media *os.File) mediaartwork.Request {
+	return mediaartwork.Request{
+		Path:       media.Name(),
+		Kind:       kind,
+		FFmpegPath: h.cfg.FFmpegPath,
+		File:       media,
+		ResolveAudio: func() (*metadata.ArtworkAsset, error) {
+			return h.resolveAudioArtwork(rootID, mediaID, mediaName, media), nil
+		},
+	}
+}
+
+func (h *Handler) resolveAudioArtwork(rootID, mediaID, mediaName string, media *os.File) *metadata.ArtworkAsset {
 	for _, ext := range []string{".jpg", ".jpeg", ".png"} {
 		if asset := h.loadArtworkFile(func() (*os.File, error) {
 			file, _, err := h.cfg.Library.OpenArtwork(rootID, mediaID, ext)
 			return file, err
 		}, mediaName+ext); asset != nil {
-			return h.rememberArtwork(asset)
+			return asset
 		}
 	}
 	if asset, _ := metadata.ResolveEmbeddedArtwork(media, mediaName); asset != nil {
-		return h.rememberArtwork(asset)
+		return asset
 	}
 	for _, base := range []string{"cover", "folder", "front", "albumart", "album", "artwork", "albumartlarge", "albumartsmall", "thumb"} {
 		for _, ext := range []string{".jpg", ".jpeg", ".png"} {
@@ -527,7 +650,7 @@ func (h *Handler) resolveArtwork(rootID, mediaID, mediaName string, kind mediamo
 				file, _, err := h.cfg.Library.OpenNamedArtwork(rootID, mediaID, name)
 				return file, err
 			}, name); asset != nil {
-				return h.rememberArtwork(asset)
+				return asset
 			}
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"slices"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -77,11 +78,12 @@ type fakeFactory struct {
 	opened    []*fakeTransport
 	loadBlock chan struct{}
 	stopBlock chan struct{}
+	volume    int
 }
 
 func (f *fakeFactory) Open(_ context.Context, device playback.Device) (Transport, error) {
 	f.log.add("open:" + device.ID)
-	t := &fakeTransport{id: device.ID, log: f.log, loadBlock: f.loadBlock, stopBlock: f.stopBlock}
+	t := &fakeTransport{id: device.ID, log: f.log, loadBlock: f.loadBlock, stopBlock: f.stopBlock, volume: f.volume}
 	f.mu.Lock()
 	f.opened = append(f.opened, t)
 	f.mu.Unlock()
@@ -94,6 +96,7 @@ type fakeTransport struct {
 	loadBlock chan struct{}
 	stopBlock chan struct{}
 	load      playback.LoadRequest
+	volume    int
 }
 
 func (t *fakeTransport) Load(ctx context.Context, request playback.LoadRequest) error {
@@ -134,8 +137,13 @@ func (t *fakeTransport) Stop(ctx context.Context) error {
 	return nil
 }
 func (t *fakeTransport) Close(context.Context) error { t.log.add("close:" + t.id); return nil }
-func (t *fakeTransport) SetVolume(context.Context, int) error {
-	t.log.add("volume:" + t.id)
+func (t *fakeTransport) Volume(context.Context) (int, error) {
+	t.log.add("volume:get:" + t.id)
+	return t.volume, nil
+}
+func (t *fakeTransport) SetVolume(_ context.Context, volume int) error {
+	t.volume = volume
+	t.log.add("volume:set:" + t.id + ":" + strconv.Itoa(volume))
 	return nil
 }
 func (t *fakeTransport) SetMute(context.Context, bool) error { t.log.add("mute:" + t.id); return nil }
@@ -267,6 +275,39 @@ func TestActiveTargetUnaffectedBySelection(t *testing.T) {
 	}
 	if !slices.Contains(log.snapshot(), "server:start:one") {
 		t.Fatalf("media server target missing: %v", log.snapshot())
+	}
+}
+
+func TestAdjustVolumeReadsDeviceAndStepsByOne(t *testing.T) {
+	tests := []struct {
+		name  string
+		delta int
+		want  int
+	}{
+		{name: "down", delta: -1, want: 36},
+		{name: "up", delta: 1, want: 38},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, log, factory := newTestController(playback.Device{ID: "one", Protocol: "DLNA"})
+			defer c.Close()
+			factory.volume = 37
+			awaitDevices(t, c, 1)
+			if result := c.SelectDevice(context.Background(), Mutation{}, "one"); !result.OK() {
+				t.Fatal(result)
+			}
+			if result := c.AdjustVolume(context.Background(), Mutation{}, tt.delta); !result.OK() {
+				t.Fatal(result)
+			}
+			snapshot, err := c.Snapshot(context.Background())
+			if err != nil || snapshot.Volume != tt.want {
+				t.Fatalf("volume = %d, err = %v", snapshot.Volume, err)
+			}
+			events := log.snapshot()
+			if !slices.Contains(events, "volume:get:one") || !slices.Contains(events, "volume:set:one:"+strconv.Itoa(tt.want)) {
+				t.Fatalf("events = %v", events)
+			}
+		})
 	}
 }
 

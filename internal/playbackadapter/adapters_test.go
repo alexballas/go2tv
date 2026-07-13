@@ -66,3 +66,32 @@ func TestParseClock(t *testing.T) {
 		t.Fatal("invalid time accepted")
 	}
 }
+
+func TestDLNAVolumeReadsRenderer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`<root><device><serviceList>
+<service><serviceType>urn:schemas-upnp-org:service:RenderingControl:1</serviceType><serviceId>urn:upnp-org:serviceId:RenderingControl</serviceId><controlURL>/rendering</controlURL></service>
+<service><serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType><serviceId>urn:upnp-org:serviceId:AVTransport</serviceId><controlURL>/transport</controlURL><eventSubURL>/events</eventSubURL></service>
+</serviceList></device></root>`))
+			return
+		}
+		if r.URL.Path != "/rendering" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		if !strings.Contains(r.Header.Get("SOAPAction"), "#GetVolume") {
+			t.Errorf("SOAPAction = %q", r.Header.Get("SOAPAction"))
+		}
+		w.Header().Set("Content-Type", `text/xml; charset="utf-8"`)
+		_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetVolumeResponse xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1"><CurrentVolume>37</CurrentVolume></u:GetVolumeResponse></s:Body></s:Envelope>`))
+	}))
+	defer server.Close()
+	transport, err := NewDLNA(context.Background(), DLNAConfig{Endpoint: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	volume, err := transport.Volume(context.Background())
+	if err != nil || volume != 37 {
+		t.Fatalf("volume = %d, err = %v", volume, err)
+	}
+}

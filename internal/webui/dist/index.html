@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>Go2TV</title>
-  <link rel="stylesheet" href="/assets/app.f9a81ff0.css">
+  <link rel="stylesheet" href="/assets/app.0681bf10.css">
 </head>
 <body>
 <main>
@@ -18,7 +18,7 @@
     <section class="devices-card">
       <div class="section-heading"><div><span>Renderer</span><h2>Choose a device</h2></div></div>
       <p class="section-help">Select where media should play.</p>
-      <div class="device-controls"><select id="devices" aria-label="Renderer"></select><button id="refresh" type="button">Refresh</button></div>
+      <div class="device-controls"><div id="device-picker" class="device-picker"><button id="device-trigger" class="device-trigger" type="button" aria-haspopup="listbox" aria-controls="devices" aria-expanded="false"></button><div id="devices" class="device-list" role="listbox" aria-label="Renderer" hidden></div></div><button id="refresh" type="button">Refresh</button></div>
     </section>
 
     <section class="player-card">
@@ -62,6 +62,13 @@
   </div>
   <aside id="toast" aria-live="polite" aria-label="Notifications"></aside>
 </main>
-<script type="module" src="/assets/app.89023fcb.js"></script>
+<dialog id="artwork-modal" aria-labelledby="artwork-modal-title">
+  <div class="artwork-modal-card">
+    <button id="artwork-modal-close" type="button" aria-label="Close artwork">×</button>
+    <img id="artwork-modal-image" alt="" hidden>
+    <p id="artwork-modal-title"></p>
+  </div>
+</dialog>
+<script type="module" src="/assets/app.d719264c.js"></script>
 </body>
 </html>

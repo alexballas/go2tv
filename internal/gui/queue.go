@@ -4,6 +4,7 @@ package gui
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"image/jpeg"
 	"time"
@@ -13,10 +14,9 @@ import (
 	"github.com/alexballas/refyne/v2/container"
 	"github.com/alexballas/refyne/v2/lang"
 	"github.com/alexballas/refyne/v2/layout"
-	"github.com/alexballas/refyne/v2/storage"
 	"github.com/alexballas/refyne/v2/theme"
 	"github.com/alexballas/refyne/v2/widget"
-	xfilepicker "github.com/alexballas/xfilepicker/dialog"
+	"go2tv.app/go2tv/v2/internal/mediaartwork"
 	"go2tv.app/go2tv/v2/internal/mediamodel"
 )
 
@@ -92,36 +92,37 @@ func (screen *FyneScreen) prewarmQueueThumbnails(items []QueueItem) {
 		return
 	}
 
-	uris := make([]fyne.URI, 0, len(items))
 	audioPaths := make([]string, 0, len(items))
 	for _, item := range items {
-		switch item.MediaKind() {
-		case "audio":
+		if item.MediaKind() == mediamodel.MediaKindAudio {
 			audioPaths = append(audioPaths, item.Path())
-		case "image", "video":
-			uris = append(uris, storage.NewFileURI(item.Path()))
 		}
 	}
 
-	if len(uris) > 0 {
-		xfilepicker.GetThumbnailManager().PrewarmDirectory(uris)
-	}
 	if len(audioPaths) > 0 {
 		go func() {
 			for _, path := range audioPaths {
-				screen.resolveCachedGUIArtwork(path, "audio/unknown", true)
+				screen.queueMediaThumbnail(path, mediamodel.MediaKindAudio)
 			}
 		}()
 	}
 }
 
 func (screen *FyneScreen) queueAudioThumbnail(path string) *canvas.Image {
-	_, asset := screen.resolveCachedGUIArtwork(path, "audio/unknown", true)
-	if asset == nil {
+	return screen.queueMediaThumbnail(path, mediamodel.MediaKindAudio)
+}
+
+func (screen *FyneScreen) queueMediaThumbnail(path string, kind mediamodel.MediaKind) *canvas.Image {
+	data, err := mediaartwork.Thumbnail(context.Background(), mediaartwork.Request{
+		Path:       path,
+		Kind:       kind,
+		FFmpegPath: screen.ffmpegPath,
+	})
+	if err != nil || len(data) == 0 {
 		return nil
 	}
 
-	artwork, err := jpeg.Decode(bytes.NewReader(asset.Data))
+	artwork, err := jpeg.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil
 	}
@@ -784,10 +785,7 @@ func (r *queueRow) setRow(index int, item QueueItem, isCurrent bool) {
 		r.fallbackIcon.Show()
 
 		if needsThumb && item.Path() != "" {
-			if img := xfilepicker.GetThumbnailManager().LoadMemoryOnly(item.Path()); item.MediaKind() != "audio" && img != nil {
-				r.pendingThumbPath = ""
-				r.applyThumbnail(item.Path(), img)
-			} else if r.pendingThumbPath != item.Path() {
+			if r.pendingThumbPath != item.Path() {
 				r.thumbnailRequestID++
 				requestID := r.thumbnailRequestID
 				r.pendingThumbPath = item.Path()
@@ -801,14 +799,10 @@ func (r *queueRow) setRow(index int, item QueueItem, isCurrent bool) {
 						r.applyThumbnail(path, img)
 					})
 				}
-				if item.MediaKind() == "audio" {
-					go func() {
-						apply(r.screen.queueAudioThumbnail(path))
-					}()
-				} else {
-					uri := storage.NewFileURI(item.Path())
-					go xfilepicker.GetThumbnailManager().Load(uri, apply)
-				}
+				kind := item.MediaKind()
+				go func() {
+					apply(r.screen.queueMediaThumbnail(path, kind))
+				}()
 			}
 		}
 	} else {

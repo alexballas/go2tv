@@ -14,6 +14,7 @@ type Config struct {
 	Controller *controller.Controller
 	Library    *library.Library
 	Artwork    *controller.ArtworkCache
+	FFmpegPath string
 }
 
 type envelope struct {
@@ -28,9 +29,12 @@ type rootDTO struct {
 	Name string `json:"name"`
 }
 type entryDTO struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Kind string `json:"kind"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Kind         string `json:"kind"`
+	MediaKind    string `json:"media_kind,omitempty"`
+	ThumbnailURL string `json:"thumbnail_url,omitempty"`
+	ArtworkURL   string `json:"artwork_url,omitempty"`
 }
 
 type bootstrapDTO struct {
@@ -46,6 +50,7 @@ type bootstrapDTO struct {
 type deviceDTO struct {
 	ID           string   `json:"id"`
 	Label        string   `json:"label"`
+	Protocol     string   `json:"protocol"`
 	Capabilities []string `json:"capabilities,omitempty"`
 }
 type queueDTO struct {

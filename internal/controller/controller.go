@@ -951,6 +951,21 @@ func (c *Controller) SetVolume(ctx context.Context, mutation Mutation, volume in
 	return c.deviceControl(ctx, mutation, func(t Transport) error { return t.SetVolume(ctx, volume) }, func(s *actorState) { s.volume = volume })
 }
 
+func (c *Controller) AdjustVolume(ctx context.Context, mutation Mutation, delta int) Result {
+	if delta != -1 && delta != 1 {
+		return fail(mutation.RequestID, 0, ErrInvalidOperation)
+	}
+	volume := 0
+	return c.deviceControl(ctx, mutation, func(t Transport) error {
+		current, err := t.Volume(ctx)
+		if err != nil {
+			return err
+		}
+		volume = max(0, min(100, current+delta))
+		return t.SetVolume(ctx, volume)
+	}, func(s *actorState) { s.volume = volume })
+}
+
 func (c *Controller) SetMute(ctx context.Context, mutation Mutation, muted bool) Result {
 	return c.deviceControl(ctx, mutation, func(t Transport) error { return t.SetMute(ctx, muted) }, func(s *actorState) { s.muted = muted })
 }
