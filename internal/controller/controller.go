@@ -377,6 +377,18 @@ func (c *Controller) ClearQueue(ctx context.Context, mutation Mutation) Result {
 		if result := s.check(mutation); !result.OK() {
 			return result
 		}
+		if s.active != nil {
+			if index := queueIndex(s.queue, s.active.itemID); index >= 0 {
+				item, _ := s.queue.Item(index)
+				s.queue = mediamodel.NewQueue([]mediamodel.QueueItem{item}, 0)
+				s.queueRefs = map[string]MediaRef{item.ID(): s.active.media}
+				s.media = s.active.media
+				s.mediaQueueID = item.ID()
+				s.artworkID = mediaArtworkID(s.active.media)
+				s.commit()
+				return Result{RequestID: mutation.RequestID, Revision: s.revision}
+			}
+		}
 		s.queue = nil
 		s.queueRefs = nil
 		if s.mediaQueueID != "" {

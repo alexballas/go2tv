@@ -150,6 +150,18 @@ test("clear queue button sends queue.clear and tracks queue state",async()=>{
   assert.equal(ids["queue-clear"].disabled,true);assert.equal(ids["queue-count"].textContent,"0");assert.equal(ids.queue.children[0].textContent,"Queue is empty — add something from your library.");
 });
 
+test("clear queue retains active item controls and artwork",async()=>{
+  const {ids,env}=fixture();startClient(env);await settle();const ws=FakeSocket.instances[0];ws.emit("open");
+  const active={id:"q1",name:"one.mp3",kind:"audio",selected:true,active:true};
+  ws.message({protocol_version:1,type:"state.snapshot",payload:{revision:4,selected_media:true,selected_media_name:"one.mp3",active_media_name:"one.mp3",artwork_id:"cover",has_session:true,playback_state:"PLAYING",queue:[active,{id:"q2",name:"two.mp3",kind:"audio",selected:false,active:false}]}});
+  ids["queue-clear"].emit("click");const request=ws.sent.at(-1);assert.equal(request.type,"queue.clear");
+  ws.message({protocol_version:1,type:"ack",id:request.id,payload:{revision:5}});
+  ws.message({protocol_version:1,type:"state.snapshot",payload:{revision:5,selected_media:true,selected_media_name:"one.mp3",active_media_name:"one.mp3",artwork_id:"cover",has_session:true,playback_state:"PLAYING",queue:[active]}});
+  assert.equal(ids.queue.children.length,1);assert.equal(ids.queue.children[0].children[1].children[0].textContent,"one.mp3");
+  assert.equal(ids.artwork.src,"/api/artwork/cover.jpg");assert.equal(ids["artwork-placeholder"].hidden,true);
+  assert.equal(ids["play-toggle"].textContent,"Pause");assert.equal(ids["play-toggle"].disabled,false);assert.equal(ids.queue.children[0].children[2].children[0].disabled,false);
+});
+
 test("loop and autoplay remain mutually exclusive",async()=>{
   const {ids,env}=fixture();startClient(env);await settle();const ws=FakeSocket.instances[0];
   ids.autoplay.checked=true;ids["same-type"].checked=true;ids.loop.checked=true;ids.loop.emit("change");

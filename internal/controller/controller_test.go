@@ -681,6 +681,36 @@ func TestRemoveActiveQueueItemRejected(t *testing.T) {
 	}
 }
 
+func TestClearQueueRetainsActiveItemAndArtwork(t *testing.T) {
+	c, _, _ := newTestController(playback.Device{ID: "one", Protocol: "DLNA"})
+	defer c.Close()
+	awaitDevices(t, c, 1)
+	if result := c.SelectDevice(context.Background(), Mutation{}, "one"); !result.OK() {
+		t.Fatal(result)
+	}
+	active := testMedia("a.mp3", mediamodel.MediaKindAudio)
+	active.Artwork = &metadata.ArtworkAsset{ID: "cover"}
+	addTestQueue(t, c, active, testMedia("b.mp3", mediamodel.MediaKindAudio))
+	before, _ := c.Snapshot(context.Background())
+	activeID := before.Queue[0].ID
+	if result := c.Play(context.Background(), PlayRequest{QueueItemID: activeID}); !result.OK() {
+		t.Fatal(result)
+	}
+	if result := c.ClearQueue(context.Background(), Mutation{}); !result.OK() {
+		t.Fatal(result)
+	}
+	after, _ := c.Snapshot(context.Background())
+	if len(after.Queue) != 1 || after.Queue[0].ID != activeID || !after.Queue[0].IsSelected || !after.Queue[0].IsActive {
+		t.Fatalf("queue = %#v", after.Queue)
+	}
+	if !after.HasSession || after.PlaybackState != "PLAYING" || after.SelectedMedia != "a.mp3" || after.ArtworkID != "cover" {
+		t.Fatalf("playback = %#v", after)
+	}
+	if result := c.Pause(context.Background(), Mutation{}); !result.OK() {
+		t.Fatalf("pause = %#v", result)
+	}
+}
+
 func TestRemoveSelectedQueueItemRejected(t *testing.T) {
 	c, _, _ := newTestController()
 	defer c.Close()
