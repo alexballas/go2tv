@@ -3,26 +3,45 @@
 @source "./index.html";
 @source "./client.js";
 
+@theme {
+  /* Go2TV brand palette — https://go2tv.app (accent #883dd9, glow #57d0ff, punch #ff4ecf) */
+  --color-brand-50: #f8f4fe;
+  --color-brand-100: #f0e7fc;
+  --color-brand-200: #e3d2f9;
+  --color-brand-300: #ccadf3;
+  --color-brand-400: #ab77e9;
+  --color-brand-500: #9756e0;
+  --color-brand-600: #883dd9;
+  --color-brand-700: #7530bc;
+  --color-brand-800: #622a9b;
+  --color-brand-900: #52247d;
+}
+
 @layer base {
   :root { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
   * { @apply box-border; }
-  body { @apply min-h-screen bg-slate-50 text-slate-950 antialiased dark:bg-[#090b0f] dark:text-slate-100; background-image: radial-gradient(circle at 50% -20%, rgb(37 99 235 / .10), transparent 34rem); }
+  ::selection { background: rgb(136 61 217 / .30); }
+  body { @apply min-h-screen bg-[#f8f7fb] text-slate-950 antialiased dark:bg-[#07070b] dark:text-[#f4f5ff]; background-image: radial-gradient(circle at 50% -20%, rgb(136 61 217 / .07), transparent 34rem); }
+  @media (prefers-color-scheme: dark) {
+    body { background-image: radial-gradient(64rem 36rem at 50% -14%, rgb(136 61 217 / .16), transparent 70%), radial-gradient(46rem 30rem at 108% 112%, rgb(87 208 255 / .06), transparent 70%), radial-gradient(40rem 28rem at -8% 108%, rgb(255 78 207 / .05), transparent 70%); }
+  }
   main { @apply mx-auto grid max-w-[90rem] gap-5 px-4 py-5 sm:px-6 sm:py-7 lg:px-8; }
   h1 { @apply text-[1.7rem] font-black leading-none tracking-[-0.04em]; }
   h2 { @apply text-lg font-bold tracking-[-0.02em]; }
-  section { @apply min-w-0 self-start rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_12px_40px_-28px_rgba(15,23,42,.45)] dark:border-white/10 dark:bg-white/[.045]; }
-  button, select, input[type="number"], input[type="search"] { @apply min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition duration-150 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-white/15 dark:bg-white/[.06] dark:text-slate-100; }
+  section { @apply min-w-0 self-start rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_12px_40px_-28px_rgba(82,36,125,.45)] dark:border-white/10 dark:bg-white/[.045]; }
+  button, select, input[type="number"], input[type="search"] { @apply min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition duration-150 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 dark:border-white/15 dark:bg-white/[.06] dark:text-slate-100 dark:focus:border-brand-400/70 dark:focus:ring-brand-400/15; }
   button { @apply font-semibold hover:-translate-y-px hover:border-slate-400 hover:bg-slate-50 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 dark:hover:border-white/25 dark:hover:bg-white/10; }
   select { @apply py-2; color-scheme: light dark; }
   select option { @apply bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100; }
   ul { @apply min-w-0; }
   label { @apply flex items-center gap-2; }
-  input[type="range"] { @apply w-full accent-blue-600; }
-  input[type="checkbox"] { @apply size-4 shrink-0 accent-blue-600; }
+  input[type="range"] { @apply w-full accent-brand-600; }
+  input[type="checkbox"] { @apply size-4 shrink-0 accent-brand-600; }
 
   .app-header { @apply flex items-center justify-between gap-4 border-b border-slate-200/80 pb-5 dark:border-white/10; }
   .brand { @apply flex items-center gap-3; }
-  .brand-mark { @apply grid size-10 place-items-center rounded-xl bg-blue-600 pl-0.5 text-sm text-white shadow-lg shadow-blue-600/20; }
+  .brand-mark { @apply block size-11 shrink-0 drop-shadow-[0_8px_18px_rgba(136,61,217,.35)]; }
+  .brand h1 { @apply text-brand-700 dark:text-[#f4f5ff]; }
   .brand p { @apply mt-1 text-xs text-slate-500 dark:text-slate-400; }
   .connection { @apply flex min-h-10 items-center gap-2 rounded-full bg-white px-3.5 text-sm font-medium shadow-sm ring-1 ring-slate-200 dark:bg-white/[.05] dark:ring-white/10; }
   .connection i { @apply size-2 rounded-full bg-amber-500 shadow-[0_0_0_4px] shadow-amber-500/10; }
@@ -35,7 +54,7 @@
   .content-grid { @apply grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_24rem]; }
   .side-stack { @apply grid min-w-0 gap-5 lg:sticky lg:top-5; }
   .section-heading { @apply mb-4 flex min-w-0 items-end justify-between gap-4; }
-  .section-heading > div > span, .now-playing > span { @apply mb-0.5 block text-[.68rem] font-bold uppercase tracking-[.14em] text-blue-600 dark:text-blue-400; }
+  .section-heading > div > span, .now-playing > span { @apply mb-0.5 block text-[.68rem] font-bold uppercase tracking-[.14em] text-brand-600 dark:text-brand-400; }
   .section-help { @apply -mt-2 mb-4 text-sm text-slate-500 dark:text-slate-400; }
 
   .devices-card { @apply h-full; }
@@ -48,24 +67,24 @@
   .device-list { @apply absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 grid max-h-60 gap-2 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-2xl dark:border-white/15 dark:bg-slate-900; scrollbar-width: thin; }
   .device-option { @apply w-full; }
   .device-trigger[data-selected="true"],
-  .device-option[data-selected="true"] { @apply border-blue-500 bg-blue-50 ring-2 ring-blue-500/10 dark:border-blue-500/70 dark:bg-blue-500/10; }
+  .device-option[data-selected="true"] { @apply border-brand-500 bg-brand-50 ring-2 ring-brand-500/10 dark:border-brand-500/70 dark:bg-brand-500/10; }
   .device-name { @apply min-w-0 truncate font-semibold; }
   .device-badges { @apply flex shrink-0 flex-wrap justify-end gap-1; }
   .device-badge { @apply rounded-lg px-2 py-1 text-[.65rem] font-bold leading-none; background: #eaeaea; color: #5f5f5f; }
   .device-badge[data-kind="chromecast"] { background: #daeee7; color: #346d5f; }
-  .device-badge[data-kind="dlna"] { background: #e2e8fa; color: #465d96; }
+  .device-badge[data-kind="dlna"] { background: #e9e2fa; color: #5d4696; }
   .device-badge[data-kind="audio-only"] { background: #f6ead6; color: #83642f; }
   @media (prefers-color-scheme: dark) {
     .device-badge { background: #3a3a3a; color: #bebebe; }
     .device-badge[data-kind="chromecast"] { background: #364742; color: #bdd4cb; }
-    .device-badge[data-kind="dlna"] { background: #3a4052; color: #c3cde8; }
+    .device-badge[data-kind="dlna"] { background: #423a52; color: #cfc3e8; }
     .device-badge[data-kind="audio-only"] { background: #483c2d; color: #e1c092; }
   }
 
   .player-card { @apply grid min-h-[15rem] gap-5 overflow-hidden p-4 sm:grid-cols-[12.5rem_minmax(0,1fr)] sm:p-5; }
-  .artwork-shell { @apply relative aspect-square w-full overflow-hidden rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 sm:aspect-auto sm:min-h-[12.5rem]; }
+  .artwork-shell { @apply relative aspect-square w-full overflow-hidden rounded-2xl bg-gradient-to-br from-[#ff4ecf] via-[#883dd9] to-[#57d0ff] sm:aspect-auto sm:min-h-[12.5rem]; }
   .artwork-shell img { @apply absolute inset-0 size-full object-contain; }
-  #artwork-placeholder { @apply grid size-full place-items-center text-5xl font-light text-white/80; }
+  #artwork-placeholder { @apply grid size-full place-items-center text-5xl font-light text-white/90; }
   .player-body { @apply flex min-w-0 flex-col justify-center; }
   .player-heading { @apply mb-4 flex min-w-0 items-start justify-between gap-4; }
   .now-playing { @apply min-w-0; }
@@ -76,7 +95,7 @@
   #time { @apply text-right font-mono text-xs tabular-nums text-slate-500; }
   .transport-row { @apply mt-4 flex flex-wrap items-center justify-between gap-4; }
   .controls { @apply flex gap-2; }
-  .primary-control { @apply min-w-24 border-blue-600 bg-blue-600 text-white shadow-md shadow-blue-600/15 hover:border-blue-500 hover:bg-blue-500; }
+  .primary-control { @apply min-w-24 border-brand-600 bg-brand-600 text-white shadow-md shadow-brand-600/25 hover:border-brand-500 hover:bg-brand-500 dark:border-brand-500/50 dark:bg-brand-600/60 dark:text-white dark:hover:border-brand-400/60 dark:hover:bg-brand-600/75; }
   .volume-control { @apply flex flex-wrap items-center gap-2 text-sm; }
   .volume-control > span { @apply mr-1 text-slate-500 dark:text-slate-400; }
   .volume-control button { @apply min-h-10 min-w-10 px-3 text-base; }
@@ -89,7 +108,7 @@
   .selection-status > div { @apply min-w-0; }
   .selection-status strong, .selection-status span { @apply block min-w-0 truncate text-sm; }
   .status-label { @apply mb-0.5 text-[.65rem]! font-bold uppercase tracking-wider text-slate-400; }
-  #media-selected { @apply text-blue-700 dark:text-blue-300; }
+  #media-selected { @apply text-brand-700 dark:text-brand-300; }
   #subtitle-selected { @apply text-slate-600 dark:text-slate-300; }
   .selection-value { @apply flex min-w-0 items-center gap-2; }
   .selection-value #subtitle-selected { @apply min-w-0 flex-1; }
@@ -101,10 +120,10 @@
   #library-filter { @apply min-h-9 w-full; }
   .library-list { @apply divide-y divide-slate-100 dark:divide-white/[.07]; }
   .library-row { @apply grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-3; }
-  .library-row[data-selected="true"] { @apply -mx-2 rounded-xl bg-blue-50 px-2 ring-1 ring-inset ring-blue-100 dark:bg-blue-500/10 dark:ring-blue-500/20; }
+  .library-row[data-selected="true"] { @apply -mx-2 rounded-xl bg-brand-50 px-2 ring-1 ring-inset ring-brand-100 dark:bg-brand-500/10 dark:ring-brand-500/20; }
   .entry-main { @apply flex min-w-0 items-center gap-3; }
   .media-thumbnail, .entry-icon { @apply relative grid size-13 min-h-13 shrink-0 place-items-center overflow-hidden rounded-lg border border-slate-200 bg-slate-100 p-0 text-lg text-slate-500 shadow-none dark:border-white/10 dark:bg-white/[.06] dark:text-slate-300; }
-  .media-thumbnail { @apply hover:translate-y-0 hover:border-blue-400 hover:bg-slate-100 focus:ring-2 focus:ring-blue-500/20 dark:hover:border-blue-500/70 dark:hover:bg-white/[.06]; }
+  .media-thumbnail { @apply hover:translate-y-0 hover:border-brand-400 hover:bg-slate-100 focus:ring-2 focus:ring-brand-500/20 dark:hover:border-brand-500/70 dark:hover:bg-white/[.06]; }
   .media-thumbnail:disabled { @apply cursor-default opacity-100; }
   .media-thumbnail img { @apply size-full object-cover; }
   .thumbnail-fallback { @apply absolute inset-0 grid size-full place-items-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900; }
@@ -114,7 +133,7 @@
   .entry-meta { @apply min-w-0 truncate text-xs text-slate-500 dark:text-slate-400; }
   .row-actions { @apply flex shrink-0 flex-wrap justify-end gap-2; }
   .row-actions button { @apply min-h-9 whitespace-nowrap px-3; }
-  .row-actions .primary-action, .row-actions .queue-primary { @apply border-blue-500 text-blue-700 dark:border-blue-500/70 dark:text-blue-300; }
+  .row-actions .primary-action, .row-actions .queue-primary { @apply border-brand-500 text-brand-700 dark:border-brand-500/70 dark:text-brand-300; }
   .browser-nav { @apply py-3; }
   .empty-state { @apply rounded-xl px-4 py-10 text-center text-sm leading-6 text-slate-500 dark:text-slate-400; }
   .loading-state { @apply animate-pulse; }
@@ -124,7 +143,7 @@
   #queue-count { @apply ml-1 align-middle text-xs font-semibold text-slate-400; }
   #queue { @apply grid max-h-[34rem] gap-2 overflow-y-auto pr-1; scrollbar-width: thin; }
   .queue-row { @apply grid min-w-0 grid-cols-[1.75rem_minmax(0,1fr)] gap-x-2 gap-y-3 rounded-xl border border-slate-200/80 bg-slate-50/60 p-3 transition dark:border-white/10 dark:bg-white/[.025]; }
-  .queue-row[data-selected="true"] { @apply border-blue-400 bg-blue-50/80 ring-2 ring-blue-500/10 dark:border-blue-500/60 dark:bg-blue-500/10; }
+  .queue-row[data-selected="true"] { @apply border-brand-400 bg-brand-50/80 ring-2 ring-brand-500/10 dark:border-brand-500/60 dark:bg-brand-500/10; }
   .queue-row[data-active="true"] { @apply border-emerald-400 dark:border-emerald-500/60; }
   .queue-index { @apply grid size-7 place-items-center rounded-lg bg-slate-200/70 font-mono text-xs text-slate-600 dark:bg-white/10 dark:text-slate-300; }
   .queue-row .entry-copy { @apply self-center; }
@@ -147,11 +166,11 @@
   #toast p[data-level="error"] { @apply bg-red-700 text-white dark:bg-red-700 dark:text-white; }
 
   #artwork-modal { @apply m-auto max-h-[92vh] w-[min(92vw,52rem)] overflow-visible border-0 bg-transparent p-0 text-slate-950 outline-none dark:text-slate-100; }
-  #artwork-modal::backdrop { @apply bg-slate-950/80 backdrop-blur-sm; }
-  .artwork-modal-card { @apply relative grid max-h-[92vh] gap-3 overflow-hidden rounded-2xl border border-white/15 bg-slate-950 p-3 shadow-2xl; }
+  #artwork-modal::backdrop { @apply bg-[#07070b]/85 backdrop-blur-sm; }
+  .artwork-modal-card { @apply relative grid max-h-[92vh] gap-3 overflow-hidden rounded-2xl border border-white/15 bg-[#0a0a12] p-3 shadow-2xl; }
   #artwork-modal-image { @apply max-h-[82vh] w-full rounded-xl object-contain; }
   #artwork-modal-title { @apply truncate px-2 pb-1 text-center text-sm font-semibold text-slate-200; }
-  #artwork-modal-close { @apply absolute right-5 top-5 z-10 grid size-10 min-h-10 place-items-center rounded-full border-white/20 bg-slate-950/75 p-0 text-xl text-white shadow-lg backdrop-blur hover:translate-y-0 hover:bg-slate-900; }
+  #artwork-modal-close { @apply absolute right-5 top-5 z-10 grid size-10 min-h-10 place-items-center rounded-full border-white/20 bg-[#07070b]/75 p-0 text-xl text-white shadow-lg backdrop-blur hover:translate-y-0 hover:bg-slate-900; }
 
   @media (max-width: 639px) {
     main { @apply px-3 py-4; }
