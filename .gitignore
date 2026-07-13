@@ -1,3 +1,4 @@
 build
 .vscode
 dev_docs
+node_modules

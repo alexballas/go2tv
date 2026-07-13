@@ -89,6 +89,10 @@ func upsertChromecastFromMDNSEntry(entry *mdns.ServiceEntry) {
 }
 
 func warmupChromecastCache(timeout time.Duration) {
+	warmupChromecastCacheContext(context.Background(), timeout)
+}
+
+func warmupChromecastCacheContext(ctx context.Context, timeout time.Duration) {
 	interfaces := getActiveNetworkInterfaces()
 
 	entriesCh := make(chan *mdns.ServiceEntry, 256)
@@ -108,7 +112,9 @@ func warmupChromecastCache(timeout time.Duration) {
 		params.WantUnicastResponse = true
 		params.Logger = log.New(io.Discard, "", 0)
 		params.Interface = iface
-		_ = mdns.Query(params)
+		if ctx.Err() == nil {
+			_ = mdns.Query(params)
+		}
 	}
 
 	if len(interfaces) > 0 {

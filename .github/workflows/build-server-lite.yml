@@ -1,0 +1,42 @@
+name: Build server/lite
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            artifact_os: linux
+            suffix: ""
+          - goos: darwin
+            goarch: amd64
+            artifact_os: macOS
+            suffix: ""
+          - goos: windows
+            goarch: amd64
+            artifact_os: windows
+            suffix: ".exe"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Set version
+        run: echo "GO2TV_VERSION=$(sed 's/^devel$/dev/' version.txt)" >> "$GITHUB_ENV"
+      - name: Build
+        run: |
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 go build \
+            -trimpath -ldflags "-s -w -X main.version=${GO2TV_VERSION}" \
+            -o go2tv-server-lite${{ matrix.suffix }} ./cmd/go2tv-lite
+      - uses: actions/upload-artifact@v6
+        with:
+          name: go2tv_server_lite_${{ matrix.artifact_os }}_${{ matrix.goarch }}
+          path: |
+            LICENSE
+            README.md
+            go2tv-server-lite${{ matrix.suffix }}
+          retention-days: 2

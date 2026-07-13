@@ -29,6 +29,7 @@ import (
 	"go2tv.app/go2tv/v2/internal/crashlog"
 	"go2tv.app/go2tv/v2/internal/devicecolors"
 	"go2tv.app/go2tv/v2/internal/playback"
+	"go2tv.app/go2tv/v2/internal/servermode"
 	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
@@ -46,9 +47,18 @@ var (
 	listPtr      = flag.Bool("l", false, "List available devices (Smart TVs and Chromecasts).")
 
 	versionPtr = flag.Bool("version", false, "Print version.")
+	serverPtr  = flag.Bool("server", false, "Run Web server mode.")
+	listenPtr  = flag.String("listen", servermode.DefaultListen, "Web server listen address.")
+	mediaRoots servermode.Strings
+	origins    servermode.Strings
 
 	errNoCombi = errors.New("can't combine -l with other flags")
 )
+
+func init() {
+	flag.Var(&mediaRoots, "media-root", "Allowed media directory (repeatable; required with -server).")
+	flag.Var(&origins, "allowed-origin", "Allowed Web origin, including scheme/host/port (repeatable).")
+}
 
 type dummyScreen struct {
 	ctxCancel context.CancelFunc
@@ -99,6 +109,17 @@ func run(crash *crashlog.Session) error {
 	defer cancel()
 
 	flag.Parse()
+	if err := validateServerFlags(); err != nil {
+		return err
+	}
+	if *serverPtr {
+		return servermode.Run(exitCTX, servermode.Config{
+			Listen:         *listenPtr,
+			MediaRoots:     mediaRoots,
+			AllowedOrigins: origins,
+			Version:        version,
+		}, os.Stdout)
+	}
 
 	flagRes, err := processflags()
 	if err != nil {
@@ -271,6 +292,24 @@ func run(crash *crashlog.Session) error {
 	}
 
 	return nil
+}
+
+func validateServerFlags() error {
+	var legacy []string
+	listenSet := false
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "listen":
+			listenSet = true
+		case "version", "v", "u", "s", "t", "tc", "l":
+			legacy = append(legacy, "-"+f.Name)
+		}
+	})
+	return validateServerFlagValues(*serverPtr, listenSet, mediaRoots, origins, legacy, flag.Args())
+}
+
+func validateServerFlagValues(server, listenSet bool, roots, allowedOrigins, legacy, args []string) error {
+	return servermode.ValidateCLI(server, listenSet, roots, allowedOrigins, legacy, args)
 }
 
 func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL, mediaPath string, mediaFile any, mediaType, subsPath, ffmpegPath string, transcode, externalURL bool) error {

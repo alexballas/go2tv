@@ -3,6 +3,7 @@ package soapcalls
 import (
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/hashicorp/go-retryablehttp"
@@ -43,5 +44,22 @@ func newRetryableHTTPClient(retryMax int) *http.Client {
 	retryClient.Logger = nil
 	retryClient.HTTPClient = newHTTPClient()
 
+	return retryClient.StandardClient()
+}
+
+func (p *TVPayload) httpClient(endpoint *url.URL) *http.Client {
+	if p != nil && endpoint != nil {
+		if pinned := net.ParseIP(p.PinnedIP); pinned != nil {
+			return rendererHTTPClient(endpoint, pinned)
+		}
+	}
+	return newHTTPClient()
+}
+
+func (p *TVPayload) retryableHTTPClient(endpoint *url.URL, retryMax int) *http.Client {
+	retryClient := retryablehttp.NewClient()
+	retryClient.RetryMax = retryMax
+	retryClient.Logger = nil
+	retryClient.HTTPClient = p.httpClient(endpoint)
 	return retryClient.StandardClient()
 }

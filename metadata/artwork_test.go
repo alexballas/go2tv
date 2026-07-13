@@ -344,6 +344,28 @@ func TestResolveArtworkEmbeddedFormats(t *testing.T) {
 	}
 }
 
+func TestResolveEmbeddedArtworkFromConfinedHandle(t *testing.T) {
+	cover := encodeTestImage(t, "jpeg", 19, 29, color.NRGBA{B: 200, A: 255})
+	want, err := LoadArtwork(cover, "track.mp3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "track.mp3")
+	writeTestFile(t, path, buildTestMP3([]embeddedPicture{{pictureType: 3, mime: "image/jpeg", data: cover}}))
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	got, err := ResolveEmbeddedArtwork(file, "track.mp3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.ID != want.ID {
+		t.Fatalf("asset = %+v, want ID %s", got, want.ID)
+	}
+}
+
 func TestResolveArtworkMissingDirectory(t *testing.T) {
 	asset, err := ResolveArtwork(filepath.Join(t.TempDir(), "missing", "track.mp3"))
 	if err != nil || asset != nil {

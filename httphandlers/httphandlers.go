@@ -2,6 +2,7 @@ package httphandlers
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"html"
@@ -331,6 +332,7 @@ func artworkETag(requestPath string) string {
 }
 
 func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) http.HandlerFunc {
+	sink := &legacyScreenSink{tv: tv, screen: screen}
 	return func(w http.ResponseWriter, req *http.Request) {
 		reqParsed, _ := io.ReadAll(req.Body)
 		sidVal, sidExists := req.Header["Sid"]
@@ -349,43 +351,41 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 			return
 		}
 
-		newstate := event.TransportState
+		sink.HandleCallbackEvent(req.Context(), CallbackEvent{SID: uuid, Source: req.RemoteAddr, TransportState: event.TransportState, MediaType: tv.MediaType})
+	}
+}
 
-		// Apparently we should ignore the first message
-		// On some media renderers we receive a STOPPED message
-		// even before we start streaming.
-		processStop, err := tv.GetProcessStop(uuid)
-		if err != nil {
-			http.NotFound(w, req)
-			return
-		}
+// legacyScreenSink keeps existing GUI/CLI behavior outside HTTP parsing.
+type legacyScreenSink struct {
+	tv     *soapcalls.TVPayload
+	screen Screen
+}
 
-		if !processStop && newstate == "STOPPED" {
-			tv.SetProcessStopTrue(uuid)
-			fmt.Fprintf(w, "OK\n")
-			return
+func (s *legacyScreenSink) HandleCallbackEvent(_ context.Context, event CallbackEvent) {
+	processStop, err := s.tv.GetProcessStop(event.SID)
+	if err != nil {
+		return
+	}
+	if !processStop && event.TransportState == "STOPPED" {
+		s.tv.SetProcessStopTrue(event.SID)
+		return
+	}
+	if !s.tv.UpdateMRstate(event.TransportState, event.SID) {
+		return
+	}
+	switch event.TransportState {
+	case "PLAYING":
+		if event.MediaType != "" {
+			s.screen.SetMediaType(event.MediaType)
 		}
-
-		if !tv.UpdateMRstate(newstate, uuid) {
-			http.NotFound(w, req)
-			return
-		}
-
-		switch newstate {
-		case "PLAYING":
-			// Handle gapless transition: update media type if changed
-			if tv != nil && tv.MediaType != "" {
-				screen.SetMediaType(tv.MediaType)
-			}
-			screen.EmitMsg("Playing")
-			tv.SetProcessStopTrue(uuid)
-		case "PAUSED_PLAYBACK":
-			screen.EmitMsg("Paused")
-		case "STOPPED":
-			screen.EmitMsg("Stopped")
-			_ = tv.UnsubscribeSoapCall(uuid)
-			screen.Fini()
-		}
+		s.screen.EmitMsg("Playing")
+		s.tv.SetProcessStopTrue(event.SID)
+	case "PAUSED_PLAYBACK":
+		s.screen.EmitMsg("Paused")
+	case "STOPPED":
+		s.screen.EmitMsg("Stopped")
+		_ = s.tv.UnsubscribeSoapCall(event.SID)
+		s.screen.Fini()
 	}
 }
 

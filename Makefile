@@ -7,6 +7,7 @@ REFYNE_PACKAGE?=github.com/alexballas/refyne/v2/cmd/fyne@latest
 
 BUILD_DIR=build
 BIN=$(BUILD_DIR)/go2tv
+BIN_LITE=$(BUILD_DIR)/go2tv-lite
 BIN_WIN=$(BUILD_DIR)/go2tv.exe
 APPDIR=$(BUILD_DIR)/AppDir
 DESKTOP_SRC=assets/linux/app.go2tv.go2tv.desktop
@@ -48,10 +49,14 @@ ANDROID_APK_LIBS=$(BUILD_DIR)/apk-libs
 ANDROID_ABI?=arm64-v8a
 ANDROID_BUILD_TOOLS?=$(shell ls -d $$ANDROID_HOME/build-tools/* 2>/dev/null | sort -V | tail -n1)
 
-.PHONY: build wayland x11 windows windows-sysroot windows-fyne install uninstall clean run test appimage appimage-ffmpeg android
+.PHONY: build build-lite wayland x11 windows windows-sysroot windows-fyne install uninstall clean run test appimage appimage-ffmpeg android
 
 build: clean
 	env $(GO_BUILD_ENV) go build -tags "$(TAGS)" -trimpath -ldflags $(LDFLAGS) -o $(BIN) ./cmd/go2tv
+
+build-lite:
+	mkdir -p $(BUILD_DIR)
+	go build -trimpath -ldflags $(LDFLAGS) -o $(BIN_LITE) ./cmd/go2tv-lite
 
 wayland: clean
 	env $(GO_BUILD_ENV) go build -tags "$(TAGS),wayland" -trimpath -ldflags $(LDFLAGS) -o $(BIN) ./cmd/go2tv

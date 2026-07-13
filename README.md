@@ -227,7 +227,7 @@ If you're behind a firewall, allow inbound traffic from devices on your local ne
 
 ## Building from Source
 
-**Requirements**: Go 1.25
+**Requirements**: Go 1.26
 
 ``` console
 git clone https://github.com/alexballas/go2tv

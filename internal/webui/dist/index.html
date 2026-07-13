@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Go2TV</title>
+  <link rel="stylesheet" href="/assets/app.f9a81ff0.css">
+</head>
+<body>
+<main>
+  <header class="app-header">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">▶</span><div><h1>Go2TV</h1><p>Your media, on the big screen</p></div></div>
+    <div class="connection" aria-live="polite"><i id="connection-dot" aria-hidden="true"></i><span id="status">Connecting…</span><span id="pending"></span></div>
+  </header>
+
+  <div class="top-grid">
+    <section class="devices-card">
+      <div class="section-heading"><div><span>Renderer</span><h2>Choose a device</h2></div></div>
+      <p class="section-help">Select where media should play.</p>
+      <div class="device-controls"><select id="devices" aria-label="Renderer"></select><button id="refresh" type="button">Refresh</button></div>
+    </section>
+
+    <section class="player-card">
+      <div class="artwork-shell"><img id="artwork" alt="Current media artwork" hidden><div id="artwork-placeholder" aria-hidden="true">♪</div></div>
+      <div class="player-body">
+        <div class="player-heading"><div class="now-playing"><span>Now playing</span><h2 id="now-playing-title">Nothing selected</h2></div><strong id="playback-state">Stopped</strong></div>
+        <div class="timeline"><p id="time">0:00 / 0:00</p><input id="seek" type="range" min="0" max="0" value="0" aria-label="Seek" disabled></div>
+        <div class="transport-row">
+          <div class="controls"><button id="play-toggle" type="button" data-command="player.play" class="primary-control">Play</button><button id="stop-button" type="button" data-command="player.stop">Stop</button></div>
+          <div class="volume-control" role="group" aria-label="Volume controls"><span>Volume</span><button id="volume-down" type="button" aria-label="Volume down">−</button><button id="volume-up" type="button" aria-label="Volume up">+</button><button id="mute" type="button" aria-pressed="false">Mute</button></div>
+        </div>
+        <div class="player-options"><label><input id="transcode" type="checkbox"> Transcode next load</label></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="content-grid">
+    <section class="library-card">
+      <div class="section-heading library-heading"><div><span>Media browser</span><h2>Library</h2></div><select id="roots" aria-label="Media root"></select></div>
+      <div class="selection-status"><div><span class="status-label">Media</span><strong id="media-selected">No media selected</strong></div><div><span class="status-label">Subtitles</span><div class="selection-value"><span id="subtitle-selected">None</span><button id="subtitle-clear" type="button" hidden>Clear</button></div></div></div>
+      <div class="browser-toolbar"><div id="breadcrumbs" class="breadcrumbs" aria-label="Current folder"></div><input id="library-filter" type="search" placeholder="Filter this folder" aria-label="Filter this folder"></div>
+      <ul id="library" class="library-list"></ul>
+    </section>
+
+    <aside class="side-stack">
+      <section class="queue-card">
+        <div class="section-heading"><div><span>Up next</span><h2>Queue <small id="queue-count">0</small></h2></div></div>
+        <ul id="queue"></ul>
+      </section>
+      <section class="policy-card">
+        <div class="section-heading"><div><span>Behavior</span><h2>Playback</h2></div></div>
+        <div class="policies">
+          <label><input id="loop" type="checkbox"><span><strong>Loop selected</strong><small>Replay the current item</small></span></label>
+          <label><input id="autoplay" type="checkbox"><span><strong>Autoplay next</strong><small>Continue through the queue</small></span></label>
+          <label><input id="same-type" type="checkbox"><span><strong>Same type only</strong><small>Skip unlike media</small></span></label>
+          <label><input id="gapless" type="checkbox"><span><strong>Gapless</strong><small>DLNA renderers only</small></span></label>
+          <label class="image-duration"><span><strong>Image duration</strong><small>Seconds before advancing</small></span><input id="image-duration" type="number" min="0" max="86400" value="10"></label>
+        </div>
+      </section>
+    </aside>
+  </div>
+  <aside id="toast" aria-live="polite" aria-label="Notifications"></aside>
+</main>
+<script type="module" src="/assets/app.89023fcb.js"></script>
+</body>
+</html>

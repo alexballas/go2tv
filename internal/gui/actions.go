@@ -25,6 +25,7 @@ import (
 	"go2tv.app/go2tv/v2/castprotocol"
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
+	"go2tv.app/go2tv/v2/internal/mediamodel"
 	"go2tv.app/go2tv/v2/internal/playback"
 	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/rtmp"
@@ -252,7 +253,7 @@ func selectMediaPaths(screen *FyneScreen, paths []string) error {
 
 	screen.replaceSessionQueue(items, 0)
 
-	return setCurrentMediaPath(screen, items[0].Path)
+	return setCurrentMediaPath(screen, items[0].Path())
 }
 
 func appendMediaPaths(screen *FyneScreen, paths []string) error {
@@ -265,19 +266,19 @@ func appendMediaPaths(screen *FyneScreen, paths []string) error {
 	combined := make([]QueueItem, 0, len(itemsToAdd)+1)
 	seen := make(map[string]struct{}, len(itemsToAdd)+1)
 	addItem := func(item QueueItem) {
-		if _, ok := seen[item.Path]; ok {
+		if _, ok := seen[item.Path()]; ok {
 			return
 		}
-		seen[item.Path] = struct{}{}
+		seen[item.Path()] = struct{}{}
 		combined = append(combined, item)
 	}
 
 	currentIndex := 0
-	if queue != nil && len(queue.Items) > 0 {
-		for _, item := range queue.Items {
+	if queue != nil && queue.Len() > 0 {
+		for _, item := range queue.Items() {
 			addItem(item)
 		}
-		currentIndex = queue.CurrentIndex
+		currentIndex = queue.CurrentIndex()
 	} else if screen.mediafile != "" && (screen.ExternalMediaURL == nil || !screen.ExternalMediaURL.Checked) {
 		if currentItem, ok := screen.newQueueItem(screen.mediafile); ok {
 			addItem(currentItem)
@@ -294,7 +295,7 @@ func appendMediaPaths(screen *FyneScreen, paths []string) error {
 
 	screen.replaceSessionQueue(combined, currentIndex)
 	if screen.mediafile == "" {
-		if err := setCurrentMediaPath(screen, combined[0].Path); err != nil {
+		if err := setCurrentMediaPath(screen, combined[0].Path()); err != nil {
 			return err
 		}
 		screen.scrollQueueListToBottom()
@@ -517,7 +518,7 @@ func subsAction(screen *FyneScreen) {
 	}, w, false)
 
 	if f, ok := fd.(xfilepicker.FilePicker); ok {
-		f.SetFilter(storage.NewExtensionFileFilter([]string{".srt"}))
+		f.SetFilter(storage.NewExtensionFileFilter(mediamodel.SRTExtensions()))
 	}
 
 	if screen.currentmfolder != "" {

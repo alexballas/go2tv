@@ -15,7 +15,9 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/cabbagekobe/tunetag"
@@ -215,6 +217,52 @@ func ResolveArtwork(mediaPath string) (*ArtworkAsset, error) {
 	}
 
 	return nil, nil
+}
+
+// ResolveEmbeddedArtwork resolves artwork from an already-confined media
+// handle. The handle remains owned by the caller.
+func ResolveEmbeddedArtwork(file *os.File, source string) (*ArtworkAsset, error) {
+	if file == nil || !supportsEmbeddedArtwork(source) {
+		return nil, nil
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+	defer func() { _, _ = file.Seek(0, io.SeekStart) }()
+
+	fdPath := ""
+	switch runtime.GOOS {
+	case "linux", "android":
+		fdPath = "/proc/self/fd/" + strconv.FormatUint(uint64(file.Fd()), 10)
+	case "darwin", "ios", "freebsd":
+		fdPath = "/dev/fd/" + strconv.FormatUint(uint64(file.Fd()), 10)
+	}
+	if fdPath != "" {
+		if tag, err := tunetag.Open(fdPath); err == nil {
+			return loadEmbeddedPictures(tag.Pictures(), source), nil
+		}
+	}
+
+	temp, err := os.CreateTemp("", "go2tv-artwork-*"+filepath.Ext(source))
+	if err != nil {
+		return nil, err
+	}
+	tempPath := temp.Name()
+	defer func() {
+		_ = temp.Close()
+		_ = os.Remove(tempPath)
+	}()
+	if _, err = io.Copy(temp, file); err != nil {
+		return nil, err
+	}
+	if err = temp.Close(); err != nil {
+		return nil, err
+	}
+	tag, err := tunetag.Open(tempPath)
+	if err != nil {
+		return nil, nil
+	}
+	return loadEmbeddedPictures(tag.Pictures(), source), nil
 }
 
 func scanSidecars(directory string) ([]sidecarCandidate, error) {

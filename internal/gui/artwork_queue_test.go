@@ -227,11 +227,11 @@ func newQueueArtworkTestScreen(t *testing.T, tracks []string) (*FyneScreen, *que
 
 	items := make([]QueueItem, 0, len(tracks))
 	for _, track := range tracks {
-		items = append(items, QueueItem{
-			Path:      track,
-			BaseName:  filepath.Base(track),
-			MediaType: "audio",
-		})
+		item, ok := (&FyneScreen{}).newQueueItem(track)
+		if !ok {
+			t.Fatalf("invalid audio queue item: %s", track)
+		}
+		items = append(items, item)
 	}
 	screen := &FyneScreen{
 		mediafile:    tracks[0],

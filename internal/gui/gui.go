@@ -29,6 +29,7 @@ import (
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
 	"go2tv.app/go2tv/v2/internal/crashlog"
+	"go2tv.app/go2tv/v2/internal/mediamodel"
 	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/rtmp"
 	"go2tv.app/go2tv/v2/soapcalls"
@@ -485,17 +486,17 @@ func getAdjacentMedia(screen *FyneScreen, delta int) (string, string, error) {
 
 func getAdjacentQueuedMedia(screen *FyneScreen, delta int, wrap bool) (string, string, error) {
 	queue, _ := screen.queueSnapshot()
-	if queue == nil || len(queue.Items) == 0 {
+	if queue == nil || queue.Len() == 0 {
 		return "", "", errors.New(lang.L("queue is empty"))
 	}
 
-	currentIndex := queue.indexByPath(screen.mediafile)
+	currentIndex := queue.IndexByPath(screen.mediafile)
 	if currentIndex == -1 {
 		return "", "", errors.New(lang.L("current media file is not in the queue"))
 	}
-	queue.CurrentIndex = currentIndex
+	queue.SetCurrentIndex(currentIndex)
 
-	nextIndex := queue.adjacentIndex(delta, screen.SkinNextOnlySameTypes, wrap)
+	nextIndex := queue.AdjacentIndex(delta, screen.SkinNextOnlySameTypes, wrap)
 	if nextIndex == -1 {
 		if delta < 0 {
 			return "", "", errNoPreviousQueueMedia
@@ -504,8 +505,8 @@ func getAdjacentQueuedMedia(screen *FyneScreen, delta int, wrap bool) (string, s
 		return "", "", errNoNextQueueMedia
 	}
 
-	item := queue.Items[nextIndex]
-	return item.BaseName, item.Path, nil
+	item, _ := queue.Item(nextIndex)
+	return item.BaseName(), item.Path(), nil
 }
 
 func isTraversalBoundaryError(err error) bool {
@@ -835,10 +836,10 @@ func NewFyneScreen(version string, crash *crashlog.Session) *FyneScreen {
 		Current:            w,
 		currentmfolder:     currentDir,
 		ffmpegPath:         ffmpegPath,
-		mediaFormats:       []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".m4a", ".jpg", ".jpeg", ".png"},
-		imageFormats:       []string{".jpg", ".jpeg", ".png"},
-		videoFormats:       []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv"},
-		audioFormats:       []string{".mp3", ".flac", ".wav", ".m4a"},
+		mediaFormats:       mediamodel.AllMediaExtensions(),
+		imageFormats:       mediamodel.ImageExtensions(),
+		videoFormats:       mediamodel.VideoExtensions(),
+		audioFormats:       mediamodel.AudioExtensions(),
 		version:            version,
 		Debug:              dw,
 		DiscoveryDebug:     discoveryDebug,

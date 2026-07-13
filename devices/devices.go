@@ -27,6 +27,7 @@ const (
 )
 
 type Device struct {
+	ID          string
 	Name        string
 	Addr        string
 	Type        string
@@ -152,6 +153,14 @@ func IsChromecastURL(deviceURL string) bool {
 // LoadSSDPservices returns a slice of DLNA devices that support
 // required playback services.
 func LoadSSDPservices(delay int) ([]Device, error) {
+	return LoadSSDPservicesContext(context.Background(), delay)
+}
+
+// LoadSSDPservicesContext discovers DLNA renderers and bounds description loads by ctx.
+func LoadSSDPservicesContext(ctx context.Context, delay int) ([]Device, error) {
+	if ctx == nil {
+		return nil, errors.New("LoadSSDPservicesContext: context required")
+	}
 	// Collect unique locations (a single location may have multiple embedded devices).
 	// We intentionally do not filter by ST value here because some vendors reply with
 	// non-AVTransport ST values while still exposing AVTransport in LOCATION XML.
@@ -186,7 +195,25 @@ func LoadSSDPservices(delay int) ([]Device, error) {
 		addrString = address.String()
 	}
 
-	list, err := ssdpSearch(ssdp.All, delay, addrString)
+	type searchResult struct {
+		list []ssdp.Service
+		err  error
+	}
+	search := make(chan searchResult, 1)
+	go func() {
+		list, err := ssdpSearch(ssdp.All, delay, addrString)
+		search <- searchResult{list: list, err: err}
+	}()
+	var (
+		list []ssdp.Service
+		err  error
+	)
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case result := <-search:
+		list, err = result.list, result.err
+	}
 	if err != nil {
 		discoveryDebugf("LoadSSDPservices search error: %v", err)
 		return nil, fmt.Errorf("LoadSSDPservices search error: %w", err)
@@ -210,7 +237,7 @@ func LoadSSDPservices(delay int) ([]Device, error) {
 		wg.Go(func() {
 			defer func() { <-sem }()
 
-			locCtx, cancel := context.WithTimeout(context.Background(), dlnaLocationTimeout)
+			locCtx, cancel := context.WithTimeout(ctx, dlnaLocationTimeout)
 			devices, err := loadDevicesFromLocation(locCtx, loc)
 			cancel()
 
@@ -411,6 +438,37 @@ func LoadAllDevices() ([]Device, error) {
 		deviceNames(combined, 4),
 	)
 
+	return combined, nil
+}
+
+// ScanAllDevices performs one bounded fresh DLNA/mDNS scan.
+func ScanAllDevices(ctx context.Context, dlnaDelay int) ([]Device, error) {
+	if ctx == nil {
+		return nil, errors.New("ScanAllDevices: context required")
+	}
+	if dlnaDelay <= 0 {
+		dlnaDelay = 1
+	}
+	type dlnaResult struct {
+		devices []Device
+		err     error
+	}
+	dlnaCh := make(chan dlnaResult, 1)
+	go func() {
+		found, err := LoadSSDPservicesContext(ctx, dlnaDelay)
+		dlnaCh <- dlnaResult{devices: found, err: err}
+	}()
+	warmupChromecastCacheContext(ctx, chromecastQueryTimeout)
+	result := <-dlnaCh
+	chromecast := getChromecastDevicesSnapshot()
+	combined := append(slices.Clone(result.devices), chromecast...)
+	if len(combined) == 0 {
+		if result.err != nil && !stderrors.Is(result.err, ErrNoDeviceAvailable) {
+			return nil, result.err
+		}
+		return nil, ErrNoDeviceAvailable
+	}
+	sortDevices(combined)
 	return combined, nil
 }
 

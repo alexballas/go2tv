@@ -23,6 +23,7 @@ import (
 	"go2tv.app/go2tv/v2/castprotocol"
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
+	"go2tv.app/go2tv/v2/internal/mediamodel"
 	"go2tv.app/go2tv/v2/internal/playback"
 	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/soapcalls"
@@ -206,7 +207,7 @@ func subsAction(screen *FyneScreen) {
 		screen.SubsText.Refresh()
 	}, w)
 
-	fd.SetFilter(storage.NewExtensionFileFilter([]string{".srt"}))
+	fd.SetFilter(storage.NewExtensionFileFilter(mediamodel.SRTExtensions()))
 
 	resumeHotkeys = suspendHotkeys(screen)
 	fd.Show()

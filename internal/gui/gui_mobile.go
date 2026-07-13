@@ -20,6 +20,7 @@ import (
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
 	"go2tv.app/go2tv/v2/internal/crashlog"
+	"go2tv.app/go2tv/v2/internal/mediamodel"
 	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
@@ -249,7 +250,7 @@ func NewFyneScreen(version string, crash *crashlog.Session) *FyneScreen {
 		Debug:            dw,
 		DiscoveryDebug:   discoveryDebug,
 		ffmpegPath:       ffmpegPath,
-		mediaFormats:     []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".m4a", ".jpg", ".jpeg", ".png"},
+		mediaFormats:     mediamodel.AllMediaExtensions(),
 		version:          version,
 		Crash:            crash,
 		PendingCrashPath: crashPath(crash),
