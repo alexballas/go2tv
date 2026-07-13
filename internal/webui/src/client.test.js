@@ -15,15 +15,16 @@ class FakeSocket extends Node {
 }
 function fixture(){
   FakeSocket.instances=[];const ids={},commands=[];
-  for(const id of ["status","connection-dot","device-picker","device-trigger","devices","roots","library","queue","toast","pending","playback-state","now-playing-title","time","seek","volume-down","volume-up","mute","transcode","media-selected","subtitle-selected","subtitle-clear","artwork","artwork-placeholder","artwork-modal","artwork-modal-image","artwork-modal-title","artwork-modal-close","loop","autoplay","same-type","gapless","image-duration","refresh","queue-count","queue-clear","breadcrumbs","library-filter","play-toggle","stop-button"])ids[id]=new Node();
+  for(const id of ["status","connection-dot","device-picker","device-trigger","devices","roots","library","queue","toast","pending","playback-state","now-playing-title","time","seek","volume-down","volume-up","mute","transcode","media-selected","subtitle-selected","subtitle-clear","artwork","artwork-placeholder","artwork-modal","artwork-modal-image","artwork-modal-title","artwork-modal-close","loop","autoplay","same-type","gapless","image-duration","refresh","queue-count","queue-clear","breadcrumbs","library-filter","play-toggle","stop-button","theme-toggle"])ids[id]=new Node();
   ids.roots.tag="select";
   ids["play-toggle"].dataset.command="player.play";ids["stop-button"].dataset.command="player.stop";commands.push(ids["play-toggle"],ids["stop-button"]);
-  const document={listeners:{},querySelector:selector=>ids[selector.slice(1)],querySelectorAll:selector=>selector==="[data-command]"?commands:[],createElement:tag=>new Node(tag),addEventListener(type,fn){(this.listeners[type]??=[]).push(fn)},emit(type,event){for(const fn of this.listeners[type]||[])fn(event)}};
+  const document={listeners:{},documentElement:new Node("html"),querySelector:selector=>ids[selector.slice(1)],querySelectorAll:selector=>selector==="[data-command]"?commands:[],createElement:tag=>new Node(tag),addEventListener(type,fn){(this.listeners[type]??=[]).push(fn)},emit(type,event){for(const fn of this.listeners[type]||[])fn(event)}};
   const snapshot={revision:3,devices:[{id:"dev-1",label:"<Kitchen>",protocol:"Chromecast",capabilities:["audio_only"]},{id:"dev-2",label:"Living room",protocol:"DLNA"}],selected_device_id:"dev-1",selected_media:false,selected_subtitle:false,queue:[],transcode:false,has_session:false,playback_state:"STOPPED",position:0,duration:0,volume:25,muted:false,policy:{LoopSelected:false,AutoPlayNext:false,AutoPlaySameType:false,GaplessEnabled:false,ImageDurationSeconds:10}};
   const fetch=async url=>({ok:true,json:async()=>url==="/api/bootstrap"?{protocol_version:1,revision:3,snapshot,roots:[{id:"root-1",name:"Media"}]}:{entries:[{id:"media-1",name:"<movie>.mp4",kind:"file",media_kind:"video",thumbnail_url:"/api/thumbnail?entry_id=media-1",artwork_url:"/api/media-artwork?entry_id=media-1"},{id:"sub-1",name:"captions.srt",kind:"file"}]}});
-  const storage=new Map(),sessionStorage={getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)};
-  const timers=[];const env={document,fetch,WebSocket:FakeSocket,location:{protocol:"http:",host:"test",reload(){this.reloaded=true}},sessionStorage,setTimeout:fn=>(timers.push(fn),timers.length),clearTimeout(){}};
-  return {ids,commands,document,env,timers};
+  const store=()=>{const data=new Map();return {getItem:key=>data.get(key)||null,setItem:(key,value)=>data.set(key,value),removeItem:key=>data.delete(key)}};
+  const mql={matches:false,listeners:[],addEventListener(type,fn){this.listeners.push(fn)},emit(){for(const fn of this.listeners)fn()}};
+  const timers=[];const env={document,fetch,WebSocket:FakeSocket,location:{protocol:"http:",host:"test",reload(){this.reloaded=true}},sessionStorage:store(),localStorage:store(),matchMedia:()=>mql,setTimeout:fn=>(timers.push(fn),timers.length),clearTimeout(){}};
+  return {ids,commands,document,env,timers,mql};
 }
 const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
 
@@ -137,6 +138,23 @@ test("load more survives filtering and appends the next page",async()=>{
   assert.equal(loadMore(),undefined);assert.deepEqual(ids.library.children.map(row=>row.children[0]?.children[1]?.children[0]?.textContent),["first.mp4","second.mp4"]);
 });
 
+test("orders library entries by name and marks folders with an icon",async()=>{
+  const {ids,env}=fixture();const bootstrapFetch=env.fetch;
+  env.fetch=async url=>{
+    if(!url.startsWith("/api/library"))return bootstrapFetch(url);
+    const cursor=new URL(`http://host${url}`).searchParams.get("cursor")||"";
+    return {ok:true,json:async()=>cursor?{entries:[{id:"m-4",name:"Episode 2.mkv",kind:"file",media_kind:"video"}]}:{entries:[{id:"m-2",name:"zebra.mp4",kind:"file",media_kind:"video"},{id:"dir-1",name:"Concerts",kind:"directory"},{id:"m-3",name:"Episode 10.mkv",kind:"file",media_kind:"video"},{id:"m-1",name:"alpha.mp3",kind:"file",media_kind:"audio"}],cursor:"next"}};
+  };
+  startClient(env);await settle();
+  const names=()=>ids.library.children.filter(row=>row.className==="library-row").map(row=>row.children[0].children[1].children[0].textContent);
+  assert.deepEqual(names(),["alpha.mp3","Concerts","Episode 10.mkv","zebra.mp4"]);
+  const folderIcon=ids.library.children[1].children[0].children[0];
+  assert.equal(folderIcon.className,"entry-icon folder-icon");assert.equal(folderIcon.textContent,"");assert.equal(ids.library.children[1].children[0].children[1].children[1].textContent,"Folder");
+  assert.equal(ids.library.children[0].children[0].children[0].className,"entry-icon");
+  ids.library.children.find(node=>node.className==="browser-nav").children[0].emit("click");await settle();
+  assert.deepEqual(names(),["alpha.mp3","Concerts","Episode 2.mkv","Episode 10.mkv","zebra.mp4"]);
+});
+
 test("clear queue button sends queue.clear and tracks queue state",async()=>{
   const {ids,env}=fixture();startClient(env);await settle();const ws=FakeSocket.instances[0];ws.emit("open");
   assert.equal(ids["queue-clear"].disabled,true);
@@ -160,6 +178,19 @@ test("clear queue retains active item controls and artwork",async()=>{
   assert.equal(ids.queue.children.length,1);assert.equal(ids.queue.children[0].children[1].children[0].textContent,"one.mp3");
   assert.equal(ids.artwork.src,"/api/artwork/cover.jpg");assert.equal(ids["artwork-placeholder"].hidden,true);
   assert.equal(ids["play-toggle"].textContent,"Pause");assert.equal(ids["play-toggle"].disabled,false);assert.equal(ids.queue.children[0].children[2].children[0].disabled,false);
+});
+
+test("theme toggle cycles auto, light, dark and follows the system only in auto",async()=>{
+  const {ids,document,env,mql}=fixture();mql.matches=true;startClient(env);await settle();
+  const toggle=ids["theme-toggle"],theme=()=>document.documentElement.dataset.theme;
+  assert.equal(theme(),"dark");assert.equal(toggle.dataset.mode,"auto");assert.equal(toggle.title,"Theme: Auto");
+  toggle.emit("click");assert.equal(theme(),"light");assert.equal(env.localStorage.getItem("go2tv-theme"),"light");assert.equal(toggle.title,"Theme: Light");
+  mql.emit();assert.equal(theme(),"light");
+  toggle.emit("click");assert.equal(theme(),"dark");assert.equal(env.localStorage.getItem("go2tv-theme"),"dark");assert.equal(toggle.dataset.mode,"dark");
+  toggle.emit("click");assert.equal(env.localStorage.getItem("go2tv-theme"),"auto");assert.equal(theme(),"dark");
+  mql.matches=false;mql.emit();assert.equal(theme(),"light");
+  const second=fixture();second.env.localStorage.setItem("go2tv-theme","dark");startClient(second.env);await settle();
+  assert.equal(second.document.documentElement.dataset.theme,"dark");assert.equal(second.ids["theme-toggle"].title,"Theme: Dark");
 });
 
 test("loop and autoplay remain mutually exclusive",async()=>{

@@ -3,6 +3,14 @@
 @source "./index.html";
 @source "./client.js";
 
+/* Dark styles apply when the user forces dark, or in auto mode (no data-theme yet) when the OS prefers dark. */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) { @slot; }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *) { @slot; }
+  }
+}
+
 @theme {
   /* Go2TV brand palette — https://go2tv.app (accent #883dd9, glow #57d0ff, punch #ff4ecf) */
   --color-brand-50: #f8f4fe;
@@ -19,19 +27,18 @@
 
 @layer base {
   :root { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
   * { @apply box-border; }
   ::selection { background: rgb(136 61 217 / .30); }
-  body { @apply min-h-screen bg-[#f8f7fb] text-slate-950 antialiased dark:bg-[#07070b] dark:text-[#f4f5ff]; background-image: radial-gradient(circle at 50% -20%, rgb(136 61 217 / .07), transparent 34rem); }
-  @media (prefers-color-scheme: dark) {
-    body { background-image: radial-gradient(64rem 36rem at 50% -14%, rgb(136 61 217 / .16), transparent 70%), radial-gradient(46rem 30rem at 108% 112%, rgb(87 208 255 / .06), transparent 70%), radial-gradient(40rem 28rem at -8% 108%, rgb(255 78 207 / .05), transparent 70%); }
-  }
+  body { @apply min-h-screen bg-[#f8f7fb] text-slate-950 antialiased dark:bg-[#07070b] dark:text-[#f4f5ff]; background-image: radial-gradient(circle at 50% -20%, rgb(136 61 217 / .07), transparent 34rem); @variant dark { background-image: radial-gradient(64rem 36rem at 50% -14%, rgb(136 61 217 / .16), transparent 70%), radial-gradient(46rem 30rem at 108% 112%, rgb(87 208 255 / .06), transparent 70%), radial-gradient(40rem 28rem at -8% 108%, rgb(255 78 207 / .05), transparent 70%); } }
   main { @apply mx-auto grid max-w-[90rem] gap-5 px-4 py-5 sm:px-6 sm:py-7 lg:px-8; }
   h1 { @apply text-[1.7rem] font-black leading-none tracking-[-0.04em]; }
   h2 { @apply text-lg font-bold tracking-[-0.02em]; }
   section { @apply min-w-0 self-start rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_12px_40px_-28px_rgba(82,36,125,.45)] dark:border-white/10 dark:bg-white/[.045]; }
   button, select, input[type="number"], input[type="search"] { @apply min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition duration-150 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 dark:border-white/15 dark:bg-white/[.06] dark:text-slate-100 dark:focus:border-brand-400/70 dark:focus:ring-brand-400/15; }
   button { @apply font-semibold hover:-translate-y-px hover:border-slate-400 hover:bg-slate-50 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 dark:hover:border-white/25 dark:hover:bg-white/10; }
-  select { @apply py-2; color-scheme: light dark; }
+  select { @apply py-2; }
   select option { @apply bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100; }
   ul { @apply min-w-0; }
   label { @apply flex items-center gap-2; }
@@ -43,6 +50,12 @@
   .brand-mark { @apply block size-11 shrink-0 drop-shadow-[0_8px_18px_rgba(136,61,217,.35)]; }
   .brand h1 { @apply text-brand-700 dark:text-[#f4f5ff]; }
   .brand p { @apply mt-1 text-xs text-slate-500 dark:text-slate-400; }
+  .header-tools { @apply flex shrink-0 items-center gap-2; }
+  .theme-toggle { @apply grid size-10 min-h-10 shrink-0 place-items-center rounded-full p-0 text-slate-600 dark:text-slate-300; }
+  .theme-toggle::before { content: ""; @apply block size-5; background: currentColor; -webkit-mask: var(--theme-glyph) center / contain no-repeat; mask: var(--theme-glyph) center / contain no-repeat; }
+  .theme-toggle[data-mode="auto"] { @apply text-slate-600 dark:text-slate-300; --theme-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm0 1.5a6.5 6.5 0 0 1 0 13z'/%3E%3C/svg%3E"); }
+  .theme-toggle[data-mode="light"] { @apply text-amber-500 dark:text-amber-300; --theme-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='4.5'/%3E%3Cpath d='M12 1.5v3m0 15v3M4.57 4.57l2.12 2.12m10.62 10.62 2.12 2.12M1.5 12h3m15 0h3M4.57 19.43l2.12-2.12M17.31 6.69l2.12-2.12' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"); }
+  .theme-toggle[data-mode="dark"] { @apply text-brand-600 dark:text-brand-300; --theme-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/%3E%3C/svg%3E"); }
   .connection { @apply flex min-h-10 items-center gap-2 rounded-full bg-white px-3.5 text-sm font-medium shadow-sm ring-1 ring-slate-200 dark:bg-white/[.05] dark:ring-white/10; }
   .connection i { @apply size-2 rounded-full bg-amber-500 shadow-[0_0_0_4px] shadow-amber-500/10; }
   .connection i[data-state="connected"] { @apply bg-emerald-500 shadow-emerald-500/10; }
@@ -70,16 +83,10 @@
   .device-option[data-selected="true"] { @apply border-brand-500 bg-brand-50 ring-2 ring-brand-500/10 dark:border-brand-500/70 dark:bg-brand-500/10; }
   .device-name { @apply min-w-0 truncate font-semibold; }
   .device-badges { @apply flex shrink-0 flex-wrap justify-end gap-1; }
-  .device-badge { @apply rounded-lg px-2 py-1 text-[.65rem] font-bold leading-none; background: #eaeaea; color: #5f5f5f; }
-  .device-badge[data-kind="chromecast"] { background: #daeee7; color: #346d5f; }
-  .device-badge[data-kind="dlna"] { background: #e9e2fa; color: #5d4696; }
-  .device-badge[data-kind="audio-only"] { background: #f6ead6; color: #83642f; }
-  @media (prefers-color-scheme: dark) {
-    .device-badge { background: #3a3a3a; color: #bebebe; }
-    .device-badge[data-kind="chromecast"] { background: #364742; color: #bdd4cb; }
-    .device-badge[data-kind="dlna"] { background: #423a52; color: #cfc3e8; }
-    .device-badge[data-kind="audio-only"] { background: #483c2d; color: #e1c092; }
-  }
+  .device-badge { @apply rounded-lg px-2 py-1 text-[.65rem] font-bold leading-none; background: #eaeaea; color: #5f5f5f; @variant dark { background: #3a3a3a; color: #bebebe; } }
+  .device-badge[data-kind="chromecast"] { background: #daeee7; color: #346d5f; @variant dark { background: #364742; color: #bdd4cb; } }
+  .device-badge[data-kind="dlna"] { background: #e9e2fa; color: #5d4696; @variant dark { background: #423a52; color: #cfc3e8; } }
+  .device-badge[data-kind="audio-only"] { background: #f6ead6; color: #83642f; @variant dark { background: #483c2d; color: #e1c092; } }
 
   .player-card { @apply grid min-h-[15rem] gap-5 overflow-hidden p-4 sm:grid-cols-[12.5rem_minmax(0,1fr)] sm:p-5; }
   .artwork-shell { @apply relative aspect-square w-full overflow-hidden rounded-2xl bg-gradient-to-br from-[#ff4ecf] via-[#883dd9] to-[#57d0ff] sm:aspect-auto sm:min-h-[12.5rem]; }
@@ -128,11 +135,16 @@
   .media-thumbnail img { @apply size-full object-cover; }
   .thumbnail-fallback { @apply absolute inset-0 grid size-full place-items-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900; }
   .entry-icon { @apply text-xs font-bold; }
+  .folder-icon { @apply border-amber-200 bg-amber-50 text-amber-500 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300; }
+  .folder-icon::before { content: ""; @apply block size-6; background: currentColor; -webkit-mask: var(--folder-glyph) center / contain no-repeat; mask: var(--folder-glyph) center / contain no-repeat; --folder-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z'/%3E%3C/svg%3E"); }
   .entry-copy { @apply grid min-w-0 gap-0.5; }
   .entry-name { @apply min-w-0 truncate text-sm font-semibold; }
   .entry-meta { @apply min-w-0 truncate text-xs text-slate-500 dark:text-slate-400; }
   .row-actions { @apply flex shrink-0 flex-wrap justify-end gap-2; }
   .row-actions button { @apply min-h-9 whitespace-nowrap px-3; }
+  .library-row .row-actions { @apply grid grid-cols-[repeat(2,8.25rem)]; }
+  .library-row .row-actions button { @apply w-full px-2; }
+  .library-row .row-actions button:only-child { @apply col-start-2; }
   .row-actions .primary-action, .row-actions .queue-primary { @apply border-brand-500 text-brand-700 dark:border-brand-500/70 dark:text-brand-300; }
   .browser-nav { @apply py-3; }
   .empty-state { @apply rounded-xl px-4 py-10 text-center text-sm leading-6 text-slate-500 dark:text-slate-400; }
@@ -177,6 +189,7 @@
     .app-header { @apply items-start; }
     .brand p, #pending { @apply hidden; }
     .connection { @apply min-h-9 px-3; }
+    .theme-toggle { @apply size-9 min-h-9; }
     .player-card { @apply gap-4; }
     .artwork-shell { @apply mx-auto max-w-52; }
     .player-heading { @apply items-start; }
@@ -187,5 +200,6 @@
     .library-row { @apply items-start; }
     .library-row .entry-main, .library-row .row-actions { @apply col-span-2; }
     .library-row .row-actions { @apply justify-start; }
+    .library-row .row-actions button:only-child { @apply col-start-auto; }
   }
 }

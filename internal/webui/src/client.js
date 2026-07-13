@@ -2,7 +2,7 @@ const protocolVersion=1;
 const maxConflictRetries=2;
 
 export function startClient(env){
-  const {document,fetch,WebSocket,location,sessionStorage,setTimeout,clearTimeout}=env;
+  const {document,fetch,WebSocket,location,sessionStorage,localStorage,matchMedia,setTimeout,clearTimeout}=env;
   const byID=id=>document.querySelector(`#${id}`);
   const status=byID("status"),connectionDot=byID("connection-dot"),devicePicker=byID("device-picker"),deviceTrigger=byID("device-trigger"),devices=byID("devices"),roots=byID("roots"),library=byID("library"),queue=byID("queue"),toast=byID("toast"),pendingNode=byID("pending"),breadcrumbs=byID("breadcrumbs");
   const state={revision:0,devices:[],queue:[],policy:{LoopSelected:false,AutoPlayNext:false,AutoPlaySameType:false,GaplessEnabled:false,ImageDurationSeconds:10},selected_device_id:"",selected_media:false,selected_media_name:"",active_media_name:"",selected_subtitle:false,selected_subtitle_name:"",transcode:false,has_session:false,playback_state:"",position:0,duration:0,volume:0,muted:false,media_type:"",artwork_id:""};
@@ -20,6 +20,15 @@ export function startClient(env){
   const kindLabel=kind=>({audio:"Audio",video:"Video",image:"Image"}[kind]||"Media");
   const entryKind=name=>/\.(mp3|flac|wav|m4a|aac|ogg|opus)$/i.test(name)?"Audio":/\.(mp4|mkv|avi|mov|webm|m4v|mpeg|mpg)$/i.test(name)?"Video":/\.(jpe?g|png|gif|webp|bmp)$/i.test(name)?"Image":"Media";
   const mediaGlyph=kind=>({audio:"♪",video:"▶",image:"▧"}[kind]||"•");
+  const byName=(a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:"base"});
+  const themeOrder=["auto","light","dark"],themeLabels={auto:"Auto",light:"Light",dark:"Dark"},prefersDark=matchMedia("(prefers-color-scheme: dark)");
+  let themeChoice=localStorage.getItem("go2tv-theme");if(!themeOrder.includes(themeChoice))themeChoice="auto";
+  function applyTheme(){
+    const resolved=themeChoice==="auto"?(prefersDark.matches?"dark":"light"):themeChoice;
+    document.documentElement.dataset.theme=resolved;
+    for(const meta of document.querySelectorAll('meta[name="theme-color"]'))meta.content=resolved==="dark"?"#07070b":"#f8f7fb";
+    const toggle=byID("theme-toggle"),label=`Theme: ${themeLabels[themeChoice]}`;toggle.dataset.mode=themeChoice;toggle.title=label;toggle.ariaLabel=label;
+  }
   function showToast(message,level="info"){
     const node=document.createElement("p");node.textContent=message||"Request failed";node.dataset.level=level;toast.append(node);
     setTimeout(()=>node.remove(),5000);
@@ -113,7 +122,7 @@ export function startClient(env){
   function renderLibrary(){
     library.replaceChildren();const filter=byID("library-filter").value.trim().toLowerCase(),entries=filter?libraryEntries.filter(item=>item.name.toLowerCase().includes(filter)):libraryEntries;
     if(!entries.length){const empty=document.createElement("li");empty.className="empty-state";empty.textContent=filter?"No matches in this folder.":"This folder is empty.";library.append(empty);renderLoadMore();return}
-    for(const item of entries){const row=document.createElement("li"),main=document.createElement("div"),copy=document.createElement("div"),label=document.createElement("strong"),meta=document.createElement("span");row.className="library-row";main.className="entry-main";copy.className="entry-copy";label.className="entry-name";label.textContent=item.name;label.title=item.name;meta.className="entry-meta";meta.textContent=item.kind==="directory"?"Folder":/\.(srt|vtt)$/i.test(item.name)?"Subtitle":kindLabel(item.media_kind)||entryKind(item.name);copy.append(label,meta);if(item.thumbnail_url)main.append(mediaThumbnail(item));else{const icon=document.createElement("span");icon.className="entry-icon";icon.textContent=item.kind==="directory"?"▸":"CC";icon.ariaHidden="true";main.append(icon)}main.append(copy);row.append(main);if(item.kind==="directory")row.append(actionGroup(button("Open",()=>{parents.push({id:item.id,name:item.name});browse(item.id)},{className:"primary-action"})));else if(/\.(srt|vtt)$/i.test(item.name))row.append(actionGroup(button("Use subtitle",()=>send("library.select_subtitle",{root_id:selectedRoot,entry_id:item.id}),{className:"primary-action"})));else row.append(actionGroup(button("Select",()=>selectLibraryMedia(row,item),{className:"primary-action"}),button("Add to queue",()=>send("queue.add",{root_id:selectedRoot,entry_id:item.id}))));library.append(row)}
+    for(const item of entries){const row=document.createElement("li"),main=document.createElement("div"),copy=document.createElement("div"),label=document.createElement("strong"),meta=document.createElement("span");row.className="library-row";main.className="entry-main";copy.className="entry-copy";label.className="entry-name";label.textContent=item.name;label.title=item.name;meta.className="entry-meta";meta.textContent=item.kind==="directory"?"Folder":/\.(srt|vtt)$/i.test(item.name)?"Subtitle":kindLabel(item.media_kind)||entryKind(item.name);copy.append(label,meta);if(item.thumbnail_url)main.append(mediaThumbnail(item));else{const icon=document.createElement("span");icon.className=item.kind==="directory"?"entry-icon folder-icon":"entry-icon";icon.ariaHidden="true";if(item.kind!=="directory")icon.textContent="CC";main.append(icon)}main.append(copy);row.append(main);if(item.kind==="directory")row.append(actionGroup(button("Open",()=>{parents.push({id:item.id,name:item.name});browse(item.id)},{className:"primary-action"})));else if(/\.(srt|vtt)$/i.test(item.name))row.append(actionGroup(button("Use subtitle",()=>send("library.select_subtitle",{root_id:selectedRoot,entry_id:item.id}),{className:"primary-action"})));else row.append(actionGroup(button("Select",()=>selectLibraryMedia(row,item),{className:"primary-action"}),button("Add to queue",()=>send("queue.add",{root_id:selectedRoot,entry_id:item.id}))));library.append(row)}
     renderLoadMore();
   }
   function renderLoadMore(){
@@ -122,7 +131,7 @@ export function startClient(env){
   }
   async function browse(parentID="",cursor="",append=false){
     const query=new URLSearchParams({root_id:selectedRoot,limit:"200"});if(parentID)query.set("parent_id",parentID);if(cursor)query.set("cursor",cursor);if(!append){library.replaceChildren();const loading=document.createElement("li");loading.className="empty-state loading-state";loading.textContent="Loading folder…";library.append(loading)}
-    try{const response=await fetch(`/api/library?${query}`,{headers:{Accept:"application/json"}}),data=await response.json();if(!response.ok)throw new Error(data.error||"Browse failed");libraryEntries=append?[...libraryEntries,...(data.entries||[])]:data.entries||[];libraryParent=parentID;libraryCursor=data.cursor||"";renderBreadcrumbs();renderLibrary()}catch(error){showToast(error.message,"error");if(append)renderLibrary()}
+    try{const response=await fetch(`/api/library?${query}`,{headers:{Accept:"application/json"}}),data=await response.json();if(!response.ok)throw new Error(data.error||"Browse failed");libraryEntries=(append?[...libraryEntries,...(data.entries||[])]:data.entries||[]).sort(byName);libraryParent=parentID;libraryCursor=data.cursor||"";renderBreadcrumbs();renderLibrary()}catch(error){showToast(error.message,"error");if(append)renderLibrary()}
   }
   function sendPolicy(changed=""){if(changed==="loop"&&byID("loop").checked){byID("autoplay").checked=false;byID("same-type").checked=false;byID("gapless").checked=false}else if(changed==="autoplay"&&byID("autoplay").checked)byID("loop").checked=false;const auto=byID("autoplay").checked;send("playback.policy",{policy:{LoopSelected:byID("loop").checked,AutoPlayNext:auto,AutoPlaySameType:auto&&byID("same-type").checked,GaplessEnabled:auto&&byID("gapless").checked,ImageDurationSeconds:Number(byID("image-duration").value)}})}
   async function boot(){
@@ -135,6 +144,7 @@ export function startClient(env){
   byID("seek").addEventListener("change",event=>send("player.seek",{seconds:Number(event.target.value)}));byID("volume-down").addEventListener("click",()=>send("player.volume",{delta:-1}));byID("volume-up").addEventListener("click",()=>send("player.volume",{delta:1}));byID("mute").addEventListener("click",()=>send("player.mute",{muted:!state.muted}));byID("transcode").addEventListener("change",event=>send("player.transcode",{enabled:event.target.checked}));byID("subtitle-clear").addEventListener("click",()=>send("library.clear_subtitle"));byID("library-filter").addEventListener("input",renderLibrary);
   byID("artwork").addEventListener("error",()=>{byID("artwork").hidden=true;byID("artwork-placeholder").hidden=false});byID("artwork-modal-image").addEventListener("error",()=>{showToast("Artwork unavailable","error");closeArtwork()});byID("artwork-modal-close").addEventListener("click",closeArtwork);byID("artwork-modal").addEventListener("click",event=>{if(event.target===byID("artwork-modal"))closeArtwork()});
   for(const id of ["loop","autoplay","same-type","gapless","image-duration"])byID(id).addEventListener("change",()=>sendPolicy(id));
+  byID("theme-toggle").addEventListener("click",()=>{themeChoice=themeOrder[(themeOrder.indexOf(themeChoice)+1)%themeOrder.length];localStorage.setItem("go2tv-theme",themeChoice);applyTheme()});prefersDark.addEventListener("change",()=>{if(themeChoice==="auto")applyTheme()});applyTheme();
   boot().catch(error=>{connection("Unavailable","error");showToast(error.message,"error")});
   return {state,pending,handle,send,browse};
 }
