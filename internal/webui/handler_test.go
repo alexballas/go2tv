@@ -111,6 +111,25 @@ func TestStaticRejectsUnhashedAndClientUsesSafeDOM(t *testing.T) {
 	}
 }
 
+func TestSelectedQueueRingHasScrollGutter(t *testing.T) {
+	index, err := fs.ReadFile(assets(), "index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := regexp.MustCompile(`app\.[0-9a-f]{8}\.css`).Find(index)
+	if name == nil {
+		t.Fatal("hashed CSS absent")
+	}
+	css, err := fs.ReadFile(assets(), string(name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rule := regexp.MustCompile(`#queue\{[^}]*\}`).Find(css)
+	if !bytes.Contains(rule, []byte(`padding:calc(var(--spacing)*.5)`)) {
+		t.Fatalf("queue scroll gutter absent: %s", rule)
+	}
+}
+
 func TestClientDOMInteractionsAndState(t *testing.T) {
 	command := exec.Command("node", "--test", "src/client.test.js")
 	command.Dir = "."
