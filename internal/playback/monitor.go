@@ -2,7 +2,17 @@ package playback
 
 import (
 	"context"
+	"errors"
+	"strings"
+	"sync/atomic"
 	"time"
+)
+
+var errChromecastStartupIdle = errors.New("chromecast playback did not start")
+
+const (
+	chromecastImageMetadataTicks = 2
+	chromecastImageFallbackTicks = 8
 )
 
 type terminalReasonKey struct{}
@@ -23,9 +33,11 @@ const (
 
 type MonitorEvent struct {
 	Generation uint64
+	TimerEpoch uint64
 	State      string
 	Position   int
 	Duration   int
+	ImageReady bool
 	Terminal   TerminalReason
 	Err        error
 }
@@ -43,20 +55,29 @@ type MonitorSinkFunc func(context.Context, MonitorEvent)
 func (f MonitorSinkFunc) HandleMonitorEvent(ctx context.Context, e MonitorEvent) { f(ctx, e) }
 
 type MonitorConfig struct {
-	Generation   uint64
-	SeekOffset   int
-	Clock        Clock
-	Sink         MonitorSink
-	ExplicitStop func() bool
-	ErrorLimit   int
+	Generation       uint64
+	TimerEpoch       uint64
+	SeekOffset       int
+	ExpectedDuration int
+	Clock            Clock
+	Sink             MonitorSink
+	ExplicitStop     func() bool
+	DLNAStopGate     *DLNAStopGate
+}
+
+// DLNAStopGate suppresses the renderer's initial STOPPED callback. Keeping it
+// on the transport preserves completion detection when a monitor restarts.
+type DLNAStopGate struct{ armed atomic.Bool }
+
+func (g *DLNAStopGate) Arm()   { g.armed.Store(true) }
+func (g *DLNAStopGate) Reset() { g.armed.Store(false) }
+func (g *DLNAStopGate) acceptStop() bool {
+	return g.armed.Swap(true)
 }
 
 func normalizeMonitorConfig(cfg MonitorConfig) MonitorConfig {
 	if cfg.Clock == nil {
 		cfg.Clock = realClock{}
-	}
-	if cfg.ErrorLimit <= 0 {
-		cfg.ErrorLimit = 3
 	}
 	return cfg
 }
@@ -65,7 +86,10 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNATransp
 	cfg = normalizeMonitorConfig(cfg)
 	ticker := cfg.Clock.NewTicker(time.Second)
 	defer ticker.Stop()
-	errorsSeen := 0
+	stopGate := cfg.DLNAStopGate
+	if stopGate == nil {
+		stopGate = &DLNAStopGate{}
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -81,6 +105,7 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNATransp
 			}
 			switch event.TransportState {
 			case "PLAYING":
+				stopGate.Arm()
 				emitMonitor(ctx, cfg, MonitorEvent{State: "PLAYING"})
 			case "PAUSED_PLAYBACK":
 				emitMonitor(ctx, cfg, MonitorEvent{State: "PAUSED"})
@@ -88,20 +113,20 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNATransp
 				if cfg.ExplicitStop != nil && cfg.ExplicitStop() {
 					return
 				}
+				if !stopGate.acceptStop() {
+					continue
+				}
 				emitMonitor(ctx, cfg, MonitorEvent{Terminal: TerminalFinished})
 				return
 			}
 		case <-ticker.C():
 			position, err := transport.Position(ctx)
 			if err != nil {
-				errorsSeen++
-				if errorsSeen >= cfg.ErrorLimit {
-					emitMonitor(ctx, cfg, MonitorEvent{Terminal: TerminalError, Err: err})
-					return
-				}
 				continue
 			}
-			errorsSeen = 0
+			if position.Current > 0 || position.Duration > 0 {
+				stopGate.Arm()
+			}
 			position.Current += cfg.SeekOffset
 			emitMonitor(ctx, cfg, MonitorEvent{Position: position.Current, Duration: position.Duration})
 		}
@@ -138,7 +163,8 @@ func RunChromecastMonitor(ctx context.Context, cfg ChromecastMonitorConfig, tran
 	defer ticker.Stop()
 	started, last := false, -1
 	idle, lost, stalled := 0, 0, 0
-	duration := 0
+	lastDuration := 0
+	imageReady, imageMetadataTicks, imageFallbackTicks := false, 0, 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -150,7 +176,7 @@ func RunChromecastMonitor(ctx context.Context, cfg ChromecastMonitorConfig, tran
 				lost++
 				if lost >= cfg.LostPolls {
 					reason := TerminalError
-					if started && last >= 0 && duration > 0 && last >= duration-cfg.StallWindow {
+					if started && last >= 0 && lastDuration > 0 && last >= lastDuration-cfg.StallWindow {
 						reason = TerminalFinished
 					}
 					emitMonitor(ctx, cfg.MonitorConfig, MonitorEvent{Terminal: reason, Err: err})
@@ -171,29 +197,54 @@ func RunChromecastMonitor(ctx context.Context, cfg ChromecastMonitorConfig, tran
 				}
 				idle++
 				if idle >= cfg.StartupIdleTicks {
-					emitMonitor(ctx, cfg.MonitorConfig, MonitorEvent{Terminal: TerminalError})
+					emitMonitor(ctx, cfg.MonitorConfig, MonitorEvent{Terminal: TerminalFinished, Err: errChromecastStartupIdle})
 					return
 				}
 			}
 			current := status.Current + cfg.SeekOffset
-			if status.Duration > 0 {
-				duration = status.Duration + cfg.SeekOffset
+			duration := status.Duration
+			if cfg.ExpectedDuration > 0 {
+				duration = cfg.ExpectedDuration
 			}
-			emitMonitor(ctx, cfg.MonitorConfig, MonitorEvent{State: status.PlayerState, Position: current, Duration: duration})
+			sampleValid := status.PlayerState != "BUFFERING" && duration > 0
+			if !imageReady {
+				imageFallbackTicks++
+				metadataReady := strings.HasPrefix(strings.ToLower(strings.TrimSpace(status.ContentType)), "image/") || strings.TrimSpace(status.MediaTitle) != ""
+				switch {
+				case status.PlayerState == "PLAYING" || status.PlayerState == "PAUSED":
+					imageReady = true
+				case metadataReady && status.PlayerState != "BUFFERING":
+					imageReady = true
+				case metadataReady:
+					imageMetadataTicks++
+					imageReady = imageMetadataTicks >= chromecastImageMetadataTicks
+				default:
+					imageMetadataTicks = 0
+				}
+				if imageFallbackTicks >= chromecastImageFallbackTicks {
+					imageReady = true
+				}
+			}
+			event := MonitorEvent{State: status.PlayerState, ImageReady: imageReady}
+			if sampleValid {
+				event.Position = current
+				event.Duration = duration
+			}
+			emitMonitor(ctx, cfg.MonitorConfig, event)
 			if !started || status.PlayerState == "PAUSED" {
 				stalled = 0
 				continue
 			}
-			if current != last {
-				last, stalled = current, 0
+			if sampleValid && current != last {
+				last, lastDuration, stalled = current, duration, 0
 				continue
 			}
-			if duration <= 0 || last < duration-cfg.StallWindow {
+			if lastDuration <= 0 || last < lastDuration-cfg.StallWindow {
 				continue
 			}
 			stalled++
 			threshold := cfg.OtherStallTicks
-			if status.PlayerState == "PLAYING" {
+			if sampleValid && status.PlayerState == "PLAYING" {
 				threshold = cfg.PlayingStallTicks
 			}
 			if stalled >= threshold {
@@ -225,6 +276,7 @@ func emitMonitor(ctx context.Context, cfg MonitorConfig, event MonitorEvent) {
 		return
 	}
 	event.Generation = cfg.Generation
+	event.TimerEpoch = cfg.TimerEpoch
 	cfg.Sink.HandleMonitorEvent(ctx, event)
 }
 

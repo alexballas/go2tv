@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"io"
 	"time"
 
@@ -17,12 +18,13 @@ type RuntimeConfig struct {
 	DiscoveryInterval time.Duration
 	OperationTimeout  time.Duration
 	Artwork           *ArtworkCache
+	DurationProbe     func(context.Context, playback.SourceOpener) (float64, error)
 }
 
 func NewRuntimeConfig(cfg RuntimeConfig) Config {
 	discovery := playback.NewDiscoveryService(playbackadapter.Scanner{DLNADelay: cfg.DLNADelay}, nil, nil, cfg.DiscoveryInterval)
 	factory := &playbackadapter.Factory{LogOutput: cfg.LogOutput, CallbackURL: callbackURLProvider(cfg.MediaServer), Callbacks: cfg.Callbacks}
-	return Config{Discovery: discovery, TransportFactory: factory, MediaServer: cfg.MediaServer, Artwork: cfg.Artwork, RunMonitor: playbackadapter.RunMonitor, OperationTimeout: cfg.OperationTimeout}
+	return Config{Discovery: discovery, TransportFactory: factory, MediaServer: cfg.MediaServer, Artwork: cfg.Artwork, RunMonitor: playbackadapter.RunMonitor, DurationProbe: cfg.DurationProbe, OperationTimeout: cfg.OperationTimeout}
 }
 
 func callbackURLProvider(server playback.MediaServer) playbackadapter.CallbackURLProvider {

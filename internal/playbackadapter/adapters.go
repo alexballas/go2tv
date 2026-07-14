@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"go2tv.app/go2tv/v2/castprotocol"
 	"go2tv.app/go2tv/v2/devices"
@@ -48,18 +49,160 @@ func (s Scanner) Scan(ctx context.Context) ([]playback.Device, error) {
 	return result, nil
 }
 
-// CallbackBridge is a stable HTTP callback target with replaceable validated sessions.
+type callbackStream struct {
+	events        chan playback.DLNACallbackEvent
+	done          chan struct{}
+	stopOnce      sync.Once
+	suppressStops atomic.Bool
+}
+
+func newCallbackStream() *callbackStream {
+	return &callbackStream{
+		events: make(chan playback.DLNACallbackEvent, callbackQueueSize),
+		done:   make(chan struct{}),
+	}
+}
+
+func (s *callbackStream) close() { s.stopOnce.Do(func() { close(s.done) }) }
+
+func (s *callbackStream) deliver(event playback.DLNACallbackEvent) {
+	if strings.EqualFold(strings.TrimSpace(event.TransportState), "STOPPED") {
+		if s.suppressStops.Load() {
+			return
+		}
+		select {
+		case s.events <- event:
+		case <-s.done:
+		}
+		return
+	}
+	select {
+	case s.events <- event:
+	case <-s.done:
+	default:
+	}
+}
+
+// CallbackBridge is a stable HTTP callback target with generation-isolated streams.
 type CallbackBridge struct {
-	mu      sync.RWMutex
-	session *httphandlers.CallbackSession
-	events  chan playback.DLNACallbackEvent
+	mu                sync.RWMutex
+	session           *httphandlers.CallbackSession
+	sessionGeneration uint64
+	hasSession        bool
+	activeGeneration  uint64
+	hasActive         bool
+	streams           map[uint64]*callbackStream
 }
 
 func NewCallbackBridge() *CallbackBridge {
-	return &CallbackBridge{events: make(chan playback.DLNACallbackEvent, callbackQueueSize)}
+	return &CallbackBridge{streams: make(map[uint64]*callbackStream)}
 }
 
-func (b *CallbackBridge) Events() <-chan playback.DLNACallbackEvent { return b.events }
+func (b *CallbackBridge) register(generation uint64) *callbackStream {
+	b.mu.Lock()
+	if b.hasActive && b.activeGeneration == generation {
+		stream := b.streams[generation]
+		if stream == nil {
+			stream = newCallbackStream()
+			b.streams[generation] = stream
+		}
+		b.mu.Unlock()
+		return stream
+	}
+
+	oldSession := b.session
+	b.session = nil
+	b.hasSession = false
+	for oldGeneration, stream := range b.streams {
+		if oldGeneration == generation {
+			continue
+		}
+		stream.close()
+		delete(b.streams, oldGeneration)
+	}
+	stream := b.streams[generation]
+	if stream == nil {
+		stream = newCallbackStream()
+		b.streams[generation] = stream
+	}
+	b.activeGeneration = generation
+	b.hasActive = true
+	b.mu.Unlock()
+
+	if oldSession != nil {
+		oldSession.Close()
+	}
+	return stream
+}
+
+func (b *CallbackBridge) replaceStream(generation uint64) (*callbackStream, error) {
+	b.mu.Lock()
+	if b.hasActive && b.activeGeneration != generation {
+		b.mu.Unlock()
+		return nil, errors.New("callback generation superseded")
+	}
+	oldStream := b.streams[generation]
+	stream := newCallbackStream()
+	if oldStream != nil {
+		stream.suppressStops.Store(oldStream.suppressStops.Load())
+	}
+	b.streams[generation] = stream
+	b.activeGeneration = generation
+	b.hasActive = true
+	var oldSession *httphandlers.CallbackSession
+	if b.hasSession && b.sessionGeneration == generation {
+		oldSession = b.session
+		b.session = nil
+		b.hasSession = false
+	}
+	b.mu.Unlock()
+	if oldStream != nil {
+		oldStream.close()
+	}
+	if oldSession != nil {
+		oldSession.Close()
+	}
+	return stream, nil
+}
+
+func (b *CallbackBridge) currentStream(generation uint64) *callbackStream {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if !b.hasActive || b.activeGeneration != generation {
+		return nil
+	}
+	return b.streams[generation]
+}
+
+// SuppressCallbackStops controls STOPPED delivery for one callback generation.
+func (b *CallbackBridge) SuppressCallbackStops(generation uint64, suppress bool) error {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if !b.hasActive || b.activeGeneration != generation || b.streams[generation] == nil {
+		return errors.New("callback generation unavailable")
+	}
+	b.streams[generation].suppressStops.Store(suppress)
+	return nil
+}
+
+func (b *CallbackBridge) Events(generation uint64) <-chan playback.DLNACallbackEvent {
+	b.mu.RLock()
+	stream := b.streams[generation]
+	b.mu.RUnlock()
+	if stream == nil {
+		return nil
+	}
+	return stream.events
+}
+
+func (b *CallbackBridge) emit(event playback.DLNACallbackEvent) {
+	b.mu.RLock()
+	stream := b.streams[event.Generation]
+	b.mu.RUnlock()
+	if stream != nil {
+		stream.deliver(event)
+	}
+}
 
 func (b *CallbackBridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	b.mu.RLock()
@@ -73,23 +216,32 @@ func (b *CallbackBridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *CallbackBridge) Configure(generation uint64, sid string, source net.IP, mediaType string, gap httphandlers.CallbackGapHandler) error {
+	return b.configure(generation, sid, source, mediaType, func(*callbackStream) httphandlers.CallbackGapHandler { return gap })
+}
+
+func (b *CallbackBridge) configure(generation uint64, sid string, source net.IP, mediaType string, gap func(*callbackStream) httphandlers.CallbackGapHandler) error {
+	stream := b.register(generation)
 	session, err := httphandlers.NewCallbackSession(httphandlers.CallbackSessionConfig{
 		Generation: generation, SID: sid, SourceIP: source, MediaType: mediaType,
 		QueueSize: callbackQueueSize,
 		Sink: httphandlers.CallbackEventSinkFunc(func(_ context.Context, event httphandlers.CallbackEvent) {
-			select {
-			case b.events <- playback.DLNACallbackEvent{Generation: event.Generation, TransportState: event.TransportState}:
-			default:
-			}
+			stream.deliver(playback.DLNACallbackEvent{Generation: event.Generation, TransportState: event.TransportState})
 		}),
-		GapHandler: gap,
+		GapHandler: gap(stream),
 	})
 	if err != nil {
 		return err
 	}
 	b.mu.Lock()
+	if !b.hasActive || b.activeGeneration != generation || b.streams[generation] != stream {
+		b.mu.Unlock()
+		session.Close()
+		return errors.New("callback generation superseded")
+	}
 	old := b.session
 	b.session = session
+	b.sessionGeneration = generation
+	b.hasSession = true
 	b.mu.Unlock()
 	if old != nil {
 		old.Close()
@@ -97,11 +249,40 @@ func (b *CallbackBridge) Configure(generation uint64, sid string, source net.IP,
 	return nil
 }
 
+func (b *CallbackBridge) CloseGeneration(generation uint64) {
+	b.mu.Lock()
+	stream := b.streams[generation]
+	delete(b.streams, generation)
+	var session *httphandlers.CallbackSession
+	if b.hasSession && b.sessionGeneration == generation {
+		session = b.session
+		b.session = nil
+		b.hasSession = false
+	}
+	if b.hasActive && b.activeGeneration == generation {
+		b.hasActive = false
+	}
+	b.mu.Unlock()
+	if stream != nil {
+		stream.close()
+	}
+	if session != nil {
+		session.Close()
+	}
+}
+
 func (b *CallbackBridge) Close() {
 	b.mu.Lock()
 	session := b.session
 	b.session = nil
+	b.hasSession = false
+	b.hasActive = false
+	streams := b.streams
+	b.streams = make(map[uint64]*callbackStream)
 	b.mu.Unlock()
+	for _, stream := range streams {
+		stream.close()
+	}
 	if session != nil {
 		session.Close()
 	}
@@ -120,12 +301,17 @@ type DLNAConfig struct {
 
 // DLNA preserves TVPayload SOAP fallback/logging while serializing contextual calls.
 type DLNA struct {
-	mu          sync.Mutex
-	payload     *soapcalls.TVPayload
-	callbackURL CallbackURLProvider
-	callbacks   *CallbackBridge
-	sid         string
-	mediaType   string
+	mu                 sync.Mutex
+	payload            *soapcalls.TVPayload
+	callbackURL        CallbackURLProvider
+	callbacks          *CallbackBridge
+	sid                string
+	mediaType          string
+	callbackGeneration uint64
+	callbacksRequested bool
+	callbacksActive    bool
+	callbackEpoch      uint64
+	stopGate           playback.DLNAStopGate
 }
 
 func NewDLNA(ctx context.Context, cfg DLNAConfig) (*DLNA, error) {
@@ -151,10 +337,24 @@ func (d *DLNA) call(ctx context.Context, fn func(*soapcalls.TVPayload) error) er
 
 func (d *DLNA) Load(ctx context.Context, req playback.LoadRequest) error {
 	return d.call(ctx, func(p *soapcalls.TVPayload) error {
+		if d.callbacks != nil && d.callbacksRequested {
+			if _, err := d.callbacks.replaceStream(d.callbackGeneration); err != nil {
+				return err
+			}
+			d.callbackEpoch++
+		}
+		previousSID := d.sid
+		knownSubscriptions := make(map[string]struct{})
+		for _, sid := range p.SubscriptionIDs() {
+			knownSubscriptions[sid] = struct{}{}
+		}
 		p.MediaURL, p.MediaType, p.SubtitlesURL = req.MediaURL, req.MediaType, req.SubtitleURL
 		p.Seekable = req.Seekable
 		p.Metadata = req.Metadata
 		d.mediaType = req.MediaType
+		d.sid = ""
+		d.callbacksActive = false
+		d.stopGate.Reset()
 		if d.callbackURL != nil && d.callbackURL.CallbackURL() != "" {
 			p.CallbackURL = d.callbackURL.CallbackURL()
 			if err := p.GetProtocolInfo(); err != nil {
@@ -164,8 +364,25 @@ func (d *DLNA) Load(ctx context.Context, req playback.LoadRequest) error {
 				return err
 			}
 			ids := p.SubscriptionIDs()
-			if len(ids) > 0 {
-				d.sid = ids[0]
+			for _, sid := range ids {
+				if _, existed := knownSubscriptions[sid]; !existed {
+					d.sid = sid
+					break
+				}
+			}
+			if d.sid == "" {
+				for _, sid := range ids {
+					if sid == previousSID {
+						d.sid = sid
+						break
+					}
+				}
+			}
+			if d.sid == "" && len(ids) > 0 {
+				d.sid = ids[len(ids)-1]
+			}
+			if err := d.configureCallbacksLocked(); err != nil {
+				return err
 			}
 		}
 		return p.SetAVTransportURI()
@@ -175,15 +392,97 @@ func (d *DLNA) Load(ctx context.Context, req playback.LoadRequest) error {
 func (d *DLNA) ActivateCallbacks(generation uint64) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.callbacks == nil || d.sid == "" {
+	if d.callbacks == nil {
 		return nil
 	}
-	return d.callbacks.Configure(generation, d.sid, net.ParseIP(d.payload.PinnedIP), d.mediaType, d)
+	if !d.callbacksRequested || d.callbackGeneration != generation {
+		d.callbackGeneration = generation
+		d.callbacksRequested = true
+		d.callbacksActive = false
+		d.callbackEpoch++
+		d.callbacks.register(generation)
+	}
+	if d.callbacksActive {
+		return nil
+	}
+	return d.configureCallbacksLocked()
+}
+
+func (d *DLNA) configureCallbacksLocked() error {
+	if d.callbacks == nil || !d.callbacksRequested || d.sid == "" {
+		return nil
+	}
+	generation, sid, epoch := d.callbackGeneration, d.sid, d.callbackEpoch
+	if err := d.callbacks.configure(generation, sid, net.ParseIP(d.payload.PinnedIP), d.mediaType, func(stream *callbackStream) httphandlers.CallbackGapHandler {
+		return callbackGapRecovery{dlna: d, generation: generation, sid: sid, epoch: epoch, stream: stream}
+	}); err != nil {
+		return err
+	}
+	d.callbacksActive = true
+	return nil
+}
+
+// SuppressCallbackStops controls intentional STOPPED callbacks during a reload.
+func (d *DLNA) SuppressCallbackStops(generation uint64, suppress bool) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.callbacks == nil {
+		return nil
+	}
+	if !d.callbacksRequested || d.callbackGeneration != generation {
+		return errors.New("callback generation superseded")
+	}
+	return d.callbacks.SuppressCallbackStops(generation, suppress)
+}
+
+type callbackGapRecovery struct {
+	dlna       *DLNA
+	generation uint64
+	sid        string
+	epoch      uint64
+	stream     *callbackStream
+}
+
+func (r callbackGapRecovery) CallbackGap(ctx context.Context, _ string, previous, next uint32) {
+	r.dlna.recoverCallbackGap(ctx, r, previous, next)
 }
 
 func (d *DLNA) CallbackGap(ctx context.Context, sid string, _, _ uint32) {
-	_ = d.Resubscribe(ctx, sid)
-	_, _ = d.State(ctx)
+	d.mu.Lock()
+	if d.callbacks == nil || !d.callbacksActive || sid != d.sid {
+		d.mu.Unlock()
+		return
+	}
+	recovery := callbackGapRecovery{
+		dlna: d, generation: d.callbackGeneration, sid: sid,
+		epoch: d.callbackEpoch, stream: d.callbacks.currentStream(d.callbackGeneration),
+	}
+	d.mu.Unlock()
+	d.recoverCallbackGap(ctx, recovery, 0, 0)
+}
+
+func (d *DLNA) recoverCallbackGap(ctx context.Context, recovery callbackGapRecovery, _, _ uint32) {
+	if ctx == nil || recovery.stream == nil {
+		return
+	}
+	d.mu.Lock()
+	if d.callbacks == nil || !d.callbacksActive ||
+		d.callbackGeneration != recovery.generation || d.callbackEpoch != recovery.epoch || d.sid != recovery.sid {
+		d.mu.Unlock()
+		return
+	}
+	d.payload.SetContext(ctx)
+	_ = d.payload.SubscribeSoapCall(recovery.sid)
+	values, err := d.payload.GetTransportInfo()
+	if err != nil || len(values) == 0 {
+		d.mu.Unlock()
+		return
+	}
+	state := strings.ToUpper(strings.TrimSpace(values[0]))
+	d.mu.Unlock()
+	if state != "" {
+		recovery.stream.deliver(playback.DLNACallbackEvent{Generation: recovery.generation, TransportState: state})
+	}
 }
 
 func (d *DLNA) Play(ctx context.Context) error {
@@ -276,8 +575,10 @@ func (d *DLNA) Close(ctx context.Context) error {
 				first = err
 			}
 		}
-		if d.callbacks != nil {
-			d.callbacks.Close()
+		if d.callbacks != nil && d.callbacksRequested {
+			d.callbacks.CloseGeneration(d.callbackGeneration)
+			d.callbacksActive = false
+			d.callbackEpoch++
 		}
 		return first
 	})
@@ -385,7 +686,13 @@ func (c *Chromecast) Status(ctx context.Context) (playback.CastStatus, error) {
 		if err != nil {
 			return err
 		}
-		result = playback.CastStatus{PlayerState: status.PlayerState, Current: int(status.CurrentTime), Duration: int(status.Duration)}
+		result = playback.CastStatus{
+			PlayerState: status.PlayerState,
+			Current:     int(status.CurrentTime),
+			Duration:    int(status.Duration),
+			ContentType: status.ContentType,
+			MediaTitle:  status.MediaTitle,
+		}
 		return nil
 	})
 	return result, err
@@ -415,7 +722,11 @@ func (f *Factory) Open(ctx context.Context, device playback.Device) (playback.Tr
 	}
 }
 
-func RunMonitor(ctx context.Context, generation uint64, device playback.Device, transport playback.Transport, sink playback.MonitorSink) {
+func RunMonitor(ctx context.Context, cfg playback.MonitorConfig, device playback.Device, transport playback.Transport) {
+	generation, sink := cfg.Generation, cfg.Sink
+	if sink == nil {
+		return
+	}
 	switch typed := transport.(type) {
 	case *DLNA:
 		if err := typed.ActivateCallbacks(generation); err != nil {
@@ -424,11 +735,12 @@ func RunMonitor(ctx context.Context, generation uint64, device playback.Device, 
 		}
 		var callbacks <-chan playback.DLNACallbackEvent
 		if typed.callbacks != nil {
-			callbacks = typed.callbacks.Events()
+			callbacks = typed.callbacks.Events(generation)
 		}
-		playback.RunDLNAMonitor(ctx, playback.MonitorConfig{Generation: generation, Sink: sink}, typed, callbacks)
+		cfg.DLNAStopGate = &typed.stopGate
+		playback.RunDLNAMonitor(ctx, cfg, typed, callbacks)
 	case *Chromecast:
-		playback.RunChromecastMonitor(ctx, playback.ChromecastMonitorConfig{MonitorConfig: playback.MonitorConfig{Generation: generation, Sink: sink}}, typed)
+		playback.RunChromecastMonitor(ctx, playback.ChromecastMonitorConfig{MonitorConfig: cfg}, typed)
 	default:
 		sink.HandleMonitorEvent(ctx, playback.MonitorEvent{Generation: generation, Terminal: playback.TerminalError, Err: fmt.Errorf("monitor unavailable for %s", device.Protocol)})
 	}

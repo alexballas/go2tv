@@ -38,6 +38,16 @@ type monitorCollector struct{ ch chan MonitorEvent }
 
 func (c monitorCollector) HandleMonitorEvent(_ context.Context, e MonitorEvent) { c.ch <- e }
 
+type failingPositionDLNA struct {
+	seekDLNA
+	polled chan struct{}
+}
+
+func (d *failingPositionDLNA) Position(context.Context) (Position, error) {
+	d.polled <- struct{}{}
+	return Position{}, errors.New("position unavailable")
+}
+
 func waitMonitor(t *testing.T, ch <-chan MonitorEvent) MonitorEvent {
 	t.Helper()
 	select {
@@ -61,6 +71,11 @@ func TestDLNAMonitorProgressCompletionAndCancellation(t *testing.T) {
 	if e.Position != 5 || e.Duration != 10 {
 		t.Fatalf("progress %#v", e)
 	}
+	callbacks <- DLNACallbackEvent{Generation: 7, TransportState: "PLAYING"}
+	e = waitMonitor(t, events)
+	if e.State != "PLAYING" {
+		t.Fatalf("state %q", e.State)
+	}
 	callbacks <- DLNACallbackEvent{Generation: 7, TransportState: "STOPPED"}
 	e = waitMonitor(t, events)
 	if e.Terminal != TerminalFinished {
@@ -76,6 +91,107 @@ func TestDLNAMonitorProgressCompletionAndCancellation(t *testing.T) {
 	e = waitMonitor(t, events)
 	if e.Terminal != TerminalReplacement {
 		t.Fatalf("cancel %q", e.Terminal)
+	}
+}
+
+func TestDLNAMonitorProgressArmsCompletionWithoutPlayingCallback(t *testing.T) {
+	clock := newManualClock()
+	events := make(chan MonitorEvent, 2)
+	callbacks := make(chan DLNACallbackEvent, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	dlna := &seekDLNA{pos: Position{Current: 1, Duration: 10}}
+	go RunDLNAMonitor(ctx, MonitorConfig{Generation: 3, Clock: clock, Sink: monitorCollector{events}}, dlna, callbacks)
+	clock.tick.ch <- time.Time{}
+	_ = waitMonitor(t, events)
+	callbacks <- DLNACallbackEvent{Generation: 3, TransportState: "STOPPED"}
+	if event := waitMonitor(t, events); event.Terminal != TerminalFinished {
+		t.Fatalf("terminal = %#v", event)
+	}
+}
+
+func TestDLNAMonitorPositionErrorsRemainNonterminal(t *testing.T) {
+	clock := newManualClock()
+	events := make(chan MonitorEvent, 4)
+	callbacks := make(chan DLNACallbackEvent, 2)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	dlna := &failingPositionDLNA{polled: make(chan struct{})}
+	go RunDLNAMonitor(ctx, MonitorConfig{Generation: 8, Clock: clock, Sink: monitorCollector{events}}, dlna, callbacks)
+
+	for range 5 {
+		clock.tick.ch <- time.Time{}
+		select {
+		case <-dlna.polled:
+		case <-time.After(time.Second):
+			t.Fatal("position polling stopped after errors")
+		}
+	}
+
+	callbacks <- DLNACallbackEvent{Generation: 8, TransportState: "PLAYING"}
+	if event := waitMonitor(t, events); event.State != "PLAYING" {
+		t.Fatalf("state = %#v", event)
+	}
+	callbacks <- DLNACallbackEvent{Generation: 8, TransportState: "STOPPED"}
+	if event := waitMonitor(t, events); event.Terminal != TerminalFinished {
+		t.Fatalf("terminal = %#v", event)
+	}
+}
+
+func TestDLNAMonitorSuppressesFirstPrePlayStopped(t *testing.T) {
+	clock := newManualClock()
+	events := make(chan MonitorEvent, 2)
+	callbacks := make(chan DLNACallbackEvent)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go RunDLNAMonitor(ctx, MonitorConfig{Generation: 4, Clock: clock, Sink: monitorCollector{events}}, &seekDLNA{}, callbacks)
+
+	send := func() {
+		t.Helper()
+		select {
+		case callbacks <- DLNACallbackEvent{Generation: 4, TransportState: "STOPPED"}:
+		case <-time.After(time.Second):
+			t.Fatal("callback not consumed")
+		}
+	}
+	send()
+	send()
+	if event := waitMonitor(t, events); event.Terminal != TerminalFinished {
+		t.Fatalf("terminal %q", event.Terminal)
+	}
+}
+
+func TestDLNAStopGateSurvivesMonitorRestart(t *testing.T) {
+	gate := &DLNAStopGate{}
+	firstEvents := make(chan MonitorEvent, 2)
+	firstCallbacks := make(chan DLNACallbackEvent, 1)
+	firstCtx, cancelFirst := context.WithCancel(context.Background())
+	go RunDLNAMonitor(firstCtx, MonitorConfig{
+		Generation:   1,
+		Clock:        newManualClock(),
+		Sink:         monitorCollector{firstEvents},
+		DLNAStopGate: gate,
+	}, &seekDLNA{}, firstCallbacks)
+	firstCallbacks <- DLNACallbackEvent{Generation: 1, TransportState: "PLAYING"}
+	if event := waitMonitor(t, firstEvents); event.State != "PLAYING" {
+		t.Fatalf("state = %#v", event)
+	}
+	cancelFirst()
+	_ = waitMonitor(t, firstEvents)
+
+	secondEvents := make(chan MonitorEvent, 1)
+	secondCallbacks := make(chan DLNACallbackEvent, 1)
+	secondCtx, cancelSecond := context.WithCancel(context.Background())
+	defer cancelSecond()
+	go RunDLNAMonitor(secondCtx, MonitorConfig{
+		Generation:   2,
+		Clock:        newManualClock(),
+		Sink:         monitorCollector{secondEvents},
+		DLNAStopGate: gate,
+	}, &seekDLNA{}, secondCallbacks)
+	secondCallbacks <- DLNACallbackEvent{Generation: 2, TransportState: "STOPPED"}
+	if event := waitMonitor(t, secondEvents); event.Terminal != TerminalFinished {
+		t.Fatalf("terminal = %#v", event)
 	}
 }
 
@@ -106,15 +222,146 @@ func TestChromecastMonitorStallAndLoss(t *testing.T) {
 			t.Fatalf("terminal %q", e.Terminal)
 		}
 	})
+	t.Run("near-end loss after buffering", func(t *testing.T) {
+		clock := newManualClock()
+		events := make(chan MonitorEvent, 4)
+		lost := errors.New("lost")
+		cast := &seekCast{statuses: []CastStatus{
+			{PlayerState: "PLAYING", Current: 9, Duration: 10},
+			{PlayerState: "BUFFERING"},
+		}}
+		go RunChromecastMonitor(context.Background(), ChromecastMonitorConfig{
+			MonitorConfig: MonitorConfig{Clock: clock, Sink: monitorCollector{events}},
+			LostPolls:     2,
+		}, cast)
+
+		clock.tick.ch <- time.Time{}
+		if event := waitMonitor(t, events); event.Position != 9 || event.Duration != 10 {
+			t.Fatalf("playing event %#v", event)
+		}
+		clock.tick.ch <- time.Time{}
+		if event := waitMonitor(t, events); event.State != "BUFFERING" || event.Position != 0 || event.Duration != 0 {
+			t.Fatalf("buffering event %#v", event)
+		}
+		cast.statusErr = lost
+		clock.tick.ch <- time.Time{}
+		clock.tick.ch <- time.Time{}
+		event := waitMonitor(t, events)
+		if event.Terminal != TerminalFinished || !errors.Is(event.Err, lost) {
+			t.Fatalf("terminal event %#v", event)
+		}
+	})
+	t.Run("transcoded seek uses original duration", func(t *testing.T) {
+		clock := newManualClock()
+		events := make(chan MonitorEvent, 4)
+		lost := errors.New("lost")
+		cast := &seekCast{statuses: []CastStatus{{PlayerState: "PLAYING", Current: 84, Duration: 10}}}
+		go RunChromecastMonitor(context.Background(), ChromecastMonitorConfig{
+			MonitorConfig: MonitorConfig{SeekOffset: 15, ExpectedDuration: 100, Clock: clock, Sink: monitorCollector{events}},
+			LostPolls:     2,
+		}, cast)
+
+		clock.tick.ch <- time.Time{}
+		if event := waitMonitor(t, events); event.Position != 99 || event.Duration != 100 {
+			t.Fatalf("seek event %#v", event)
+		}
+		cast.statusErr = lost
+		clock.tick.ch <- time.Time{}
+		clock.tick.ch <- time.Time{}
+		if event := waitMonitor(t, events); event.Terminal != TerminalFinished || !errors.Is(event.Err, lost) {
+			t.Fatalf("terminal event %#v", event)
+		}
+	})
+	t.Run("startup idle is retryable completion", func(t *testing.T) {
+		clock := newManualClock()
+		events := make(chan MonitorEvent, 2)
+		cast := &seekCast{statuses: []CastStatus{{PlayerState: "IDLE"}}}
+		go RunChromecastMonitor(context.Background(), ChromecastMonitorConfig{
+			MonitorConfig:    MonitorConfig{Clock: clock, Sink: monitorCollector{events}},
+			StartupIdleTicks: 2,
+		}, cast)
+
+		clock.tick.ch <- time.Time{}
+		if event := waitMonitor(t, events); event.State != "IDLE" || event.Terminal != "" {
+			t.Fatalf("initial event %#v", event)
+		}
+		clock.tick.ch <- time.Time{}
+		event := waitMonitor(t, events)
+		if event.Terminal != TerminalFinished || event.Err == nil {
+			t.Fatalf("terminal event %#v", event)
+		}
+	})
+	for _, state := range []string{"PLAYING", "PAUSED"} {
+		t.Run("image "+state+" is immediately ready", func(t *testing.T) {
+			clock := newManualClock()
+			events := make(chan MonitorEvent, 1)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			cast := &seekCast{statuses: []CastStatus{{PlayerState: state}}}
+			go RunChromecastMonitor(ctx, ChromecastMonitorConfig{
+				MonitorConfig: MonitorConfig{Clock: clock, Sink: monitorCollector{events}},
+			}, cast)
+
+			clock.tick.ch <- time.Time{}
+			if event := waitMonitor(t, events); !event.ImageReady {
+				t.Fatalf("%s event %#v", state, event)
+			}
+		})
+	}
+	t.Run("image buffering metadata stabilizes", func(t *testing.T) {
+		for name, status := range map[string]CastStatus{
+			"content type": {PlayerState: "BUFFERING", ContentType: "image/jpeg"},
+			"media title":  {PlayerState: "BUFFERING", MediaTitle: "Photo"},
+		} {
+			t.Run(name, func(t *testing.T) {
+				clock := newManualClock()
+				events := make(chan MonitorEvent, 2)
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				cast := &seekCast{statuses: []CastStatus{status}}
+				go RunChromecastMonitor(ctx, ChromecastMonitorConfig{
+					MonitorConfig: MonitorConfig{Clock: clock, Sink: monitorCollector{events}},
+				}, cast)
+
+				clock.tick.ch <- time.Time{}
+				if event := waitMonitor(t, events); event.ImageReady {
+					t.Fatalf("first metadata event %#v", event)
+				}
+				clock.tick.ch <- time.Time{}
+				if event := waitMonitor(t, events); !event.ImageReady {
+					t.Fatalf("stable metadata event %#v", event)
+				}
+			})
+		}
+	})
+	t.Run("image readiness falls back", func(t *testing.T) {
+		clock := newManualClock()
+		events := make(chan MonitorEvent, chromecastImageFallbackTicks)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		cast := &seekCast{statuses: []CastStatus{{PlayerState: "IDLE"}}}
+		go RunChromecastMonitor(ctx, ChromecastMonitorConfig{
+			MonitorConfig:    MonitorConfig{Clock: clock, Sink: monitorCollector{events}},
+			StartupIdleTicks: chromecastImageFallbackTicks + 1,
+		}, cast)
+
+		for tick := 1; tick <= chromecastImageFallbackTicks; tick++ {
+			clock.tick.ch <- time.Time{}
+			event := waitMonitor(t, events)
+			if got, want := event.ImageReady, tick == chromecastImageFallbackTicks; got != want {
+				t.Fatalf("tick %d readiness = %t, want %t: %#v", tick, got, want, event)
+			}
+		}
+	})
 }
 
 func TestImageTimer(t *testing.T) {
 	clock := newManualClock()
 	events := make(chan MonitorEvent, 1)
-	go RunImageTimer(context.Background(), MonitorConfig{Generation: 9, Clock: clock, Sink: monitorCollector{events}}, time.Second)
+	go RunImageTimer(context.Background(), MonitorConfig{Generation: 9, TimerEpoch: 4, Clock: clock, Sink: monitorCollector{events}}, time.Second)
 	clock.timer.ch <- time.Time{}
 	e := waitMonitor(t, events)
-	if e.Terminal != TerminalFinished || e.Generation != 9 {
+	if e.Terminal != TerminalFinished || e.Generation != 9 || e.TimerEpoch != 4 {
 		t.Fatalf("event %#v", e)
 	}
 }

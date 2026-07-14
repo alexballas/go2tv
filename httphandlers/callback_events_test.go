@@ -178,3 +178,49 @@ func TestCallbackSessionQueueFull(t *testing.T) {
 		t.Fatalf("full status %d", got)
 	}
 }
+
+func TestCallbackSessionStoppedWaitsForFullQueue(t *testing.T) {
+	sink := blockingCallbackSink{entered: make(chan struct{}, 1), release: make(chan struct{})}
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(sink.release) }) }
+	defer release()
+	session, err := NewCallbackSession(CallbackSessionConfig{Generation: 1, SID: "session", QueueSize: 1, Sink: sink})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	request := func(seq, state string) int {
+		rec := httptest.NewRecorder()
+		session.Handler()(rec, newNotifyRequest(seq, state))
+		return rec.Code
+	}
+	if got := request("1", "PLAYING"); got != http.StatusOK {
+		t.Fatalf("first status %d", got)
+	}
+	select {
+	case <-sink.entered:
+	case <-time.After(time.Second):
+		t.Fatal("worker did not block")
+	}
+	if got := request("2", "PLAYING"); got != http.StatusOK {
+		t.Fatalf("second status %d", got)
+	}
+
+	result := make(chan int, 1)
+	go func() { result <- request("3", "STOPPED") }()
+	select {
+	case status := <-result:
+		t.Fatalf("STOPPED returned from full queue: %d", status)
+	case <-time.After(10 * time.Millisecond):
+	}
+	release()
+	select {
+	case status := <-result:
+		if status != http.StatusOK {
+			t.Fatalf("STOPPED status %d", status)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("STOPPED remained blocked")
+	}
+}

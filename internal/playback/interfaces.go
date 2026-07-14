@@ -111,6 +111,8 @@ type CastStatus struct {
 	PlayerState string
 	Current     int
 	Duration    int
+	ContentType string
+	MediaTitle  string
 }
 
 type LoadRequest struct {
@@ -118,7 +120,7 @@ type LoadRequest struct {
 	MediaType   string
 	SubtitleURL string
 	Start       int
-	Duration    int
+	Duration    float64
 	Seekable    bool
 	Metadata    metadata.Media
 	ArtworkData []byte

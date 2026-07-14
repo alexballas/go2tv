@@ -37,8 +37,19 @@ func newRuntime(cfg Config, logs io.Writer) (*runtime, error) {
 	base := mediaserver.New(mediaserver.Config{Callback: callbacks, Transcode: transcode})
 	media := &runtimeMediaServer{Server: base}
 	artwork := controller.NewArtworkCache(controller.ArtworkCacheBytes)
-	control := controller.New(controller.NewRuntimeConfig(controller.RuntimeConfig{MediaServer: media, Callbacks: callbacks, LogOutput: logs, Artwork: artwork}))
 	ffmpeg, _ := utils.ResolveFFmpegPath("")
+	var durationProbe func(context.Context, playback.SourceOpener) (float64, error)
+	if ffmpeg != "" {
+		durationProbe = func(ctx context.Context, open playback.SourceOpener) (float64, error) {
+			media, _, err := open(ctx)
+			if err != nil {
+				return 0, err
+			}
+			defer media.Close()
+			return utils.DurationForMediaReaderSeconds(ctx, ffmpeg, media)
+		}
+	}
+	control := controller.New(controller.NewRuntimeConfig(controller.RuntimeConfig{MediaServer: media, Callbacks: callbacks, LogOutput: logs, Artwork: artwork, DurationProbe: durationProbe}))
 	web, err := webui.New(webui.Config{Version: cfg.Version, Controller: control, Library: lib, Artwork: artwork, FFmpegPath: ffmpeg})
 	if err != nil {
 		control.Close()

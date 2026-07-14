@@ -73,17 +73,18 @@ func (l *eventLog) snapshot() []string {
 }
 
 type fakeFactory struct {
-	log       *eventLog
-	mu        sync.Mutex
-	opened    []*fakeTransport
-	loadBlock chan struct{}
-	stopBlock chan struct{}
-	volume    int
+	log        *eventLog
+	mu         sync.Mutex
+	opened     []*fakeTransport
+	loadBlock  chan struct{}
+	stopBlock  chan struct{}
+	pauseBlock chan struct{}
+	volume     int
 }
 
 func (f *fakeFactory) Open(_ context.Context, device playback.Device) (Transport, error) {
 	f.log.add("open:" + device.ID)
-	t := &fakeTransport{id: device.ID, log: f.log, loadBlock: f.loadBlock, stopBlock: f.stopBlock, volume: f.volume}
+	t := &fakeTransport{id: device.ID, log: f.log, loadBlock: f.loadBlock, stopBlock: f.stopBlock, pauseBlock: f.pauseBlock, volume: f.volume}
 	f.mu.Lock()
 	f.opened = append(f.opened, t)
 	f.mu.Unlock()
@@ -91,12 +92,15 @@ func (f *fakeFactory) Open(_ context.Context, device playback.Device) (Transport
 }
 
 type fakeTransport struct {
-	id        string
-	log       *eventLog
-	loadBlock chan struct{}
-	stopBlock chan struct{}
-	load      playback.LoadRequest
-	volume    int
+	id         string
+	log        *eventLog
+	loadBlock  chan struct{}
+	stopBlock  chan struct{}
+	pauseBlock chan struct{}
+	stopErr    error
+	closeErr   error
+	load       playback.LoadRequest
+	volume     int
 }
 
 func (t *fakeTransport) Load(ctx context.Context, request playback.LoadRequest) error {
@@ -123,8 +127,26 @@ func (t *fakeTransport) LoadOnExisting(ctx context.Context, request playback.Loa
 	}
 	return nil
 }
-func (t *fakeTransport) Play(context.Context) error  { t.log.add("play:" + t.id); return nil }
-func (t *fakeTransport) Pause(context.Context) error { t.log.add("pause:" + t.id); return nil }
+func (t *fakeTransport) ActivateCallbacks(generation uint64) error {
+	t.log.add("callbacks:" + strconv.FormatUint(generation, 10))
+	return nil
+}
+func (t *fakeTransport) SuppressCallbackStops(generation uint64, suppress bool) error {
+	t.log.add("callbacks:suppress:" + strconv.FormatUint(generation, 10) + ":" + strconv.FormatBool(suppress))
+	return nil
+}
+func (t *fakeTransport) Play(context.Context) error { t.log.add("play:" + t.id); return nil }
+func (t *fakeTransport) Pause(ctx context.Context) error {
+	t.log.add("pause:" + t.id)
+	if t.pauseBlock != nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-t.pauseBlock:
+		}
+	}
+	return nil
+}
 func (t *fakeTransport) Stop(ctx context.Context) error {
 	t.log.add("stop:" + t.id)
 	if t.stopBlock != nil {
@@ -134,9 +156,12 @@ func (t *fakeTransport) Stop(ctx context.Context) error {
 		case <-t.stopBlock:
 		}
 	}
-	return nil
+	return t.stopErr
 }
-func (t *fakeTransport) Close(context.Context) error { t.log.add("close:" + t.id); return nil }
+func (t *fakeTransport) Close(context.Context) error {
+	t.log.add("close:" + t.id)
+	return t.closeErr
+}
 func (t *fakeTransport) Volume(context.Context) (int, error) {
 	t.log.add("volume:get:" + t.id)
 	return t.volume, nil
@@ -222,6 +247,30 @@ func TestPolicyAtomicAndExpectedRevision(t *testing.T) {
 	result = c.SelectDevice(context.Background(), Mutation{RequestID: "stale", ExpectedRevision: &stale}, "one")
 	if result.Code != CodeConflict || result.RequestID != "stale" || result.Revision != snapshot.Revision {
 		t.Fatalf("conflict result = %#v", result)
+	}
+}
+
+func TestPolicyImageDurationBounds(t *testing.T) {
+	for _, tt := range []struct {
+		seconds int
+		valid   bool
+	}{
+		{seconds: -1},
+		{seconds: 1},
+		{seconds: 4},
+		{seconds: 0, valid: true},
+		{seconds: 5, valid: true},
+		{seconds: 300, valid: true},
+		{seconds: 301},
+	} {
+		t.Run(strconv.Itoa(tt.seconds), func(t *testing.T) {
+			c, _, _ := newTestController()
+			defer c.Close()
+			result := c.SetPolicy(context.Background(), PolicyRequest{Policy: Policy{ImageDurationSeconds: tt.seconds}})
+			if result.OK() != tt.valid {
+				t.Fatalf("result = %#v", result)
+			}
+		})
 	}
 }
 
@@ -425,6 +474,12 @@ func TestSeekValidatesAndUsesActiveProtocol(t *testing.T) {
 	if !slices.Contains(log.snapshot(), "seek:00:00:12") {
 		t.Fatalf("events = %v", log.snapshot())
 	}
+	events := log.snapshot()
+	callbackIndex := slices.Index(events, "callbacks:2")
+	seekIndex := slices.Index(events, "seek:00:00:12")
+	if callbackIndex < 0 || seekIndex <= callbackIndex {
+		t.Fatalf("seek callback generation order = %v", events)
+	}
 }
 
 func TestChromecastLoadDoesNotPlayBeforeMediaStatus(t *testing.T) {
@@ -438,6 +493,24 @@ func TestChromecastLoadDoesNotPlayBeforeMediaStatus(t *testing.T) {
 	}
 	if slices.Contains(log.snapshot(), "play:cast") {
 		t.Fatalf("unexpected play after autoplay load: %v", log.snapshot())
+	}
+}
+
+func TestDLNACallbacksActivateBeforePlay(t *testing.T) {
+	c, log, _ := newTestController(playback.Device{ID: "one", Protocol: "DLNA"})
+	defer c.Close()
+	awaitDevices(t, c, 1)
+	c.SelectDevice(context.Background(), Mutation{}, "one")
+	c.SelectMedia(context.Background(), Mutation{}, testMedia("a.mp3", mediamodel.MediaKindAudio))
+	if result := c.Play(context.Background(), PlayRequest{}); !result.OK() {
+		t.Fatal(result)
+	}
+	events := log.snapshot()
+	loadIndex := slices.Index(events, "load:one")
+	callbackIndex := slices.Index(events, "callbacks:1")
+	playIndex := slices.Index(events, "play:one")
+	if callbackIndex < 0 || loadIndex <= callbackIndex || playIndex <= loadIndex {
+		t.Fatalf("callback activation order = %v", events)
 	}
 }
 
@@ -588,7 +661,19 @@ func TestLoadUsesDisplayNameAndArtwork(t *testing.T) {
 }
 
 func TestTranscodedSeekIgnoresOldMonitorStop(t *testing.T) {
-	c, _, factory := newTestController(playback.Device{ID: "one", Protocol: "DLNA"})
+	device := playback.Device{ID: "one", Protocol: "DLNA"}
+	log := &eventLog{}
+	factory := &fakeFactory{log: log}
+	monitorConfigs := make(chan playback.MonitorConfig, 2)
+	c := New(Config{
+		Discovery:        newFakeDiscovery(device),
+		TransportFactory: factory,
+		MediaServer:      &fakeServer{log: log},
+		OperationTimeout: time.Second,
+		RunMonitor: func(_ context.Context, cfg playback.MonitorConfig, _ playback.Device, _ Transport) {
+			monitorConfigs <- cfg
+		},
+	})
 	defer c.Close()
 	awaitDevices(t, c, 1)
 	c.SelectDevice(context.Background(), Mutation{}, "one")
@@ -596,6 +681,9 @@ func TestTranscodedSeekIgnoresOldMonitorStop(t *testing.T) {
 	c.SetTranscode(context.Background(), Mutation{}, true)
 	if result := c.Play(context.Background(), PlayRequest{}); !result.OK() {
 		t.Fatal(result)
+	}
+	if cfg := <-monitorConfigs; cfg.SeekOffset != 0 {
+		t.Fatalf("initial monitor = %#v", cfg)
 	}
 	playing, _ := c.Snapshot(context.Background())
 	c.HandleMonitorEvent(context.Background(), playback.MonitorEvent{Generation: playing.Generation, Position: 1, Duration: 60})
@@ -628,6 +716,9 @@ func TestTranscodedSeekIgnoresOldMonitorStop(t *testing.T) {
 	if got := <-result; !got.OK() {
 		t.Fatal(got)
 	}
+	if cfg := <-monitorConfigs; cfg.SeekOffset != 12 {
+		t.Fatalf("seek monitor = %#v", cfg)
+	}
 	after, _ := c.Snapshot(context.Background())
 	if !after.HasSession || after.Position != 12 {
 		t.Fatalf("snapshot = %#v", after)
@@ -635,7 +726,7 @@ func TestTranscodedSeekIgnoresOldMonitorStop(t *testing.T) {
 }
 
 func TestStopCancelsPendingPlay(t *testing.T) {
-	c, _, factory := newTestController(playback.Device{ID: "one", Protocol: "DLNA"})
+	c, log, factory := newTestController(playback.Device{ID: "one", Protocol: "DLNA"})
 	defer c.Close()
 	factory.loadBlock = make(chan struct{})
 	awaitDevices(t, c, 1)
@@ -657,6 +748,17 @@ func TestStopCancelsPendingPlay(t *testing.T) {
 	snapshot, _ := c.Snapshot(context.Background())
 	if snapshot.HasSession || snapshot.TerminalReason != playback.TerminalUserStop {
 		t.Fatalf("snapshot = %#v", snapshot)
+	}
+	factory.loadBlock = nil
+	if replay := c.Play(context.Background(), PlayRequest{Mutation: Mutation{RequestID: "replay"}}); !replay.OK() {
+		t.Fatalf("replay = %#v", replay)
+	}
+	for range 20 {
+		after, _ := c.Snapshot(context.Background())
+		if !after.HasSession || after.PlaybackState != "PLAYING" || count(log.snapshot(), "server:start:one") != 2 {
+			t.Fatalf("replay disrupted: %#v %v", after, log.snapshot())
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 

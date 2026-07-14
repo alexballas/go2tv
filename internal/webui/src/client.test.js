@@ -199,3 +199,11 @@ test("loop and autoplay remain mutually exclusive",async()=>{
   assert.equal(ids.autoplay.checked,false);assert.equal(ids["same-type"].checked,false);assert.deepEqual(ws.sent.at(-1).payload.policy,{LoopSelected:true,AutoPlayNext:false,AutoPlaySameType:false,GaplessEnabled:false,ImageDurationSeconds:10});
   ids.autoplay.checked=true;ids.autoplay.emit("change");assert.equal(ids.loop.checked,false);assert.equal(ws.sent.at(-1).payload.policy.AutoPlayNext,true);
 });
+
+test("normalizes image duration to desktop limits",async()=>{
+  const {ids,env}=fixture();startClient(env);await settle();const ws=FakeSocket.instances[0];
+  for(const [input,want] of [["0",0],["1",5],["4.9",5],["300",300],["301",300],["-1",0],["",0]]){
+    ids["image-duration"].value=input;ids["image-duration"].emit("change");
+    assert.equal(ws.sent.at(-1).payload.policy.ImageDurationSeconds,want);assert.equal(ids["image-duration"].value,String(want));
+  }
+});

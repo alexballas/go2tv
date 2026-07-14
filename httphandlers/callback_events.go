@@ -134,6 +134,15 @@ func (s *CallbackSession) Handler() http.HandlerFunc {
 			Generation: s.routeGeneration, SID: s.sid, SEQ: uint32(seq64),
 			Source: source.String(), TransportState: notify.TransportState, MediaType: s.mediaType,
 		}
+		if strings.EqualFold(strings.TrimSpace(event.TransportState), "STOPPED") {
+			select {
+			case <-s.done:
+				http.Error(w, "closed", http.StatusServiceUnavailable)
+			case s.queue <- event:
+				w.WriteHeader(http.StatusOK)
+			}
+			return
+		}
 		select {
 		case <-s.done:
 			http.Error(w, "closed", http.StatusServiceUnavailable)

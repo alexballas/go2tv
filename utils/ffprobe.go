@@ -1,8 +1,11 @@
 package utils
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strconv"
@@ -82,6 +85,76 @@ func DurationForMediaSeconds(ffmpeg string, f string) (float64, error) {
 	}
 
 	return strconv.ParseFloat(info.Format.Duration, 64)
+}
+
+// DurationForMediaReaderSeconds returns the media duration in seconds without
+// requiring a filesystem path. Seekable files use ffmpeg's fd protocol;
+// other readers fall back to stdin's pipe protocol. The input offset is
+// restored when the reader supports seeking.
+func DurationForMediaReaderSeconds(ctx context.Context, ffmpeg string, media io.ReadSeekCloser) (seconds float64, err error) {
+	if ctx == nil {
+		return 0, errors.New("ffprobe context required")
+	}
+	if media == nil {
+		return 0, ErrInvalidInput
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+
+	ffprobePath, err := ResolveFFprobePath(ffmpeg)
+	if err != nil {
+		return 0, err
+	}
+
+	input := io.Reader(media)
+	inputURL := "pipe:0"
+	if file, ok := underlyingOSFile(media); ok {
+		input = file
+		inputURL = ffmpegInputForFile(ffmpeg, file)
+	}
+
+	if seeker, ok := input.(io.Seeker); ok {
+		offset, seekErr := seeker.Seek(0, io.SeekCurrent)
+		if seekErr == nil {
+			if _, seekErr = seeker.Seek(0, io.SeekStart); seekErr != nil {
+				return 0, fmt.Errorf("rewind ffprobe input: %w", seekErr)
+			}
+			defer func() {
+				if _, restoreErr := seeker.Seek(offset, io.SeekStart); err == nil && restoreErr != nil {
+					err = fmt.Errorf("restore ffprobe input: %w", restoreErr)
+				}
+			}()
+		}
+	}
+
+	cmd := exec.CommandContext(
+		ctx,
+		ffprobePath,
+		"-loglevel", "error",
+		"-show_format",
+		"-of", "json",
+		inputURL,
+	)
+	setSysProcAttr(cmd)
+	cmd.Stdin = input
+	output, err := cmd.Output()
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return 0, ctxErr
+	}
+	if err != nil {
+		return 0, fmt.Errorf("ffprobe duration: %w", err)
+	}
+
+	var info ffprobeInfo
+	if err := json.Unmarshal(output, &info); err != nil {
+		return 0, fmt.Errorf("decode ffprobe duration: %w", err)
+	}
+	seconds, err = strconv.ParseFloat(info.Format.Duration, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse ffprobe duration: %w", err)
+	}
+	return seconds, nil
 }
 
 func GetMediaCodecInfo(ffmpeg string, f string) (*MediaCodecInfo, error) {

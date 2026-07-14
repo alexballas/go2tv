@@ -61,7 +61,7 @@
           <label><input id="autoplay" type="checkbox"><span><strong>Autoplay next</strong><small>Continue through the queue</small></span></label>
           <label><input id="same-type" type="checkbox"><span><strong>Same type only</strong><small>Skip unlike media</small></span></label>
           <label><input id="gapless" type="checkbox"><span><strong>Gapless</strong><small>DLNA renderers only</small></span></label>
-          <label class="image-duration"><span><strong>Image duration</strong><small>Seconds before advancing</small></span><input id="image-duration" type="number" min="0" max="86400" value="10"></label>
+          <label class="image-duration"><span><strong>Image duration</strong><small>0 disables; otherwise 5–300 seconds</small></span><input id="image-duration" type="number" min="0" max="300" step="1" value="10"></label>
         </div>
       </section>
     </aside>
@@ -75,6 +75,6 @@
     <p id="artwork-modal-title"></p>
   </div>
 </dialog>
-<script type="module" src="/assets/app.349429c6.js"></script>
+<script type="module" src="/assets/app.ce650917.js"></script>
 </body>
 </html>

@@ -17,6 +17,8 @@ const (
 	CallbackQueueSize = 128
 	MaxQueueItems     = 1000
 	DefaultImageTime  = 10
+	MinImageTime      = 5
+	MaxImageTime      = 300
 	ArtworkCacheBytes = 64 << 20
 )
 
@@ -178,6 +180,8 @@ type Config struct {
 	TransportFactory TransportFactory
 	MediaServer      playback.MediaServer
 	Artwork          *ArtworkCache
-	RunMonitor       func(context.Context, uint64, playback.Device, Transport, playback.MonitorSink)
+	RunMonitor       func(context.Context, playback.MonitorConfig, playback.Device, Transport)
+	DurationProbe    func(context.Context, playback.SourceOpener) (float64, error)
+	Clock            playback.Clock
 	OperationTimeout time.Duration
 }
