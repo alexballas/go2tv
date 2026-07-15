@@ -432,6 +432,9 @@ func (c *CastClient) LoadMediaOnExisting(req LoadRequest) error {
 		}
 		time.Sleep(time.Duration(i+1) * 500 * time.Millisecond)
 	}
+	if transportId == "" {
+		return fmt.Errorf("media receiver unavailable: missing transport ID")
+	}
 
 	// For LoadOnExisting, always autoplay since it's for seek operations on active content
 	err := loadMedia(c.conn, transportId, req, true)

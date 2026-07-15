@@ -362,6 +362,10 @@ func expectedMutation(id string, revision *uint64) controller.Mutation {
 	return controller.Mutation{RequestID: id, ExpectedRevision: revision}
 }
 func (h *Handler) command(ctx context.Context, message envelope) controller.Result {
+	var before controller.Snapshot
+	if h.cfg.Logger != nil && knownAction(message.Type) {
+		before, _ = h.cfg.Controller.Snapshot(ctx)
+	}
 	result := h.executeCommand(ctx, message)
 	if h.cfg.Logger == nil || !knownAction(message.Type) {
 		return result
@@ -375,7 +379,7 @@ func (h *Handler) command(ctx context.Context, message envelope) controller.Resu
 	}
 	snapshot, err := h.cfg.Controller.Snapshot(ctx)
 	if err == nil {
-		h.logAction(message.Type, snapshot)
+		h.logAction(message.Type, before, snapshot)
 	}
 	return result
 }
@@ -577,7 +581,7 @@ func actionName(kind string) string {
 	return strings.ReplaceAll(kind, ".", " ")
 }
 
-func (h *Handler) logAction(kind string, snapshot controller.Snapshot) {
+func (h *Handler) logAction(kind string, before, snapshot controller.Snapshot) {
 	message := ""
 	switch kind {
 	case "devices.refresh":
@@ -596,11 +600,21 @@ func (h *Handler) logAction(kind string, snapshot controller.Snapshot) {
 	case "library.clear_subtitle":
 		message = "Subtitles cleared"
 	case "queue.add":
-		message = "Media added to queue"
+		for _, item := range snapshot.Queue {
+			if !slices.ContainsFunc(before.Queue, func(previous controller.QueueItem) bool { return previous.ID == item.ID }) {
+				message = "Media added to queue: " + item.Name
+				break
+			}
+		}
 	case "queue.select":
 		message = "Queue item selected: " + snapshot.SelectedMedia
 	case "queue.remove":
-		message = "Queue item removed"
+		for _, item := range before.Queue {
+			if !slices.ContainsFunc(snapshot.Queue, func(current controller.QueueItem) bool { return current.ID == item.ID }) {
+				message = "Queue item removed: " + item.Name
+				break
+			}
+		}
 	case "queue.move":
 		message = "Queue reordered"
 	case "queue.clear":

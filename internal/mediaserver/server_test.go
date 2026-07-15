@@ -117,7 +117,10 @@ func TestTokenRotationRevocationAndStaleRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondURL, _ := url.Parse(second.URL)
+	secondURL, err := url.Parse(second.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if firstURL.Path == secondURL.Path {
 		t.Fatal("session route reused")
 	}
@@ -130,6 +133,48 @@ func TestTokenRotationRevocationAndStaleRoutes(t *testing.T) {
 	response.Body.Close()
 	if response.StatusCode != http.StatusNotFound {
 		t.Fatalf("stale status %d", response.StatusCode)
+	}
+}
+
+func TestAddMediaKeepsChromecastListenerAndRevokesPreviousRoute(t *testing.T) {
+	server := New(Config{ListenAddr: "127.0.0.1:0"})
+	firstRequest := mediaRequest([]byte("first"), ".jpg", "image/jpeg")
+	firstRequest.Target.Protocol = "Chromecast"
+	first := startTestServer(t, server, firstRequest)
+	addr := server.Addr()
+
+	secondRequest := mediaRequest([]byte("second"), ".png", "image/png")
+	secondRequest.Target.Protocol = "Chromecast"
+	second, err := server.AddMedia(context.Background(), secondRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondURL, _ := url.Parse(second.URL)
+	if secondURL.Host != addr {
+		t.Fatalf("listener changed: %q != %q", secondURL.Host, addr)
+	}
+	response, err := http.Get(second.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusOK || string(body) != "second" || response.Header.Get("Access-Control-Allow-Origin") != "*" {
+		t.Fatalf("replacement status=%d cors=%q body=%q", response.StatusCode, response.Header.Get("Access-Control-Allow-Origin"), body)
+	}
+	if err := server.Remove(context.Background(), first.ID); err != nil {
+		t.Fatal(err)
+	}
+	response, err = http.Get(first.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("old route status = %d", response.StatusCode)
 	}
 }
 

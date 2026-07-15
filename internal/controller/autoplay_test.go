@@ -282,6 +282,82 @@ func TestChromecastAutoplayLostStatusOpensFreshConnection(t *testing.T) {
 	}
 }
 
+func TestChromecastImageAutoplayKeepsMediaServer(t *testing.T) {
+	device := playback.Device{ID: "cast", Protocol: "Chromecast"}
+	c, log, factory := newTestController(device)
+	defer c.Close()
+	awaitDevices(t, c, 1)
+	c.SelectDevice(context.Background(), Mutation{}, device.ID)
+	addTestQueue(t, c,
+		testMedia("a.jpg", mediamodel.MediaKindImage),
+		testMedia("b.jpg", mediamodel.MediaKindImage),
+	)
+	queued, _ := c.Snapshot(context.Background())
+	c.SetPolicy(context.Background(), PolicyRequest{Policy: Policy{AutoPlayNext: true, ImageDurationSeconds: 10}})
+	if result := c.Play(context.Background(), PlayRequest{QueueItemID: queued.Queue[0].ID}); !result.OK() {
+		t.Fatal(result)
+	}
+	playing, _ := c.Snapshot(context.Background())
+	c.HandleMonitorEvent(context.Background(), playback.MonitorEvent{Generation: playing.Generation, Terminal: playback.TerminalFinished})
+	awaitAutoplaySnapshot(t, c, func(snapshot Snapshot) bool {
+		return snapshot.Generation > playing.Generation && snapshot.HasSession && snapshot.Queue[1].IsActive
+	})
+	factory.mu.Lock()
+	opened := len(factory.opened)
+	factory.mu.Unlock()
+	events := log.snapshot()
+	if opened != 1 || count(events, "server:start:cast") != 1 || count(events, "server:add-media:cast") != 1 {
+		t.Fatalf("server not reused: %v", events)
+	}
+	if count(events, "server:stop") != 0 || !slices.Contains(events, "server:remove:route-1") {
+		t.Fatalf("route transition = %v", events)
+	}
+	if loadIndex, removeIndex := slices.Index(events, "load-existing:cast"), slices.Index(events, "server:remove:route-1"); loadIndex < 0 || removeIndex <= loadIndex {
+		t.Fatalf("old route removed before replacement load: %v", events)
+	}
+}
+
+func TestChromecastImageAutoplayRetriesFreshConnection(t *testing.T) {
+	device := playback.Device{ID: "cast", Protocol: "Chromecast"}
+	c, log, factory := newTestController(device)
+	defer c.Close()
+	awaitDevices(t, c, 1)
+	c.SelectDevice(context.Background(), Mutation{}, device.ID)
+	addTestQueue(t, c,
+		testMedia("a.jpg", mediamodel.MediaKindImage),
+		testMedia("b.jpg", mediamodel.MediaKindImage),
+	)
+	queued, _ := c.Snapshot(context.Background())
+	if result := c.SetPolicy(context.Background(), PolicyRequest{Policy: Policy{AutoPlayNext: true, ImageDurationSeconds: 10}}); !result.OK() {
+		t.Fatal(result)
+	}
+	if result := c.Play(context.Background(), PlayRequest{QueueItemID: queued.Queue[0].ID}); !result.OK() {
+		t.Fatal(result)
+	}
+	factory.mu.Lock()
+	factory.opened[0].reloadErr = errors.New("media session unavailable")
+	factory.mu.Unlock()
+	playing, _ := c.Snapshot(context.Background())
+	c.HandleMonitorEvent(context.Background(), playback.MonitorEvent{Generation: playing.Generation, Terminal: playback.TerminalFinished})
+	after := awaitAutoplaySnapshot(t, c, func(snapshot Snapshot) bool {
+		return snapshot.Generation > playing.Generation && snapshot.HasSession && snapshot.Queue[1].IsActive
+	})
+	factory.mu.Lock()
+	opened := len(factory.opened)
+	secondTitle := ""
+	if opened > 1 {
+		secondTitle = factory.opened[1].load.Metadata.Title
+	}
+	factory.mu.Unlock()
+	events := log.snapshot()
+	if opened != 2 || count(events, "load-existing:cast") != 1 || count(events, "load:cast") != 2 {
+		t.Fatalf("fresh retry missing: %v", events)
+	}
+	if after.LastError != "" || secondTitle != "b.jpg" {
+		t.Fatalf("transition = %#v title = %q", after, secondTitle)
+	}
+}
+
 func TestDLNAAutoplayIgnoresAlreadyStoppedRenderer(t *testing.T) {
 	device := playback.Device{ID: "renderer", Protocol: "DLNA"}
 	c, _, factory := newTestController(device)

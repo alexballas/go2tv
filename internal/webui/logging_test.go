@@ -53,9 +53,26 @@ func TestWebUIActionLogging(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handler.Close()
+	page, err := lib.Browse(lib.Roots()[0].ID, "", "", 1)
+	if err != nil || len(page.Entries) != 1 {
+		t.Fatalf("browse=%#v err=%v", page, err)
+	}
+	rootID, entryID := lib.Roots()[0].ID, page.Entries[0].ID
+	result := handler.command(context.Background(), envelope{Type: "queue.add", ID: "add", Payload: []byte(`{"root_id":"` + rootID + `","entry_id":"` + entryID + `"}`)})
+	if !result.OK() || len(log.info) != 1 || log.info[0] != "Media added to queue: media.mp4" {
+		t.Fatalf("result=%#v info=%v", result, log.info)
+	}
+	snapshot, err := control.Snapshot(context.Background())
+	if err != nil || len(snapshot.Queue) != 1 {
+		t.Fatalf("snapshot=%#v err=%v", snapshot, err)
+	}
+	result = handler.command(context.Background(), envelope{Type: "queue.remove", ID: "remove", Payload: []byte(`{"item_id":"` + snapshot.Queue[0].ID + `"}`)})
+	if !result.OK() || len(log.info) != 2 || log.info[1] != "Queue item removed: media.mp4" {
+		t.Fatalf("result=%#v info=%v", result, log.info)
+	}
 
-	result := handler.command(context.Background(), envelope{Type: "player.transcode", ID: "enable", Payload: []byte(`{"enabled":true}`)})
-	if !result.OK() || len(log.info) != 1 || log.info[0] != "Transcoding enabled" {
+	result = handler.command(context.Background(), envelope{Type: "player.transcode", ID: "enable", Payload: []byte(`{"enabled":true}`)})
+	if !result.OK() || len(log.info) != 3 || log.info[2] != "Transcoding enabled" {
 		t.Fatalf("result=%#v info=%v", result, log.info)
 	}
 	result = handler.command(context.Background(), envelope{Type: "player.seek", ID: "seek", Payload: []byte(`{"seconds":12}`)})

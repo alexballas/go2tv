@@ -96,7 +96,7 @@ func TestPlaybackEventLogging(t *testing.T) {
 		"Playback started: example.mp4",
 		"Playback paused at 00:06",
 		"Playback resumed at 00:06",
-		"Seeked to 01:25",
+		"Seeked to 01:25 in example.mp4",
 		"Playback completed",
 	}
 	deadline = time.Now().Add(time.Second)

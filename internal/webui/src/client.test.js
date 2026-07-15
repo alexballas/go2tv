@@ -157,16 +157,18 @@ test("orders library entries by name across pages",async()=>{
 test("clear queue button sends queue.clear and tracks queue state",async()=>{
   const {ids,env}=fixture();startClient(env);await settle();const ws=FakeSocket.instances[0];ws.emit("open");
   assert.equal(ids["queue-clear"].disabled,true);
-  ws.message({protocol_version:1,type:"state.snapshot",payload:{revision:4,selected_media:true,selected_media_name:"one.mp3",active_media_name:"one.mp3",has_session:false,playback_state:"STOPPED",queue:[{id:"q1",name:"one.mp3",kind:"audio",selected:true,active:false}]}});
+  ws.message({protocol_version:1,type:"state.snapshot",payload:{revision:4,selected_media:true,selected_media_name:"one.mp3",active_media_name:"one.mp3",has_session:false,playback_state:"STOPPED",position:54,duration:144,queue:[{id:"q1",name:"one.mp3",kind:"audio",selected:true,active:false}]}});
   assert.equal(ids["now-playing-title"].textContent,"one.mp3");
+  assert.equal(ids.time.textContent,"0:54 / 2:24");
   assert.equal(ids["queue-clear"].disabled,false);
   ids["queue-clear"].emit("click");
   assert.equal(ws.sent.at(-1).type,"queue.clear");assert.deepEqual(ws.sent.at(-1).payload,{expected_revision:4});
   assert.equal(ids["queue-clear"].disabled,true);
   ws.message({protocol_version:1,type:"ack",id:ws.sent.at(-1).id,payload:{revision:5}});
-  ws.message({protocol_version:1,type:"state.snapshot",payload:{revision:5,selected_media:false,has_session:false,playback_state:"STOPPED",queue:[]}});
+  ws.message({protocol_version:1,type:"state.snapshot",payload:{revision:5,selected_media:false,has_session:false,playback_state:"STOPPED",position:0,duration:0,queue:[]}});
   assert.equal(ids["queue-clear"].disabled,true);assert.equal(ids["queue-count"].textContent,"0");assert.equal(ids.queue.children[0].textContent,"Queue is empty — add something from your library.");
   assert.equal(ids["now-playing-title"].textContent,"Nothing selected");
+  assert.equal(ids.time.textContent,"0:00 / 0:00");assert.equal(ids.seek.value,"0");
 });
 
 test("clear queue retains active item controls and artwork",async()=>{

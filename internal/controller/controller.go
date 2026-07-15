@@ -46,6 +46,7 @@ type activeSession struct {
 	transport        Transport
 	server           playback.ServerRequest
 	load             playback.LoadRequest
+	routeIDs         []string
 	ctx              context.Context
 	cancel           context.CancelCauseFunc
 	reusable         bool
@@ -614,6 +615,7 @@ func (c *Controller) ClearQueue(ctx context.Context, mutation Mutation) Result {
 			s.media, s.mediaQueueID = MediaRef{}, ""
 			s.artworkID = ""
 		}
+		s.position, s.duration = 0, 0
 		s.commit()
 		return Result{RequestID: mutation.RequestID, Revision: s.revision}
 	})
@@ -894,6 +896,10 @@ type existingLoader interface {
 	LoadOnExisting(context.Context, playback.LoadRequest) error
 }
 
+type mediaRouteAdder interface {
+	AddMedia(context.Context, playback.ServerRequest) (playback.MediaRoute, error)
+}
+
 type callbackActivator interface {
 	ActivateCallbacks(uint64) error
 }
@@ -910,12 +916,17 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 		transcode = playback.ChromecastTranscodeEnabled(transcode, media.Name, mediaMIME(media, item.MediaKind()))
 	}
 	var reusedCast existingLoader
+	var routeAdder mediaRouteAdder
 	if old != nil {
 		if target.Protocol == "Chromecast" && old.target.ID == target.ID && old.reusable {
 			reusedCast, _ = old.transport.(existingLoader)
 		}
+		if reusedCast != nil && !old.server.Transcode && old.server.Subtitle == nil && !transcode && !subtitle.valid() {
+			routeAdder, _ = c.cfg.MediaServer.(mediaRouteAdder)
+		}
 		var err error
 		switch {
+		case routeAdder != nil:
 		case reusedCast != nil:
 			err = c.cfg.MediaServer.Stop(ioCtx)
 		default:
@@ -972,9 +983,18 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 			duration = probed
 		}
 	}
-	route, err := c.cfg.MediaServer.Start(ioCtx, serverRequest)
+	var route playback.MediaRoute
+	if routeAdder != nil {
+		route, err = routeAdder.AddMedia(ioCtx, serverRequest)
+	} else {
+		route, err = c.cfg.MediaServer.Start(ioCtx, serverRequest)
+	}
 	if err == nil && strings.TrimSpace(route.URL) == "" {
 		err = fmt.Errorf("media server returned empty URL: %w", errAdapterContract)
+	}
+	routeIDs := make([]string, 0, 2)
+	if route.ID != "" {
+		routeIDs = append(routeIDs, route.ID)
 	}
 	loadMediaType := mediaMIME(media, item.MediaKind())
 	if transcode && target.Protocol == "Chromecast" {
@@ -986,6 +1006,9 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 		artRoute, artErr := c.cfg.MediaServer.Add(ioCtx, playback.RouteRequest{MediaType: media.Artwork.MIMEType, Contents: loadRequest.ArtworkData})
 		if artErr == nil && strings.TrimSpace(artRoute.URL) != "" {
 			loadRequest.Metadata.Artwork = &metadata.Artwork{URL: artRoute.URL, MIMEType: media.Artwork.MIMEType, Width: media.Artwork.Width, Height: media.Artwork.Height}
+			if artRoute.ID != "" {
+				routeIDs = append(routeIDs, artRoute.ID)
+			}
 		}
 	}
 	if err == nil && target.Protocol == "DLNA" {
@@ -995,8 +1018,33 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 	}
 	if err == nil && reusedCast != nil {
 		err = reusedCast.LoadOnExisting(ioCtx, loadRequest)
+		if err != nil && ioCtx.Err() == nil {
+			if c.cfg.Logger != nil {
+				c.cfg.Logger.Debug("Chromecast receiver reuse failed; retrying fresh connection: " + err.Error())
+			}
+			_ = rendererCleanup(transport, c.cfg.OperationTimeout, func(ctx context.Context, transport Transport) error {
+				return transport.Close(ctx)
+			})
+			transport, err = c.cfg.TransportFactory.Open(ioCtx, target)
+			if err == nil && transport == nil {
+				err = fmt.Errorf("transport factory returned nil: %w", errAdapterContract)
+			}
+			if err == nil {
+				err = transport.Load(ioCtx, loadRequest)
+			}
+		}
 	} else if err == nil {
 		err = transport.Load(ioCtx, loadRequest)
+	}
+	if err == nil && routeAdder != nil {
+		for _, id := range old.routeIDs {
+			if id == "" || slices.Contains(routeIDs, id) {
+				continue
+			}
+			if removeErr := c.cfg.MediaServer.Remove(ioCtx, id); removeErr != nil && c.cfg.Logger != nil {
+				c.cfg.Logger.Debug("Chromecast old media route cleanup failed: " + removeErr.Error())
+			}
+		}
 	}
 	// Chromecast LOAD autoplays. Calling Play before its media session status
 	// arrives fails with "media not yet initialised" and tears down a good load.
@@ -1008,7 +1056,7 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 		c.completePlay(playCompletion{generation: generation, operation: operation, err: err, request: request, response: response})
 		return
 	}
-	c.completePlay(playCompletion{generation: generation, operation: operation, session: &activeSession{generation: generation, target: target, itemID: item.ID(), media: media, subtitle: subtitle, kind: item.MediaKind(), transport: transport, server: serverRequest, load: loadRequest, ctx: ctx, cancel: operation.cancel, reusable: true, imageReady: target.Protocol != "Chromecast", expectedDuration: int(loadRequest.Duration)}, request: request, response: response})
+	c.completePlay(playCompletion{generation: generation, operation: operation, session: &activeSession{generation: generation, target: target, itemID: item.ID(), media: media, subtitle: subtitle, kind: item.MediaKind(), transport: transport, server: serverRequest, load: loadRequest, routeIDs: routeIDs, ctx: ctx, cancel: operation.cancel, reusable: true, imageReady: target.Protocol != "Chromecast", expectedDuration: int(loadRequest.Duration)}, request: request, response: response})
 }
 
 func operationContext(base, request context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
@@ -1237,6 +1285,7 @@ func (c *Controller) Stop(ctx context.Context, mutation Mutation) Result {
 			active.cancel(terminalCause(playback.TerminalUserStop))
 		}
 		s.active, s.pending, s.mutation, s.cleanup = nil, nil, true, true
+		s.position, s.duration = 0, 0
 		if pending == nil && active == nil {
 			s.mutation, s.cleanup, s.state = false, false, PlaybackStateStopped
 			s.commit()
@@ -1387,7 +1436,7 @@ func (c *Controller) Seek(ctx context.Context, request SeekRequest) Result {
 				s.position, s.state = request.Seconds, PlaybackStatePlaying
 				s.commit()
 				if c.cfg.Logger != nil {
-					c.cfg.Logger.Info("Seeked to " + playbackTime(request.Seconds))
+					c.cfg.Logger.Info("Seeked to " + playbackTime(request.Seconds) + " in " + active.media.Name)
 				}
 				c.startMonitor(active)
 				s.resumeDeferredMonitor()

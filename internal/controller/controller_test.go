@@ -99,6 +99,7 @@ type fakeTransport struct {
 	pauseBlock chan struct{}
 	stopErr    error
 	closeErr   error
+	reloadErr  error
 	load       playback.LoadRequest
 	volume     int
 }
@@ -118,6 +119,9 @@ func (t *fakeTransport) Load(ctx context.Context, request playback.LoadRequest) 
 func (t *fakeTransport) LoadOnExisting(ctx context.Context, request playback.LoadRequest) error {
 	t.load = request
 	t.log.add("load-existing:" + t.id)
+	if t.reloadErr != nil {
+		return t.reloadErr
+	}
 	if t.loadBlock != nil {
 		select {
 		case <-ctx.Done():
@@ -189,20 +193,39 @@ type fakeServer struct {
 	log     *eventLog
 	mu      sync.Mutex
 	request playback.ServerRequest
+	routes  int
 }
 
 func (s *fakeServer) Start(_ context.Context, request playback.ServerRequest) (playback.MediaRoute, error) {
 	s.mu.Lock()
 	s.request = request
+	s.routes++
+	id := "route-" + strconv.Itoa(s.routes)
 	s.mu.Unlock()
 	s.log.add("server:start:" + request.Target.ID)
-	return playback.MediaRoute{URL: "http://127.0.0.1/media"}, nil
+	return playback.MediaRoute{URL: "http://127.0.0.1/media", ID: id}, nil
 }
 func (s *fakeServer) Stop(context.Context) error { s.log.add("server:stop"); return nil }
 func (s *fakeServer) Add(context.Context, playback.RouteRequest) (playback.MediaRoute, error) {
-	return playback.MediaRoute{URL: "http://127.0.0.1/artwork.jpg"}, nil
+	s.mu.Lock()
+	s.routes++
+	id := "route-" + strconv.Itoa(s.routes)
+	s.mu.Unlock()
+	return playback.MediaRoute{URL: "http://127.0.0.1/artwork.jpg", ID: id}, nil
 }
-func (s *fakeServer) Remove(context.Context, string) error { return nil }
+func (s *fakeServer) AddMedia(_ context.Context, request playback.ServerRequest) (playback.MediaRoute, error) {
+	s.mu.Lock()
+	s.request = request
+	s.routes++
+	id := "route-" + strconv.Itoa(s.routes)
+	s.mu.Unlock()
+	s.log.add("server:add-media:" + request.Target.ID)
+	return playback.MediaRoute{URL: "http://127.0.0.1/media", ID: id}, nil
+}
+func (s *fakeServer) Remove(_ context.Context, id string) error {
+	s.log.add("server:remove:" + id)
+	return nil
+}
 
 func (s *fakeServer) lastRequest() playback.ServerRequest {
 	s.mu.Lock()
@@ -228,6 +251,20 @@ func awaitDevices(t *testing.T, c *Controller, count int) Snapshot {
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatal("devices not received")
+	return Snapshot{}
+}
+
+func awaitSnapshotState(t *testing.T, c *Controller, match func(Snapshot) bool) Snapshot {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		snapshot, err := c.Snapshot(context.Background())
+		if err == nil && match(snapshot) {
+			return snapshot
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("snapshot state not reached")
 	return Snapshot{}
 }
 
@@ -843,6 +880,27 @@ func TestStopCancelsPendingPlay(t *testing.T) {
 	}
 }
 
+func TestStopResetsPlaybackProgress(t *testing.T) {
+	c, _, _ := newTestController(playback.Device{ID: "one", Protocol: "DLNA"})
+	defer c.Close()
+	awaitDevices(t, c, 1)
+	c.SelectDevice(context.Background(), Mutation{}, "one")
+	c.SelectMedia(context.Background(), Mutation{}, testMedia("a.mp3", mediamodel.MediaKindAudio))
+	if result := c.Play(context.Background(), PlayRequest{}); !result.OK() {
+		t.Fatal(result)
+	}
+	playing, _ := c.Snapshot(context.Background())
+	c.HandleMonitorEvent(context.Background(), playback.MonitorEvent{Generation: playing.Generation, Position: 54, Duration: 144})
+	awaitSnapshotState(t, c, func(snapshot Snapshot) bool { return snapshot.Position == 54 && snapshot.Duration == 144 })
+	if result := c.Stop(context.Background(), Mutation{}); !result.OK() {
+		t.Fatal(result)
+	}
+	after, _ := c.Snapshot(context.Background())
+	if after.Position != 0 || after.Duration != 0 {
+		t.Fatalf("progress = %d/%d, want 0/0", after.Position, after.Duration)
+	}
+}
+
 func TestRemoveActiveQueueItemRejected(t *testing.T) {
 	c, log, _ := newTestController(playback.Device{ID: "one", Protocol: "DLNA"})
 	defer c.Close()
@@ -891,6 +949,37 @@ func TestClearQueueRetainsActiveItemAndArtwork(t *testing.T) {
 	}
 	if result := c.Pause(context.Background(), Mutation{}); !result.OK() {
 		t.Fatalf("pause = %#v", result)
+	}
+}
+
+func TestClearQueueResetsStoppedPlaybackProgress(t *testing.T) {
+	c, _, _ := newTestController(playback.Device{ID: "one", Protocol: "DLNA"})
+	defer c.Close()
+	awaitDevices(t, c, 1)
+	if result := c.SelectDevice(context.Background(), Mutation{}, "one"); !result.OK() {
+		t.Fatal(result)
+	}
+	addTestQueue(t, c, testMedia("a.mp3", mediamodel.MediaKindAudio))
+	before, _ := c.Snapshot(context.Background())
+	if result := c.Play(context.Background(), PlayRequest{QueueItemID: before.Queue[0].ID}); !result.OK() {
+		t.Fatal(result)
+	}
+	playing, _ := c.Snapshot(context.Background())
+	c.HandleMonitorEvent(context.Background(), playback.MonitorEvent{Generation: playing.Generation, Position: 54, Duration: 144})
+	awaitSnapshotState(t, c, func(snapshot Snapshot) bool { return snapshot.Position == 54 && snapshot.Duration == 144 })
+	c.HandleMonitorEvent(context.Background(), playback.MonitorEvent{Generation: playing.Generation, Terminal: playback.TerminalFinished})
+	stopped := awaitSnapshotState(t, c, func(snapshot Snapshot) bool {
+		return !snapshot.HasSession && snapshot.PlaybackState == PlaybackStateStopped
+	})
+	if stopped.Position != 54 || stopped.Duration != 144 {
+		t.Fatalf("completed progress = %d/%d, want 54/144", stopped.Position, stopped.Duration)
+	}
+	if result := c.ClearQueue(context.Background(), Mutation{}); !result.OK() {
+		t.Fatal(result)
+	}
+	after, _ := c.Snapshot(context.Background())
+	if after.Position != 0 || after.Duration != 0 {
+		t.Fatalf("progress = %d/%d, want 0/0", after.Position, after.Duration)
 	}
 }
 

@@ -258,6 +258,25 @@ func (s *Server) Add(_ context.Context, request playback.RouteRequest) (playback
 	return playback.MediaRoute{URL: "http://" + s.listener.Addr().String() + r.path, ID: r.id}, nil
 }
 
+// AddMedia registers another primary media route without restarting the
+// listener. The caller removes superseded routes after the renderer accepts
+// the replacement load.
+func (s *Server) AddMedia(_ context.Context, request playback.ServerRequest) (playback.MediaRoute, error) {
+	if request.Media == nil {
+		return playback.MediaRoute{}, ErrOpenRequired
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.listener == nil {
+		return playback.MediaRoute{}, ErrNotStarted
+	}
+	r, err := s.newSourceRouteLocked("media", request.Media, request.MediaExt, request.MediaType, request)
+	if err != nil {
+		return playback.MediaRoute{}, err
+	}
+	return playback.MediaRoute{URL: "http://" + s.listener.Addr().String() + r.path, ID: r.id}, nil
+}
+
 // AddArtwork registers content-addressed immutable renderer artwork.
 func (s *Server) AddArtwork(ctx context.Context, mediaType string, contents []byte) (playback.MediaRoute, error) {
 	return s.Add(ctx, playback.RouteRequest{MediaType: mediaType, Contents: contents})

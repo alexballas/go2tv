@@ -611,6 +611,11 @@ type Chromecast struct {
 	interrupt func() error
 }
 
+type chromecastStatusResult struct {
+	status playback.CastStatus
+	err    error
+}
+
 func NewChromecast(endpoint string, logOutput io.Writer) (*Chromecast, error) {
 	client, err := castprotocol.NewCastClient(endpoint)
 	if err != nil {
@@ -668,6 +673,32 @@ func (c *Chromecast) call(ctx context.Context, fn func() error) error {
 	return ctx.Err()
 }
 
+// statusCall lets a canceled monitor return without closing the shared Cast
+// connection. The in-flight status request finishes under the adapter mutex,
+// then a replacement load can reuse the same receiver session.
+func (c *Chromecast) statusCall(ctx context.Context, fn func() (playback.CastStatus, error)) (playback.CastStatus, error) {
+	if ctx == nil {
+		return playback.CastStatus{}, errors.New("Chromecast context required")
+	}
+	result := make(chan chromecastStatusResult, 1)
+	go func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if err := ctx.Err(); err != nil {
+			result <- chromecastStatusResult{err: err}
+			return
+		}
+		status, err := fn()
+		result <- chromecastStatusResult{status: status, err: err}
+	}()
+	select {
+	case got := <-result:
+		return got.status, got.err
+	case <-ctx.Done():
+		return playback.CastStatus{}, ctx.Err()
+	}
+}
+
 func (c *Chromecast) Connect(ctx context.Context) error { return c.call(ctx, c.client.Connect) }
 func (c *Chromecast) Load(ctx context.Context, req playback.LoadRequest) error {
 	return c.call(ctx, func() error {
@@ -707,22 +738,19 @@ func (c *Chromecast) SetMute(ctx context.Context, muted bool) error {
 	return c.call(ctx, func() error { return c.client.SetMuted(muted) })
 }
 func (c *Chromecast) Status(ctx context.Context) (playback.CastStatus, error) {
-	var result playback.CastStatus
-	err := c.call(ctx, func() error {
+	return c.statusCall(ctx, func() (playback.CastStatus, error) {
 		status, err := c.client.GetStatus()
 		if err != nil {
-			return err
+			return playback.CastStatus{}, err
 		}
-		result = playback.CastStatus{
+		return playback.CastStatus{
 			PlayerState: status.PlayerState,
 			Current:     int(status.CurrentTime),
 			Duration:    int(status.Duration),
 			ContentType: status.ContentType,
 			MediaTitle:  status.MediaTitle,
-		}
-		return nil
+		}, nil
 	})
-	return result, err
 }
 
 type Factory struct {

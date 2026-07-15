@@ -110,6 +110,59 @@ func TestQueuedChromecastCancellationDoesNotInterruptActiveCall(t *testing.T) {
 	}
 }
 
+func TestChromecastStatusCancellationPreservesConnection(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	operationDone := make(chan struct{})
+	interrupts := 0
+	var mu sync.Mutex
+	cast := &Chromecast{interrupt: func() error {
+		mu.Lock()
+		interrupts++
+		mu.Unlock()
+		return nil
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		_, err := cast.statusCall(ctx, func() (playback.CastStatus, error) {
+			close(started)
+			<-release
+			close(operationDone)
+			return playback.CastStatus{PlayerState: "PLAYING"}, nil
+		})
+		result <- err
+	}()
+	<-started
+	cancel()
+	if err := <-result; !errors.Is(err, context.Canceled) {
+		t.Fatalf("status cancellation = %v", err)
+	}
+	mu.Lock()
+	gotInterrupts := interrupts
+	mu.Unlock()
+	if gotInterrupts != 0 {
+		t.Fatalf("status cancellation interrupted connection %d times", gotInterrupts)
+	}
+
+	nextResult := make(chan error, 1)
+	go func() { nextResult <- cast.call(context.Background(), func() error { return nil }) }()
+	select {
+	case err := <-nextResult:
+		t.Fatalf("replacement passed in-flight status: %v", err)
+	default:
+	}
+	close(release)
+	select {
+	case <-operationDone:
+	case <-time.After(time.Second):
+		t.Fatal("status request did not finish")
+	}
+	if err := <-nextResult; err != nil {
+		t.Fatalf("replacement call: %v", err)
+	}
+}
+
 func TestCallbackBridgeValidatedDelivery(t *testing.T) {
 	bridge := NewCallbackBridge()
 	defer bridge.Close()
