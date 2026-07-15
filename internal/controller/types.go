@@ -15,12 +15,6 @@ import (
 )
 
 const (
-	// ActorQueueSize is retained for source compatibility.
-	// Deprecated: actor queue capacity is an implementation detail.
-	ActorQueueSize = 64
-	// CallbackQueueSize is retained for source compatibility.
-	// Deprecated: callback queue capacity is an implementation detail.
-	CallbackQueueSize = 128
 	// MaxQueueItems is the maximum number of queued media items.
 	MaxQueueItems = 1000
 	// DefaultImageTime is the default image display duration in seconds.
@@ -106,10 +100,6 @@ func (r Result) Err() error {
 	}
 	return &OperationError{Code: r.Code, Message: r.Message}
 }
-
-// Error is the compatibility alias for Err.
-// Deprecated: use Err.
-func (r Result) Error() error { return r.Err() }
 
 // OperationError is the error form of a failed Result. Its exported fields are
 // safe to serialize. errors.Is recognizes the corresponding controller or

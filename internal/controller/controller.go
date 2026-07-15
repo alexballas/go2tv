@@ -17,6 +17,11 @@ import (
 	"go2tv.app/go2tv/v2/metadata"
 )
 
+const (
+	actorQueueSize    = 64
+	callbackQueueSize = 128
+)
+
 type message struct {
 	fn   func(*actorState)
 	done chan struct{}
@@ -146,7 +151,7 @@ func New(cfg Config) *Controller {
 		parent = context.Background()
 	}
 	ctx, cancel := context.WithCancelCause(parent)
-	c := &Controller{cfg: cfg, ctx: ctx, cancel: cancel, queue: make(chan message, ActorQueueSize), callbacks: make(chan playback.MonitorEvent, CallbackQueueSize), done: make(chan struct{}), stopped: make(chan struct{})}
+	c := &Controller{cfg: cfg, ctx: ctx, cancel: cancel, queue: make(chan message, actorQueueSize), callbacks: make(chan playback.MonitorEvent, callbackQueueSize), done: make(chan struct{}), stopped: make(chan struct{})}
 	go c.run()
 	c.goOwned(c.forwardCallbacks)
 	if cfg.Discovery != nil {
