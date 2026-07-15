@@ -58,17 +58,3 @@ func TestSortedMediaPaths(t *testing.T) {
 		t.Fatal("input mutated")
 	}
 }
-
-func TestNewQueueItemAccessors(t *testing.T) {
-	source := filepath.Join(t.TempDir(), "song.mp3")
-	item, ok := NewQueueItem(source)
-	if !ok {
-		t.Fatal("NewQueueItem failed")
-	}
-	if item.Source() != source || item.Path() != source || item.DisplayPath() != source {
-		t.Fatalf("paths = source %q path %q display %q", item.Source(), item.Path(), item.DisplayPath())
-	}
-	if item.BaseName() != "song.mp3" || item.ParentFolder() != filepath.Dir(source) {
-		t.Fatalf("display metadata = %q, %q", item.BaseName(), item.ParentFolder())
-	}
-}

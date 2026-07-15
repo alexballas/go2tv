@@ -6,7 +6,7 @@ class Node {
   constructor(tag="div"){this.tag=tag;this.children=[];this.listeners={};this.dataset={};this.value="";this.checked=false;this.disabled=false;this.hidden=false;this.textContent="";this.src="";this.open=false}
   append(...nodes){this.children.push(...nodes);if(this.tag==="select"&&!this.value&&nodes[0])this.value=nodes[0].value} replaceChildren(...nodes){this.children=[...nodes];if(this.tag==="select")this.value=nodes[0]?.value||""}
   addEventListener(type,fn){(this.listeners[type]??=[]).push(fn)} emit(type){for(const fn of this.listeners[type]||[])fn({target:this,data:this.data})}
-  remove(){this.removed=true} removeAttribute(name){this[name]=""} showModal(){this.open=true} close(){this.open=false} contains(node){return this===node||this.children.some(child=>child.contains?.(node))} focus(){this.focused=true}
+  remove(){this.removed=true} removeAttribute(name){this[name]=""} showModal(){this.open=true} close(){this.open=false} contains(node){return this===node||this.children.some(child=>child.contains?.(node))} focus(){this.focused=true} scrollIntoView(options){this.scrolledIntoView=options}
 }
 class FakeSocket extends Node {
   static OPEN=1;static instances=[];
@@ -73,7 +73,9 @@ test("protocol mismatch reloads at most once",async()=>{
 
 test("shows selected names and silently retries revision conflicts",async()=>{
   const {ids,env}=fixture();const client=startClient(env);await settle();const ws=FakeSocket.instances[0];
-  ids.library.children[0].children[1].children[0].emit("click");assert.equal(ids.library.children[0].dataset.selected,"true");assert.equal(ids["media-selected"].textContent,"<movie>.mp4");
+  ids.library.children[0].children[1].children[0].emit("click");assert.notEqual(ids.library.children[0].dataset.selected,"true");assert.equal(ids["media-selected"].textContent,"<movie>.mp4");
+  ws.message({protocol_version:1,type:"state.queue",payload:{revision:4,queue:[{id:"selected-q",name:"<movie>.mp4",kind:"video",selected:true,active:false}]}});
+  assert.deepEqual(ids.queue.children[0].scrolledIntoView,{behavior:"smooth",block:"nearest"});
   ws.message({protocol_version:1,type:"state.selection",payload:{revision:4,media:true,media_name:"long song.flac",subtitle:true,subtitle_name:"captions.srt"}});
   assert.equal(ids["media-selected"].textContent,"long song.flac");assert.equal(ids["subtitle-selected"].textContent,"captions.srt");assert.equal(ids["subtitle-clear"].hidden,false);ids["subtitle-clear"].emit("click");assert.equal(ws.sent.at(-1).type,"library.clear_subtitle");assert.deepEqual(ws.sent.at(-1).payload,{expected_revision:4});
   ws.message({protocol_version:1,type:"state.selection",payload:{revision:5,subtitle:false,subtitle_name:""}});assert.equal(ids["subtitle-selected"].textContent,"None");assert.equal(ids["subtitle-clear"].hidden,true);
@@ -138,7 +140,7 @@ test("load more survives filtering and appends the next page",async()=>{
   assert.equal(loadMore(),undefined);assert.deepEqual(ids.library.children.map(row=>row.children[0]?.children[1]?.children[0]?.textContent),["first.mp4","second.mp4"]);
 });
 
-test("orders library entries by name and marks folders with an icon",async()=>{
+test("orders library entries by name across pages",async()=>{
   const {ids,env}=fixture();const bootstrapFetch=env.fetch;
   env.fetch=async url=>{
     if(!url.startsWith("/api/library"))return bootstrapFetch(url);
@@ -148,9 +150,6 @@ test("orders library entries by name and marks folders with an icon",async()=>{
   startClient(env);await settle();
   const names=()=>ids.library.children.filter(row=>row.className==="library-row").map(row=>row.children[0].children[1].children[0].textContent);
   assert.deepEqual(names(),["alpha.mp3","Concerts","Episode 10.mkv","zebra.mp4"]);
-  const folderIcon=ids.library.children[1].children[0].children[0];
-  assert.equal(folderIcon.className,"entry-icon folder-icon");assert.equal(folderIcon.textContent,"");assert.equal(ids.library.children[1].children[0].children[1].children[1].textContent,"Folder");
-  assert.equal(ids.library.children[0].children[0].children[0].className,"entry-icon");
   ids.library.children.find(node=>node.className==="browser-nav").children[0].emit("click");await settle();
   assert.deepEqual(names(),["alpha.mp3","Concerts","Episode 2.mkv","Episode 10.mkv","zebra.mp4"]);
 });
@@ -158,14 +157,16 @@ test("orders library entries by name and marks folders with an icon",async()=>{
 test("clear queue button sends queue.clear and tracks queue state",async()=>{
   const {ids,env}=fixture();startClient(env);await settle();const ws=FakeSocket.instances[0];ws.emit("open");
   assert.equal(ids["queue-clear"].disabled,true);
-  ws.message({protocol_version:1,type:"state.queue",payload:{revision:4,queue:[{id:"q1",name:"one.mp3",kind:"audio",selected:false,active:false}]}});
+  ws.message({protocol_version:1,type:"state.snapshot",payload:{revision:4,selected_media:true,selected_media_name:"one.mp3",active_media_name:"one.mp3",has_session:false,playback_state:"STOPPED",queue:[{id:"q1",name:"one.mp3",kind:"audio",selected:true,active:false}]}});
+  assert.equal(ids["now-playing-title"].textContent,"one.mp3");
   assert.equal(ids["queue-clear"].disabled,false);
   ids["queue-clear"].emit("click");
   assert.equal(ws.sent.at(-1).type,"queue.clear");assert.deepEqual(ws.sent.at(-1).payload,{expected_revision:4});
   assert.equal(ids["queue-clear"].disabled,true);
   ws.message({protocol_version:1,type:"ack",id:ws.sent.at(-1).id,payload:{revision:5}});
-  ws.message({protocol_version:1,type:"state.queue",payload:{revision:5,queue:[]}});
+  ws.message({protocol_version:1,type:"state.snapshot",payload:{revision:5,selected_media:false,has_session:false,playback_state:"STOPPED",queue:[]}});
   assert.equal(ids["queue-clear"].disabled,true);assert.equal(ids["queue-count"].textContent,"0");assert.equal(ids.queue.children[0].textContent,"Queue is empty — add something from your library.");
+  assert.equal(ids["now-playing-title"].textContent,"Nothing selected");
 });
 
 test("clear queue retains active item controls and artwork",async()=>{

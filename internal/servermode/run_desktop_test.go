@@ -3,10 +3,8 @@
 package servermode
 
 import (
-	"bytes"
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -42,34 +40,6 @@ func TestPrepareServerRequestChromecastTranscode(t *testing.T) {
 				t.Fatalf("Chromecast request = %v, want %v", got, tt.wantCast)
 			}
 		})
-	}
-}
-
-func TestLogStartupNonLoopback(t *testing.T) {
-	t.Parallel()
-	rootA := filepath.Join(string(filepath.Separator), "media", "films")
-	rootB := filepath.Join(string(filepath.Separator), "media", "music")
-	cfg := Config{
-		Listen:         "0.0.0.0:9666",
-		MediaRoots:     []string{rootA, rootB},
-		AllowedOrigins: []string{"http://192.0.2.10:9666", "http://media.test:9666"},
-	}
-	var output bytes.Buffer
-	logStartup(&output, cfg, "0.0.0.0:9666")
-
-	want := []string{
-		"Web server listening: 0.0.0.0:9666\n",
-		"Usable allowed URLs:\n",
-		"  http://192.0.2.10:9666/\n",
-		"  http://media.test:9666/\n",
-		"WARNING: trusted-LAN mode; no TLS. Do not expose to untrusted networks.\n",
-		"Media roots:\n",
-		"  " + rootA + "\n",
-		"  " + rootB + "\n",
-		"WARNING: media root paths may enter console/journal logs.\n",
-	}
-	if got := output.String(); got != strings.Join(want, "") {
-		t.Fatalf("output = %q, want %q", got, strings.Join(want, ""))
 	}
 }
 

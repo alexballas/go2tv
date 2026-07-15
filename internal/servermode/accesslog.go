@@ -1,11 +1,12 @@
+//go:build !(android || ios)
+
 package servermode
 
 import (
 	"bufio"
-	"fmt"
-	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -28,7 +29,7 @@ func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	w.status = http.StatusSwitchingProtocols
 	return w.ResponseWriter.(http.Hijacker).Hijack()
 }
-func accessLog(output io.Writer, next http.Handler) http.Handler {
+func accessLog(log *serverLogger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		wrapped := &statusWriter{ResponseWriter: w}
 		next.ServeHTTP(wrapped, r)
@@ -41,7 +42,12 @@ func accessLog(output io.Writer, next http.Handler) http.Handler {
 		if status < http.StatusBadRequest || status == http.StatusNotFound {
 			return
 		}
-		fmt.Fprintf(output, "HTTP %s %s %d\n", r.Method, routeTemplate(r.URL.Path), status)
+		message := "Web request failed: " + r.Method + " " + routeTemplate(r.URL.Path) + " (HTTP " + strconv.Itoa(status) + " " + http.StatusText(status) + ")"
+		if status >= http.StatusInternalServerError {
+			log.Error(message)
+		} else {
+			log.Warning(message)
+		}
 	})
 }
 func routeTemplate(path string) string {

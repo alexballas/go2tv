@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
@@ -23,20 +24,19 @@ import (
 	"go2tv.app/go2tv/v2/internal/mediamodel"
 	"go2tv.app/go2tv/v2/internal/playback"
 	"go2tv.app/go2tv/v2/metadata"
+	"go2tv.app/go2tv/v2/utils"
 )
 
 const csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
 
-type Handler struct {
-	cfg         Config
-	hub         *hub
-	artMu       sync.RWMutex
-	artworkRefs map[string]artworkRef
-}
+const maxArtworkRefs = controller.MaxQueueItems + 1
 
-type artworkRef struct {
-	data []byte
-	mime string
+type Handler struct {
+	cfg          Config
+	hub          *hub
+	artMu        sync.RWMutex
+	artworkRefs  map[string]controller.ArtworkLoader
+	artworkOrder []string
 }
 
 func New(cfg Config) (*Handler, error) {
@@ -46,7 +46,7 @@ func New(cfg Config) (*Handler, error) {
 	if cfg.Artwork == nil {
 		cfg.Artwork = controller.NewArtworkCache(controller.ArtworkCacheBytes)
 	}
-	h := &Handler{cfg: cfg, artworkRefs: make(map[string]artworkRef)}
+	h := &Handler{cfg: cfg, artworkRefs: make(map[string]controller.ArtworkLoader)}
 	h.hub = newHub(cfg.Controller, h.command)
 	return h, nil
 }
@@ -290,15 +290,16 @@ func serveJPEG(w http.ResponseWriter, r *http.Request, data []byte, cacheControl
 }
 
 func (h *Handler) loadArtwork(ctx context.Context, id string) ([]byte, error) {
+	if value, ok := h.cfg.Artwork.Lookup(id); ok {
+		return value.Data, nil
+	}
 	h.artMu.RLock()
-	ref, ok := h.artworkRefs[id]
+	loader, ok := h.artworkRefs[id]
 	h.artMu.RUnlock()
 	if !ok {
 		return nil, errors.New("not found")
 	}
-	value, err := h.cfg.Artwork.Get(ctx, id, func(context.Context) ([]byte, string, error) {
-		return append([]byte(nil), ref.data...), ref.mime, nil
-	})
+	value, err := h.cfg.Artwork.Get(ctx, id, loader)
 	return value.Data, err
 }
 
@@ -361,6 +362,25 @@ func expectedMutation(id string, revision *uint64) controller.Mutation {
 	return controller.Mutation{RequestID: id, ExpectedRevision: revision}
 }
 func (h *Handler) command(ctx context.Context, message envelope) controller.Result {
+	result := h.executeCommand(ctx, message)
+	if h.cfg.Logger == nil || !knownAction(message.Type) {
+		return result
+	}
+	if !result.OK() {
+		if result.Code == controller.CodeConflict {
+			return result
+		}
+		h.cfg.Logger.Warning("WebUI action failed: " + actionName(message.Type) + " (" + result.Message + ")")
+		return result
+	}
+	snapshot, err := h.cfg.Controller.Snapshot(ctx)
+	if err == nil {
+		h.logAction(message.Type, snapshot)
+	}
+	return result
+}
+
+func (h *Handler) executeCommand(ctx context.Context, message envelope) controller.Result {
 	var common struct {
 		ExpectedRevision *uint64 `json:"expected_revision"`
 	}
@@ -542,6 +562,71 @@ func (h *Handler) command(ctx context.Context, message envelope) controller.Resu
 	}
 }
 
+func knownAction(kind string) bool {
+	switch kind {
+	case "devices.refresh", "devices.select", "library.select_media", "library.select_subtitle", "library.clear_subtitle",
+		"queue.add", "queue.select", "queue.remove", "queue.move", "queue.clear", "player.play", "player.resume",
+		"player.pause", "player.stop", "player.volume", "player.mute", "player.transcode", "playback.policy", "player.seek":
+		return true
+	default:
+		return false
+	}
+}
+
+func actionName(kind string) string {
+	return strings.ReplaceAll(kind, ".", " ")
+}
+
+func (h *Handler) logAction(kind string, snapshot controller.Snapshot) {
+	message := ""
+	switch kind {
+	case "devices.refresh":
+		message = "Device discovery refreshed"
+	case "devices.select":
+		for _, device := range snapshot.Devices {
+			if device.ID == snapshot.SelectedDeviceID {
+				message = "Device selected: " + device.Name
+				break
+			}
+		}
+	case "library.select_media":
+		message = "Media selected: " + snapshot.SelectedMedia
+	case "library.select_subtitle":
+		message = "Subtitles selected: " + snapshot.SelectedSubtitle
+	case "library.clear_subtitle":
+		message = "Subtitles cleared"
+	case "queue.add":
+		message = "Media added to queue"
+	case "queue.select":
+		message = "Queue item selected: " + snapshot.SelectedMedia
+	case "queue.remove":
+		message = "Queue item removed"
+	case "queue.move":
+		message = "Queue reordered"
+	case "queue.clear":
+		message = "Queue cleared"
+	case "player.volume":
+		message = fmt.Sprintf("Volume set to %d%%", snapshot.Volume)
+	case "player.mute":
+		if snapshot.Muted {
+			message = "Audio muted"
+		} else {
+			message = "Audio unmuted"
+		}
+	case "player.transcode":
+		if snapshot.Transcode {
+			message = "Transcoding enabled"
+		} else {
+			message = "Transcoding disabled"
+		}
+	case "playback.policy":
+		message = "Playback options updated"
+	}
+	if message != "" {
+		h.cfg.Logger.Info(message)
+	}
+}
+
 func (h *Handler) selectMedia(ctx context.Context, mutation controller.Mutation, ref controller.MediaRef) controller.Result {
 	snapshot, err := h.cfg.Controller.Snapshot(ctx)
 	if err != nil {
@@ -582,10 +667,28 @@ func (h *Handler) mediaRef(ctx context.Context, rootID, entryID string) (control
 		return controller.MediaRef{}, err
 	}
 	kind := mediamodel.KindForPath(meta.Name)
-	artwork := h.rememberArtwork(h.resolveArtwork(ctx, rootID, entryID, meta.Name, kind, file))
+	mediaType := detectMediaType(file)
+	artwork := h.resolveArtwork(ctx, rootID, entryID, meta.Name, kind, file)
+	if artwork != nil {
+		h.rememberArtwork(artwork.ID, h.artworkLoader(rootID, entryID, meta.Name, kind))
+	}
 	_ = file.Close()
-	return controller.MediaRef{RootID: rootID, ID: entryID, Name: meta.Name, Kind: kind, OpenDirect: h.opener(rootID, entryID, false), OpenTranscode: h.opener(rootID, entryID, true), Artwork: artwork}, nil
+	return controller.MediaRef{RootID: rootID, ID: entryID, Name: meta.Name, Kind: kind, MIMEType: mediaType, OpenDirect: h.opener(rootID, entryID, false), OpenTranscode: h.opener(rootID, entryID, true), Artwork: artwork}, nil
 }
+
+func detectMediaType(file *os.File) string {
+	head := make([]byte, 261)
+	n, err := file.ReadAt(head, 0)
+	if (err != nil && !errors.Is(err, io.EOF)) || n == 0 {
+		return ""
+	}
+	mediaType, err := utils.GetMimeDetailsFromBytes(head[:n])
+	if err != nil || mediaType == "/" {
+		return ""
+	}
+	return mediaType
+}
+
 func (h *Handler) subtitleRef(rootID, entryID string) (controller.SubtitleRef, error) {
 	file, meta, err := h.cfg.Library.Select(rootID, entryID)
 	if err != nil {
@@ -695,12 +798,38 @@ func (h *Handler) loadArtworkFile(open func() (*os.File, error), source string) 
 	return asset
 }
 
-func (h *Handler) rememberArtwork(asset *metadata.ArtworkAsset) *metadata.ArtworkAsset {
-	if asset == nil {
-		return nil
+func (h *Handler) artworkLoader(rootID, mediaID, mediaName string, kind mediamodel.MediaKind) controller.ArtworkLoader {
+	return func(ctx context.Context) ([]byte, string, error) {
+		media, _, err := h.cfg.Library.Select(rootID, mediaID)
+		if err != nil {
+			return nil, "", err
+		}
+		defer media.Close()
+		asset, err := mediaartwork.Resolve(ctx, h.mediaArtworkRequest(rootID, mediaID, mediaName, kind, media))
+		if err != nil {
+			return nil, "", err
+		}
+		if asset == nil {
+			return nil, "", errors.New("artwork not found")
+		}
+		return asset.Data, asset.MIMEType, nil
+	}
+}
+
+func (h *Handler) rememberArtwork(id string, loader controller.ArtworkLoader) {
+	if id == "" || loader == nil {
+		return
 	}
 	h.artMu.Lock()
-	h.artworkRefs[asset.ID] = artworkRef{data: append([]byte(nil), asset.Data...), mime: asset.MIMEType}
-	h.artMu.Unlock()
-	return asset
+	defer h.artMu.Unlock()
+	if _, ok := h.artworkRefs[id]; ok {
+		h.artworkRefs[id] = loader
+		return
+	}
+	h.artworkRefs[id] = loader
+	h.artworkOrder = append(h.artworkOrder, id)
+	if len(h.artworkOrder) > maxArtworkRefs {
+		delete(h.artworkRefs, h.artworkOrder[0])
+		h.artworkOrder = h.artworkOrder[1:]
+	}
 }

@@ -2,11 +2,13 @@ package playbackadapter
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,6 +34,79 @@ func TestScannerMapsPrivateEndpoints(t *testing.T) {
 	}
 	if found[0].ID != "" {
 		t.Fatalf("scanner assigned stable ID: %q", found[0].ID)
+	}
+}
+
+func TestChromecastCancellationInterruptsAndReleasesCall(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	operationDone := make(chan struct{})
+	var releaseOnce sync.Once
+	cast := &Chromecast{interrupt: func() error {
+		releaseOnce.Do(func() { close(release) })
+		return nil
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		result <- cast.call(ctx, func() error {
+			close(started)
+			<-release
+			close(operationDone)
+			return nil
+		})
+	}()
+	<-started
+	cancel()
+	if err := <-result; !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled call = %v", err)
+	}
+	select {
+	case <-operationDone:
+	default:
+		t.Fatal("canceled call returned before operation stopped")
+	}
+	if err := cast.call(context.Background(), func() error { return nil }); err != nil {
+		t.Fatalf("next call: %v", err)
+	}
+}
+
+func TestQueuedChromecastCancellationDoesNotInterruptActiveCall(t *testing.T) {
+	activeStarted := make(chan struct{})
+	release := make(chan struct{})
+	activeResult := make(chan error, 1)
+	interrupts := 0
+	var mu sync.Mutex
+	cast := &Chromecast{interrupt: func() error {
+		mu.Lock()
+		interrupts++
+		mu.Unlock()
+		return nil
+	}}
+	go func() {
+		activeResult <- cast.call(context.Background(), func() error {
+			close(activeStarted)
+			<-release
+			return nil
+		})
+	}()
+	<-activeStarted
+	ctx, cancel := context.WithCancel(context.Background())
+	queuedResult := make(chan error, 1)
+	go func() { queuedResult <- cast.call(ctx, func() error { return nil }) }()
+	cancel()
+	close(release)
+	if err := <-activeResult; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-queuedResult; !errors.Is(err, context.Canceled) {
+		t.Fatalf("queued call = %v", err)
+	}
+	mu.Lock()
+	gotInterrupts := interrupts
+	mu.Unlock()
+	if gotInterrupts != 0 {
+		t.Fatalf("queued cancellation interrupted active call %d times", gotInterrupts)
 	}
 }
 
@@ -150,10 +225,13 @@ func TestCallbackBridgeGenerationStreamsAndTerminalDelivery(t *testing.T) {
 		stream.events <- playback.DLNACallbackEvent{Generation: 3, TransportState: "PLAYING"}
 	}
 	delivered := make(chan struct{})
+	started := make(chan struct{})
 	go func() {
+		close(started)
 		bridge.emit(playback.DLNACallbackEvent{Generation: 3, TransportState: "STOPPED"})
 		close(delivered)
 	}()
+	<-started
 	select {
 	case <-delivered:
 		t.Fatal("terminal event dropped from full stream")
@@ -394,17 +472,7 @@ func TestDLNACallbackGapCannotInjectIntoReloadStream(t *testing.T) {
 	}
 }
 
-func TestParseClock(t *testing.T) {
-	got, err := parseClock("01:02:03.75")
-	if err != nil || got != 3723 {
-		t.Fatalf("parse = %d, %v", got, err)
-	}
-	if _, err := parseClock("bad"); err == nil {
-		t.Fatal("invalid time accepted")
-	}
-}
-
-func TestDLNAVolumeReadsRenderer(t *testing.T) {
+func TestDLNAReadsRendererState(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			_, _ = w.Write([]byte(`<root><device><serviceList>
@@ -413,14 +481,16 @@ func TestDLNAVolumeReadsRenderer(t *testing.T) {
 </serviceList></device></root>`))
 			return
 		}
-		if r.URL.Path != "/rendering" {
-			t.Errorf("path = %q", r.URL.Path)
-		}
-		if !strings.Contains(r.Header.Get("SOAPAction"), "#GetVolume") {
-			t.Errorf("SOAPAction = %q", r.Header.Get("SOAPAction"))
-		}
 		w.Header().Set("Content-Type", `text/xml; charset="utf-8"`)
-		_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetVolumeResponse xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1"><CurrentVolume>37</CurrentVolume></u:GetVolumeResponse></s:Body></s:Envelope>`))
+		action := r.Header.Get("SOAPAction")
+		switch {
+		case r.URL.Path == "/rendering" && strings.Contains(action, "#GetVolume"):
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetVolumeResponse xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1"><CurrentVolume>37</CurrentVolume></u:GetVolumeResponse></s:Body></s:Envelope>`))
+		case r.URL.Path == "/transport" && strings.Contains(action, "#GetPositionInfo"):
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetPositionInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><TrackDuration>01:02:03.75</TrackDuration><RelTime>00:01:05.20</RelTime></u:GetPositionInfoResponse></s:Body></s:Envelope>`))
+		default:
+			t.Errorf("unexpected request path=%q action=%q", r.URL.Path, action)
+		}
 	}))
 	defer server.Close()
 	transport, err := NewDLNA(context.Background(), DLNAConfig{Endpoint: server.URL})
@@ -430,5 +500,9 @@ func TestDLNAVolumeReadsRenderer(t *testing.T) {
 	volume, err := transport.Volume(context.Background())
 	if err != nil || volume != 37 {
 		t.Fatalf("volume = %d, err = %v", volume, err)
+	}
+	position, err := transport.Position(context.Background())
+	if err != nil || position.Duration != 3723 || position.Current != 65 {
+		t.Fatalf("position = %#v, err = %v", position, err)
 	}
 }

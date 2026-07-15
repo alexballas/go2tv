@@ -133,7 +133,7 @@ func TestTokenRotationRevocationAndStaleRoutes(t *testing.T) {
 	}
 }
 
-func TestSubtitleRegisteredBeforeReady(t *testing.T) {
+func TestSRTSubtitleRegisteredBeforeReady(t *testing.T) {
 	server := New(Config{ListenAddr: "127.0.0.1:0"})
 	route := startTestServer(t, server, playback.ServerRequest{
 		Media: byteOpener([]byte("media")), MediaExt: ".mp4",
@@ -148,8 +148,8 @@ func TestSubtitleRegisteredBeforeReady(t *testing.T) {
 	}
 	body, _ := io.ReadAll(response.Body)
 	response.Body.Close()
-	if response.StatusCode != http.StatusOK || string(body) != "subtitle" {
-		t.Fatalf("subtitle status=%d body=%q", response.StatusCode, body)
+	if response.StatusCode != http.StatusOK || string(body) != "subtitle" || response.Header.Get("Content-Type") != "text/srt; charset=utf-8" {
+		t.Fatalf("subtitle status=%d type=%q body=%q", response.StatusCode, response.Header.Get("Content-Type"), body)
 	}
 }
 
@@ -287,6 +287,40 @@ func TestChromecastTranscodeResponseHeaders(t *testing.T) {
 	}
 	if got := response.Header.Get("Access-Control-Allow-Origin"); got != "*" {
 		t.Fatalf("CORS = %q", got)
+	}
+}
+
+func TestChromecastSubtitleRouteSupportsCrossOriginFetch(t *testing.T) {
+	subtitle := []byte("WEBVTT\n\n00:00.000 --> 00:01.000\nHello\n")
+	server := New(Config{ListenAddr: "127.0.0.1:0"})
+	request := mediaRequest([]byte("media"), ".mp4", "video/mp4")
+	request.Target.Protocol = "Chromecast"
+	request.Subtitle = byteOpener(subtitle)
+	request.SubtitleExt = ".vtt"
+	route := startTestServer(t, server, request)
+
+	httpRequest, err := http.NewRequest(http.MethodGet, route.SubtitleURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpRequest.Header.Set("Origin", "https://www.gstatic.com")
+	response, err := http.DefaultClient.Do(httpRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusOK || !bytes.Equal(body, subtitle) {
+		t.Fatalf("subtitle response status=%d body=%q", response.StatusCode, body)
+	}
+	if got := response.Header.Get("Content-Type"); got != "text/vtt; charset=utf-8" {
+		t.Fatalf("subtitle content type = %q", got)
+	}
+	if got := response.Header.Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("subtitle CORS = %q", got)
 	}
 }
 

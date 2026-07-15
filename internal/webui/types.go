@@ -15,6 +15,7 @@ type Config struct {
 	Library    *library.Library
 	Artwork    *controller.ArtworkCache
 	FFmpegPath string
+	Logger     controller.EventLogger
 }
 
 type envelope struct {

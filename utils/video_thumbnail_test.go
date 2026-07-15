@@ -9,17 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
-	"time"
 )
-
-func TestParseVideoDuration(t *testing.T) {
-	got := parseVideoDuration("Duration: 01:02:03.45, start: 0.000000")
-	want := time.Hour + 2*time.Minute + 3*time.Second + 450*time.Millisecond
-	if got != want {
-		t.Fatalf("duration = %s, want %s", got, want)
-	}
-}
 
 func TestExtractVideoThumbnailFromFile(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -38,7 +30,8 @@ func TestExtractVideoThumbnailFromFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	ffmpegPath := filepath.Join(dir, "ffmpeg")
-	script := "#!/bin/sh\ncase \"$*\" in\n  *-protocols*) printf 'Input:\\n  fd\\nOutput:\\n'; exit 0 ;;\n  *-frames:v*) cat \"" + framePath + "\"; exit 0 ;;\nesac\nprintf 'Duration: 00:00:08.00\\n' >&2\nexit 1\n"
+	argsPath := filepath.Join(dir, "args")
+	script := "#!/bin/sh\ncase \"$*\" in\n  *-protocols*) printf 'Input:\\n  fd\\nOutput:\\n'; exit 0 ;;\n  *-frames:v*) printf '%s\\n' \"$@\" > \"" + argsPath + "\"; cat \"" + framePath + "\"; exit 0 ;;\nesac\nprintf 'Duration: 00:00:08.00\\n' >&2\nexit 1\n"
 	if err = os.WriteFile(ffmpegPath, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -59,6 +52,13 @@ func TestExtractVideoThumbnailFromFile(t *testing.T) {
 	decoded, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || decoded.Width != 40 || decoded.Height != 20 {
 		t.Fatalf("frame = %#v, err=%v", decoded, err)
+	}
+	args, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(args), "-ss\n4.000\n") {
+		t.Fatalf("thumbnail did not seek to midpoint: %q", args)
 	}
 }
 

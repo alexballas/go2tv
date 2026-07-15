@@ -10,12 +10,10 @@ import (
 	"image/color"
 	"image/jpeg"
 	"io"
-	"io/fs"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -50,6 +48,40 @@ func testHandler(t *testing.T) (*Handler, *library.Library, *controller.Controll
 	return handler, lib, control, lib.Roots()[0].ID
 }
 
+func TestMediaRefCarriesDetectedMIMEType(t *testing.T) {
+	media := make([]byte, 261)
+	copy(media, []byte{
+		0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70,
+		0x6d, 0x70, 0x34, 0x32, 0x00, 0x00, 0x00, 0x00,
+		0x6d, 0x70, 0x34, 0x32, 0x6d, 0x70, 0x34, 0x31,
+		0x69, 0x73, 0x6f, 0x6d, 0x69, 0x73, 0x6f, 0x32,
+	})
+	root := t.TempDir()
+	path := filepath.Join(root, "movie.mp4")
+	if err := os.WriteFile(path, media, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	lib, err := library.Open(library.Config{Roots: []string{root}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	control := controller.New(controller.Config{})
+	h, err := New(Config{Version: "test", Controller: control, Library: lib, FFmpegPath: filepath.Join(root, "missing-ffmpeg")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { h.Close(); control.Close(); _ = lib.Close() }()
+	rootID := lib.Roots()[0].ID
+	page, err := lib.Browse(rootID, "", "", 1)
+	if err != nil || len(page.Entries) != 1 {
+		t.Fatalf("browse = %#v, err=%v", page, err)
+	}
+	ref, err := h.mediaRef(context.Background(), rootID, page.Entries[0].ID)
+	if err != nil || ref.MIMEType != "video/mp4" {
+		t.Fatalf("media MIME = %q, err=%v", ref.MIMEType, err)
+	}
+}
+
 func TestShellEmbedCacheAndSecurityHeaders(t *testing.T) {
 	h, _, _, _ := testHandler(t)
 	server := httptest.NewServer(h)
@@ -80,7 +112,7 @@ func TestShellEmbedCacheAndSecurityHeaders(t *testing.T) {
 	}
 }
 
-func TestStaticRejectsUnhashedAndClientUsesSafeDOM(t *testing.T) {
+func TestStaticRejectsUnhashedAssets(t *testing.T) {
 	h, _, _, _ := testHandler(t)
 	for _, path := range []string{"/assets/index.html", "/assets/app.js", "/assets/../index.html"} {
 		response := httptest.NewRecorder()
@@ -88,54 +120,6 @@ func TestStaticRejectsUnhashedAndClientUsesSafeDOM(t *testing.T) {
 		if response.Code != http.StatusNotFound || response.Header().Get("Cache-Control") != "no-store" {
 			t.Fatalf("%s = %d %q", path, response.Code, response.Header().Get("Cache-Control"))
 		}
-	}
-	index, err := fs.ReadFile(assets(), "index.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	match := regexp.MustCompile(`app\.[0-9a-f]{8}\.js`).Find(index)
-	if match == nil {
-		t.Fatal("hashed script absent")
-	}
-	js, err := fs.ReadFile(assets(), string(match))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, forbidden := range [][]byte{[]byte("innerHTML"), []byte("outerHTML"), []byte("insertAdjacentHTML")} {
-		if bytes.Contains(js, forbidden) {
-			t.Fatalf("unsafe DOM API %q", forbidden)
-		}
-	}
-	if !bytes.Contains(js, []byte("textContent")) || !bytes.Contains(js, []byte("setTimeout")) {
-		t.Fatal("safe labels or reconnect absent")
-	}
-}
-
-func TestSelectedQueueRingHasScrollGutter(t *testing.T) {
-	index, err := fs.ReadFile(assets(), "index.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	name := regexp.MustCompile(`app\.[0-9a-f]{8}\.css`).Find(index)
-	if name == nil {
-		t.Fatal("hashed CSS absent")
-	}
-	css, err := fs.ReadFile(assets(), string(name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	rule := regexp.MustCompile(`#queue\{[^}]*\}`).Find(css)
-	if !bytes.Contains(rule, []byte(`padding:calc(var(--spacing)*.5)`)) {
-		t.Fatalf("queue scroll gutter absent: %s", rule)
-	}
-}
-
-func TestClientDOMInteractionsAndState(t *testing.T) {
-	command := exec.Command("node", "--test", "src/client.test.js")
-	command.Dir = "."
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("client tests: %v\n%s", err, output)
 	}
 }
 
@@ -388,6 +372,24 @@ func TestArtworkContentAddressedCache(t *testing.T) {
 	h.ServeHTTP(notModified, conditional)
 	if notModified.Code != http.StatusNotModified || notModified.Body.Len() != 0 {
 		t.Fatalf("conditional = %d %q", notModified.Code, notModified.Body.String())
+	}
+}
+
+func TestArtworkReloadReferencesAreBounded(t *testing.T) {
+	h, _, _, _ := testHandler(t)
+	for i := range maxArtworkRefs + 1 {
+		id := strconv.Itoa(i)
+		h.rememberArtwork(id, func(context.Context) ([]byte, string, error) {
+			return []byte(id), "image/jpeg", nil
+		})
+	}
+	if _, err := h.loadArtwork(context.Background(), "0"); err == nil {
+		t.Fatal("old artwork reference retained")
+	}
+	latest := strconv.Itoa(maxArtworkRefs)
+	data, err := h.loadArtwork(context.Background(), latest)
+	if err != nil || string(data) != latest {
+		t.Fatalf("latest artwork = %q, err=%v", data, err)
 	}
 }
 

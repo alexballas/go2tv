@@ -250,6 +250,78 @@ func TestPolicyAtomicAndExpectedRevision(t *testing.T) {
 	}
 }
 
+func TestCanceledQueuedMutationDoesNotCommit(t *testing.T) {
+	c := New(Config{})
+	defer c.Close()
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	if err := c.enqueueInternal(message{fn: func(*actorState) {
+		close(entered)
+		<-release
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	<-entered
+
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan Result, 1)
+	go func() { result <- c.SetTranscode(ctx, Mutation{RequestID: "canceled"}, true) }()
+	deadline := time.Now().Add(time.Second)
+	for len(c.queue) == 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if len(c.queue) == 0 {
+		close(release)
+		t.Fatal("mutation was not queued")
+	}
+	cancel()
+	select {
+	case got := <-result:
+		if got.OK() {
+			t.Fatalf("canceled mutation succeeded: %#v", got)
+		}
+	case <-time.After(time.Second):
+		close(release)
+		t.Fatal("canceled queued mutation did not return")
+	}
+	close(release)
+	snapshot, err := c.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Transcode || snapshot.Revision != 0 {
+		t.Fatalf("canceled mutation committed: %#v", snapshot)
+	}
+}
+
+func TestStartedMutationWinsCancellation(t *testing.T) {
+	c := New(Config{})
+	defer c.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	started := make(chan struct{})
+	release := make(chan struct{})
+	result := make(chan Result, 1)
+	go func() {
+		result <- c.mutate(ctx, Mutation{RequestID: "started"}, func(s *actorState) Result {
+			close(started)
+			<-release
+			s.transcode = true
+			s.commit()
+			return Result{RequestID: "started", Revision: s.revision}
+		})
+	}()
+	<-started
+	cancel()
+	close(release)
+	if got := <-result; !got.OK() {
+		t.Fatalf("started mutation lost to cancellation: %#v", got)
+	}
+	snapshot, err := c.Snapshot(context.Background())
+	if err != nil || !snapshot.Transcode || snapshot.Revision != 1 {
+		t.Fatalf("snapshot = %#v, err=%v", snapshot, err)
+	}
+}
+
 func TestPolicyImageDurationBounds(t *testing.T) {
 	for _, tt := range []struct {
 		seconds int
@@ -536,6 +608,9 @@ func TestChromecastAutoplayReusesConnection(t *testing.T) {
 			if len(factory.opened) != 1 || count(log.snapshot(), "load-existing:cast") != 1 || count(log.snapshot(), "stop:cast") != 0 || count(log.snapshot(), "close:cast") != 0 {
 				t.Fatalf("connection not reused: %v", log.snapshot())
 			}
+			if title := factory.opened[0].load.Metadata.Title; title != "b.mp3" {
+				t.Fatalf("replacement title = %q", title)
+			}
 			return
 		}
 		time.Sleep(time.Millisecond)
@@ -618,6 +693,10 @@ func TestChromecastPauseResumeKeepsSession(t *testing.T) {
 	if result := c.Resume(context.Background(), Mutation{}); !result.OK() {
 		t.Fatal(result)
 	}
+	resumed, _ := c.Snapshot(context.Background())
+	if resumed.PlaybackState != PlaybackStatePlaying {
+		t.Fatalf("resumed state = %q", resumed.PlaybackState)
+	}
 	if len(factory.opened) != 1 || count(log.snapshot(), "play:cast") != 1 || count(log.snapshot(), "stop:cast") != 0 || count(log.snapshot(), "close:cast") != 0 {
 		t.Fatalf("events = %v", log.snapshot())
 	}
@@ -645,13 +724,15 @@ func TestLoadUsesDisplayNameAndArtwork(t *testing.T) {
 	c.SelectDevice(context.Background(), Mutation{}, "one")
 	media := testMedia("opaque-id", mediamodel.MediaKindAudio)
 	media.Name = "Actual Song.mp3"
+	media.MIMEType = "audio/mpeg"
 	media.Artwork = &metadata.ArtworkAsset{ID: "cover", Data: []byte("art"), MIMEType: "image/jpeg", Width: 20, Height: 30}
 	c.SelectMedia(context.Background(), Mutation{}, media)
+	media.Artwork.Data[0] = 'X'
 	if result := c.Play(context.Background(), PlayRequest{}); !result.OK() {
 		t.Fatal(result)
 	}
 	load := factory.opened[0].load
-	if load.Metadata.Title != "Actual Song.mp3" || !load.Seekable || load.Metadata.Artwork == nil || load.Metadata.Artwork.URL != "http://127.0.0.1/artwork.jpg" || string(load.ArtworkData) != "art" {
+	if load.MediaType != "audio/mpeg" || load.Metadata.Title != "Actual Song.mp3" || !load.Seekable || load.Metadata.Artwork == nil || load.Metadata.Artwork.URL != "http://127.0.0.1/artwork.jpg" || string(load.ArtworkData) != "art" {
 		t.Fatalf("load = %#v", load)
 	}
 	snapshot, _ := c.Snapshot(context.Background())
@@ -886,13 +967,11 @@ func TestArtworkCacheLRUAndSingleflight(t *testing.T) {
 	}
 	var wg sync.WaitGroup
 	for range 8 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if _, err := cache.Get(context.Background(), "a", loader); err != nil {
 				t.Error(err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	mu.Lock()

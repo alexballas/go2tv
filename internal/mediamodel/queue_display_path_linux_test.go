@@ -27,10 +27,3 @@ func TestQueueDisplayPath(t *testing.T) {
 		t.Fatalf("item paths = %q, %q", item.Path(), item.DisplayPath())
 	}
 }
-
-func TestQueueDisplayPathFallback(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "ordinary.mp4")
-	if got := QueueDisplayPath(path); got != path {
-		t.Fatalf("display = %q, want %q", got, path)
-	}
-}

@@ -28,7 +28,7 @@ type runtime struct {
 	web        *webui.Handler
 }
 
-func newRuntime(cfg Config, logs io.Writer) (*runtime, error) {
+func newRuntime(cfg Config, log *serverLogger) (*runtime, error) {
 	lib, err := library.Open(library.Config{Roots: cfg.MediaRoots})
 	if err != nil {
 		return nil, err
@@ -49,8 +49,8 @@ func newRuntime(cfg Config, logs io.Writer) (*runtime, error) {
 			return utils.DurationForMediaReaderSeconds(ctx, ffmpeg, media)
 		}
 	}
-	control := controller.New(controller.NewRuntimeConfig(controller.RuntimeConfig{MediaServer: media, Callbacks: callbacks, LogOutput: logs, Artwork: artwork, DurationProbe: durationProbe}))
-	web, err := webui.New(webui.Config{Version: cfg.Version, Controller: control, Library: lib, Artwork: artwork, FFmpegPath: ffmpeg})
+	control := controller.New(controller.NewRuntimeConfig(controller.RuntimeConfig{MediaServer: media, Callbacks: callbacks, LogOutput: log.protocolOutput(), Logger: log, Artwork: artwork, DurationProbe: durationProbe}))
+	web, err := webui.New(webui.Config{Version: cfg.Version, Controller: control, Library: lib, Artwork: artwork, FFmpegPath: ffmpeg, Logger: log})
 	if err != nil {
 		control.Close()
 		callbacks.Close()

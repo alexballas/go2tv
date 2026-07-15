@@ -5,7 +5,7 @@ Icon = "assets/go2tv-icon-desktop-512.png"
 Name = "go2tv"
 ID = "app.go2tv.go2tv"
 Version = "1.19.0"
-Build = 93
+Build = 103
 
 [Migrations]
 fyneDo = true

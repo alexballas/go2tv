@@ -183,7 +183,10 @@ func waitForServerAddress(t *testing.T, stdout io.Reader, command *exec.Cmd, std
 	go func() {
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
-			if address, ok := strings.CutPrefix(scanner.Text(), "Web server listening: "); ok {
+			const marker = "INFO  Web server listening: "
+			line := scanner.Text()
+			if index := strings.Index(line, marker); index >= 0 {
+				address := line[index+len(marker):]
 				result <- address
 				return
 			}

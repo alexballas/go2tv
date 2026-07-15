@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -88,7 +89,6 @@ func TestCallbackSessionValidationAndOrdering(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("gap timeout")
 	}
-	time.Sleep(10 * time.Millisecond)
 	collector.mu.Lock()
 	count := len(collector.events)
 	collector.mu.Unlock()
@@ -117,35 +117,32 @@ type ioNopCloser struct{ *strings.Reader }
 
 func (ioNopCloser) Close() error { return nil }
 
-func TestCallbackSessionStaleAndExplicitStop(t *testing.T) {
-	collector := &callbackCollector{ch: make(chan CallbackEvent, 1)}
-	session, err := NewCallbackSession(CallbackSessionConfig{Generation: 1, SID: "session", Sink: collector})
+func TestCallbackSessionSuppressesExplicitStop(t *testing.T) {
+	collector := &callbackCollector{ch: make(chan CallbackEvent, 2)}
+	session, err := NewCallbackSession(CallbackSessionConfig{Generation: 2, SID: "session", Sink: collector})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer session.Close()
-	session.SetGeneration(2)
-	rec := httptest.NewRecorder()
-	session.Handler()(rec, newNotifyRequest("1", "PLAYING"))
-	time.Sleep(10 * time.Millisecond)
-	select {
-	case <-collector.ch:
-		t.Fatal("stale delivered")
-	default:
+	session.SuppressExplicitStop(true)
+	for sequence, state := range []string{"STOPPED", "PLAYING"} {
+		rec := httptest.NewRecorder()
+		session.Handler()(rec, newNotifyRequest(strconv.Itoa(sequence+1), state))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s status = %d", state, rec.Code)
+		}
 	}
-
-	current, err := NewCallbackSession(CallbackSessionConfig{Generation: 2, SID: "session", Sink: collector})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer current.Close()
-	current.SuppressExplicitStop(true)
-	rec = httptest.NewRecorder()
-	current.Handler()(rec, newNotifyRequest("1", "STOPPED"))
-	time.Sleep(10 * time.Millisecond)
 	select {
-	case <-collector.ch:
-		t.Fatal("explicit stop delivered")
+	case event := <-collector.ch:
+		if event.TransportState != "PLAYING" {
+			t.Fatalf("delivered state = %q", event.TransportState)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("PLAYING event missing")
+	}
+	select {
+	case event := <-collector.ch:
+		t.Fatalf("unexpected event = %#v", event)
 	default:
 	}
 }
@@ -208,7 +205,12 @@ func TestCallbackSessionStoppedWaitsForFullQueue(t *testing.T) {
 	}
 
 	result := make(chan int, 1)
-	go func() { result <- request("3", "STOPPED") }()
+	started := make(chan struct{})
+	go func() {
+		close(started)
+		result <- request("3", "STOPPED")
+	}()
+	<-started
 	select {
 	case status := <-result:
 		t.Fatalf("STOPPED returned from full queue: %d", status)

@@ -8,12 +8,8 @@ github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab h1:IicL/N9O22
 github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab/go.mod h1:bvfmHkfGgEntZVIbSzazSp6zSxD68BJGsLVASpcEHxI=
 github.com/alexballas/refyne/v2 v2.0.0-20260709143520-88cd85f20823 h1:ggEmZV2UCHgsRqcjd1615+vx4PUF4gPUZH89bnBAJs4=
 github.com/alexballas/refyne/v2 v2.0.0-20260709143520-88cd85f20823/go.mod h1:A5ylOSbXKGDIq5nyq92kjxq6Z43H4UQBugJPnN5SqPk=
-github.com/alexballas/xfilepicker v0.0.0-20260707112625-568d849323ed h1:M4FUOisDYDxmg3LCDpXuDgPu4Ykf+WDeksYUvX6kFgA=
-github.com/alexballas/xfilepicker v0.0.0-20260707112625-568d849323ed/go.mod h1:5xgikLIG/bdiSLLJaiF7TamQ0sch9AIVxsDoBdv8Ar8=
 github.com/alexballas/xfilepicker v0.0.0-20260711081040-6fac737da9a9 h1:DJVlkCUmOMgPoouXY9wwIs0pT18gbOaxTWe875oRvVw=
 github.com/alexballas/xfilepicker v0.0.0-20260711081040-6fac737da9a9/go.mod h1:q5Df/TVbI93ofJqEaifyZtCIDQ5mc6bklBn28Ku9aXM=
-github.com/anthonynsimon/bild v0.16.0 h1:LB69jaZEFAzzKx8ZDXV4L3pjGsB5sCuC8HjFC4ubyPw=
-github.com/anthonynsimon/bild v0.16.0/go.mod h1:q/rfwcyRxZX2SZtA3JlANCuCqCCd4+9ctj2+0eOIjdE=
 github.com/anthonynsimon/bild v0.16.1 h1:ECqtLkQ15kqfHdRtzUfNvQniJtHNpzdVU/7feMYAm0o=
 github.com/anthonynsimon/bild v0.16.1/go.mod h1:hYAxurnswTQ9dexoiK922MepdXLC1lBzG35n6ypk//g=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=
@@ -196,8 +192,6 @@ golang.org/x/net v0.0.0-20201021035429-f5854403a974/go.mod h1:sp8m0HH+o8qH0wwXwY
 golang.org/x/net v0.0.0-20210226172049-e18ecbb05110/go.mod h1:m0MpNAwzfU5UDzcl9v0D8zg8gWTRqZa9RBIspLL5mdg=
 golang.org/x/net v0.0.0-20220722155237-a158d28d115b/go.mod h1:XRhObCWvk6IyKnWLug+ECip1KBveYUHfp+8e9klMJ9c=
 golang.org/x/net v0.6.0/go.mod h1:2Tu9+aMcznHK/AK1HMvgo6xiTLG5rD5rZLDS+rp2Bjs=
-golang.org/x/net v0.56.0 h1:Rw8j/hFzGvJUZwNBXnAtf5sVDVt+65SK2C7IxCxZt5o=
-golang.org/x/net v0.56.0/go.mod h1:D3Ku6r+V6JROoZK144D2XfMHFcMq/0zSfLelVTCFKec=
 golang.org/x/net v0.57.0 h1:K5+3DljvIuDG9/Jv9rvyMywYNFCQ9RSUY6OOTTkT+tE=
 golang.org/x/net v0.57.0/go.mod h1:KpXc8iv+r3XplLAG/f7Jsf9RPszJzdR0f58q9vGOuEU=
 golang.org/x/sync v0.0.0-20190423024810-112230192c58/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
@@ -238,8 +232,6 @@ golang.org/x/tools v0.0.0-20200619180055-7c47624df98f/go.mod h1:EkVYQZoAsY45+roY
 golang.org/x/tools v0.0.0-20210106214847-113979e3529a/go.mod h1:emZCQorbCU4vsT4fOWvOPXz4eW1wZW4PmDk9uLelYpA=
 golang.org/x/tools v0.1.12/go.mod h1:hNGJHUnrk76NpqgfD5Aqm5Crs+Hm0VOH/i9J2+nxYbc=
 golang.org/x/tools v0.6.0/go.mod h1:Xwgl3UAJ/d3gWutnCtw505GrjyAbvKui8lOU390QaIU=
-golang.org/x/tools v0.47.0 h1:7Kn5x/d1svx/PzryTsqeoZN4TZwqeH5pGWjefhLi/1Q=
-golang.org/x/tools v0.47.0/go.mod h1:dFHnyTvFWY212G+h7ZY4Vsp/K3U4/7W9TyVaAul8uCA=
 golang.org/x/tools v0.48.0 h1:3+hClM1aLL5mjMKm5ovokw9epgRXPuu2tILgismM6RE=
 golang.org/x/tools v0.48.0/go.mod h1:08xX0orndb/F7jJxGDicx061tyd5pcMto75YMAXr6lk=
 golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=

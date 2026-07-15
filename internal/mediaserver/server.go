@@ -147,7 +147,7 @@ func (s *Server) Start(ctx context.Context, request playback.ServerRequest) (pla
 	}
 	var subtitleRoute route
 	if request.Subtitle != nil && !request.BurnSubtitle {
-		subtitleRequest := playback.ServerRequest{Media: request.Subtitle, MediaExt: request.SubtitleExt, MediaType: "text/vtt; charset=utf-8"}
+		subtitleRequest := playback.ServerRequest{Media: request.Subtitle, MediaExt: request.SubtitleExt, MediaType: subtitleMediaType(request.SubtitleExt), Target: request.Target}
 		subtitleRoute, err = s.newSourceRouteLocked("subtitle", request.Subtitle, request.SubtitleExt, subtitleRequest.MediaType, subtitleRequest)
 		if err != nil {
 			s.resetLocked()
@@ -212,6 +212,13 @@ func (s *Server) Start(ctx context.Context, request playback.ServerRequest) (pla
 		_ = s.Stop(context.Background())
 		return playback.MediaRoute{}, ctx.Err()
 	}
+}
+
+func subtitleMediaType(extension string) string {
+	if strings.EqualFold(extension, ".srt") {
+		return "text/srt; charset=utf-8"
+	}
+	return "text/vtt; charset=utf-8"
 }
 
 func (s *Server) CallbackURL() string {
@@ -379,7 +386,7 @@ func (s *Server) serveHTTP(w http.ResponseWriter, request *http.Request) {
 		w.Header().Set("transferMode.dlna.org", "Streaming")
 		w.Header().Set("realTimeInfo.dlna.org", "DLNA.ORG_TLAG=*")
 	}
-	if r.request.Transcode && r.request.Target.Protocol == "Chromecast" {
+	if r.request.Target.Protocol == "Chromecast" {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 	}
 	if request.Header.Get("getcontentFeatures.dlna.org") == "1" {

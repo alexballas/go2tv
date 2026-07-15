@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -19,7 +20,16 @@ import (
 type message struct {
 	fn   func(*actorState)
 	done chan struct{}
+	call *actorCall
 }
+
+type actorCall struct{ state atomic.Uint32 }
+
+const (
+	actorCallPending uint32 = iota
+	actorCallRunning
+	actorCallCanceled
+)
 
 type activeSession struct {
 	generation       uint64
@@ -67,6 +77,19 @@ func (o *playOperation) finish() {
 
 func terminalCause(reason playback.TerminalReason) error { return errors.New(string(reason)) }
 
+var errAdapterContract = errors.New("adapter contract violation")
+
+func playbackTime(seconds int) string {
+	if seconds < 0 {
+		seconds = 0
+	}
+	hours := seconds / 3600
+	if hours > 0 {
+		return fmt.Sprintf("%d:%02d:%02d", hours, seconds/60%60, seconds%60)
+	}
+	return fmt.Sprintf("%02d:%02d", seconds/60, seconds%60)
+}
+
 type actorState struct {
 	controller   *Controller
 	revision     uint64
@@ -103,25 +126,36 @@ type Controller struct {
 	queue     chan message
 	callbacks chan playback.MonitorEvent
 	done      chan struct{}
+	stopped   chan struct{}
 	closeOnce sync.Once
 	lifecycle sync.WaitGroup
 }
 
+// New creates and starts a Controller. Config is copied and safe defaults are
+// applied. Use Config.Validate before New when strict startup validation is
+// required. The returned Controller owns all goroutines and opened transports.
 func New(cfg Config) *Controller {
 	if cfg.OperationTimeout <= 0 {
-		cfg.OperationTimeout = 30 * time.Second
+		cfg.OperationTimeout = defaultOperationTimeout
 	}
 	if cfg.Artwork == nil {
 		cfg.Artwork = NewArtworkCache(ArtworkCacheBytes)
 	}
-	ctx, cancel := context.WithCancelCause(context.Background())
-	c := &Controller{cfg: cfg, ctx: ctx, cancel: cancel, queue: make(chan message, ActorQueueSize), callbacks: make(chan playback.MonitorEvent, CallbackQueueSize), done: make(chan struct{})}
+	parent := cfg.ParentContext
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithCancelCause(parent)
+	c := &Controller{cfg: cfg, ctx: ctx, cancel: cancel, queue: make(chan message, ActorQueueSize), callbacks: make(chan playback.MonitorEvent, CallbackQueueSize), done: make(chan struct{}), stopped: make(chan struct{})}
 	go c.run()
-	go c.forwardCallbacks()
+	c.goOwned(c.forwardCallbacks)
 	if cfg.Discovery != nil {
 		updates, unsubscribe := cfg.Discovery.Subscribe(1)
+		if unsubscribe == nil {
+			unsubscribe = func() {}
+		}
 		cfg.Discovery.Start(ctx)
-		go func() {
+		c.goOwned(func() {
 			defer unsubscribe()
 			for {
 				select {
@@ -134,14 +168,23 @@ func New(cfg Config) *Controller {
 					_ = c.enqueueInternal(message{fn: func(s *actorState) { s.setDevices(devices) }})
 				}
 			}
-		}()
+		})
 	}
+	go func() {
+		<-c.done
+		c.lifecycle.Wait()
+		close(c.stopped)
+	}()
 	return c
+}
+
+func (c *Controller) goOwned(fn func()) {
+	c.lifecycle.Go(fn)
 }
 
 func (c *Controller) run() {
 	defer close(c.done)
-	s := &actorState{controller: c, policy: DefaultPolicy(), state: "STOPPED", volume: 100}
+	s := &actorState{controller: c, policy: DefaultPolicy(), state: PlaybackStateStopped, volume: 100}
 	for {
 		select {
 		case <-c.ctx.Done():
@@ -155,7 +198,9 @@ func (c *Controller) run() {
 			}
 			return
 		case msg := <-c.queue:
-			msg.fn(s)
+			if msg.call == nil || msg.call.state.CompareAndSwap(actorCallPending, actorCallRunning) {
+				msg.fn(s)
+			}
 			if msg.done != nil {
 				close(msg.done)
 			}
@@ -178,12 +223,30 @@ func (c *Controller) forwardCallbacks() {
 	}
 }
 
+// Done is closed after shutdown completes and every controller-owned goroutine
+// exits. It is safe to call before or after Close.
+func (c *Controller) Done() <-chan struct{} { return c.stopped }
+
+// Shutdown requests idempotent shutdown and waits for owned transports and
+// goroutines. The wait honors ctx; shutdown continues if ctx expires.
+func (c *Controller) Shutdown(ctx context.Context) error {
+	if ctx == nil {
+		return ErrInvalidOperation
+	}
+	c.closeOnce.Do(func() { c.cancel(terminalCause(playback.TerminalShutdown)) })
+	select {
+	case <-c.stopped:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// Close shuts down the Controller and waits without a deadline. It is safe to
+// call concurrently and more than once. Prefer Shutdown when blocking must be
+// bounded.
 func (c *Controller) Close() {
-	c.closeOnce.Do(func() {
-		c.cancel(terminalCause(playback.TerminalShutdown))
-		<-c.done
-		c.lifecycle.Wait()
-	})
+	_ = c.Shutdown(context.Background())
 }
 
 func (c *Controller) enqueue(msg message) error {
@@ -209,21 +272,100 @@ func (c *Controller) enqueueInternal(msg message) error {
 	}
 }
 
+// Snapshot returns a detached state projection. It returns context errors,
+// ErrBusy when the actor queue is saturated, or ErrClosed after shutdown.
 func (c *Controller) Snapshot(ctx context.Context) (Snapshot, error) {
 	if ctx == nil {
 		return Snapshot{}, ErrInvalidOperation
 	}
 	var snapshot Snapshot
-	done := make(chan struct{})
-	err := c.enqueue(message{done: done, fn: func(s *actorState) { snapshot = s.snapshot() }})
+	_, err := c.callActor(ctx, func(s *actorState) { snapshot = s.snapshot() })
 	if err != nil {
 		return Snapshot{}, err
 	}
+	return snapshot, nil
+}
+
+// callActor lets either cancellation or actor execution claim the call. Once
+// execution starts, the caller waits for its single outcome instead of racing.
+func (c *Controller) callActor(ctx context.Context, fn func(*actorState)) (uint64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	var revision uint64
+	done := make(chan struct{})
+	call := &actorCall{}
+	err := c.enqueue(message{done: done, call: call, fn: func(s *actorState) {
+		revision = s.revision
+		fn(s)
+	}})
+	if err != nil {
+		return 0, err
+	}
 	select {
-	case <-ctx.Done():
-		return Snapshot{}, ctx.Err()
 	case <-done:
-		return snapshot, nil
+		return revision, nil
+	case <-ctx.Done():
+		if call.state.CompareAndSwap(actorCallPending, actorCallCanceled) {
+			return 0, ctx.Err()
+		}
+		select {
+		case <-done:
+			return revision, nil
+		case <-c.done:
+			select {
+			case <-done:
+				return revision, nil
+			default:
+				return 0, ErrClosed
+			}
+		}
+	case <-c.done:
+		select {
+		case <-done:
+			return revision, nil
+		default:
+			return 0, ErrClosed
+		}
+	}
+}
+
+// callResult prevents a canceled queued command from starting. Once the actor
+// accepts the command, its single committed outcome wins the cancellation race.
+func (c *Controller) callResult(ctx context.Context, requestID string, fn func(*actorState, chan<- Result)) Result {
+	if err := ctx.Err(); err != nil {
+		return fail(requestID, 0, err)
+	}
+	response := make(chan Result, 1)
+	call := &actorCall{}
+	if err := c.enqueue(message{call: call, fn: func(s *actorState) { fn(s, response) }}); err != nil {
+		return fail(requestID, 0, err)
+	}
+	select {
+	case result := <-response:
+		return result
+	case <-ctx.Done():
+		if call.state.CompareAndSwap(actorCallPending, actorCallCanceled) {
+			return fail(requestID, 0, ctx.Err())
+		}
+		select {
+		case result := <-response:
+			return result
+		case <-c.stopped:
+			select {
+			case result := <-response:
+				return result
+			default:
+				return fail(requestID, 0, ErrClosed)
+			}
+		}
+	case <-c.stopped:
+		select {
+		case result := <-response:
+			return result
+		default:
+			return fail(requestID, 0, ErrClosed)
+		}
 	}
 }
 
@@ -268,32 +410,36 @@ func (s *actorState) check(m Mutation) Result {
 }
 
 func fail(requestID string, revision uint64, err error) Result {
-	code, message := CodeInternal, "operation failed"
+	code, message := ErrorCodeOf(err), "operation failed"
 	switch {
-	case errors.Is(err, ErrBusy):
-		code, message = CodeBusy, "operation busy"
-	case errors.Is(err, ErrConflict):
-		code, message = CodeConflict, "state changed"
-	case errors.Is(err, ErrNotFound):
-		code, message = CodeNotFound, "not found"
-	case errors.Is(err, ErrNoDevice):
-		code, message = CodeNoDevice, "select a device"
-	case errors.Is(err, ErrNoMedia):
-		code, message = CodeNoMedia, "select media"
-	case errors.Is(err, ErrNoSession):
-		code, message = CodeNoSession, "nothing playing"
-	case errors.Is(err, ErrAudioOnly):
-		code, message = CodeAudioOnly, "device supports audio only"
-	case errors.Is(err, ErrQueueLimit):
-		code, message = CodeQueueLimit, "queue too large"
-	case errors.Is(err, ErrInvalidPolicy), errors.Is(err, ErrInvalidOperation):
-		code, message = CodeInvalid, "invalid request"
+	case code == CodeBusy:
+		message = "operation busy"
+	case code == CodeConflict:
+		message = "state changed"
+	case code == CodeNotFound:
+		message = "not found"
+	case code == CodeNoDevice:
+		message = "select a device"
+	case code == CodeNoMedia:
+		message = "select media"
+	case code == CodeNoSession:
+		message = "nothing playing"
+	case code == CodeAudioOnly:
+		message = "device supports audio only"
+	case code == CodeQueueLimit:
+		message = "queue too large"
 	case errors.Is(err, ErrSeekUnsupported), errors.Is(err, playback.ErrSeekUnsupported):
-		code, message = CodeInvalid, "seek unsupported"
+		message = "seek unsupported"
 	case errors.Is(err, playback.ErrSeekNegative), errors.Is(err, playback.ErrSeekPastDuration):
-		code, message = CodeInvalid, "invalid seek position"
-	case errors.Is(err, ErrClosed):
-		code, message = CodeClosed, "controller closed"
+		message = "invalid seek position"
+	case code == CodeInvalid:
+		message = "invalid request"
+	case code == CodeClosed:
+		message = "controller closed"
+	case code == CodeCanceled:
+		message = "operation canceled"
+	case code == CodeDeadline:
+		message = "operation deadline exceeded"
 	}
 	return Result{RequestID: requestID, Revision: revision, Code: code, Message: message}
 }
@@ -303,18 +449,14 @@ func (c *Controller) mutate(ctx context.Context, mutation Mutation, fn func(*act
 		return fail(mutation.RequestID, 0, ErrInvalidOperation)
 	}
 	result := Result{RequestID: mutation.RequestID}
-	done := make(chan struct{})
-	if err := c.enqueue(message{done: done, fn: func(s *actorState) { result = fn(s) }}); err != nil {
-		return fail(mutation.RequestID, 0, err)
+	revision, err := c.callActor(ctx, func(s *actorState) { result = fn(s) })
+	if err != nil {
+		return fail(mutation.RequestID, revision, err)
 	}
-	select {
-	case <-ctx.Done():
-		return fail(mutation.RequestID, result.Revision, ctx.Err())
-	case <-done:
-		return result
-	}
+	return result
 }
 
+// SelectDevice selects a currently discovered device by opaque ID.
 func (c *Controller) SelectDevice(ctx context.Context, mutation Mutation, id string) Result {
 	return c.mutate(ctx, mutation, func(s *actorState) Result {
 		if result := s.check(mutation); !result.OK() {
@@ -329,6 +471,7 @@ func (c *Controller) SelectDevice(ctx context.Context, mutation Mutation, id str
 	})
 }
 
+// SelectMedia validates, copies, and selects an in-process media reference.
 func (c *Controller) SelectMedia(ctx context.Context, mutation Mutation, media MediaRef) Result {
 	return c.mutate(ctx, mutation, func(s *actorState) Result {
 		if result := s.check(mutation); !result.OK() {
@@ -337,7 +480,7 @@ func (c *Controller) SelectMedia(ctx context.Context, mutation Mutation, media M
 		if !media.valid() {
 			return fail(mutation.RequestID, s.revision, ErrInvalidOperation)
 		}
-		s.media = media
+		s.media = cloneMediaRef(media)
 		s.mediaQueueID = ""
 		s.artworkID = mediaArtworkID(media)
 		s.commit()
@@ -345,12 +488,23 @@ func (c *Controller) SelectMedia(ctx context.Context, mutation Mutation, media M
 	})
 }
 
+func cloneMediaRef(media MediaRef) MediaRef {
+	if media.Artwork == nil {
+		return media
+	}
+	artwork := *media.Artwork
+	artwork.Data = bytes.Clone(media.Artwork.Data)
+	media.Artwork = &artwork
+	return media
+}
+
+// SelectSubtitle selects a subtitle reference. The zero reference clears it.
 func (c *Controller) SelectSubtitle(ctx context.Context, mutation Mutation, subtitle SubtitleRef) Result {
 	return c.mutate(ctx, mutation, func(s *actorState) Result {
 		if result := s.check(mutation); !result.OK() {
 			return result
 		}
-		if subtitle.ID != "" && !subtitle.valid() {
+		if subtitle.Validate() != nil {
 			return fail(mutation.RequestID, s.revision, ErrInvalidOperation)
 		}
 		s.subtitle = subtitle
@@ -359,6 +513,7 @@ func (c *Controller) SelectSubtitle(ctx context.Context, mutation Mutation, subt
 	})
 }
 
+// SetTranscode controls transcoding for subsequent loads.
 func (c *Controller) SetTranscode(ctx context.Context, mutation Mutation, enabled bool) Result {
 	return c.mutate(ctx, mutation, func(s *actorState) Result {
 		if result := s.check(mutation); !result.OK() {
@@ -370,6 +525,7 @@ func (c *Controller) SetTranscode(ctx context.Context, mutation Mutation, enable
 	})
 }
 
+// SetArtworkID changes the display artwork cache ID without changing media.
 func (c *Controller) SetArtworkID(ctx context.Context, mutation Mutation, id string) Result {
 	return c.mutate(ctx, mutation, func(s *actorState) Result {
 		if result := s.check(mutation); !result.OK() {
@@ -381,6 +537,7 @@ func (c *Controller) SetArtworkID(ctx context.Context, mutation Mutation, id str
 	})
 }
 
+// AddQueueItem validates and copies Media, then appends it to the queue.
 func (c *Controller) AddQueueItem(ctx context.Context, request QueueAddRequest) QueueAddResult {
 	var itemID string
 	result := c.mutate(ctx, request.Mutation, func(s *actorState) Result {
@@ -406,6 +563,7 @@ func (c *Controller) AddQueueItem(ctx context.Context, request QueueAddRequest) 
 }
 
 func (s *actorState) appendQueueItem(item mediamodel.QueueItem, media MediaRef, selectItem bool) {
+	media = cloneMediaRef(media)
 	items, current := []mediamodel.QueueItem{item}, -1
 	if s.queue != nil {
 		items = append(s.queue.Items(), item)
@@ -426,6 +584,8 @@ func (s *actorState) appendQueueItem(item mediamodel.QueueItem, media MediaRef, 
 	}
 }
 
+// ClearQueue removes queued items. An active queued item is retained until its
+// session ends so snapshots and autoplay retain a valid identity.
 func (c *Controller) ClearQueue(ctx context.Context, mutation Mutation) Result {
 	return c.mutate(ctx, mutation, func(s *actorState) Result {
 		if result := s.check(mutation); !result.OK() {
@@ -454,6 +614,7 @@ func (c *Controller) ClearQueue(ctx context.Context, mutation Mutation) Result {
 	})
 }
 
+// SelectQueueItem selects an existing item by its opaque queue ID.
 func (c *Controller) SelectQueueItem(ctx context.Context, mutation Mutation, id string) Result {
 	return c.mutate(ctx, mutation, func(s *actorState) Result {
 		if result := s.check(mutation); !result.OK() {
@@ -473,6 +634,7 @@ func (c *Controller) SelectQueueItem(ctx context.Context, mutation Mutation, id 
 	})
 }
 
+// RemoveQueueItem removes a non-selected, inactive item.
 func (c *Controller) RemoveQueueItem(ctx context.Context, mutation Mutation, id string) Result {
 	return c.mutate(ctx, mutation, func(s *actorState) Result {
 		if result := s.check(mutation); !result.OK() {
@@ -497,6 +659,7 @@ func (c *Controller) RemoveQueueItem(ctx context.Context, mutation Mutation, id 
 	})
 }
 
+// MoveQueueItem moves an item by delta. Current clients should use -1 or 1.
 func (c *Controller) MoveQueueItem(ctx context.Context, mutation Mutation, id string, delta int) Result {
 	return c.mutate(ctx, mutation, func(s *actorState) Result {
 		if result := s.check(mutation); !result.OK() {
@@ -514,14 +677,14 @@ func (c *Controller) MoveQueueItem(ctx context.Context, mutation Mutation, id st
 	})
 }
 
+// SetPolicy validates and atomically replaces the playback policy.
 func (c *Controller) SetPolicy(ctx context.Context, request PolicyRequest) Result {
 	return c.mutate(ctx, request.Mutation, func(s *actorState) Result {
 		if result := s.check(request.Mutation); !result.OK() {
 			return result
 		}
 		p := request.Policy
-		if p.ImageDurationSeconds != 0 && (p.ImageDurationSeconds < MinImageTime || p.ImageDurationSeconds > MaxImageTime) ||
-			p.LoopSelected && p.AutoPlayNext || !p.AutoPlayNext && (p.AutoPlaySameType || p.GaplessEnabled) {
+		if p.Validate() != nil {
 			return fail(request.RequestID, s.revision, ErrInvalidPolicy)
 		}
 		if p.GaplessEnabled {
@@ -559,7 +722,10 @@ func (s *actorState) selectedDevice() (playback.Device, bool) {
 	return playback.Device{}, false
 }
 
-func mediaMIME(kind mediamodel.MediaKind) string {
+func mediaMIME(media MediaRef, kind mediamodel.MediaKind) string {
+	if strings.TrimSpace(media.MIMEType) != "" {
+		return media.MIMEType
+	}
 	switch kind {
 	case mediamodel.MediaKindAudio:
 		return "audio/*"
@@ -636,11 +802,15 @@ func (s *actorState) choosePlay(request PlayRequest) (playback.Device, mediamode
 	return target, item, media, nil
 }
 
+// Play loads and starts the requested or selected media. Controller owns the
+// opened transport until replacement, stop, failure, or shutdown.
 func (c *Controller) Play(ctx context.Context, request PlayRequest) Result {
 	return c.play(ctx, request)
 }
 
+// QueueAndPlay atomically adds, selects, and starts media.
 func (c *Controller) QueueAndPlay(ctx context.Context, mutation Mutation, media MediaRef) Result {
+	media = cloneMediaRef(media)
 	return c.play(ctx, PlayRequest{Mutation: mutation, media: &media, queueMedia: true})
 }
 
@@ -648,16 +818,10 @@ func (c *Controller) play(ctx context.Context, request PlayRequest) Result {
 	if ctx == nil {
 		return fail(request.RequestID, 0, ErrInvalidOperation)
 	}
-	response := make(chan Result, 1)
-	if err := c.enqueue(message{fn: func(s *actorState) { s.beginPlay(request, response) }}); err != nil {
-		return fail(request.RequestID, 0, err)
-	}
-	select {
-	case <-ctx.Done():
-		return fail(request.RequestID, 0, ctx.Err())
-	case result := <-response:
-		return result
-	}
+	request.ctx = ctx
+	return c.callResult(ctx, request.RequestID, func(s *actorState, response chan<- Result) {
+		s.beginPlay(request, response)
+	})
 }
 
 func (s *actorState) beginPlay(request PlayRequest, response chan<- Result) {
@@ -687,7 +851,7 @@ func (s *actorState) beginPlay(request PlayRequest, response chan<- Result) {
 	}
 	s.mutation = true
 	s.deferred = nil
-	s.state = "LOADING"
+	s.state = PlaybackStateLoading
 	s.generation++
 	generation := s.generation
 	old := s.active
@@ -707,11 +871,9 @@ func (s *actorState) beginPlay(request PlayRequest, response chan<- Result) {
 	opCtx, cancel := context.WithCancelCause(s.controller.ctx)
 	operation := &playOperation{generation: generation, cancel: cancel, done: make(chan struct{})}
 	s.pending = operation
-	s.controller.lifecycle.Add(1)
-	go func() {
-		defer s.controller.lifecycle.Done()
+	s.controller.goOwned(func() {
 		s.controller.playIO(opCtx, operation, target, item, media, old, request, response, s.transcode, s.subtitle)
-	}()
+	})
 }
 
 type playCompletion struct {
@@ -737,10 +899,10 @@ type callbackStopSuppressor interface {
 
 func (c *Controller) playIO(ctx context.Context, operation *playOperation, target playback.Device, item mediamodel.QueueItem, media MediaRef, old *activeSession, request PlayRequest, response chan<- Result, transcode bool, subtitle SubtitleRef) {
 	generation := operation.generation
-	ioCtx, timeoutCancel := context.WithTimeout(ctx, c.cfg.OperationTimeout)
+	ioCtx, timeoutCancel := operationContext(ctx, request.ctx, c.cfg.OperationTimeout)
 	defer timeoutCancel()
 	if target.Protocol == "Chromecast" {
-		transcode = playback.ChromecastTranscodeEnabled(transcode, media.Name, mediaMIME(item.MediaKind()))
+		transcode = playback.ChromecastTranscodeEnabled(transcode, media.Name, mediaMIME(media, item.MediaKind()))
 	}
 	var reusedCast existingLoader
 	if old != nil {
@@ -755,11 +917,19 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 			err = transitionSession(ioCtx, old, c.cfg.MediaServer, c.cfg.OperationTimeout)
 		}
 		if err != nil {
+			if reusedCast != nil {
+				_ = cleanupTransport(old.transport, c.cfg.MediaServer, c.cfg.OperationTimeout)
+			} else {
+				_ = cleanupMediaServer(c.cfg.MediaServer, c.cfg.OperationTimeout)
+			}
 			c.completePlay(playCompletion{generation: generation, operation: operation, err: err, request: request, response: response})
 			return
 		}
 	}
 	if err := ioCtx.Err(); err != nil {
+		if reusedCast != nil {
+			_ = cleanupTransport(old.transport, c.cfg.MediaServer, c.cfg.OperationTimeout)
+		}
 		c.completePlay(playCompletion{generation: generation, operation: operation, err: err, request: request, response: response})
 		return
 	}
@@ -774,6 +944,10 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 			return
 		}
 	}
+	if transport == nil {
+		c.completePlay(playCompletion{generation: generation, operation: operation, err: fmt.Errorf("transport factory returned nil: %w", errAdapterContract), request: request, response: response})
+		return
+	}
 	opener := media.OpenDirect
 	if transcode {
 		opener = media.OpenTranscode
@@ -783,7 +957,7 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 			return
 		}
 	}
-	serverRequest := playback.ServerRequest{Media: opener, MediaExt: media.extension(), MediaType: mediaMIME(item.MediaKind()), Transcode: transcode, Target: target}
+	serverRequest := playback.ServerRequest{Media: opener, MediaExt: media.extension(), MediaType: mediaMIME(media, item.MediaKind()), Transcode: transcode, Target: target}
 	if subtitle.valid() {
 		serverRequest.Subtitle, serverRequest.SubtitleExt = subtitle.Open, subtitle.extension()
 	}
@@ -794,7 +968,10 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 		}
 	}
 	route, err := c.cfg.MediaServer.Start(ioCtx, serverRequest)
-	loadMediaType := mediaMIME(item.MediaKind())
+	if err == nil && strings.TrimSpace(route.URL) == "" {
+		err = fmt.Errorf("media server returned empty URL: %w", errAdapterContract)
+	}
+	loadMediaType := mediaMIME(media, item.MediaKind())
 	if transcode && target.Protocol == "Chromecast" {
 		loadMediaType = "video/mp4"
 	}
@@ -802,7 +979,7 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 	if media.Artwork != nil {
 		loadRequest.ArtworkData = append([]byte(nil), media.Artwork.Data...)
 		artRoute, artErr := c.cfg.MediaServer.Add(ioCtx, playback.RouteRequest{MediaType: media.Artwork.MIMEType, Contents: loadRequest.ArtworkData})
-		if artErr == nil {
+		if artErr == nil && strings.TrimSpace(artRoute.URL) != "" {
 			loadRequest.Metadata.Artwork = &metadata.Artwork{URL: artRoute.URL, MIMEType: media.Artwork.MIMEType, Width: media.Artwork.Width, Height: media.Artwork.Height}
 		}
 	}
@@ -829,6 +1006,21 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 	c.completePlay(playCompletion{generation: generation, operation: operation, session: &activeSession{generation: generation, target: target, itemID: item.ID(), media: media, subtitle: subtitle, kind: item.MediaKind(), transport: transport, server: serverRequest, load: loadRequest, ctx: ctx, cancel: operation.cancel, reusable: true, imageReady: target.Protocol != "Chromecast", expectedDuration: int(loadRequest.Duration)}, request: request, response: response})
 }
 
+func operationContext(base, request context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if base == nil {
+		base = context.Background()
+	}
+	if request == nil {
+		request = base
+	}
+	ctx, cancel := context.WithTimeout(request, timeout)
+	stopBase := context.AfterFunc(base, cancel)
+	return ctx, func() {
+		stopBase()
+		cancel()
+	}
+}
+
 func (c *Controller) startMonitor(session *activeSession) {
 	if c.cfg.RunMonitor == nil || session == nil {
 		return
@@ -840,7 +1032,7 @@ func (c *Controller) startMonitor(session *activeSession) {
 		Clock:            c.cfg.Clock,
 		Sink:             c,
 	}
-	go c.cfg.RunMonitor(session.ctx, cfg, session.target, session.transport)
+	c.goOwned(func() { c.cfg.RunMonitor(session.ctx, cfg, session.target, session.transport) })
 }
 
 func rendererCleanupTimeout(timeout time.Duration) time.Duration {
@@ -867,6 +1059,15 @@ func cleanupTransport(transport Transport, server playback.MediaServer, timeout 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	return teardownSession(ctx, &activeSession{transport: transport}, server, timeout)
+}
+
+func cleanupMediaServer(server playback.MediaServer, timeout time.Duration) error {
+	if server == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return server.Stop(ctx)
 }
 
 func teardownSession(ctx context.Context, session *activeSession, server playback.MediaServer, closeTimeout time.Duration) error {
@@ -925,8 +1126,12 @@ func (c *Controller) completePlay(completion playCompletion) {
 			}
 			s.pending = nil
 			s.mutation = false
-			s.active, s.state, s.lastError, s.terminal = nil, "STOPPED", "playback failed", playback.TerminalError
+			s.active, s.state, s.lastError, s.terminal = nil, PlaybackStateStopped, "playback failed", playback.TerminalError
 			s.commit()
+			if c.cfg.Logger != nil {
+				c.cfg.Logger.Error("Playback failed")
+				c.cfg.Logger.Debug("Playback failure detail: " + completion.err.Error())
+			}
 			completion.operation.finish()
 			actorResponded = true
 			completion.response <- fail(completion.request.RequestID, s.revision, completion.err)
@@ -938,9 +1143,12 @@ func (c *Controller) completePlay(completion playCompletion) {
 		}
 		s.pending = nil
 		s.mutation = false
-		s.active, s.state, s.position, s.duration, s.lastError, s.terminal = completion.session, "PLAYING", 0, 0, "", ""
+		s.active, s.state, s.position, s.duration, s.lastError, s.terminal = completion.session, PlaybackStatePlaying, 0, 0, "", ""
 		s.syncImageTimer()
 		s.commit()
+		if c.cfg.Logger != nil {
+			c.cfg.Logger.Info("Playback started: " + completion.session.media.Name)
+		}
 		completion.operation.finish()
 		c.startMonitor(completion.session)
 		actorResponded = true
@@ -993,15 +1201,18 @@ func (s *actorState) syncImageTimer() {
 	generation := s.active.generation
 	timerEpoch := s.active.imageEpoch
 	delay := time.Duration(s.policy.ImageDurationSeconds) * time.Second
-	go playback.RunImageTimer(timerCtx, playback.MonitorConfig{Generation: generation, TimerEpoch: timerEpoch, Clock: s.controller.cfg.Clock, Sink: s.controller}, delay)
+	s.controller.goOwned(func() {
+		playback.RunImageTimer(timerCtx, playback.MonitorConfig{Generation: generation, TimerEpoch: timerEpoch, Clock: s.controller.cfg.Clock, Sink: s.controller}, delay)
+	})
 }
 
+// Stop ends pending or active playback and completes owned cleanup before
+// returning. Cleanup continues if the caller's context is canceled.
 func (c *Controller) Stop(ctx context.Context, mutation Mutation) Result {
 	if ctx == nil {
 		return fail(mutation.RequestID, 0, ErrInvalidOperation)
 	}
-	response := make(chan Result, 1)
-	if err := c.enqueue(message{fn: func(s *actorState) {
+	return c.callResult(ctx, mutation.RequestID, func(s *actorState, response chan<- Result) {
 		if result := s.check(mutation); !result.OK() {
 			response <- result
 			return
@@ -1012,7 +1223,7 @@ func (c *Controller) Stop(ctx context.Context, mutation Mutation) Result {
 		}
 		s.generation++
 		s.deferred = nil
-		s.terminal, s.state = playback.TerminalUserStop, "STOPPING"
+		s.terminal, s.state = playback.TerminalUserStop, PlaybackStateStopping
 		active := s.active
 		pending := s.pending
 		if pending != nil {
@@ -1022,16 +1233,14 @@ func (c *Controller) Stop(ctx context.Context, mutation Mutation) Result {
 		}
 		s.active, s.pending, s.mutation, s.cleanup = nil, nil, true, true
 		if pending == nil && active == nil {
-			s.mutation, s.cleanup, s.state = false, false, "STOPPED"
+			s.mutation, s.cleanup, s.state = false, false, PlaybackStateStopped
 			s.commit()
 			response <- Result{RequestID: mutation.RequestID, Revision: s.revision}
 			return
 		}
 		s.commit()
 		generation := s.generation
-		c.lifecycle.Add(1)
-		go func() {
-			defer c.lifecycle.Done()
+		c.goOwned(func() {
 			var err error
 			if pending != nil {
 				<-pending.done
@@ -1045,44 +1254,46 @@ func (c *Controller) Stop(ctx context.Context, mutation Mutation) Result {
 					response <- fail(mutation.RequestID, s.revision, ErrBusy)
 					return
 				}
-				s.mutation, s.cleanup, s.state = false, false, "STOPPED"
+				s.mutation, s.cleanup, s.state = false, false, PlaybackStateStopped
 				if err != nil {
 					s.lastError = "stop failed"
 				}
 				s.commit()
 				if err != nil {
+					if c.cfg.Logger != nil {
+						c.cfg.Logger.Error("Playback stop failed")
+						c.cfg.Logger.Debug("Playback stop failure detail: " + err.Error())
+					}
 					response <- fail(mutation.RequestID, s.revision, err)
 				} else {
+					if c.cfg.Logger != nil {
+						c.cfg.Logger.Info("Playback stopped")
+					}
 					response <- Result{RequestID: mutation.RequestID, Revision: s.revision}
 				}
 			}}); enqueueErr != nil {
 				response <- fail(mutation.RequestID, 0, enqueueErr)
 			}
-		}()
-	}}); err != nil {
-		return fail(mutation.RequestID, 0, err)
-	}
-	select {
-	case <-ctx.Done():
-		return fail(mutation.RequestID, 0, ctx.Err())
-	case result := <-response:
-		return result
-	}
+		})
+	})
 }
 
+// Pause pauses the active session.
 func (c *Controller) Pause(ctx context.Context, mutation Mutation) Result {
-	return c.transportControl(ctx, mutation, "paused", func(t Transport) error { return t.Pause(ctx) })
-}
-func (c *Controller) Resume(ctx context.Context, mutation Mutation) Result {
-	return c.transportControl(ctx, mutation, "play", func(t Transport) error { return t.Play(ctx) })
+	return c.transportControl(ctx, mutation, PlaybackStatePaused, func(ctx context.Context, t Transport) error { return t.Pause(ctx) })
 }
 
+// Resume resumes the active session and publishes PlaybackStatePlaying.
+func (c *Controller) Resume(ctx context.Context, mutation Mutation) Result {
+	return c.transportControl(ctx, mutation, PlaybackStatePlaying, func(ctx context.Context, t Transport) error { return t.Play(ctx) })
+}
+
+// Seek moves the active session to an absolute position in seconds.
 func (c *Controller) Seek(ctx context.Context, request SeekRequest) Result {
 	if ctx == nil {
 		return fail(request.RequestID, 0, ErrInvalidOperation)
 	}
-	response := make(chan Result, 1)
-	if err := c.enqueue(message{fn: func(s *actorState) {
+	return c.callResult(ctx, request.RequestID, func(s *actorState, response chan<- Result) {
 		if result := s.check(request.Mutation); !result.OK() {
 			response <- result
 			return
@@ -1127,8 +1338,8 @@ func (c *Controller) Seek(ctx context.Context, request SeekRequest) Result {
 		sessionCtx, sessionCancel := context.WithCancelCause(c.ctx)
 		active.ctx, active.cancel, active.generation = sessionCtx, sessionCancel, generation
 		duration := s.duration
-		go func() {
-			ioCtx, cancel := context.WithTimeout(ctx, c.cfg.OperationTimeout)
+		c.goOwned(func() {
+			ioCtx, cancel := operationContext(c.ctx, ctx, c.cfg.OperationTimeout)
 			defer cancel()
 			var err error
 			if activator, ok := active.transport.(callbackActivator); ok {
@@ -1168,32 +1379,26 @@ func (c *Controller) Seek(ctx context.Context, request SeekRequest) Result {
 					active.server.SeekOffset = request.Seconds
 					active.seekOffset = request.Seconds
 				}
-				s.position, s.state = request.Seconds, "PLAYING"
+				s.position, s.state = request.Seconds, PlaybackStatePlaying
 				s.commit()
+				if c.cfg.Logger != nil {
+					c.cfg.Logger.Info("Seeked to " + playbackTime(request.Seconds))
+				}
 				c.startMonitor(active)
 				s.resumeDeferredMonitor()
 				response <- Result{RequestID: request.RequestID, Revision: s.revision}
 			}}); enqueueErr != nil {
 				response <- fail(request.RequestID, 0, enqueueErr)
 			}
-		}()
-	}}); err != nil {
-		return fail(request.RequestID, 0, err)
-	}
-	select {
-	case <-ctx.Done():
-		return fail(request.RequestID, 0, ctx.Err())
-	case result := <-response:
-		return result
-	}
+		})
+	})
 }
 
-func (c *Controller) transportControl(ctx context.Context, mutation Mutation, state string, call func(Transport) error) Result {
+func (c *Controller) transportControl(ctx context.Context, mutation Mutation, state string, call func(context.Context, Transport) error) Result {
 	if ctx == nil {
 		return fail(mutation.RequestID, 0, ErrInvalidOperation)
 	}
-	response := make(chan Result, 1)
-	if err := c.enqueue(message{fn: func(s *actorState) {
+	return c.callResult(ctx, mutation.RequestID, func(s *actorState, response chan<- Result) {
 		if result := s.check(mutation); !result.OK() {
 			response <- result
 			return
@@ -1208,8 +1413,10 @@ func (c *Controller) transportControl(ctx context.Context, mutation Mutation, st
 		}
 		s.mutation = true
 		generation, transport := s.generation, s.active.transport
-		go func() {
-			err := call(transport)
+		c.goOwned(func() {
+			ioCtx, cancel := operationContext(c.ctx, ctx, c.cfg.OperationTimeout)
+			defer cancel()
+			err := call(ioCtx, transport)
 			if enqueueErr := c.enqueueInternal(message{fn: func(s *actorState) {
 				if generation != s.generation {
 					response <- fail(mutation.RequestID, s.revision, ErrBusy)
@@ -1222,38 +1429,41 @@ func (c *Controller) transportControl(ctx context.Context, mutation Mutation, st
 					response <- fail(mutation.RequestID, s.revision, err)
 					return
 				}
-				s.state = strings.ToUpper(state)
+				previousState := s.state
+				s.state = state
 				s.commit()
+				if c.cfg.Logger != nil && previousState != s.state {
+					switch s.state {
+					case PlaybackStatePaused:
+						c.cfg.Logger.Info("Playback paused at " + playbackTime(s.position))
+					case PlaybackStatePlaying:
+						c.cfg.Logger.Info("Playback resumed at " + playbackTime(s.position))
+					}
+				}
 				s.resumeDeferredMonitor()
 				response <- Result{RequestID: mutation.RequestID, Revision: s.revision}
 			}}); enqueueErr != nil {
 				response <- fail(mutation.RequestID, 0, enqueueErr)
 			}
-		}()
-	}}); err != nil {
-		return fail(mutation.RequestID, 0, err)
-	}
-	select {
-	case <-ctx.Done():
-		return fail(mutation.RequestID, 0, ctx.Err())
-	case result := <-response:
-		return result
-	}
+		})
+	})
 }
 
+// SetVolume sets renderer volume in the inclusive range 0..100.
 func (c *Controller) SetVolume(ctx context.Context, mutation Mutation, volume int) Result {
 	if volume < 0 || volume > 100 {
 		return fail(mutation.RequestID, 0, ErrInvalidOperation)
 	}
-	return c.deviceControl(ctx, mutation, func(t Transport) error { return t.SetVolume(ctx, volume) }, func(s *actorState) { s.volume = volume })
+	return c.deviceControl(ctx, mutation, func(ctx context.Context, t Transport) error { return t.SetVolume(ctx, volume) }, func(s *actorState) { s.volume = volume })
 }
 
+// AdjustVolume changes renderer volume by exactly -1 or 1 and clamps 0..100.
 func (c *Controller) AdjustVolume(ctx context.Context, mutation Mutation, delta int) Result {
 	if delta != -1 && delta != 1 {
 		return fail(mutation.RequestID, 0, ErrInvalidOperation)
 	}
 	volume := 0
-	return c.deviceControl(ctx, mutation, func(t Transport) error {
+	return c.deviceControl(ctx, mutation, func(ctx context.Context, t Transport) error {
 		current, err := t.Volume(ctx)
 		if err != nil {
 			return err
@@ -1263,16 +1473,16 @@ func (c *Controller) AdjustVolume(ctx context.Context, mutation Mutation, delta 
 	}, func(s *actorState) { s.volume = volume })
 }
 
+// SetMute changes renderer mute state.
 func (c *Controller) SetMute(ctx context.Context, mutation Mutation, muted bool) Result {
-	return c.deviceControl(ctx, mutation, func(t Transport) error { return t.SetMute(ctx, muted) }, func(s *actorState) { s.muted = muted })
+	return c.deviceControl(ctx, mutation, func(ctx context.Context, t Transport) error { return t.SetMute(ctx, muted) }, func(s *actorState) { s.muted = muted })
 }
 
-func (c *Controller) deviceControl(ctx context.Context, mutation Mutation, call func(Transport) error, commit func(*actorState)) Result {
+func (c *Controller) deviceControl(ctx context.Context, mutation Mutation, call func(context.Context, Transport) error, commit func(*actorState)) Result {
 	if ctx == nil {
 		return fail(mutation.RequestID, 0, ErrInvalidOperation)
 	}
-	response := make(chan Result, 1)
-	if err := c.enqueue(message{fn: func(s *actorState) {
+	return c.callResult(ctx, mutation.RequestID, func(s *actorState, response chan<- Result) {
 		if result := s.check(mutation); !result.OK() {
 			response <- result
 			return
@@ -1286,6 +1496,10 @@ func (c *Controller) deviceControl(ctx context.Context, mutation Mutation, call 
 		var transient bool
 		if s.active != nil {
 			transport = s.active.transport
+			if transport == nil {
+				response <- fail(mutation.RequestID, s.revision, errAdapterContract)
+				return
+			}
 		} else {
 			device, ok := s.selectedDevice()
 			if !ok {
@@ -1293,21 +1507,30 @@ func (c *Controller) deviceControl(ctx context.Context, mutation Mutation, call 
 				return
 			}
 			target, transient = device, true
+			if c.cfg.TransportFactory == nil {
+				response <- fail(mutation.RequestID, s.revision, ErrInvalidOperation)
+				return
+			}
 		}
 		s.mutation = true
 		generation := s.generation
-		go func() {
+		c.goOwned(func() {
+			ioCtx, cancel := operationContext(c.ctx, ctx, c.cfg.OperationTimeout)
+			defer cancel()
 			var err error
 			if transient {
-				transport, err = c.cfg.TransportFactory.Open(ctx, target)
+				transport, err = c.cfg.TransportFactory.Open(ioCtx, target)
+				if err == nil && transport == nil {
+					err = fmt.Errorf("transport factory returned nil: %w", errAdapterContract)
+				}
 			}
 			if err == nil {
-				err = call(transport)
+				err = call(ioCtx, transport)
 			}
-			if transient {
-				if transport != nil {
-					err = errors.Join(err, transport.Close(ctx))
-				}
+			if transient && transport != nil {
+				err = errors.Join(err, rendererCleanup(transport, c.cfg.OperationTimeout, func(ctx context.Context, transport Transport) error {
+					return transport.Close(ctx)
+				}))
 			}
 			if enqueueErr := c.enqueueInternal(message{fn: func(s *actorState) {
 				if generation != s.generation {
@@ -1327,18 +1550,12 @@ func (c *Controller) deviceControl(ctx context.Context, mutation Mutation, call 
 			}}); enqueueErr != nil {
 				response <- fail(mutation.RequestID, 0, enqueueErr)
 			}
-		}()
-	}}); err != nil {
-		return fail(mutation.RequestID, 0, err)
-	}
-	select {
-	case <-ctx.Done():
-		return fail(mutation.RequestID, 0, ctx.Err())
-	case result := <-response:
-		return result
-	}
+		})
+	})
 }
 
+// HandleMonitorEvent accepts adapter monitor updates. Progress events may be
+// dropped under pressure; terminal events are retained unless shutting down.
 func (c *Controller) HandleMonitorEvent(_ context.Context, event playback.MonitorEvent) {
 	if event.Terminal == "" {
 		select {
@@ -1355,14 +1572,15 @@ func (c *Controller) HandleMonitorEvent(_ context.Context, event playback.Monito
 	}
 }
 
+// HandleCallbackEvent adapts DLNA callback states into monitor events.
 func (c *Controller) HandleCallbackEvent(_ context.Context, event httphandlers.CallbackEvent) {
 	monitor := playback.MonitorEvent{Generation: event.Generation}
 	switch event.TransportState {
-	case "PLAYING":
-		monitor.State = "PLAYING"
+	case PlaybackStatePlaying:
+		monitor.State = PlaybackStatePlaying
 	case "PAUSED_PLAYBACK":
-		monitor.State = "PAUSED"
-	case "STOPPED":
+		monitor.State = PlaybackStatePaused
+	case PlaybackStateStopped:
 		monitor.Terminal = playback.TerminalFinished
 	default:
 		return
@@ -1385,18 +1603,40 @@ func (s *actorState) monitor(event playback.MonitorEvent) {
 		return
 	}
 	changed := false
+	if event.Position != 0 || event.Duration != 0 {
+		s.position, s.duration, changed = event.Position, event.Duration, true
+	}
 	if event.State != "" {
+		previousState := s.state
 		s.state, changed = event.State, true
+		if s.controller.cfg.Logger != nil && previousState != s.state {
+			switch s.state {
+			case PlaybackStatePaused:
+				s.controller.cfg.Logger.Info("Playback paused at " + playbackTime(s.position))
+			case PlaybackStatePlaying:
+				if previousState == PlaybackStatePaused {
+					s.controller.cfg.Logger.Info("Playback resumed at " + playbackTime(s.position))
+				}
+			}
+		}
 	}
 	if event.ImageReady && s.active.kind == mediamodel.MediaKindImage && s.active.target.Protocol == "Chromecast" && !s.active.imageReady {
 		s.active.imageReady, changed = true, true
 		s.syncImageTimer()
 	}
-	if event.Position != 0 || event.Duration != 0 {
-		s.position, s.duration, changed = event.Position, event.Duration, true
-	}
 	if event.Terminal != "" {
-		s.terminal, s.state, changed = event.Terminal, "STOPPED", true
+		if s.controller.cfg.Logger != nil {
+			switch event.Terminal {
+			case playback.TerminalFinished:
+				s.controller.cfg.Logger.Info("Playback completed")
+			case playback.TerminalError:
+				s.controller.cfg.Logger.Error("Playback failed")
+				if event.Err != nil {
+					s.controller.cfg.Logger.Debug("Playback failure detail: " + event.Err.Error())
+				}
+			}
+		}
+		s.terminal, s.state, changed = event.Terminal, PlaybackStateStopped, true
 		if event.Terminal == playback.TerminalError {
 			s.lastError = "playback failed"
 		}
@@ -1405,7 +1645,7 @@ func (s *actorState) monitor(event playback.MonitorEvent) {
 		advanced := playback.ShouldAdvance(event.Terminal, s.policy.LoopSelected, s.policy.AutoPlayNext) && s.followup(active)
 		if !advanced {
 			s.active = nil
-			s.mutation, s.cleanup, s.state = true, true, "STOPPING"
+			s.mutation, s.cleanup, s.state = true, true, PlaybackStateStopping
 			s.controller.cleanupTerminal(s.generation, active, event.Terminal)
 		}
 	}
@@ -1439,9 +1679,7 @@ func (s *actorState) deferMonitor(event playback.MonitorEvent) {
 }
 
 func (c *Controller) cleanupTerminal(generation uint64, active *activeSession, reason playback.TerminalReason) {
-	c.lifecycle.Add(1)
-	go func() {
-		defer c.lifecycle.Done()
+	c.goOwned(func() {
 		ioCtx, cancel := context.WithTimeout(context.Background(), c.cfg.OperationTimeout)
 		var err error
 		if reason == playback.TerminalFinished {
@@ -1454,13 +1692,13 @@ func (c *Controller) cleanupTerminal(generation uint64, active *activeSession, r
 			if generation != s.generation || !s.cleanup {
 				return
 			}
-			s.mutation, s.cleanup, s.state = false, false, "STOPPED"
+			s.mutation, s.cleanup, s.state = false, false, PlaybackStateStopped
 			if err != nil {
 				s.lastError = "playback cleanup failed"
 			}
 			s.commit()
 		}})
-	}()
+	})
 }
 
 func (s *actorState) resumeDeferredMonitor() {
@@ -1488,7 +1726,6 @@ func (s *actorState) followup(previous *activeSession) bool {
 		response := make(chan Result, 1)
 		generation := s.generation
 		s.beginPlay(request, response)
-		go func() { <-response }()
 		return s.mutation && s.generation > generation
 	}
 	if s.queue == nil {
@@ -1513,16 +1750,15 @@ func (s *actorState) followup(previous *activeSession) bool {
 	response := make(chan Result, 1)
 	generation := s.generation
 	s.beginPlay(PlayRequest{QueueItemID: item.ID(), target: &targetCopy}, response)
-	go func() { <-response }()
 	return s.mutation && s.generation > generation
 }
 
+// Refresh performs one discovery refresh and commits its snapshot.
 func (c *Controller) Refresh(ctx context.Context, mutation Mutation) Result {
 	if ctx == nil {
 		return fail(mutation.RequestID, 0, ErrInvalidOperation)
 	}
-	response := make(chan Result, 1)
-	if err := c.enqueue(message{fn: func(s *actorState) {
+	return c.callResult(ctx, mutation.RequestID, func(s *actorState, response chan<- Result) {
 		if result := s.check(mutation); !result.OK() {
 			response <- result
 			return
@@ -1536,8 +1772,10 @@ func (c *Controller) Refresh(ctx context.Context, mutation Mutation) Result {
 			return
 		}
 		s.refreshing = true
-		go func() {
-			err := c.cfg.Discovery.Refresh(ctx)
+		c.goOwned(func() {
+			ioCtx, cancel := operationContext(c.ctx, ctx, c.cfg.OperationTimeout)
+			defer cancel()
+			err := c.cfg.Discovery.Refresh(ioCtx)
 			if enqueueErr := c.enqueueInternal(message{fn: func(s *actorState) {
 				s.refreshing = false
 				if err != nil {
@@ -1549,24 +1787,9 @@ func (c *Controller) Refresh(ctx context.Context, mutation Mutation) Result {
 			}}); enqueueErr != nil {
 				response <- fail(mutation.RequestID, 0, enqueueErr)
 			}
-		}()
-	}}); err != nil {
-		return fail(mutation.RequestID, 0, err)
-	}
-	select {
-	case <-ctx.Done():
-		return fail(mutation.RequestID, 0, ctx.Err())
-	case result := <-response:
-		return result
-	}
+		})
+	})
 }
 
 var _ playback.MonitorSink = (*Controller)(nil)
 var _ httphandlers.CallbackEventSink = (*Controller)(nil)
-
-func (r Result) Error() error {
-	if r.OK() {
-		return nil
-	}
-	return fmt.Errorf("%s: %s", r.Code, r.Message)
-}

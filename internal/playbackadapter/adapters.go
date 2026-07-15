@@ -606,8 +606,9 @@ func parseClock(value string) (int, error) {
 
 // Chromecast preserves CastClient retry/reconnect/logging behavior.
 type Chromecast struct {
-	mu     sync.Mutex
-	client *castprotocol.CastClient
+	mu        sync.Mutex
+	client    *castprotocol.CastClient
+	interrupt func() error
 }
 
 func NewChromecast(endpoint string, logOutput io.Writer) (*Chromecast, error) {
@@ -616,7 +617,7 @@ func NewChromecast(endpoint string, logOutput io.Writer) (*Chromecast, error) {
 		return nil, err
 	}
 	client.LogOutput = logOutput
-	return &Chromecast{client: client}, nil
+	return &Chromecast{client: client, interrupt: func() error { return client.Close(false) }}, nil
 }
 
 func (c *Chromecast) call(ctx context.Context, fn func() error) error {
@@ -624,21 +625,47 @@ func (c *Chromecast) call(ctx context.Context, fn func() error) error {
 		return errors.New("Chromecast context required")
 	}
 	result := make(chan error, 1)
+	started := make(chan struct{})
 	go func() {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		if ctx.Err() != nil {
-			result <- ctx.Err()
-			return
-		}
-		result <- fn()
+		result <- func() error {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			close(started)
+			return fn()
+		}()
 	}()
 	select {
-	case <-ctx.Done():
-		return ctx.Err()
 	case err := <-result:
 		return err
+	case <-ctx.Done():
 	}
+
+	// A canceled queued call must not interrupt the operation currently holding
+	// the mutex. Wait until this call either starts or rejects cancellation.
+	select {
+	case err := <-result:
+		return err
+	case <-started:
+	}
+	select {
+	case err := <-result:
+		return err
+	default:
+	}
+
+	interruptDone := make(chan struct{})
+	go func() {
+		if c.interrupt != nil {
+			_ = c.interrupt()
+		}
+		close(interruptDone)
+	}()
+	<-result
+	<-interruptDone
+	return ctx.Err()
 }
 
 func (c *Chromecast) Connect(ctx context.Context) error { return c.call(ctx, c.client.Connect) }

@@ -21,9 +21,10 @@ func Run(ctx context.Context, cfg Config, output io.Writer) error {
 		return fmt.Errorf("listen: %w", err)
 	}
 	defer listener.Close()
+	log := newServerLogger(output, validated.Debug)
 	securityConfig := validated
 	securityConfig.Listen = listener.Addr().String()
-	runtime, err := newRuntime(validated, output)
+	runtime, err := newRuntime(validated, log)
 	if err != nil {
 		return err
 	}
@@ -32,9 +33,9 @@ func Run(ctx context.Context, cfg Config, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	logStartup(output, validated, listener.Addr().String())
+	logStartup(log, validated, listener.Addr().String())
 
-	server := &http.Server{Handler: accessLog(output, handler), ReadHeaderTimeout: defaultReadHeaderTimeout, ReadTimeout: defaultJSONTimeout, WriteTimeout: defaultJSONTimeout, IdleTimeout: defaultIdleTimeout, MaxHeaderBytes: defaultMaxHeaderBytes}
+	server := &http.Server{Handler: accessLog(log, handler), ReadHeaderTimeout: defaultReadHeaderTimeout, ReadTimeout: defaultJSONTimeout, WriteTimeout: defaultJSONTimeout, IdleTimeout: defaultIdleTimeout, MaxHeaderBytes: defaultMaxHeaderBytes}
 	result := make(chan error, 1)
 	go func() { result <- server.Serve(listener) }()
 	select {
@@ -51,21 +52,19 @@ func Run(ctx context.Context, cfg Config, output io.Writer) error {
 	return err
 }
 
-func logStartup(w io.Writer, cfg Config, actualListen string) {
-	fmt.Fprintf(w, "Web server listening: %s\n", actualListen)
-	fmt.Fprintln(w, "Usable allowed URLs:")
+func logStartup(log *serverLogger, cfg Config, actualListen string) {
+	log.Info("Web server listening: " + actualListen)
 	if len(cfg.AllowedOrigins) != 0 {
 		for _, origin := range cfg.AllowedOrigins {
-			fmt.Fprintf(w, "  %s/\n", origin)
+			log.Info("Allowed URL: " + origin + "/")
 		}
 	} else {
 		host, port, _ := net.SplitHostPort(actualListen)
-		fmt.Fprintf(w, "  http://%s/\n", net.JoinHostPort(host, port))
+		log.Info("Allowed URL: http://" + net.JoinHostPort(host, port) + "/")
 	}
-	fmt.Fprintln(w, "WARNING: trusted-LAN mode; no TLS. Do not expose to untrusted networks.")
-	fmt.Fprintln(w, "Media roots:")
+	log.Warning("Trusted-LAN mode; no TLS. Do not expose to untrusted networks.")
 	for _, root := range cfg.MediaRoots {
-		fmt.Fprintf(w, "  %s\n", root)
+		log.Info("Media root: " + root)
 	}
-	fmt.Fprintln(w, "WARNING: media root paths may enter console/journal logs.")
+	log.Warning("Media root paths may enter console/journal logs.")
 }

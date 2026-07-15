@@ -37,15 +37,16 @@ type Config struct {
 	MediaRoots     []string
 	AllowedOrigins []string
 	Version        string
+	Debug          bool
 }
 
 // ValidateCLI enforces mode separation before legacy flag processing.
-func ValidateCLI(server bool, listenSet bool, roots, origins []string, legacySet []string, args []string) error {
+func ValidateCLI(server bool, serverOptionSet bool, roots, origins []string, legacySet []string, args []string) error {
 	if len(args) != 0 {
 		return ErrPositionalArguments
 	}
 	if !server {
-		if listenSet || len(roots) != 0 || len(origins) != 0 {
+		if serverOptionSet || len(roots) != 0 || len(origins) != 0 {
 			return ErrServerFlagWithoutMode
 		}
 		return nil

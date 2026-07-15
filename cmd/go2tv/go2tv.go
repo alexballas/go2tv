@@ -48,6 +48,7 @@ var (
 	versionPtr = flag.Bool("version", false, "Print version.")
 	serverPtr  = flag.Bool("server", false, "Run Web server mode.")
 	listenPtr  = flag.String("listen", servermode.DefaultListen, "Web server listen address.")
+	debugPtr   = flag.Bool("debug", false, "Enable Web server protocol debug logs.")
 	mediaRoots servermode.Strings
 	origins    servermode.Strings
 
@@ -106,6 +107,7 @@ func run(crash *crashlog.Session) error {
 			MediaRoots:     mediaRoots,
 			AllowedOrigins: origins,
 			Version:        version,
+			Debug:          *debugPtr,
 		}, os.Stdout)
 	}
 	flagRes, err := processflags()
@@ -287,20 +289,20 @@ func run(crash *crashlog.Session) error {
 
 func validateServerFlags() error {
 	var legacy []string
-	listenSet := false
+	serverOptionSet := false
 	flag.Visit(func(f *flag.Flag) {
 		switch f.Name {
-		case "listen":
-			listenSet = true
+		case "listen", "debug":
+			serverOptionSet = true
 		case "version", "v", "u", "s", "t", "tc", "l":
 			legacy = append(legacy, "-"+f.Name)
 		}
 	})
-	return validateServerFlagValues(*serverPtr, listenSet, mediaRoots, origins, legacy, flag.Args())
+	return validateServerFlagValues(*serverPtr, serverOptionSet, mediaRoots, origins, legacy, flag.Args())
 }
 
-func validateServerFlagValues(server, listenSet bool, roots, allowedOrigins, legacy, args []string) error {
-	return servermode.ValidateCLI(server, listenSet, roots, allowedOrigins, legacy, args)
+func validateServerFlagValues(server, serverOptionSet bool, roots, allowedOrigins, legacy, args []string) error {
+	return servermode.ValidateCLI(server, serverOptionSet, roots, allowedOrigins, legacy, args)
 }
 
 func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL, mediaPath string, mediaFile any, mediaType, subsPath, ffmpegPath string, transcode, externalURL bool) error {

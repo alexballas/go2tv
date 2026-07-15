@@ -115,6 +115,7 @@ utils/                 - Shared utilities (transcode, ffprobe, subtitle conversi
 - Define package-level error variables for common error cases
 
 ### Testing Patterns
+- **NO STUPID TESTS:** Every test must protect real user-visible behavior or a credible regression. Assert the relevant contract; avoid implementation trivia, tautologies, and redundant coverage.
 - Use `t.Run()` for subtests with descriptive names
 - Table-driven tests with `tt := []struct{...}` pattern
 - Use `t.Fatalf()` for fatal test failures
