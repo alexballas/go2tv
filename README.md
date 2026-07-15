@@ -76,6 +76,10 @@ When transcoding is enabled, Go2TV probes available GPU H.264 encoders first and
 
 ![](https://i.imgur.com/BsMevHi.gif)
 
+**Web UI (Server Mode)**
+
+![Go2TV Web UI](assets/webui.png)
+
 ---
 
 ## Playlist (GUI)
@@ -117,6 +121,70 @@ Notes:
 - Experimental: behavior/performance may vary by system.
 - Chromecast only (not DLNA/UPnP TVs).
 - Not supported on audio-only Chromecast devices.
+
+---
+
+## Web UI (Server Mode)
+
+Go2TV can run headless as a small web server and expose a browser-based UI, so you can
+browse your media and control casting from any device on your network including your
+phone or tablet without the desktop GUI.
+
+Server mode is enabled with `-server` and needs at least one `-media-root` (the directory
+that Go2TV is allowed to browse and serve). By default it listens on `127.0.0.1:9666`.
+
+**Start the server**
+
+``` console
+# Serve a single media directory on http://127.0.0.1:9666
+go2tv -server -media-root /path/to/Media
+```
+
+Then open the printed URL (`http://127.0.0.1:9666/`) in your browser.
+
+**Serve multiple media directories**
+
+`-media-root` is repeatable. Pass it once per directory you want to expose. Each root
+appears as a separate entry in the Web UI's media-root selector.
+
+``` console
+go2tv -server \
+  -media-root /path/to/Movies \
+  -media-root /path/to/Music \
+  -media-root "/path/to/TV Shows"
+```
+
+Roots must be existing directories, and they cannot overlap or nest inside one another.
+
+**Expose it on your LAN**
+
+To reach the UI from another device, bind to a LAN address (or all interfaces) with
+`-listen`. Any non-loopback listen address requires you to whitelist the browser origins
+you'll connect from with `-allowed-origin` (repeatable, `scheme://host:port`):
+
+``` console
+go2tv -server \
+  -listen 0.0.0.0:9666 \
+  -allowed-origin http://192.168.1.20:9666 \
+  -media-root /path/to/Media
+```
+
+> Server mode runs in trusted-LAN mode without TLS. Only expose it on networks you trust.
+
+**Server-mode flags**
+
+``` console
+  -server
+        Run Web server mode.
+  -listen string
+        Web server listen address. (default "127.0.0.1:9666")
+  -media-root value
+        Allowed media directory (repeatable; required with -server).
+  -allowed-origin value
+        Allowed Web origin, including scheme/host/port (repeatable).
+  -debug
+        Enable Web server protocol debug logs.
+```
 
 ---
 
@@ -184,6 +252,7 @@ yt-dlp -o - "https://youtu.be/..." | go2tv -tc -t http://192.168.1.50:8009
 - **Gapless playback** - Supported for DLNA devices
 - **RTMP Server** - Cast live streams from OBS directly to Chromecast (requires FFmpeg)
 - **Cast Desktop (experimental)** - Cast desktop as live stream to Chromecast (requires FFmpeg)
+- **Web UI (server mode)** - Browse media roots and control casting from any browser on your network
 - **GUI and CLI** - Use the graphical interface or command line
 
 ### Supported File Types (GUI)
