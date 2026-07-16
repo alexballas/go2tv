@@ -185,8 +185,7 @@ func waitForServerAddress(t *testing.T, stdout io.Reader, command *exec.Cmd, std
 		for scanner.Scan() {
 			const marker = "INFO  Web server listening: "
 			line := scanner.Text()
-			if index := strings.Index(line, marker); index >= 0 {
-				address := line[index+len(marker):]
+			if _, address, ok := strings.Cut(line, marker); ok {
 				result <- address
 				return
 			}

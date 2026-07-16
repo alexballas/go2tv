@@ -83,8 +83,6 @@ func (o *playOperation) finish() {
 	}
 }
 
-func terminalCause(reason playback.TerminalReason) error { return errors.New(string(reason)) }
-
 var errAdapterContract = errors.New("adapter contract violation")
 
 func playbackTime(seconds int) string {
@@ -197,9 +195,9 @@ func (c *Controller) run() {
 		select {
 		case <-c.ctx.Done():
 			if s.pending != nil {
-				s.pending.cancel(terminalCause(playback.TerminalShutdown))
+				s.pending.cancel(playback.TerminalShutdown)
 			} else if s.active != nil {
-				s.active.cancel(terminalCause(playback.TerminalShutdown))
+				s.active.cancel(playback.TerminalShutdown)
 				ctx, cancel := context.WithTimeout(context.Background(), c.cfg.OperationTimeout)
 				_ = teardownSession(ctx, s.active, c.cfg.MediaServer, c.cfg.OperationTimeout)
 				cancel()
@@ -241,7 +239,7 @@ func (c *Controller) Shutdown(ctx context.Context) error {
 	if ctx == nil {
 		return ErrInvalidOperation
 	}
-	c.closeOnce.Do(func() { c.cancel(terminalCause(playback.TerminalShutdown)) })
+	c.closeOnce.Do(func() { c.cancel(playback.TerminalShutdown) })
 	select {
 	case <-c.stopped:
 		return nil
@@ -533,18 +531,6 @@ func (c *Controller) SetTranscode(ctx context.Context, mutation Mutation, enable
 	})
 }
 
-// SetArtworkID changes the display artwork cache ID without changing media.
-func (c *Controller) SetArtworkID(ctx context.Context, mutation Mutation, id string) Result {
-	return c.mutate(ctx, mutation, func(s *actorState) Result {
-		if result := s.check(mutation); !result.OK() {
-			return result
-		}
-		s.artworkID = strings.TrimSpace(id)
-		s.commit()
-		return Result{RequestID: mutation.RequestID, Revision: s.revision}
-	})
-}
-
 // AddQueueItem validates Media, then returns the existing absolute-path match
 // or appends a copied item.
 func (c *Controller) AddQueueItem(ctx context.Context, request QueueAddRequest) QueueAddResult {
@@ -567,7 +553,7 @@ func (c *Controller) AddQueueItem(ctx context.Context, request QueueAddRequest) 
 		if s.queue != nil && s.queue.Len() >= MaxQueueItems {
 			return fail(request.RequestID, s.revision, ErrQueueLimit)
 		}
-		item, ok := mediamodel.NewQueueReference(request.Media.ID, request.Media.Name, request.Media.Parent, request.Media.Kind)
+		item, ok := mediamodel.NewQueueReference(request.Media.Name, request.Media.Parent, request.Media.Kind)
 		if !ok {
 			return fail(request.RequestID, s.revision, ErrInvalidOperation)
 		}
@@ -737,15 +723,6 @@ func (c *Controller) SetPolicy(ctx context.Context, request PolicyRequest) Resul
 		if p.Validate() != nil {
 			return fail(request.RequestID, s.revision, ErrInvalidPolicy)
 		}
-		if p.GaplessEnabled {
-			device, ok := s.selectedDevice()
-			if s.active != nil {
-				device, ok = s.active.target, true
-			}
-			if !ok || !strings.EqualFold(device.Protocol, "DLNA") {
-				return fail(request.RequestID, s.revision, ErrInvalidPolicy)
-			}
-		}
 		restartImageTimer := s.policy.AutoPlayNext != p.AutoPlayNext || s.policy.ImageDurationSeconds != p.ImageDurationSeconds
 		s.policy = p
 		if restartImageTimer {
@@ -810,7 +787,7 @@ func (s *actorState) choosePlay(request PlayRequest) (playback.Device, mediamode
 			return target, item, MediaRef{}, ErrNoMedia
 		}
 		resolved = *request.media
-		item, ok = mediamodel.NewQueueReference(resolved.ID, resolved.Name, resolved.Parent, resolved.Kind)
+		item, ok = mediamodel.NewQueueReference(resolved.Name, resolved.Parent, resolved.Kind)
 		if !ok {
 			return target, item, MediaRef{}, ErrNoMedia
 		}
@@ -827,7 +804,7 @@ func (s *actorState) choosePlay(request PlayRequest) (playback.Device, mediamode
 		}
 		item, _ = s.queue.Item(index)
 	} else if s.media.valid() {
-		item, _ = mediamodel.NewQueueReference(s.media.ID, s.media.Name, s.media.Parent, s.media.Kind)
+		item, _ = mediamodel.NewQueueReference(s.media.Name, s.media.Parent, s.media.Kind)
 	} else if s.queue != nil {
 		item, ok = s.queue.Current()
 		if !ok {
@@ -911,7 +888,7 @@ func (s *actorState) beginPlay(request PlayRequest, response chan<- Result) {
 	generation := s.generation
 	old := s.active
 	if old != nil {
-		old.cancel(terminalCause(playback.TerminalReplacement))
+		old.cancel(playback.TerminalReplacement)
 		s.terminal = playback.TerminalReplacement
 	}
 	if index := queueIndex(s.queue, item.ID()); index >= 0 {
@@ -1271,7 +1248,7 @@ func (c *Controller) completePlay(completion playCompletion) {
 	}
 	if cleanupOwned || (err != nil && completion.operation.claim(playOperationCleanup)) {
 		if completion.session != nil {
-			completion.session.cancel(terminalCause(playback.TerminalReplacement))
+			completion.session.cancel(playback.TerminalReplacement)
 			_ = cleanupTransport(completion.session.transport, c.cfg.MediaServer, c.cfg.OperationTimeout)
 		}
 		completion.operation.finish()
@@ -1328,9 +1305,9 @@ func (c *Controller) Stop(ctx context.Context, mutation Mutation) Result {
 		active := s.active
 		pending := s.pending
 		if pending != nil {
-			pending.cancel(terminalCause(playback.TerminalUserStop))
+			pending.cancel(playback.TerminalUserStop)
 		} else if active != nil {
-			active.cancel(terminalCause(playback.TerminalUserStop))
+			active.cancel(playback.TerminalUserStop)
 		}
 		s.active, s.pending, s.mutation, s.cleanup = nil, nil, true, true
 		s.position, s.duration = 0, 0
@@ -1433,7 +1410,7 @@ func (c *Controller) Seek(ctx context.Context, request SeekRequest) Result {
 		// a transcoded seek can be mistaken for end-of-media and tear down the
 		// session while the replacement stream is loading.
 		s.mutation = true
-		active.cancel(terminalCause(playback.TerminalReplacement))
+		active.cancel(playback.TerminalReplacement)
 		s.generation++
 		s.deferred = nil
 		generation := s.generation
@@ -1743,7 +1720,7 @@ func (s *actorState) monitor(event playback.MonitorEvent) {
 			s.lastError = "playback failed"
 		}
 		active := s.active
-		active.cancel(terminalCause(event.Terminal))
+		active.cancel(event.Terminal)
 		advanced := playback.ShouldAdvance(event.Terminal, s.policy.LoopSelected, s.policy.AutoPlayNext) && s.followup(active)
 		if !advanced {
 			s.active = nil

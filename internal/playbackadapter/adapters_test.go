@@ -21,6 +21,15 @@ type callbackURL string
 
 func (u callbackURL) CallbackURL() string { return string(u) }
 
+func emitCallback(bridge *CallbackBridge, event playback.DLNACallbackEvent) {
+	bridge.mu.RLock()
+	stream := bridge.streams[event.Generation]
+	bridge.mu.RUnlock()
+	if stream != nil {
+		stream.deliver(event)
+	}
+}
+
 func TestScannerMapsPrivateEndpoints(t *testing.T) {
 	scanner := Scanner{ScanFunc: func(context.Context, int) ([]devices.Device, error) {
 		return []devices.Device{{Name: "TV", Addr: "http://192.0.2.2/device", Type: devices.DeviceTypeDLNA, IsAudioOnly: true}}, nil
@@ -242,7 +251,7 @@ func TestCallbackBridgeGenerationStreamsAndTerminalDelivery(t *testing.T) {
 	if first == second {
 		t.Fatal("generations share callback stream")
 	}
-	bridge.emit(playback.DLNACallbackEvent{Generation: 2, TransportState: "PLAYING"})
+	emitCallback(bridge, playback.DLNACallbackEvent{Generation: 2, TransportState: "PLAYING"})
 	select {
 	case event := <-bridge.Events(2):
 		if event.Generation != 2 || event.TransportState != "PLAYING" {
@@ -281,7 +290,7 @@ func TestCallbackBridgeGenerationStreamsAndTerminalDelivery(t *testing.T) {
 	started := make(chan struct{})
 	go func() {
 		close(started)
-		bridge.emit(playback.DLNACallbackEvent{Generation: 3, TransportState: "STOPPED"})
+		emitCallback(bridge, playback.DLNACallbackEvent{Generation: 3, TransportState: "STOPPED"})
 		close(delivered)
 	}()
 	<-started
@@ -311,8 +320,7 @@ func TestDLNARegistersCallbacksBeforeSetURIAndRecoversGapState(t *testing.T) {
 	bridge := NewCallbackBridge()
 	defer bridge.Close()
 	callbackReady := make(chan bool, 1)
-	var server *httptest.Server
-	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			_, _ = w.Write([]byte(`<root><device><serviceList>
@@ -426,7 +434,7 @@ func TestDLNALoadFreshStreamSuppressesReloadDoubleStop(t *testing.T) {
 	if err := dlna.SuppressCallbackStops(7, true); err != nil {
 		t.Fatal(err)
 	}
-	bridge.emit(playback.DLNACallbackEvent{Generation: 7, TransportState: "STOPPED"})
+	emitCallback(bridge, playback.DLNACallbackEvent{Generation: 7, TransportState: "STOPPED"})
 	select {
 	case event := <-first.events:
 		t.Fatalf("intentional STOPPED delivered: %#v", event)
@@ -442,7 +450,7 @@ func TestDLNALoadFreshStreamSuppressesReloadDoubleStop(t *testing.T) {
 	if !second.suppressStops.Load() {
 		t.Fatal("reload lost STOPPED suppression")
 	}
-	bridge.emit(playback.DLNACallbackEvent{Generation: 7, TransportState: "STOPPED"})
+	emitCallback(bridge, playback.DLNACallbackEvent{Generation: 7, TransportState: "STOPPED"})
 	select {
 	case event := <-second.events:
 		t.Fatalf("reload delivered intentional STOPPED: %#v", event)
@@ -451,7 +459,7 @@ func TestDLNALoadFreshStreamSuppressesReloadDoubleStop(t *testing.T) {
 	if err := dlna.SuppressCallbackStops(7, false); err != nil {
 		t.Fatal(err)
 	}
-	bridge.emit(playback.DLNACallbackEvent{Generation: 7, TransportState: "STOPPED"})
+	emitCallback(bridge, playback.DLNACallbackEvent{Generation: 7, TransportState: "STOPPED"})
 	select {
 	case event := <-second.events:
 		if event.TransportState != "STOPPED" {

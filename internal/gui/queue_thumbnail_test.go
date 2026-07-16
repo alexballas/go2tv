@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/alexballas/refyne/v2/test"
+	"go2tv.app/go2tv/v2/internal/mediamodel"
 )
 
 func TestQueueAudioArtworkThumbnail(t *testing.T) {
@@ -25,7 +26,7 @@ func TestQueueAudioArtworkThumbnail(t *testing.T) {
 	writeQueueThumbnailArtwork(t, filepath.Join(dir, "track.png"))
 
 	screen := &FyneScreen{}
-	thumbnail := screen.queueAudioThumbnail(trackPath)
+	thumbnail := screen.queueMediaThumbnail(trackPath, mediamodel.MediaKindAudio)
 	if thumbnail == nil || thumbnail.Image == nil {
 		t.Fatal("audio artwork thumbnail not loaded")
 	}
@@ -42,7 +43,7 @@ func TestQueueAudioThumbnailMissingArtwork(t *testing.T) {
 	if err := os.WriteFile(trackPath, []byte("audio"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if thumbnail := (&FyneScreen{}).queueAudioThumbnail(trackPath); thumbnail != nil {
+	if thumbnail := (&FyneScreen{}).queueMediaThumbnail(trackPath, mediamodel.MediaKindAudio); thumbnail != nil {
 		t.Fatal("unexpected thumbnail without artwork")
 	}
 }

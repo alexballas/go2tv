@@ -38,15 +38,6 @@ func newHTTPClient() *http.Client {
 	}
 }
 
-func newRetryableHTTPClient(retryMax int) *http.Client {
-	retryClient := retryablehttp.NewClient()
-	retryClient.RetryMax = retryMax
-	retryClient.Logger = nil
-	retryClient.HTTPClient = newHTTPClient()
-
-	return retryClient.StandardClient()
-}
-
 func (p *TVPayload) httpClient(endpoint *url.URL) *http.Client {
 	if p != nil && endpoint != nil {
 		if pinned := net.ParseIP(p.PinnedIP); pinned != nil {

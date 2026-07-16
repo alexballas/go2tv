@@ -5,7 +5,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -116,36 +115,6 @@ func TestCallbackSessionValidationAndOrdering(t *testing.T) {
 type ioNopCloser struct{ *strings.Reader }
 
 func (ioNopCloser) Close() error { return nil }
-
-func TestCallbackSessionSuppressesExplicitStop(t *testing.T) {
-	collector := &callbackCollector{ch: make(chan CallbackEvent, 2)}
-	session, err := NewCallbackSession(CallbackSessionConfig{Generation: 2, SID: "session", Sink: collector})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer session.Close()
-	session.SuppressExplicitStop(true)
-	for sequence, state := range []string{"STOPPED", "PLAYING"} {
-		rec := httptest.NewRecorder()
-		session.Handler()(rec, newNotifyRequest(strconv.Itoa(sequence+1), state))
-		if rec.Code != http.StatusOK {
-			t.Fatalf("%s status = %d", state, rec.Code)
-		}
-	}
-	select {
-	case event := <-collector.ch:
-		if event.TransportState != "PLAYING" {
-			t.Fatalf("delivered state = %q", event.TransportState)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("PLAYING event missing")
-	}
-	select {
-	case event := <-collector.ch:
-		t.Fatalf("unexpected event = %#v", event)
-	default:
-	}
-}
 
 func TestCallbackSessionQueueFull(t *testing.T) {
 	sink := blockingCallbackSink{entered: make(chan struct{}, 1), release: make(chan struct{})}

@@ -2121,7 +2121,7 @@ func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target 
 			// Determine if transcoding is enabled
 			transcode := screen.Transcode
 			ffmpegSeek := 0
-			serverStoppedCTX := context.Background()
+			var serverStoppedCTX context.Context
 
 			// Chromecast handles images and audio natively - never transcode these
 			mediaTypeSlice := strings.Split(mediaType, "/")

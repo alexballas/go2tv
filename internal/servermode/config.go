@@ -2,6 +2,7 @@ package servermode
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"net"
 	"net/url"
@@ -9,6 +10,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"go2tv.app/go2tv/v2/internal/pathutil"
 )
 
 const DefaultListen = "127.0.0.1:9666"
@@ -38,6 +41,49 @@ type Config struct {
 	AllowedOrigins []string
 	Version        string
 	Debug          bool
+}
+
+type CLIOptions struct {
+	Server         bool
+	Listen         string
+	Debug          bool
+	MediaRoots     Strings
+	AllowedOrigins Strings
+}
+
+func RegisterCLIFlags(flags *flag.FlagSet) *CLIOptions {
+	options := &CLIOptions{}
+	flags.BoolVar(&options.Server, "server", false, "Run Web server mode.")
+	flags.StringVar(&options.Listen, "listen", DefaultListen, "Web server listen address.")
+	flags.BoolVar(&options.Debug, "debug", false, "Enable Web server protocol debug logs.")
+	flags.Var(&options.MediaRoots, "media-root", "Allowed media directory (repeatable; required with -server).")
+	flags.Var(&options.AllowedOrigins, "allowed-origin", "Allowed Web origin, including scheme/host/port (repeatable).")
+	return options
+}
+
+func (o *CLIOptions) Validate(flags *flag.FlagSet) error {
+	var legacy []string
+	serverOptionSet := false
+	flags.Visit(func(visited *flag.Flag) {
+		switch visited.Name {
+		case "server":
+		case "listen", "debug", "media-root", "allowed-origin":
+			serverOptionSet = true
+		default:
+			legacy = append(legacy, "-"+visited.Name)
+		}
+	})
+	return ValidateCLI(o.Server, serverOptionSet, o.MediaRoots, o.AllowedOrigins, legacy, flags.Args())
+}
+
+func (o *CLIOptions) Config(version string) Config {
+	return Config{
+		Listen:         o.Listen,
+		MediaRoots:     o.MediaRoots,
+		AllowedOrigins: o.AllowedOrigins,
+		Version:        version,
+		Debug:          o.Debug,
+	}
 }
 
 // ValidateCLI enforces mode separation before legacy flag processing.
@@ -114,7 +160,7 @@ func Validate(cfg Config) (Config, error) {
 			return Config{}, fmt.Errorf("%w: %q is not a directory", ErrInvalidMediaRoot, root)
 		}
 		for _, existing := range roots {
-			if pathsOverlap(existing, canonical) {
+			if pathutil.Overlap(existing, canonical) {
 				return Config{}, fmt.Errorf("%w: duplicate/overlapping roots %q and %q", ErrInvalidMediaRoot, existing, canonical)
 			}
 		}
@@ -153,14 +199,4 @@ func isLoopbackHost(host string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
-}
-
-func pathsOverlap(a, b string) bool {
-	for _, pair := range [][2]string{{a, b}, {b, a}} {
-		rel, err := filepath.Rel(pair[0], pair[1])
-		if err == nil && (rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))) {
-			return true
-		}
-	}
-	return false
 }

@@ -64,7 +64,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Cache-Control", "no-cache")
-		file, _ := fs.ReadFile(assets(), "index.html")
+		file, _ := fs.ReadFile(assets, "index.html")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write(file)
 	case strings.HasPrefix(r.URL.Path, "/assets/"):
@@ -77,7 +77,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		data, err := fs.ReadFile(assets(), name)
+		data, err := fs.ReadFile(assets, name)
 		if err != nil {
 			http.NotFound(w, r)
 			return
@@ -136,7 +136,7 @@ func (h *Handler) bootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	roots := h.cfg.Library.Roots()
-	result := bootstrapDTO{ServerVersion: h.cfg.Version, ProtocolVersion: ProtocolVersion, Revision: snapshot.Revision, Snapshot: safeSnapshot(snapshot), Limits: map[string]int{"ws_message_bytes": maxMessageBytes, "ws_clients": maxClients, "ws_clients_per_ip": maxClientsPerIP, "queue_items": controller.MaxQueueItems, "library_page": library.MaxLimit}, Features: map[string]bool{"websocket": true, "artwork": true, "transcode": true}}
+	result := bootstrapDTO{ServerVersion: h.cfg.Version, ProtocolVersion: ProtocolVersion, Snapshot: safeSnapshot(snapshot), Limits: map[string]int{"ws_message_bytes": maxMessageBytes, "ws_clients": maxClients, "ws_clients_per_ip": maxClientsPerIP, "queue_items": controller.MaxQueueItems, "library_page": library.MaxLimit}, Features: map[string]bool{"websocket": true, "artwork": true, "transcode": true}}
 	for _, root := range roots {
 		result.Roots = append(result.Roots, rootDTO{ID: root.ID, Name: root.Name})
 	}
@@ -207,7 +207,7 @@ func (h *Handler) libraryArtwork(w http.ResponseWriter, r *http.Request, thumbna
 		apiError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
-	file, meta, err := h.cfg.Library.Select(rootID, entryID)
+	file, meta, err := h.cfg.Library.OpenMedia(rootID, entryID)
 	if err != nil {
 		apiError(w, http.StatusNotFound, "not_found")
 		return
@@ -681,7 +681,7 @@ func invalid(id string) controller.Result {
 }
 
 func (h *Handler) mediaRef(ctx context.Context, rootID, entryID string) (controller.MediaRef, error) {
-	file, meta, err := h.cfg.Library.Select(rootID, entryID)
+	file, meta, err := h.cfg.Library.OpenMedia(rootID, entryID)
 	if err != nil {
 		return controller.MediaRef{}, err
 	}
@@ -692,7 +692,8 @@ func (h *Handler) mediaRef(ctx context.Context, rootID, entryID string) (control
 		h.rememberArtwork(artwork.ID, h.artworkLoader(rootID, entryID, meta.Name, kind))
 	}
 	_ = file.Close()
-	return controller.MediaRef{RootID: rootID, ID: entryID, AbsolutePath: meta.AbsolutePath(), Name: meta.Name, Kind: kind, MIMEType: mediaType, OpenDirect: h.opener(rootID, entryID, false), OpenTranscode: h.opener(rootID, entryID, true), Artwork: artwork}, nil
+	open := h.opener(rootID, entryID)
+	return controller.MediaRef{RootID: rootID, ID: entryID, AbsolutePath: meta.AbsolutePath(), Name: meta.Name, Kind: kind, MIMEType: mediaType, OpenDirect: open, OpenTranscode: open, Artwork: artwork}, nil
 }
 
 func detectMediaType(file *os.File) string {
@@ -709,22 +710,16 @@ func detectMediaType(file *os.File) string {
 }
 
 func (h *Handler) subtitleRef(rootID, entryID string) (controller.SubtitleRef, error) {
-	file, meta, err := h.cfg.Library.Select(rootID, entryID)
+	file, meta, err := h.cfg.Library.OpenMedia(rootID, entryID)
 	if err != nil {
 		return controller.SubtitleRef{}, err
 	}
 	_ = file.Close()
-	return controller.SubtitleRef{RootID: rootID, ID: entryID, Name: meta.Name, Open: h.opener(rootID, entryID, false)}, nil
+	return controller.SubtitleRef{RootID: rootID, ID: entryID, Name: meta.Name, Open: h.opener(rootID, entryID)}, nil
 }
-func (h *Handler) opener(rootID, entryID string, transcode bool) playback.SourceOpener {
+func (h *Handler) opener(rootID, entryID string) playback.SourceOpener {
 	return func(context.Context) (io.ReadSeekCloser, time.Time, error) {
-		var file *os.File
-		var err error
-		if transcode {
-			file, _, err = h.cfg.Library.OpenTranscode(rootID, entryID)
-		} else {
-			file, _, err = h.cfg.Library.OpenDirect(rootID, entryID)
-		}
+		file, _, err := h.cfg.Library.OpenMedia(rootID, entryID)
 		if err != nil {
 			return nil, time.Time{}, err
 		}
@@ -819,7 +814,7 @@ func (h *Handler) loadArtworkFile(open func() (*os.File, error), source string) 
 
 func (h *Handler) artworkLoader(rootID, mediaID, mediaName string, kind mediamodel.MediaKind) controller.ArtworkLoader {
 	return func(ctx context.Context) ([]byte, string, error) {
-		media, _, err := h.cfg.Library.Select(rootID, mediaID)
+		media, _, err := h.cfg.Library.OpenMedia(rootID, mediaID)
 		if err != nil {
 			return nil, "", err
 		}

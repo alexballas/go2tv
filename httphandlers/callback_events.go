@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"go2tv.app/go2tv/v2/soapcalls"
 )
@@ -55,17 +54,15 @@ type CallbackSessionConfig struct {
 
 // CallbackSession validates HTTP events and serially delivers accepted events.
 type CallbackSession struct {
-	sid             string
-	sourceIP        net.IP
-	mediaType       string
-	sink            CallbackEventSink
-	gap             CallbackGapHandler
-	queue           chan CallbackEvent
-	done            chan struct{}
-	stopOnce        sync.Once
-	routeGeneration uint64
-	generation      atomic.Uint64
-	explicitStop    atomic.Bool
+	sid        string
+	sourceIP   net.IP
+	mediaType  string
+	sink       CallbackEventSink
+	gap        CallbackGapHandler
+	queue      chan CallbackEvent
+	done       chan struct{}
+	stopOnce   sync.Once
+	generation uint64
 }
 
 func NewCallbackSession(cfg CallbackSessionConfig) (*CallbackSession, error) {
@@ -82,16 +79,13 @@ func NewCallbackSession(cfg CallbackSessionConfig) (*CallbackSession, error) {
 		sid: normalizeSID(cfg.SID), sourceIP: append(net.IP(nil), cfg.SourceIP...),
 		mediaType: cfg.MediaType, sink: cfg.Sink, gap: cfg.GapHandler,
 		queue: make(chan CallbackEvent, cfg.QueueSize), done: make(chan struct{}),
-		routeGeneration: cfg.Generation,
+		generation: cfg.Generation,
 	}
-	s.generation.Store(cfg.Generation)
 	go s.work()
 	return s, nil
 }
 
-func (s *CallbackSession) Close()                      { s.stopOnce.Do(func() { close(s.done) }) }
-func (s *CallbackSession) SetGeneration(g uint64)      { s.generation.Store(g) }
-func (s *CallbackSession) SuppressExplicitStop(v bool) { s.explicitStop.Store(v) }
+func (s *CallbackSession) Close() { s.stopOnce.Do(func() { close(s.done) }) }
 
 func (s *CallbackSession) Handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -131,7 +125,7 @@ func (s *CallbackSession) Handler() http.HandlerFunc {
 			return
 		}
 		event := CallbackEvent{
-			Generation: s.routeGeneration, SID: s.sid, SEQ: uint32(seq64),
+			Generation: s.generation, SID: s.sid, SEQ: uint32(seq64),
 			Source: source.String(), TransportState: notify.TransportState, MediaType: s.mediaType,
 		}
 		if strings.EqualFold(strings.TrimSpace(event.TransportState), "STOPPED") {
@@ -162,9 +156,6 @@ func (s *CallbackSession) work() {
 		case <-s.done:
 			return
 		case event := <-s.queue:
-			if event.Generation != s.generation.Load() {
-				continue
-			}
 			if haveLast {
 				delta := event.SEQ - last
 				switch {
@@ -179,9 +170,6 @@ func (s *CallbackSession) work() {
 				}
 			}
 			last, haveLast = event.SEQ, true
-			if s.explicitStop.Load() && event.TransportState == "STOPPED" {
-				continue
-			}
 			s.sink.HandleCallbackEvent(context.Background(), event)
 		}
 	}

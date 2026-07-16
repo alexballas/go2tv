@@ -6,7 +6,7 @@ require (
 	github.com/alexballas/fyne-tooltip v0.0.0-20260528093432-da161b5c8cac
 	github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab
 	github.com/alexballas/refyne/v2 v2.0.0-20260715232008-d8808082ffcd
-	github.com/alexballas/xfilepicker v0.0.0-20260711081040-6fac737da9a9
+	github.com/alexballas/xfilepicker v0.0.0-20260716165902-3782f386eb1a
 	github.com/buger/jsonparser v1.2.0
 	github.com/cabbagekobe/tunetag v0.1.4
 	github.com/charmbracelet/bubbletea v1.3.10
@@ -88,6 +88,3 @@ require (
 	golang.org/x/tools v0.48.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/alexballas/refyne/v2 => ../refyne
-replace github.com/alexballas/xfilepicker => ../xfilepicker

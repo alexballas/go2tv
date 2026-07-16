@@ -81,12 +81,6 @@ func New(cfg Config) *Server {
 	return &Server{cfg: cfg, routes: make(map[string]route), byID: make(map[string]string), active: make(map[uint64]activeRequest)}
 }
 
-func (s *Server) Ready() <-chan struct{} {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.ready
-}
-
 func (s *Server) Done() <-chan error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -187,9 +181,7 @@ func (s *Server) Start(ctx context.Context, request playback.ServerRequest) (pla
 	s.http = httpServer
 	ready := s.ready
 	done := s.done
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
+	s.wg.Go(func() {
 		close(ready)
 		err := httpServer.Serve(listener)
 		if errors.Is(err, http.ErrServerClosed) || errors.Is(err, net.ErrClosed) {
@@ -197,7 +189,7 @@ func (s *Server) Start(ctx context.Context, request playback.ServerRequest) (pla
 		}
 		done <- err
 		close(done)
-	}()
+	})
 	base := "http://" + listener.Addr().String()
 	s.mu.Unlock()
 

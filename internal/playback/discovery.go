@@ -25,7 +25,6 @@ type DiscoveryService struct {
 	mu             sync.RWMutex
 	devices        []Device
 	ids            map[string]string
-	updates        chan []Device
 	subscribers    map[uint64]chan []Device
 	nextSubscriber uint64
 	startOnce      sync.Once
@@ -43,7 +42,7 @@ func NewDiscoveryService(scanner DiscoveryScanner, random Random, clock Clock, i
 	}
 	return &DiscoveryService{
 		scanner: scanner, random: random, clock: clock, interval: interval,
-		ids: make(map[string]string), updates: make(chan []Device, 1), subscribers: make(map[uint64]chan []Device),
+		ids: make(map[string]string), subscribers: make(map[uint64]chan []Device),
 	}
 }
 
@@ -102,18 +101,6 @@ func (s *DiscoveryService) Refresh(ctx context.Context) error {
 	s.devices = slices.Clone(devices)
 	snapshot := slices.Clone(s.devices)
 	s.mu.Unlock()
-	select {
-	case s.updates <- snapshot:
-	default:
-		select {
-		case <-s.updates:
-		default:
-		}
-		select {
-		case s.updates <- snapshot:
-		default:
-		}
-	}
 	s.mu.RLock()
 	for _, subscriber := range s.subscribers {
 		update := slices.Clone(snapshot)
@@ -162,8 +149,6 @@ func (s *DiscoveryService) Snapshot() []Device {
 	defer s.mu.RUnlock()
 	return slices.Clone(s.devices)
 }
-
-func (s *DiscoveryService) Notifications() <-chan []Device { return s.updates }
 
 func (s *DiscoveryService) Subscribe(buffer int) (<-chan []Device, func()) {
 	if buffer <= 0 {

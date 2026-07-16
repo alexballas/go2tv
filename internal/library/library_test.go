@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -68,7 +69,7 @@ func TestBrowseFiltersAndMixedCaseExtensions(t *testing.T) {
 		}
 	}
 	for _, special := range []string{"pipe", "socket"} {
-		file, _, openErr := lib.OpenForPlay(rootID, signedToken(lib.secret[:], rootID, special))
+		file, _, openErr := lib.OpenMedia(rootID, signedToken(lib.secret[:], rootID, special))
 		if openErr == nil {
 			_ = file.Close()
 			t.Fatalf("special file %q opened", special)
@@ -88,17 +89,17 @@ func TestTraversalHiddenAndTamperedTokensRejected(t *testing.T) {
 
 	middle := len(id) / 2
 	tampered := id[:middle] + differentByte(id[middle]) + id[middle+1:]
-	if _, _, err := lib.OpenForPlay(rootID, tampered); !errors.Is(err, ErrInvalidEntry) {
+	if _, _, err := lib.OpenMedia(rootID, tampered); !errors.Is(err, ErrInvalidEntry) {
 		t.Fatalf("tamper error = %v", err)
 	}
 	for _, rel := range []string{"../ok.mp4", "dir/../ok.mp4", ".hidden/ok.mp4", "/ok.mp4"} {
 		token := signedToken(lib.secret[:], rootID, rel)
-		if _, _, err := lib.OpenForPlay(rootID, token); !errors.Is(err, ErrInvalidEntry) {
+		if _, _, err := lib.OpenMedia(rootID, token); !errors.Is(err, ErrInvalidEntry) {
 			t.Fatalf("rel %q error = %v", rel, err)
 		}
 	}
 	long := strings.Repeat("a", MaxRelative+1)
-	if _, _, err := lib.OpenForPlay(rootID, signedToken(lib.secret[:], rootID, long)); !errors.Is(err, ErrInvalidEntry) {
+	if _, _, err := lib.OpenMedia(rootID, signedToken(lib.secret[:], rootID, long)); !errors.Is(err, ErrInvalidEntry) {
 		t.Fatalf("long token error = %v", err)
 	}
 }
@@ -118,7 +119,7 @@ func TestOpaqueInvalidUTF8Filename(t *testing.T) {
 	if len(page.Entries) != 1 || !strings.Contains(page.Entries[0].Name, "�") || !utf8.ValidString(page.Entries[0].Name) {
 		t.Fatalf("display name = %q", page.Entries)
 	}
-	file, _, err := lib.OpenForPlay(rootID, page.Entries[0].ID)
+	file, _, err := lib.OpenMedia(rootID, page.Entries[0].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,19 +147,16 @@ func TestSymlinkAndRenameSwapsContained(t *testing.T) {
 	if err := os.Symlink(filepath.Join(outside, "outside.mp4"), filepath.Join(root, "media.mp4")); err != nil {
 		t.Fatal(err)
 	}
-	openers := []func(string, string) (*os.File, Metadata, error){lib.Select, lib.OpenForPlay, lib.OpenForAutoplay, lib.OpenDirect, lib.OpenTranscode}
-	for _, open := range openers {
-		if file, _, err := open(rootID, id); err == nil {
-			_ = file.Close()
-			t.Fatal("symlink escape opened")
-		}
+	if file, _, err := lib.OpenMedia(rootID, id); err == nil {
+		_ = file.Close()
+		t.Fatal("symlink escape opened")
 	}
 
 	if err := os.Remove(filepath.Join(root, "media.mp4")); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(root, "media.mp4"), "replacement")
-	file, _, err := lib.OpenDirect(rootID, id)
+	file, _, err := lib.OpenMedia(rootID, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +300,7 @@ func TestCursorLimit(t *testing.T) {
 	}
 }
 
-func TestFreshDirectAndTranscodeHandlesAndRelatedContainment(t *testing.T) {
+func TestFreshMediaHandlesAndRelatedContainment(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()
 	writeFile(t, filepath.Join(root, "movie.mp4"), "one")
@@ -315,14 +313,14 @@ func TestFreshDirectAndTranscodeHandlesAndRelatedContainment(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := findEntry(t, page.Entries, "movie.mp4").ID
-	direct, meta, err := lib.OpenDirect(rootID, id)
+	direct, meta, err := lib.OpenMedia(rootID, id)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if meta.AbsolutePath() != filepath.Join(root, "movie.mp4") {
 		t.Fatalf("absolute path = %q", meta.AbsolutePath())
 	}
-	transcode, _, err := lib.OpenTranscode(rootID, id)
+	transcode, _, err := lib.OpenMedia(rootID, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -442,12 +440,7 @@ func supportedDirectoryOrder(t *testing.T, path string) []string {
 }
 
 func contains(values []string, value string) bool {
-	for _, got := range values {
-		if got == value {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, value)
 }
 
 func findEntry(t *testing.T, entries []Entry, name string) Entry {

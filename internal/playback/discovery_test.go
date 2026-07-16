@@ -49,13 +49,11 @@ func TestDiscoveryRefreshSerializesAndMaintainsIdentity(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for range 4 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if err := service.Refresh(context.Background()); err != nil {
 				t.Error(err)
 			}
-		}()
+		})
 	}
 	close(gate)
 	wg.Wait()

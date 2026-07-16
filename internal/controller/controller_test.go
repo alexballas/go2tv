@@ -44,9 +44,8 @@ type fakeDiscovery struct {
 func newFakeDiscovery(devices ...playback.Device) *fakeDiscovery {
 	return &fakeDiscovery{devices: devices, updates: make(chan []playback.Device, 4)}
 }
-func (d *fakeDiscovery) Start(context.Context)                   {}
-func (d *fakeDiscovery) Refresh(context.Context) error           { return nil }
-func (d *fakeDiscovery) Notifications() <-chan []playback.Device { return d.updates }
+func (d *fakeDiscovery) Start(context.Context)         {}
+func (d *fakeDiscovery) Refresh(context.Context) error { return nil }
 func (d *fakeDiscovery) Snapshot() []playback.Device {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -184,22 +183,15 @@ func (t *fakeTransport) Seek(_ context.Context, value string) error {
 func (t *fakeTransport) Position(context.Context) (playback.Position, error) {
 	return playback.Position{}, nil
 }
-func (t *fakeTransport) State(context.Context) (string, error)            { return "PLAYING", nil }
-func (t *fakeTransport) SetNextURI(context.Context, string, string) error { return nil }
-func (t *fakeTransport) ClearNextURI(context.Context) error               { return nil }
-func (t *fakeTransport) Resubscribe(context.Context, string) error        { return nil }
-func (t *fakeTransport) Unsubscribe(context.Context, string) error        { return nil }
 
 type fakeServer struct {
-	log     *eventLog
-	mu      sync.Mutex
-	request playback.ServerRequest
-	routes  int
+	log    *eventLog
+	mu     sync.Mutex
+	routes int
 }
 
 func (s *fakeServer) Start(_ context.Context, request playback.ServerRequest) (playback.MediaRoute, error) {
 	s.mu.Lock()
-	s.request = request
 	s.routes++
 	id := "route-" + strconv.Itoa(s.routes)
 	s.mu.Unlock()
@@ -216,7 +208,6 @@ func (s *fakeServer) Add(context.Context, playback.RouteRequest) (playback.Media
 }
 func (s *fakeServer) AddMedia(_ context.Context, request playback.ServerRequest) (playback.MediaRoute, error) {
 	s.mu.Lock()
-	s.request = request
 	s.routes++
 	id := "route-" + strconv.Itoa(s.routes)
 	s.mu.Unlock()
@@ -226,12 +217,6 @@ func (s *fakeServer) AddMedia(_ context.Context, request playback.ServerRequest)
 func (s *fakeServer) Remove(_ context.Context, id string) error {
 	s.log.add("server:remove:" + id)
 	return nil
-}
-
-func (s *fakeServer) lastRequest() playback.ServerRequest {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.request
 }
 
 func newTestController(devices ...playback.Device) (*Controller, *eventLog, *fakeFactory) {

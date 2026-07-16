@@ -108,10 +108,6 @@ func (screen *FyneScreen) prewarmQueueThumbnails(items []QueueItem) {
 	}
 }
 
-func (screen *FyneScreen) queueAudioThumbnail(path string) *canvas.Image {
-	return screen.queueMediaThumbnail(path, mediamodel.MediaKindAudio)
-}
-
 func (screen *FyneScreen) queueMediaThumbnail(path string, kind mediamodel.MediaKind) *canvas.Image {
 	data, err := mediaartwork.Thumbnail(context.Background(), mediaartwork.Request{
 		Path:       path,

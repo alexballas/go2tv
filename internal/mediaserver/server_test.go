@@ -36,11 +36,6 @@ func startTestServer(t *testing.T, server *Server, request playback.ServerReques
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = server.Stop(context.Background()) })
-	select {
-	case <-server.Ready():
-	default:
-		t.Fatal("ready not closed")
-	}
 	return route
 }
 

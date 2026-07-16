@@ -51,7 +51,7 @@ func TestLegacyJSONFieldNamesRemainStable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantPolicy := `{"LoopSelected":false,"AutoPlayNext":true,"AutoPlaySameType":false,"GaplessEnabled":false,"ImageDurationSeconds":10}`
+	wantPolicy := `{"LoopSelected":false,"AutoPlayNext":true,"AutoPlaySameType":false,"ImageDurationSeconds":10}`
 	if string(policy) != wantPolicy {
 		t.Fatalf("policy JSON = %s", policy)
 	}

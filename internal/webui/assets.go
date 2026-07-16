@@ -8,10 +8,10 @@ import (
 //go:embed dist
 var embedded embed.FS
 
-func assets() fs.FS {
+var assets = func() fs.FS {
 	result, err := fs.Sub(embedded, "dist")
 	if err != nil {
 		panic(err)
 	}
 	return result
-}
+}()

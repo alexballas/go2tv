@@ -1,7 +1,6 @@
 package playbackadapter
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -18,7 +17,6 @@ import (
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
 	"go2tv.app/go2tv/v2/internal/playback"
-	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/soapcalls"
 )
 
@@ -193,15 +191,6 @@ func (b *CallbackBridge) Events(generation uint64) <-chan playback.DLNACallbackE
 		return nil
 	}
 	return stream.events
-}
-
-func (b *CallbackBridge) emit(event playback.DLNACallbackEvent) {
-	b.mu.RLock()
-	stream := b.streams[event.Generation]
-	b.mu.RUnlock()
-	if stream != nil {
-		stream.deliver(event)
-	}
 }
 
 func (b *CallbackBridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -518,34 +507,6 @@ func (d *DLNA) Position(ctx context.Context) (playback.Position, error) {
 	return result, err
 }
 
-func (d *DLNA) State(ctx context.Context) (string, error) {
-	var state string
-	err := d.call(ctx, func(p *soapcalls.TVPayload) error {
-		values, err := p.GetTransportInfo()
-		if err != nil {
-			return err
-		}
-		if len(values) == 0 {
-			return errors.New("DLNA state response incomplete")
-		}
-		state = values[0]
-		return nil
-	})
-	return state, err
-}
-
-func (d *DLNA) SetNextURI(ctx context.Context, uri, _ string) error {
-	return d.call(ctx, func(p *soapcalls.TVPayload) error { p.MediaURL = uri; return p.SetNextAVTransportURI(false) })
-}
-func (d *DLNA) ClearNextURI(ctx context.Context) error {
-	return d.call(ctx, func(p *soapcalls.TVPayload) error { return p.SetNextAVTransportURI(true) })
-}
-func (d *DLNA) Resubscribe(ctx context.Context, sid string) error {
-	return d.call(ctx, func(p *soapcalls.TVPayload) error { return p.SubscribeSoapCall(sid) })
-}
-func (d *DLNA) Unsubscribe(ctx context.Context, sid string) error {
-	return d.call(ctx, func(p *soapcalls.TVPayload) error { return p.UnsubscribeSoapCall(sid) })
-}
 func (d *DLNA) Volume(ctx context.Context) (int, error) {
 	var volume int
 	err := d.call(ctx, func(p *soapcalls.TVPayload) error {
@@ -801,30 +762,10 @@ func RunMonitor(ctx context.Context, cfg playback.MonitorConfig, device playback
 	}
 }
 
-// Artwork resolves normalized legacy artwork without Fyne dependencies.
-type Artwork struct{}
-
-func (Artwork) Resolve(ctx context.Context, source string) (io.ReadCloser, string, error) {
-	if ctx == nil {
-		return nil, "", errors.New("artwork context required")
-	}
-	select {
-	case <-ctx.Done():
-		return nil, "", ctx.Err()
-	default:
-	}
-	asset, err := metadata.ResolveArtwork(source)
-	if err != nil {
-		return nil, "", err
-	}
-	return io.NopCloser(bytes.NewReader(asset.Data)), asset.MIMEType, nil
-}
-
 var (
 	_ playback.DiscoveryScanner    = Scanner{}
 	_ playback.DLNATransport       = (*DLNA)(nil)
 	_ playback.Transport           = (*DLNA)(nil)
 	_ playback.ChromecastTransport = (*Chromecast)(nil)
 	_ playback.Transport           = (*Chromecast)(nil)
-	_ playback.Artwork             = Artwork{}
 )

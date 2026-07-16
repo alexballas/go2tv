@@ -209,15 +209,12 @@ type Policy struct {
 	LoopSelected         bool `json:"LoopSelected"`
 	AutoPlayNext         bool `json:"AutoPlayNext"`
 	AutoPlaySameType     bool `json:"AutoPlaySameType"`
-	GaplessEnabled       bool `json:"GaplessEnabled"`
 	ImageDurationSeconds int  `json:"ImageDurationSeconds"`
 }
 
 // DefaultPolicy returns the policy used by a new Controller.
 func DefaultPolicy() Policy { return Policy{ImageDurationSeconds: DefaultImageTime} }
 
-// Validate checks protocol-independent policy invariants. Device-specific
-// validation, such as gapless support, occurs when SetPolicy is called.
 func (p Policy) Validate() error {
 	if p.ImageDurationSeconds != 0 && (p.ImageDurationSeconds < MinImageTime || p.ImageDurationSeconds > MaxImageTime) {
 		return fmt.Errorf("image duration: %w", ErrInvalidPolicy)
@@ -225,7 +222,7 @@ func (p Policy) Validate() error {
 	if p.LoopSelected && p.AutoPlayNext {
 		return fmt.Errorf("loop and autoplay are mutually exclusive: %w", ErrInvalidPolicy)
 	}
-	if !p.AutoPlayNext && (p.AutoPlaySameType || p.GaplessEnabled) {
+	if !p.AutoPlayNext && p.AutoPlaySameType {
 		return fmt.Errorf("autoplay options require autoplay: %w", ErrInvalidPolicy)
 	}
 	return nil

@@ -41,7 +41,6 @@ type entryDTO struct {
 type bootstrapDTO struct {
 	ServerVersion   string          `json:"server_version"`
 	ProtocolVersion int             `json:"protocol_version"`
-	Revision        uint64          `json:"revision"`
 	Snapshot        snapshotDTO     `json:"snapshot"`
 	Roots           []rootDTO       `json:"roots"`
 	Limits          map[string]int  `json:"limits"`

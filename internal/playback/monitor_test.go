@@ -26,7 +26,6 @@ func newManualClock() *manualClock {
 	return &manualClock{tick: &manualTicker{make(chan time.Time, 16)}, timer: &manualTimer{make(chan time.Time, 1)}}
 }
 
-func (c *manualClock) Now() time.Time { return time.Time{} }
 func (c *manualClock) NewTicker(time.Duration) Ticker {
 	return c.tick
 }
@@ -85,9 +84,9 @@ func TestDLNAMonitorProgressCompletionAndCancellation(t *testing.T) {
 
 	clock = newManualClock()
 	events = make(chan MonitorEvent, 2)
-	ctx, cancel = context.WithCancel(WithTerminalReason(context.Background(), TerminalReplacement))
-	go RunDLNAMonitor(ctx, MonitorConfig{Clock: clock, Sink: monitorCollector{events}}, d, nil)
-	cancel()
+	replacementCtx, cancelReplacement := context.WithCancelCause(context.Background())
+	go RunDLNAMonitor(replacementCtx, MonitorConfig{Clock: clock, Sink: monitorCollector{events}}, d, nil)
+	cancelReplacement(TerminalReplacement)
 	e = waitMonitor(t, events)
 	if e.Terminal != TerminalReplacement {
 		t.Fatalf("cancel %q", e.Terminal)
@@ -98,8 +97,7 @@ func TestDLNAMonitorProgressArmsCompletionWithoutPlayingCallback(t *testing.T) {
 	clock := newManualClock()
 	events := make(chan MonitorEvent, 2)
 	callbacks := make(chan DLNACallbackEvent, 1)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	dlna := &seekDLNA{pos: Position{Current: 1, Duration: 10}}
 	go RunDLNAMonitor(ctx, MonitorConfig{Generation: 3, Clock: clock, Sink: monitorCollector{events}}, dlna, callbacks)
 	clock.tick.ch <- time.Time{}
@@ -114,8 +112,7 @@ func TestDLNAMonitorPositionErrorsRemainNonterminal(t *testing.T) {
 	clock := newManualClock()
 	events := make(chan MonitorEvent, 4)
 	callbacks := make(chan DLNACallbackEvent, 2)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	dlna := &failingPositionDLNA{polled: make(chan struct{})}
 	go RunDLNAMonitor(ctx, MonitorConfig{Generation: 8, Clock: clock, Sink: monitorCollector{events}}, dlna, callbacks)
 
@@ -142,8 +139,7 @@ func TestDLNAMonitorSuppressesFirstPrePlayStopped(t *testing.T) {
 	clock := newManualClock()
 	events := make(chan MonitorEvent, 2)
 	callbacks := make(chan DLNACallbackEvent)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	go RunDLNAMonitor(ctx, MonitorConfig{Generation: 4, Clock: clock, Sink: monitorCollector{events}}, &seekDLNA{}, callbacks)
 
 	send := func() {
@@ -181,8 +177,7 @@ func TestDLNAStopGateSurvivesMonitorRestart(t *testing.T) {
 
 	secondEvents := make(chan MonitorEvent, 1)
 	secondCallbacks := make(chan DLNACallbackEvent, 1)
-	secondCtx, cancelSecond := context.WithCancel(context.Background())
-	defer cancelSecond()
+	secondCtx := t.Context()
 	go RunDLNAMonitor(secondCtx, MonitorConfig{
 		Generation:   2,
 		Clock:        newManualClock(),
@@ -295,8 +290,7 @@ func TestChromecastMonitorStallAndLoss(t *testing.T) {
 		t.Run("image "+state+" is immediately ready", func(t *testing.T) {
 			clock := newManualClock()
 			events := make(chan MonitorEvent, 1)
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 			cast := &seekCast{statuses: []CastStatus{{PlayerState: state}}}
 			go RunChromecastMonitor(ctx, ChromecastMonitorConfig{
 				MonitorConfig: MonitorConfig{Clock: clock, Sink: monitorCollector{events}},
@@ -316,8 +310,7 @@ func TestChromecastMonitorStallAndLoss(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				clock := newManualClock()
 				events := make(chan MonitorEvent, 2)
-				ctx, cancel := context.WithCancel(context.Background())
-				defer cancel()
+				ctx := t.Context()
 				cast := &seekCast{statuses: []CastStatus{status}}
 				go RunChromecastMonitor(ctx, ChromecastMonitorConfig{
 					MonitorConfig: MonitorConfig{Clock: clock, Sink: monitorCollector{events}},
@@ -337,8 +330,7 @@ func TestChromecastMonitorStallAndLoss(t *testing.T) {
 	t.Run("image readiness falls back", func(t *testing.T) {
 		clock := newManualClock()
 		events := make(chan MonitorEvent, chromecastImageFallbackTicks)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 		cast := &seekCast{statuses: []CastStatus{{PlayerState: "IDLE"}}}
 		go RunChromecastMonitor(ctx, ChromecastMonitorConfig{
 			MonitorConfig:    MonitorConfig{Clock: clock, Sink: monitorCollector{events}},

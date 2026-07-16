@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -428,12 +429,7 @@ func scanSidecars(directory string) ([]sidecarCandidate, error) {
 }
 
 func isSidecarExtension(extension string) bool {
-	for _, supported := range sidecarExtensions {
-		if extension == supported {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(sidecarExtensions, extension)
 }
 
 func bestSidecar(candidates []sidecarCandidate, base string) *ArtworkAsset {

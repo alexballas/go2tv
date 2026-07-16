@@ -35,7 +35,6 @@ func newAutoplayClock() *autoplayClock {
 	return &autoplayClock{timers: make(chan *autoplayTimer, 4)}
 }
 
-func (*autoplayClock) Now() time.Time { return time.Time{} }
 func (*autoplayClock) NewTicker(time.Duration) playback.Ticker {
 	return &autoplayTicker{ch: make(chan time.Time)}
 }

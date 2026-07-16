@@ -29,7 +29,6 @@ func ImageExtensions() []string { return slices.Clone(imageExtensions[:]) }
 func VideoExtensions() []string { return slices.Clone(videoExtensions[:]) }
 func AudioExtensions() []string { return slices.Clone(audioExtensions[:]) }
 func SRTExtensions() []string   { return slices.Clone(srtExtensions[:]) }
-func VTTExtensions() []string   { return slices.Clone(vttExtensions[:]) }
 
 func AllMediaExtensions() []string {
 	extensions := make([]string, 0, len(imageExtensions)+len(videoExtensions)+len(audioExtensions))
@@ -65,7 +64,6 @@ func KindForPath(path string) MediaKind {
 
 type QueueItem struct {
 	id           string
-	source       string
 	path         string
 	displayPath  string
 	baseName     string
@@ -87,7 +85,6 @@ func NewQueueItem(source string) (QueueItem, bool) {
 	displayPath := QueueDisplayPath(path)
 	return QueueItem{
 		id:           randomID(),
-		source:       source,
 		path:         path,
 		displayPath:  displayPath,
 		baseName:     filepath.Base(displayPath),
@@ -96,13 +93,12 @@ func NewQueueItem(source string) (QueueItem, bool) {
 	}, true
 }
 
-// NewQueueReference builds display-only queue metadata for an opaque source.
-// The source is never interpreted as a filesystem path.
-func NewQueueReference(source, name, parent string, kind MediaKind) (QueueItem, bool) {
-	if source == "" || name == "" || kind == MediaKindUnknown {
+// NewQueueReference builds display-only queue metadata.
+func NewQueueReference(name, parent string, kind MediaKind) (QueueItem, bool) {
+	if name == "" || kind == MediaKindUnknown {
 		return QueueItem{}, false
 	}
-	return QueueItem{id: randomID(), source: source, displayPath: name, baseName: name, parentFolder: parent, mediaKind: kind}, true
+	return QueueItem{id: randomID(), displayPath: name, baseName: name, parentFolder: parent, mediaKind: kind}, true
 }
 
 func BuildQueueItems(paths []string) []QueueItem {
@@ -117,7 +113,6 @@ func BuildQueueItems(paths []string) []QueueItem {
 }
 
 func (item QueueItem) ID() string           { return item.id }
-func (item QueueItem) Source() string       { return item.source }
 func (item QueueItem) Path() string         { return item.path }
 func (item QueueItem) DisplayPath() string  { return item.displayPath }
 func (item QueueItem) BaseName() string     { return item.baseName }

@@ -21,7 +21,6 @@ type Discovery interface {
 	Start(context.Context)
 	Refresh(context.Context) error
 	Snapshot() []Device
-	Notifications() <-chan []Device
 	Subscribe(int) (<-chan []Device, func())
 }
 
@@ -32,25 +31,13 @@ type DiscoveryScanner interface {
 type DLNATransport interface {
 	Load(context.Context, LoadRequest) error
 	Play(context.Context) error
-	Pause(context.Context) error
 	Stop(context.Context) error
 	Seek(context.Context, string) error
 	Position(context.Context) (Position, error)
-	State(context.Context) (string, error)
-	SetNextURI(context.Context, string, string) error
-	ClearNextURI(context.Context) error
-	Resubscribe(context.Context, string) error
-	Unsubscribe(context.Context, string) error
 }
 
 type ChromecastTransport interface {
-	Connect(context.Context) error
-	Close(context.Context) error
-	Load(context.Context, LoadRequest) error
 	LoadOnExisting(context.Context, LoadRequest) error
-	Play(context.Context) error
-	Pause(context.Context) error
-	Stop(context.Context) error
 	Seek(context.Context, int) error
 	Status(context.Context) (CastStatus, error)
 }
@@ -79,7 +66,6 @@ type MediaServer interface {
 type SourceOpener func(context.Context) (io.ReadSeekCloser, time.Time, error)
 
 type Clock interface {
-	Now() time.Time
 	NewTicker(time.Duration) Ticker
 	NewTimer(time.Duration) Timer
 }
@@ -96,10 +82,6 @@ type Timer interface {
 
 type Random interface {
 	Read([]byte) (int, error)
-}
-
-type Artwork interface {
-	Resolve(context.Context, string) (io.ReadCloser, string, error)
 }
 
 type Position struct {
@@ -154,7 +136,6 @@ type MediaRoute struct {
 
 type realClock struct{}
 
-func (realClock) Now() time.Time                   { return time.Now() }
 func (realClock) NewTicker(d time.Duration) Ticker { return realTicker{time.NewTicker(d)} }
 func (realClock) NewTimer(d time.Duration) Timer   { return realTimer{time.NewTimer(d)} }
 

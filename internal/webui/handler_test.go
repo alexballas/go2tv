@@ -659,7 +659,7 @@ func TestWebSocketSlowClientDisconnected(t *testing.T) {
 		close(gate)
 		t.Fatal("client not registered")
 	}
-	for i := 0; i < outboundSize; i++ {
+	for i := range outboundSize {
 		if !slow.enqueue("toast", mustEnvelope("toast", strconv.Itoa(i), map[string]any{})) {
 			break
 		}
@@ -803,7 +803,7 @@ func TestCommandFailureEmitsOneTerminalMessage(t *testing.T) {
 
 func readType(t *testing.T, conn *websocket.Conn, want string) {
 	t.Helper()
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		_, data, err := conn.ReadMessage()
 		if err != nil {
 			t.Fatal(err)

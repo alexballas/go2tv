@@ -15,12 +15,6 @@ const (
 	chromecastImageFallbackTicks = 8
 )
 
-type terminalReasonKey struct{}
-
-func WithTerminalReason(ctx context.Context, reason TerminalReason) context.Context {
-	return context.WithValue(ctx, terminalReasonKey{}, reason)
-}
-
 type TerminalReason string
 
 const (
@@ -30,6 +24,8 @@ const (
 	TerminalError       TerminalReason = "error"
 	TerminalShutdown    TerminalReason = "shutdown"
 )
+
+func (r TerminalReason) Error() string { return string(r) }
 
 type MonitorEvent struct {
 	Generation uint64
@@ -50,9 +46,6 @@ type DLNACallbackEvent struct {
 type MonitorSink interface {
 	HandleMonitorEvent(context.Context, MonitorEvent)
 }
-type MonitorSinkFunc func(context.Context, MonitorEvent)
-
-func (f MonitorSinkFunc) HandleMonitorEvent(ctx context.Context, e MonitorEvent) { f(ctx, e) }
 
 type MonitorConfig struct {
 	Generation       uint64
@@ -281,7 +274,8 @@ func emitMonitor(ctx context.Context, cfg MonitorConfig, event MonitorEvent) {
 }
 
 func terminalFromContext(ctx context.Context) TerminalReason {
-	if reason, ok := ctx.Value(terminalReasonKey{}).(TerminalReason); ok && reason != "" {
+	var reason TerminalReason
+	if errors.As(context.Cause(ctx), &reason) && reason != "" {
 		return reason
 	}
 	if ctx.Err() != nil {

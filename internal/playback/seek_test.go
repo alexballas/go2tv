@@ -20,20 +20,14 @@ func (m *seekDLNA) Load(_ context.Context, r LoadRequest) error {
 	m.load = r
 	return nil
 }
-func (m *seekDLNA) Play(context.Context) error  { m.calls = append(m.calls, "play"); return nil }
-func (m *seekDLNA) Pause(context.Context) error { return nil }
-func (m *seekDLNA) Stop(context.Context) error  { m.calls = append(m.calls, "stop"); return nil }
+func (m *seekDLNA) Play(context.Context) error { m.calls = append(m.calls, "play"); return nil }
+func (m *seekDLNA) Stop(context.Context) error { m.calls = append(m.calls, "stop"); return nil }
 func (m *seekDLNA) Seek(_ context.Context, s string) error {
 	m.calls = append(m.calls, "seek")
 	m.seek = s
 	return nil
 }
-func (m *seekDLNA) Position(context.Context) (Position, error)       { return m.pos, m.posErr }
-func (m *seekDLNA) State(context.Context) (string, error)            { return "", nil }
-func (m *seekDLNA) SetNextURI(context.Context, string, string) error { return nil }
-func (m *seekDLNA) ClearNextURI(context.Context) error               { return nil }
-func (m *seekDLNA) Resubscribe(context.Context, string) error        { return nil }
-func (m *seekDLNA) Unsubscribe(context.Context, string) error        { return nil }
+func (m *seekDLNA) Position(context.Context) (Position, error) { return m.pos, m.posErr }
 
 type seekCast struct {
 	calls       []string
@@ -44,12 +38,6 @@ type seekCast struct {
 	statusIndex int
 }
 
-func (m *seekCast) Connect(context.Context) error           { return nil }
-func (m *seekCast) Close(context.Context) error             { return nil }
-func (m *seekCast) Load(context.Context, LoadRequest) error { return nil }
-func (m *seekCast) Play(context.Context) error              { return nil }
-func (m *seekCast) Pause(context.Context) error             { return nil }
-func (m *seekCast) Stop(context.Context) error              { return nil }
 func (m *seekCast) Seek(_ context.Context, s int) error {
 	m.calls = append(m.calls, "seek")
 	m.seconds = s

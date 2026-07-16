@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"go2tv.app/go2tv/v2/internal/mediamodel"
+	"go2tv.app/go2tv/v2/internal/pathutil"
 )
 
 const (
@@ -151,7 +152,7 @@ func Open(cfg Config) (*Library, error) {
 			return nil, err
 		}
 		for _, existing := range states {
-			if pathsOverlap(existing.canonical, canonical) {
+			if pathutil.Overlap(existing.canonical, canonical) {
 				closeStates()
 				return nil, ErrInvalidRoot
 			}
@@ -366,23 +367,7 @@ func (l *Library) entry(root *rootState, parent string, dirEntry os.DirEntry) (E
 	return Entry{ID: id, Name: displayName(name), Kind: kind}, true
 }
 
-func (l *Library) Select(rootID, entryID string) (*os.File, Metadata, error) {
-	return l.openRegular(rootID, entryID)
-}
-
-func (l *Library) OpenForPlay(rootID, entryID string) (*os.File, Metadata, error) {
-	return l.openRegular(rootID, entryID)
-}
-
-func (l *Library) OpenForAutoplay(rootID, entryID string) (*os.File, Metadata, error) {
-	return l.openRegular(rootID, entryID)
-}
-
-func (l *Library) OpenDirect(rootID, entryID string) (*os.File, Metadata, error) {
-	return l.openRegular(rootID, entryID)
-}
-
-func (l *Library) OpenTranscode(rootID, entryID string) (*os.File, Metadata, error) {
+func (l *Library) OpenMedia(rootID, entryID string) (*os.File, Metadata, error) {
 	return l.openRegular(rootID, entryID)
 }
 
@@ -586,16 +571,6 @@ func canonicalRoot(path string) (string, error) {
 	return filepath.Clean(canonical), nil
 }
 
-func pathsOverlap(a, b string) bool {
-	for _, pair := range [][2]string{{a, b}, {b, a}} {
-		rel, err := filepath.Rel(pair[0], pair[1])
-		if err == nil && (rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))) {
-			return true
-		}
-	}
-	return false
-}
-
 func validateRelative(rel string) error {
 	if rel == "." {
 		return nil
@@ -603,8 +578,7 @@ func validateRelative(rel string) error {
 	if rel == "" || len(rel) > MaxRelative || strings.IndexByte(rel, 0) >= 0 || filepath.IsAbs(rel) || filepath.VolumeName(rel) != "" {
 		return ErrInvalidEntry
 	}
-	parts := strings.Split(rel, string(filepath.Separator))
-	for _, part := range parts {
+	for part := range strings.SplitSeq(rel, string(filepath.Separator)) {
 		if part == "" || part == "." || part == ".." || hiddenName(part) {
 			return ErrInvalidEntry
 		}

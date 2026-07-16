@@ -45,20 +45,11 @@ var (
 	transcodePtr = flag.Bool("tc", false, "Force transcoding with ffmpeg.")
 	listPtr      = flag.Bool("l", false, "List available devices (Smart TVs and Chromecasts).")
 
-	versionPtr = flag.Bool("version", false, "Print version.")
-	serverPtr  = flag.Bool("server", false, "Run Web server mode.")
-	listenPtr  = flag.String("listen", servermode.DefaultListen, "Web server listen address.")
-	debugPtr   = flag.Bool("debug", false, "Enable Web server protocol debug logs.")
-	mediaRoots servermode.Strings
-	origins    servermode.Strings
+	versionPtr    = flag.Bool("version", false, "Print version.")
+	serverOptions = servermode.RegisterCLIFlags(flag.CommandLine)
 
 	errNoCombi = errors.New("can't combine -l with other flags")
 )
-
-func init() {
-	flag.Var(&mediaRoots, "media-root", "Allowed media directory (repeatable; required with -server).")
-	flag.Var(&origins, "allowed-origin", "Allowed Web origin, including scheme/host/port (repeatable).")
-}
 
 type flagResults struct {
 	targetURL string // Device URL (DLNA renderer or Chromecast)
@@ -98,17 +89,11 @@ func run(crash *crashlog.Session) error {
 	defer cancel()
 
 	flag.Parse()
-	if err := validateServerFlags(); err != nil {
+	if err := serverOptions.Validate(flag.CommandLine); err != nil {
 		return err
 	}
-	if *serverPtr {
-		return servermode.Run(exitCTX, servermode.Config{
-			Listen:         *listenPtr,
-			MediaRoots:     mediaRoots,
-			AllowedOrigins: origins,
-			Version:        version,
-			Debug:          *debugPtr,
-		}, os.Stdout)
+	if serverOptions.Server {
+		return servermode.Run(exitCTX, serverOptions.Config(version), os.Stdout)
 	}
 	flagRes, err := processflags()
 	if err != nil {
@@ -285,24 +270,6 @@ func run(crash *crashlog.Session) error {
 	}
 
 	return nil
-}
-
-func validateServerFlags() error {
-	var legacy []string
-	serverOptionSet := false
-	flag.Visit(func(f *flag.Flag) {
-		switch f.Name {
-		case "listen", "debug":
-			serverOptionSet = true
-		case "version", "v", "u", "s", "t", "tc", "l":
-			legacy = append(legacy, "-"+f.Name)
-		}
-	})
-	return validateServerFlagValues(*serverPtr, serverOptionSet, mediaRoots, origins, legacy, flag.Args())
-}
-
-func validateServerFlagValues(server, serverOptionSet bool, roots, allowedOrigins, legacy, args []string) error {
-	return servermode.ValidateCLI(server, serverOptionSet, roots, allowedOrigins, legacy, args)
 }
 
 func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL, mediaPath string, mediaFile any, mediaType, subsPath, ffmpegPath string, transcode, externalURL bool) error {
