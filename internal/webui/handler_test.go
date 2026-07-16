@@ -426,8 +426,8 @@ func TestCommandStableQueueIDsAndStrictPayload(t *testing.T) {
 		t.Fatal(result)
 	}
 	selectedNext, _ := control.Snapshot(context.Background())
-	if len(selectedNext.Queue) != 2 || selectedNext.Queue[0].ID != selected.Queue[0].ID || selectedNext.Queue[0].IsSelected || !selectedNext.Queue[1].IsSelected || selectedNext.SelectedMedia != "movie.mp4" {
-		t.Fatalf("next media not queued and selected: %#v", selectedNext)
+	if len(selectedNext.Queue) != 1 || selectedNext.Queue[0].ID != selected.Queue[0].ID || !selectedNext.Queue[0].IsSelected || selectedNext.SelectedMedia != "movie.mp4" {
+		t.Fatalf("duplicate media appended: %#v", selectedNext)
 	}
 	if result := command("queue.clear", "clear-selected", `{}`); !result.OK() {
 		t.Fatal(result)
@@ -440,15 +440,11 @@ func TestCommandStableQueueIDsAndStrictPayload(t *testing.T) {
 		t.Fatal(result)
 	}
 	second, _ := control.Snapshot(context.Background())
-	if len(second.Queue) != 2 || second.Queue[0].ID != first.Queue[0].ID || second.Queue[0].ID == second.Queue[1].ID {
-		t.Fatalf("unstable IDs: %#v %#v", first.Queue, second.Queue)
+	if len(second.Queue) != 1 || second.Queue[0].ID != first.Queue[0].ID || second.Revision != first.Revision {
+		t.Fatalf("duplicate queue add mutated playlist: %#v %#v", first.Queue, second.Queue)
 	}
-	if result := command("queue.move", "move", `{"item_id":"`+second.Queue[1].ID+`","delta":-1}`); !result.OK() {
-		t.Fatal(result)
-	}
-	moved, _ := control.Snapshot(context.Background())
-	if moved.Queue[0].ID != second.Queue[1].ID || moved.Queue[1].ID != first.Queue[0].ID {
-		t.Fatalf("move changed IDs: %#v", moved.Queue)
+	if result := command("library.play", "play", `{"root_id":"`+rootID+`","entry_id":"`+entryID+`"}`); result.Code != controller.CodeNoDevice {
+		t.Fatalf("library play = %#v", result)
 	}
 	if result := command("queue.clear", "clear", `{}`); !result.OK() {
 		t.Fatal(result)
@@ -468,6 +464,12 @@ func TestCommandStableQueueIDsAndStrictPayload(t *testing.T) {
 	}
 	if result := command("player.volume", "adjust", `{"delta":1}`); result.Code != controller.CodeNoDevice {
 		t.Fatalf("relative volume command rejected: %#v", result)
+	}
+	if result := command("queue.move", "zero-move", `{"item_id":"missing","delta":0}`); result.Code != controller.CodeInvalid {
+		t.Fatalf("zero queue move = %#v", result)
+	}
+	if result := command("queue.move", "multi-move", `{"item_id":"missing","delta":2}`); result.Code != controller.CodeNotFound {
+		t.Fatalf("multi-position queue move rejected: %#v", result)
 	}
 	if result := command("player.mute", "unknown", `{"muted":true,"extra":1}`); result.Code != controller.CodeInvalid {
 		t.Fatal(result)

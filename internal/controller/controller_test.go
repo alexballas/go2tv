@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"sync"
@@ -486,6 +487,27 @@ func TestQueueAddPreservesIDsAndSelectsByID(t *testing.T) {
 	}
 }
 
+func TestQueueAddDeduplicatesAbsolutePath(t *testing.T) {
+	c, _, _ := newTestController()
+	defer c.Close()
+	path := filepath.Join(t.TempDir(), "song.mp3")
+	firstMedia := testMedia("first.mp3", mediamodel.MediaKindAudio)
+	firstMedia.AbsolutePath = path
+	duplicate := testMedia("duplicate.mp3", mediamodel.MediaKindAudio)
+	duplicate.AbsolutePath = path
+
+	first := c.AddQueueItem(context.Background(), QueueAddRequest{Media: firstMedia})
+	before, _ := c.Snapshot(context.Background())
+	second := c.AddQueueItem(context.Background(), QueueAddRequest{Media: duplicate})
+	after, _ := c.Snapshot(context.Background())
+	if !first.OK() || !second.OK() || second.ItemID != first.ItemID {
+		t.Fatalf("adds = %#v %#v", first, second)
+	}
+	if len(after.Queue) != 1 || after.Queue[0].ID != first.ItemID || after.Revision != before.Revision {
+		t.Fatalf("queue = %#v, revisions = %d/%d", after.Queue, before.Revision, after.Revision)
+	}
+}
+
 func TestSelectedQueueItemTopCardPlayPreservesIdentity(t *testing.T) {
 	c, _, _ := newTestController(playback.Device{ID: "one", Protocol: "DLNA"})
 	defer c.Close()
@@ -523,6 +545,32 @@ func TestQueueAndPlayAppendsAndReplaces(t *testing.T) {
 	snapshot, _ := c.Snapshot(context.Background())
 	if len(snapshot.Queue) != 2 || snapshot.Queue[0].IsActive || !snapshot.Queue[1].IsActive || !snapshot.Queue[1].IsSelected || snapshot.SelectedMedia != "b.mp3" {
 		t.Fatalf("snapshot = %#v", snapshot)
+	}
+	if count(log.snapshot(), "load:one") != 2 {
+		t.Fatalf("events = %v", log.snapshot())
+	}
+}
+
+func TestQueueAndPlayReusesAbsolutePath(t *testing.T) {
+	c, log, _ := newTestController(playback.Device{ID: "one", Protocol: "DLNA"})
+	defer c.Close()
+	awaitDevices(t, c, 1)
+	c.SelectDevice(context.Background(), Mutation{}, "one")
+	path := filepath.Join(t.TempDir(), "song.mp3")
+	firstMedia := testMedia("first.mp3", mediamodel.MediaKindAudio)
+	firstMedia.AbsolutePath = path
+	first := c.AddQueueItem(context.Background(), QueueAddRequest{Media: firstMedia})
+	if result := c.Play(context.Background(), PlayRequest{QueueItemID: first.ItemID}); !result.OK() {
+		t.Fatal(result)
+	}
+	duplicate := testMedia("duplicate.mp3", mediamodel.MediaKindAudio)
+	duplicate.AbsolutePath = path
+	if result := c.QueueAndPlay(context.Background(), Mutation{}, duplicate); !result.OK() {
+		t.Fatal(result)
+	}
+	snapshot, _ := c.Snapshot(context.Background())
+	if len(snapshot.Queue) != 1 || snapshot.Queue[0].ID != first.ItemID || !snapshot.Queue[0].IsSelected || !snapshot.Queue[0].IsActive {
+		t.Fatalf("queue = %#v", snapshot.Queue)
 	}
 	if count(log.snapshot(), "load:one") != 2 {
 		t.Fatalf("events = %v", log.snapshot())

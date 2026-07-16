@@ -689,7 +689,6 @@ type queueRow struct {
 	thumbnail          *canvas.Image
 	fallbackIcon       *canvas.Image
 	title              *widget.Label
-	subtitle           *widget.Label
 	currentIcon        *widget.Icon
 	content            fyne.CanvasObject
 }
@@ -705,9 +704,6 @@ func newQueueRow(screen *FyneScreen) *queueRow {
 	title := widget.NewLabel("")
 	title.Truncation = fyne.TextTruncateEllipsis
 
-	subtitle := widget.NewLabel("")
-	subtitle.Truncation = fyne.TextTruncateEllipsis
-
 	thumb := container.New(
 		queueThumbLayout{},
 		container.NewStack(
@@ -721,7 +717,6 @@ func newQueueRow(screen *FyneScreen) *queueRow {
 		thumbnail:    thumbnail,
 		fallbackIcon: fallbackIcon,
 		title:        title,
-		subtitle:     subtitle,
 		currentIcon:  widget.NewIcon(nil),
 	}
 	row.content = container.NewBorder(
@@ -729,7 +724,7 @@ func newQueueRow(screen *FyneScreen) *queueRow {
 		nil,
 		thumb,
 		row.currentIcon,
-		container.NewVBox(row.title, row.subtitle),
+		row.title,
 	)
 	row.ExtendBaseWidget(row)
 	return row
@@ -755,7 +750,6 @@ func (r *queueRow) setRow(index int, item QueueItem, isCurrent bool) {
 	r.index = index
 	r.currentPath = item.Path()
 	r.title.SetText(item.BaseName())
-	r.subtitle.SetText(item.ParentFolder())
 
 	if !samePath {
 		r.thumbnailRequestID++

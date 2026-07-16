@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "go2tv-web",
-      "runtimeExecutable": "./build/go2tv-lite",
-      "runtimeArgs": ["-server", "-listen", "127.0.0.1:9667", "-media-root", "/tmp/claude-1000/-home-alex-test-go2tv/c65188f6-b591-4d78-ae84-c511386f248b/scratchpad/media"],
+      "runtimeExecutable": "./build/go2tv",
+      "runtimeArgs": ["-server", "-listen", "127.0.0.1:9667", "-media-root", "/tmp/claude-1000/-home-alex-test-go2tv/9a680d4b-9133-4018-9196-cf6a5b02db11/scratchpad/Media", "-media-root", "/tmp/claude-1000/-home-alex-test-go2tv/9a680d4b-9133-4018-9196-cf6a5b02db11/scratchpad/Downloads"],
       "port": 9667
     },
     {

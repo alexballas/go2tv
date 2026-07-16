@@ -67,6 +67,33 @@ func TestQueueMovePreservesCurrentItemAndBoundaries(t *testing.T) {
 	}
 }
 
+func TestQueueMoveAcrossMultipleItems(t *testing.T) {
+	queue := NewQueue(testItems(t, "/tmp/a.mp4", "/tmp/b.mp4", "/tmp/c.mp4", "/tmp/d.mp4"), 1)
+	current, _ := queue.Current()
+	if got := queue.Move(3, -3); got != 0 {
+		t.Fatalf("move = %d", got)
+	}
+	items := queue.Items()
+	for index, want := range []string{"/tmp/d.mp4", "/tmp/a.mp4", "/tmp/b.mp4", "/tmp/c.mp4"} {
+		if items[index].Path() != want {
+			t.Fatalf("item %d = %q, want %q", index, items[index].Path(), want)
+		}
+	}
+	after, _ := queue.Current()
+	if queue.CurrentIndex() != 2 || after.ID() != current.ID() {
+		t.Fatal("move changed current item")
+	}
+	if got := queue.Move(0, 3); got != 3 {
+		t.Fatalf("reverse move = %d", got)
+	}
+	for index, want := range []string{"/tmp/a.mp4", "/tmp/b.mp4", "/tmp/c.mp4", "/tmp/d.mp4"} {
+		item, _ := queue.Item(index)
+		if item.Path() != want {
+			t.Fatalf("restored item %d = %q, want %q", index, item.Path(), want)
+		}
+	}
+}
+
 func TestQueueAdjacentBoundariesWrapAndSameType(t *testing.T) {
 	queue := NewQueue(testItems(t, "/tmp/a.mp4", "/tmp/b.mp3", "/tmp/c.mp4"), 2)
 	tests := []struct {

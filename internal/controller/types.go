@@ -294,6 +294,7 @@ type PlayRequest struct {
 type MediaRef struct {
 	RootID        string
 	ID            string
+	AbsolutePath  string
 	Name          string
 	Parent        string
 	Kind          mediamodel.MediaKind
@@ -369,14 +370,15 @@ type PolicyRequest struct {
 	Policy Policy
 }
 
-// QueueAddRequest adds Media and optionally selects the new queue item.
+// QueueAddRequest adds Media if its path is not already queued and optionally
+// selects the resulting item.
 type QueueAddRequest struct {
 	Mutation
 	Media  MediaRef
 	Select bool
 }
 
-// QueueAddResult includes the opaque ID of a successfully added item.
+// QueueAddResult includes the opaque ID of the added or existing item.
 type QueueAddResult struct {
 	Result
 	ItemID string

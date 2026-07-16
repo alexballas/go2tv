@@ -67,7 +67,11 @@ type Page struct {
 type Metadata struct {
 	Name string
 	Size int64
+	path string
 }
+
+// AbsolutePath returns the canonical root joined with the validated entry path.
+func (m Metadata) AbsolutePath() string { return m.path }
 
 type rootState struct {
 	id        string
@@ -408,7 +412,7 @@ func (l *Library) openRegular(rootID, entryID string) (*os.File, Metadata, error
 		_ = file.Close()
 		return nil, Metadata{}, ErrNotRegular
 	}
-	return file, Metadata{Name: displayName(filepath.Base(rel)), Size: info.Size()}, nil
+	return file, Metadata{Name: displayName(filepath.Base(rel)), Size: info.Size(), path: filepath.Join(root.canonical, rel)}, nil
 }
 
 // OpenSidecar derives a sibling from a signed media entry and returns an already-open file.

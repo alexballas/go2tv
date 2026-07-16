@@ -49,9 +49,12 @@ ANDROID_APK_LIBS=$(BUILD_DIR)/apk-libs
 ANDROID_ABI?=arm64-v8a
 ANDROID_BUILD_TOOLS?=$(shell ls -d $$ANDROID_HOME/build-tools/* 2>/dev/null | sort -V | tail -n1)
 
-.PHONY: build build-lite wayland x11 windows windows-sysroot windows-fyne install uninstall clean run test appimage appimage-ffmpeg android
+.PHONY: webui build build-lite wayland x11 windows windows-sysroot windows-fyne install uninstall clean run test appimage appimage-ffmpeg android
 
-build: clean
+webui:
+	npm run build:webui
+
+build: clean webui
 	env $(GO_BUILD_ENV) go build -tags "$(TAGS)" -trimpath -ldflags $(LDFLAGS) -o $(BIN) ./cmd/go2tv
 
 build-lite:

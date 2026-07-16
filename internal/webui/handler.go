@@ -408,7 +408,7 @@ func (h *Handler) executeCommand(ctx context.Context, message envelope) controll
 			return invalid(message.ID)
 		}
 		return h.cfg.Controller.SelectDevice(ctx, expectedMutation(message.ID, p.ExpectedRevision), p.DeviceID)
-	case "library.select_media", "library.select_subtitle":
+	case "library.play", "library.select_media", "library.select_subtitle":
 		var p struct {
 			RootID           string  `json:"root_id"`
 			EntryID          string  `json:"entry_id"`
@@ -417,10 +417,13 @@ func (h *Handler) executeCommand(ctx context.Context, message envelope) controll
 		if readStrict(message.Payload, &p) != nil {
 			return invalid(message.ID)
 		}
-		if message.Type == "library.select_media" {
+		if message.Type == "library.play" || message.Type == "library.select_media" {
 			ref, err := h.mediaRef(ctx, p.RootID, p.EntryID)
 			if err != nil {
 				return invalid(message.ID)
+			}
+			if message.Type == "library.play" {
+				return h.cfg.Controller.QueueAndPlay(ctx, expectedMutation(message.ID, p.ExpectedRevision), ref)
 			}
 			return h.selectMedia(ctx, expectedMutation(message.ID, p.ExpectedRevision), ref)
 		}
@@ -475,7 +478,7 @@ func (h *Handler) executeCommand(ctx context.Context, message envelope) controll
 			Delta            *int    `json:"delta"`
 			ExpectedRevision *uint64 `json:"expected_revision"`
 		}
-		if readStrict(message.Payload, &p) != nil || p.Delta == nil || (*p.Delta != -1 && *p.Delta != 1) {
+		if readStrict(message.Payload, &p) != nil || p.Delta == nil || *p.Delta == 0 {
 			return invalid(message.ID)
 		}
 		return h.cfg.Controller.MoveQueueItem(ctx, expectedMutation(message.ID, p.ExpectedRevision), p.ItemID, *p.Delta)
@@ -568,7 +571,7 @@ func (h *Handler) executeCommand(ctx context.Context, message envelope) controll
 
 func knownAction(kind string) bool {
 	switch kind {
-	case "devices.refresh", "devices.select", "library.select_media", "library.select_subtitle", "library.clear_subtitle",
+	case "devices.refresh", "devices.select", "library.play", "library.select_media", "library.select_subtitle", "library.clear_subtitle",
 		"queue.add", "queue.select", "queue.remove", "queue.move", "queue.clear", "player.play", "player.resume",
 		"player.pause", "player.stop", "player.volume", "player.mute", "player.transcode", "playback.policy", "player.seek":
 		return true
@@ -595,6 +598,8 @@ func (h *Handler) logAction(kind string, before, snapshot controller.Snapshot) {
 		}
 	case "library.select_media":
 		message = "Media selected: " + snapshot.SelectedMedia
+	case "library.play":
+		message = "Media played: " + snapshot.SelectedMedia
 	case "library.select_subtitle":
 		message = "Subtitles selected: " + snapshot.SelectedSubtitle
 	case "library.clear_subtitle":
@@ -687,7 +692,7 @@ func (h *Handler) mediaRef(ctx context.Context, rootID, entryID string) (control
 		h.rememberArtwork(artwork.ID, h.artworkLoader(rootID, entryID, meta.Name, kind))
 	}
 	_ = file.Close()
-	return controller.MediaRef{RootID: rootID, ID: entryID, Name: meta.Name, Kind: kind, MIMEType: mediaType, OpenDirect: h.opener(rootID, entryID, false), OpenTranscode: h.opener(rootID, entryID, true), Artwork: artwork}, nil
+	return controller.MediaRef{RootID: rootID, ID: entryID, AbsolutePath: meta.AbsolutePath(), Name: meta.Name, Kind: kind, MIMEType: mediaType, OpenDirect: h.opener(rootID, entryID, false), OpenTranscode: h.opener(rootID, entryID, true), Artwork: artwork}, nil
 }
 
 func detectMediaType(file *os.File) string {

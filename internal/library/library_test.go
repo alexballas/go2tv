@@ -315,9 +315,12 @@ func TestFreshDirectAndTranscodeHandlesAndRelatedContainment(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := findEntry(t, page.Entries, "movie.mp4").ID
-	direct, _, err := lib.OpenDirect(rootID, id)
+	direct, meta, err := lib.OpenDirect(rootID, id)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if meta.AbsolutePath() != filepath.Join(root, "movie.mp4") {
+		t.Fatalf("absolute path = %q", meta.AbsolutePath())
 	}
 	transcode, _, err := lib.OpenTranscode(rootID, id)
 	if err != nil {

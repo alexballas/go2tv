@@ -635,6 +635,25 @@ func TestRecordQueueUIStateSkipsDuplicateRefreshes(t *testing.T) {
 	}
 }
 
+func TestQueueSelectionDetailsShowsFullPath(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	item := testQueueItems(filepath.Join(t.TempDir(), "movie.mp4"))[0]
+	screen := &FyneScreen{
+		queueDetails:       widget.NewLabel(""),
+		queueSelectedIndex: 0,
+		SessionQueue:       newSessionQueue([]QueueItem{item}, 0),
+	}
+
+	screen.refreshQueueStateUI()
+	fyne.DoAndWait(func() {})
+
+	if screen.queueDetails.Text != item.DisplayPath() {
+		t.Fatalf("selection details = %q, want %q", screen.queueDetails.Text, item.DisplayPath())
+	}
+}
+
 func TestQueueRowDedupesThumbnailRequests(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()

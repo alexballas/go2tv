@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -543,7 +545,8 @@ func (c *Controller) SetArtworkID(ctx context.Context, mutation Mutation, id str
 	})
 }
 
-// AddQueueItem validates and copies Media, then appends it to the queue.
+// AddQueueItem validates Media, then returns the existing absolute-path match
+// or appends a copied item.
 func (c *Controller) AddQueueItem(ctx context.Context, request QueueAddRequest) QueueAddResult {
 	var itemID string
 	result := c.mutate(ctx, request.Mutation, func(s *actorState) Result {
@@ -552,6 +555,14 @@ func (c *Controller) AddQueueItem(ctx context.Context, request QueueAddRequest) 
 		}
 		if !request.Media.valid() {
 			return fail(request.RequestID, s.revision, ErrInvalidOperation)
+		}
+		if item, ok := s.queueItemByMedia(request.Media); ok {
+			itemID = item.ID()
+			if request.Select {
+				s.selectQueueMedia(item, request.Media)
+				s.commit()
+			}
+			return Result{RequestID: request.RequestID, Revision: s.revision}
 		}
 		if s.queue != nil && s.queue.Len() >= MaxQueueItems {
 			return fail(request.RequestID, s.revision, ErrQueueLimit)
@@ -566,6 +577,38 @@ func (c *Controller) AddQueueItem(ctx context.Context, request QueueAddRequest) 
 		return Result{RequestID: request.RequestID, Revision: s.revision}
 	})
 	return QueueAddResult{Result: result, ItemID: itemID}
+}
+
+func (s *actorState) queueItemByMedia(media MediaRef) (mediamodel.QueueItem, bool) {
+	if s.queue == nil {
+		return mediamodel.QueueItem{}, false
+	}
+	for _, item := range s.queue.Items() {
+		if queued, ok := s.queueRefs[item.ID()]; ok && sameMediaPath(queued, media) {
+			return item, true
+		}
+	}
+	return mediamodel.QueueItem{}, false
+}
+
+func sameMediaPath(a, b MediaRef) bool {
+	if filepath.IsAbs(a.AbsolutePath) && filepath.IsAbs(b.AbsolutePath) {
+		left, right := filepath.Clean(a.AbsolutePath), filepath.Clean(b.AbsolutePath)
+		if runtime.GOOS == "windows" {
+			return strings.EqualFold(left, right)
+		}
+		return left == right
+	}
+	return a.RootID == b.RootID && a.ID == b.ID
+}
+
+func (s *actorState) selectQueueMedia(item mediamodel.QueueItem, media MediaRef) {
+	s.queue.SetCurrentIndex(queueIndex(s.queue, item.ID()))
+	media = cloneMediaRef(media)
+	s.queueRefs[item.ID()] = media
+	s.media = media
+	s.mediaQueueID = item.ID()
+	s.artworkID = mediaArtworkID(media)
 }
 
 func (s *actorState) appendQueueItem(item mediamodel.QueueItem, media MediaRef, selectItem bool) {
@@ -666,7 +709,7 @@ func (c *Controller) RemoveQueueItem(ctx context.Context, mutation Mutation, id 
 	})
 }
 
-// MoveQueueItem moves an item by delta. Current clients should use -1 or 1.
+// MoveQueueItem moves an item by delta.
 func (c *Controller) MoveQueueItem(ctx context.Context, mutation Mutation, id string, delta int) Result {
 	return c.mutate(ctx, mutation, func(s *actorState) Result {
 		if result := s.check(mutation); !result.OK() {
@@ -815,7 +858,7 @@ func (c *Controller) Play(ctx context.Context, request PlayRequest) Result {
 	return c.play(ctx, request)
 }
 
-// QueueAndPlay atomically adds, selects, and starts media.
+// QueueAndPlay atomically adds or reuses, selects, and starts media.
 func (c *Controller) QueueAndPlay(ctx context.Context, mutation Mutation, media MediaRef) Result {
 	media = cloneMediaRef(media)
 	return c.play(ctx, PlayRequest{Mutation: mutation, media: &media, queueMedia: true})
@@ -850,11 +893,16 @@ func (s *actorState) beginPlay(request PlayRequest, response chan<- Result) {
 		return
 	}
 	if request.queueMedia {
-		if s.queue != nil && s.queue.Len() >= MaxQueueItems {
-			response <- fail(request.RequestID, s.revision, ErrQueueLimit)
-			return
+		if existing, ok := s.queueItemByMedia(media); ok {
+			item = existing
+			s.selectQueueMedia(item, media)
+		} else {
+			if s.queue != nil && s.queue.Len() >= MaxQueueItems {
+				response <- fail(request.RequestID, s.revision, ErrQueueLimit)
+				return
+			}
+			s.appendQueueItem(item, media, true)
 		}
-		s.appendQueueItem(item, media, true)
 	}
 	s.mutation = true
 	s.deferred = nil

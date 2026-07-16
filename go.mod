@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/alexballas/fyne-tooltip v0.0.0-20260528093432-da161b5c8cac
 	github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab
-	github.com/alexballas/refyne/v2 v2.0.0-20260709143520-88cd85f20823
+	github.com/alexballas/refyne/v2 v2.0.0-20260715232008-d8808082ffcd
 	github.com/alexballas/xfilepicker v0.0.0-20260711081040-6fac737da9a9
 	github.com/buger/jsonparser v1.2.0
 	github.com/cabbagekobe/tunetag v0.1.4
@@ -18,8 +18,8 @@ require (
 	github.com/h2non/filetype v1.1.3
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/hashicorp/mdns v1.0.7
-	github.com/mattn/go-colorable v0.1.14
-	github.com/mattn/go-isatty v0.0.22
+	github.com/mattn/go-colorable v0.1.15
+	github.com/mattn/go-isatty v0.0.23
 	github.com/mattn/go-runewidth v0.0.24
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pkg/errors v0.9.1
@@ -80,7 +80,7 @@ require (
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	github.com/yuin/goldmark v1.8.2 // indirect
+	github.com/yuin/goldmark v1.8.4 // indirect
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/term v0.45.0 // indirect
@@ -88,3 +88,6 @@ require (
 	golang.org/x/tools v0.48.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/alexballas/refyne/v2 => ../refyne
+replace github.com/alexballas/xfilepicker => ../xfilepicker

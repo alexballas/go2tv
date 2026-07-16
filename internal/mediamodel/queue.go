@@ -119,12 +119,20 @@ func (q *Queue) Move(index, delta int) int {
 		return index
 	}
 
-	q.items[index], q.items[target] = q.items[target], q.items[index]
-	switch q.currentIndex {
-	case index:
+	item := q.items[index]
+	if index < target {
+		copy(q.items[index:target], q.items[index+1:target+1])
+	} else {
+		copy(q.items[target+1:index+1], q.items[target:index])
+	}
+	q.items[target] = item
+	switch {
+	case q.currentIndex == index:
 		q.currentIndex = target
-	case target:
-		q.currentIndex = index
+	case index < q.currentIndex && q.currentIndex <= target:
+		q.currentIndex--
+	case target <= q.currentIndex && q.currentIndex < index:
+		q.currentIndex++
 	}
 	return target
 }
