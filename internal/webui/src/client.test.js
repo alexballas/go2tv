@@ -141,6 +141,7 @@ function fixture() {
     "loop",
     "autoplay",
     "same-type",
+    "gapless",
     "image-duration",
     "refresh",
     "queue-count",
@@ -211,6 +212,7 @@ function fixture() {
       LoopSelected: false,
       AutoPlayNext: false,
       AutoPlaySameType: false,
+      GaplessEnabled: false,
       ImageDurationSeconds: 10,
     },
   };
@@ -437,12 +439,21 @@ test("merges partial playback/policy, clears pending, reports errors and shutdow
         LoopSelected: false,
         AutoPlayNext: true,
         AutoPlaySameType: true,
+        GaplessEnabled: true,
         ImageDurationSeconds: 7,
       },
     },
   });
   assert.equal(ids.autoplay.checked, true);
   assert.equal(ids["same-type"].disabled, false);
+  assert.equal(ids.gapless.checked, true);
+  assert.equal(ids.gapless.disabled, true);
+  ws.message({
+    protocol_version: 1,
+    type: "state.selection",
+    payload: { device_id: "dev-2" },
+  });
+  assert.equal(ids.gapless.disabled, false);
   ws.message({
     protocol_version: 1,
     type: "error",
@@ -477,6 +488,7 @@ test("control interactions emit typed payloads and subtitle selection", async ()
   ids.transcode.emit("change");
   ids.autoplay.checked = true;
   ids["same-type"].checked = true;
+  ids.gapless.checked = true;
   ids["image-duration"].value = "12";
   ids["same-type"].emit("change");
   assert.deepEqual(
@@ -498,6 +510,7 @@ test("control interactions emit typed payloads and subtitle selection", async ()
             LoopSelected: false,
             AutoPlayNext: true,
             AutoPlaySameType: true,
+            GaplessEnabled: true,
             ImageDurationSeconds: 12,
           },
           expected_revision: 3,
@@ -1277,14 +1290,17 @@ test("loop and autoplay remain mutually exclusive", async () => {
   const ws = FakeSocket.instances[0];
   ids.autoplay.checked = true;
   ids["same-type"].checked = true;
+  ids.gapless.checked = true;
   ids.loop.checked = true;
   ids.loop.emit("change");
   assert.equal(ids.autoplay.checked, false);
   assert.equal(ids["same-type"].checked, false);
+  assert.equal(ids.gapless.checked, false);
   assert.deepEqual(ws.sent.at(-1).payload.policy, {
     LoopSelected: true,
     AutoPlayNext: false,
     AutoPlaySameType: false,
+    GaplessEnabled: false,
     ImageDurationSeconds: 10,
   });
   ids.autoplay.checked = true;

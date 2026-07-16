@@ -57,6 +57,27 @@ type activeSession struct {
 	imageEpoch       uint64
 	seekOffset       int
 	expectedDuration int
+	queued           *gaplessSession
+	gaplessActive    atomic.Bool
+	gaplessQueueing  bool
+}
+
+type gaplessCandidate struct {
+	item      mediamodel.QueueItem
+	media     MediaRef
+	subtitle  SubtitleRef
+	transcode bool
+}
+
+type gaplessSession struct {
+	itemID    string
+	media     MediaRef
+	subtitle  SubtitleRef
+	kind      mediamodel.MediaKind
+	server    playback.ServerRequest
+	load      playback.LoadRequest
+	routeIDs  []string
+	transcode bool
 }
 
 const (
@@ -123,6 +144,10 @@ type actorState struct {
 	terminal     playback.TerminalReason
 	deferred     *playback.MonitorEvent
 	cleanup      bool
+	// gaplessUnsupported remembers renderers that reported they cannot stage a
+	// next URI, so later tracks fall back to ordinary autoplay instead of
+	// re-attempting gapless queueing on every session.
+	gaplessUnsupported map[string]bool
 }
 
 type Controller struct {
@@ -515,6 +540,7 @@ func (c *Controller) SelectSubtitle(ctx context.Context, mutation Mutation, subt
 		}
 		s.subtitle = subtitle
 		s.commit()
+		s.reconcileGapless()
 		return Result{RequestID: mutation.RequestID, Revision: s.revision}
 	})
 }
@@ -527,6 +553,7 @@ func (c *Controller) SetTranscode(ctx context.Context, mutation Mutation, enable
 		}
 		s.transcode = enabled
 		s.commit()
+		s.reconcileGapless()
 		return Result{RequestID: mutation.RequestID, Revision: s.revision}
 	})
 }
@@ -560,6 +587,7 @@ func (c *Controller) AddQueueItem(ctx context.Context, request QueueAddRequest) 
 		s.appendQueueItem(item, request.Media, request.Select)
 		itemID = item.ID()
 		s.commit()
+		s.reconcileGapless()
 		return Result{RequestID: request.RequestID, Revision: s.revision}
 	})
 	return QueueAddResult{Result: result, ItemID: itemID}
@@ -635,6 +663,7 @@ func (c *Controller) ClearQueue(ctx context.Context, mutation Mutation) Result {
 				s.mediaQueueID = item.ID()
 				s.artworkID = mediaArtworkID(s.active.media)
 				s.commit()
+				s.reconcileGapless()
 				return Result{RequestID: mutation.RequestID, Revision: s.revision}
 			}
 		}
@@ -646,6 +675,7 @@ func (c *Controller) ClearQueue(ctx context.Context, mutation Mutation) Result {
 		}
 		s.position, s.duration = 0, 0
 		s.commit()
+		s.reconcileGapless()
 		return Result{RequestID: mutation.RequestID, Revision: s.revision}
 	})
 }
@@ -666,6 +696,7 @@ func (c *Controller) SelectQueueItem(ctx context.Context, mutation Mutation, id 
 		s.mediaQueueID = id
 		s.artworkID = mediaArtworkID(media)
 		s.commit()
+		s.reconcileGapless()
 		return Result{RequestID: mutation.RequestID, Revision: s.revision}
 	})
 }
@@ -691,6 +722,7 @@ func (c *Controller) RemoveQueueItem(ctx context.Context, mutation Mutation, id 
 			s.artworkID = ""
 		}
 		s.commit()
+		s.reconcileGapless()
 		return Result{RequestID: mutation.RequestID, Revision: s.revision}
 	})
 }
@@ -709,6 +741,7 @@ func (c *Controller) MoveQueueItem(ctx context.Context, mutation Mutation, id st
 			return fail(mutation.RequestID, s.revision, ErrInvalidOperation)
 		}
 		s.commit()
+		s.reconcileGapless()
 		return Result{RequestID: mutation.RequestID, Revision: s.revision}
 	})
 }
@@ -729,6 +762,7 @@ func (c *Controller) SetPolicy(ctx context.Context, request PolicyRequest) Resul
 			s.syncImageTimer()
 		}
 		s.commit()
+		s.reconcileGapless()
 		return Result{RequestID: request.RequestID, Revision: s.revision}
 	})
 }
@@ -738,6 +772,53 @@ func queueIndex(queue *mediamodel.Queue, id string) int {
 		return -1
 	}
 	return slices.IndexFunc(queue.Items(), func(item mediamodel.QueueItem) bool { return item.ID() == id })
+}
+
+// gaplessUnsupportedURI is the AVTransport GetMediaInfo NextURI value a renderer
+// reports when it does not track a staged next URI (no SetNextAVTransportURI
+// support). Observing it disqualifies the renderer from gapless queueing.
+const gaplessUnsupportedURI = "NOT_IMPLEMENTED"
+
+func (s *actorState) desiredGapless(itemID string, target playback.Device) *gaplessCandidate {
+	if !s.policy.AutoPlayNext || !s.policy.GaplessEnabled || target.Protocol != "DLNA" || s.queue == nil {
+		return nil
+	}
+	if s.gaplessUnsupported[target.ID] {
+		return nil
+	}
+	index := queueIndex(s.queue, itemID)
+	if index < 0 {
+		return nil
+	}
+	queue := s.queue.Clone()
+	queue.SetCurrentIndex(index)
+	next := queue.AdjacentIndex(1, s.policy.AutoPlaySameType, true)
+	if next < 0 {
+		return nil
+	}
+	item, ok := queue.Item(next)
+	if !ok || target.AudioOnly && item.MediaKind() != mediamodel.MediaKindAudio {
+		return nil
+	}
+	media, ok := s.queueRefs[item.ID()]
+	if !ok {
+		return nil
+	}
+	return &gaplessCandidate{item: item, media: media, subtitle: s.subtitle, transcode: s.transcode}
+}
+
+func gaplessMatches(candidate *gaplessCandidate, queued *gaplessSession) bool {
+	if candidate == nil || queued == nil {
+		return candidate == nil && queued == nil
+	}
+	return candidate.item.ID() == queued.itemID && candidate.transcode == queued.transcode && candidate.subtitle.ID == queued.subtitle.ID
+}
+
+func sameGaplessCandidate(a, b *gaplessCandidate) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return a.item.ID() == b.item.ID() && a.transcode == b.transcode && a.subtitle.ID == b.subtitle.ID
 }
 
 func (s *actorState) selectedDevice() (playback.Device, bool) {
@@ -903,8 +984,9 @@ func (s *actorState) beginPlay(request PlayRequest, response chan<- Result) {
 	opCtx, cancel := context.WithCancelCause(s.controller.ctx)
 	operation := &playOperation{generation: generation, cancel: cancel, done: make(chan struct{})}
 	s.pending = operation
+	gapless := s.desiredGapless(item.ID(), target)
 	s.controller.goOwned(func() {
-		s.controller.playIO(opCtx, operation, target, item, media, old, request, response, s.transcode, s.subtitle)
+		s.controller.playIO(opCtx, operation, target, item, media, old, request, response, s.transcode, s.subtitle, gapless)
 	})
 }
 
@@ -933,7 +1015,7 @@ type callbackStopSuppressor interface {
 	SuppressCallbackStops(uint64, bool) error
 }
 
-func (c *Controller) playIO(ctx context.Context, operation *playOperation, target playback.Device, item mediamodel.QueueItem, media MediaRef, old *activeSession, request PlayRequest, response chan<- Result, transcode bool, subtitle SubtitleRef) {
+func (c *Controller) playIO(ctx context.Context, operation *playOperation, target playback.Device, item mediamodel.QueueItem, media MediaRef, old *activeSession, request PlayRequest, response chan<- Result, transcode bool, subtitle SubtitleRef, gapless *gaplessCandidate) {
 	generation := operation.generation
 	ioCtx, timeoutCancel := operationContext(ctx, request.ctx, c.cfg.OperationTimeout)
 	defer timeoutCancel()
@@ -1021,6 +1103,9 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 	if route.ID != "" {
 		routeIDs = append(routeIDs, route.ID)
 	}
+	if route.SubtitleID != "" {
+		routeIDs = append(routeIDs, route.SubtitleID)
+	}
 	loadMediaType := mediaMIME(media, item.MediaKind())
 	if transcode && target.Protocol == "Chromecast" {
 		loadMediaType = "video/mp4"
@@ -1081,7 +1166,20 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 		c.completePlay(playCompletion{generation: generation, operation: operation, err: err, request: request, response: response})
 		return
 	}
-	c.completePlay(playCompletion{generation: generation, operation: operation, session: &activeSession{generation: generation, target: target, itemID: item.ID(), media: media, subtitle: subtitle, kind: item.MediaKind(), transport: transport, server: serverRequest, load: loadRequest, routeIDs: routeIDs, ctx: ctx, cancel: operation.cancel, reusable: true, imageReady: target.Protocol != "Chromecast", expectedDuration: int(loadRequest.Duration)}, request: request, response: response})
+	session := &activeSession{generation: generation, target: target, itemID: item.ID(), media: media, subtitle: subtitle, kind: item.MediaKind(), transport: transport, server: serverRequest, load: loadRequest, routeIDs: routeIDs, ctx: ctx, cancel: operation.cancel, reusable: true, imageReady: target.Protocol != "Chromecast", expectedDuration: int(loadRequest.Duration)}
+	if gapless != nil {
+		queued, queueErr := c.queueGapless(ioCtx, session, gapless)
+		if queueErr != nil {
+			if c.cfg.Logger != nil {
+				c.cfg.Logger.Warning("Gapless queue unavailable; using ordinary autoplay")
+				c.cfg.Logger.Debug("Gapless queue failure detail: " + queueErr.Error())
+			}
+		} else {
+			session.queued = queued
+			session.gaplessActive.Store(true)
+		}
+	}
+	c.completePlay(playCompletion{generation: generation, operation: operation, session: session, request: request, response: response})
 }
 
 func operationContext(base, request context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
@@ -1109,8 +1207,179 @@ func (c *Controller) startMonitor(session *activeSession) {
 		ExpectedDuration: session.expectedDuration,
 		Clock:            c.cfg.Clock,
 		Sink:             c,
+		GaplessActive:    session.gaplessActive.Load,
 	}
 	c.goOwned(func() { c.cfg.RunMonitor(session.ctx, cfg, session.target, session.transport) })
+}
+
+func (c *Controller) queueGapless(ctx context.Context, active *activeSession, candidate *gaplessCandidate) (*gaplessSession, error) {
+	if active == nil || candidate == nil {
+		return nil, ErrInvalidOperation
+	}
+	gapless, ok := active.transport.(playback.DLNAGaplessTransport)
+	if !ok {
+		return nil, ErrInvalidOperation
+	}
+	adder, ok := c.cfg.MediaServer.(mediaRouteAdder)
+	if !ok {
+		return nil, ErrInvalidOperation
+	}
+	opener := candidate.media.OpenDirect
+	if candidate.transcode {
+		opener = candidate.media.OpenTranscode
+		if opener == nil {
+			return nil, ErrInvalidOperation
+		}
+	}
+	serverRequest := playback.ServerRequest{
+		Media:     opener,
+		MediaExt:  candidate.media.extension(),
+		MediaType: mediaMIME(candidate.media, candidate.item.MediaKind()),
+		Transcode: candidate.transcode,
+		Target:    active.target,
+	}
+	if candidate.subtitle.valid() {
+		serverRequest.Subtitle = candidate.subtitle.Open
+		serverRequest.SubtitleExt = candidate.subtitle.extension()
+	}
+	route, err := adder.AddMedia(ctx, serverRequest)
+	if err != nil {
+		return nil, err
+	}
+	routeIDs := make([]string, 0, 3)
+	if route.ID != "" {
+		routeIDs = append(routeIDs, route.ID)
+	}
+	if route.SubtitleID != "" {
+		routeIDs = append(routeIDs, route.SubtitleID)
+	}
+	cleanup := func() { c.removeRoutes(ctx, routeIDs) }
+	if strings.TrimSpace(route.URL) == "" {
+		cleanup()
+		return nil, fmt.Errorf("media server returned empty URL: %w", errAdapterContract)
+	}
+	loadRequest := playback.LoadRequest{
+		MediaURL:    route.URL,
+		MediaType:   serverRequest.MediaType,
+		SubtitleURL: route.SubtitleURL,
+		Seekable:    !candidate.transcode,
+		Metadata:    metadata.Media{Title: candidate.item.BaseName()},
+	}
+	if candidate.media.Artwork != nil {
+		loadRequest.ArtworkData = append([]byte(nil), candidate.media.Artwork.Data...)
+		artRoute, artErr := c.cfg.MediaServer.Add(ctx, playback.RouteRequest{MediaType: candidate.media.Artwork.MIMEType, Contents: loadRequest.ArtworkData})
+		if artErr == nil && strings.TrimSpace(artRoute.URL) != "" {
+			loadRequest.Metadata.Artwork = &metadata.Artwork{URL: artRoute.URL, MIMEType: candidate.media.Artwork.MIMEType, Width: candidate.media.Artwork.Width, Height: candidate.media.Artwork.Height}
+			if artRoute.ID != "" {
+				routeIDs = append(routeIDs, artRoute.ID)
+			}
+		}
+	}
+	if err := gapless.SetNext(ctx, loadRequest); err != nil {
+		cleanup()
+		return nil, err
+	}
+	return &gaplessSession{
+		itemID: candidate.item.ID(), media: candidate.media, subtitle: candidate.subtitle,
+		kind: candidate.item.MediaKind(), server: serverRequest, load: loadRequest,
+		routeIDs: routeIDs, transcode: candidate.transcode,
+	}, nil
+}
+
+func (c *Controller) removeRoutes(ctx context.Context, ids []string) {
+	if c.cfg.MediaServer == nil {
+		return
+	}
+	for _, id := range ids {
+		if id != "" {
+			_ = c.cfg.MediaServer.Remove(ctx, id)
+		}
+	}
+}
+
+func (s *actorState) reconcileGapless() {
+	active := s.active
+	if active == nil || active.gaplessQueueing {
+		return
+	}
+	desired := s.desiredGapless(active.itemID, active.target)
+	if gaplessMatches(desired, active.queued) {
+		return
+	}
+	gapless, ok := active.transport.(playback.DLNAGaplessTransport)
+	if !ok {
+		active.queued = nil
+		active.gaplessActive.Store(false)
+		return
+	}
+	old := active.queued
+	if old == nil && desired == nil {
+		return
+	}
+	// Keep gaplessActive set across the requeue so a track-boundary STOPPED is
+	// still deferred by the monitor. Promotion is gated on active.queued, which
+	// is cleared here, so the in-flight poll cannot promote a stale next.
+	active.queued = nil
+	active.gaplessQueueing = true
+	s.controller.goOwned(func() {
+		ioCtx, cancel := context.WithTimeout(active.ctx, s.controller.cfg.OperationTimeout)
+		defer cancel()
+		var queued *gaplessSession
+		var err error
+		oldCleared := old == nil
+		if desired != nil {
+			queued, err = s.controller.queueGapless(ioCtx, active, desired)
+			if err == nil {
+				oldCleared = true
+				s.controller.removeRoutes(ioCtx, oldRouteIDs(old))
+			} else if old != nil && gapless.ClearNext(ioCtx) == nil {
+				oldCleared = true
+				s.controller.removeRoutes(ioCtx, old.routeIDs)
+			}
+		} else if old != nil {
+			err = gapless.ClearNext(ioCtx)
+			if err == nil {
+				oldCleared = true
+				s.controller.removeRoutes(ioCtx, old.routeIDs)
+			}
+		}
+		_ = s.controller.enqueueInternal(message{fn: func(current *actorState) {
+			if current.active != active {
+				if queued != nil {
+					current.controller.goOwned(func() {
+						cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), current.controller.cfg.OperationTimeout)
+						defer cleanupCancel()
+						current.controller.removeRoutes(cleanupCtx, queued.routeIDs)
+					})
+				}
+				return
+			}
+			active.gaplessQueueing = false
+			if queued != nil {
+				active.queued = queued
+			} else if !oldCleared && old != nil {
+				active.queued = old
+			} else {
+				active.queued = nil
+			}
+			active.gaplessActive.Store(active.queued != nil)
+			if err != nil && current.controller.cfg.Logger != nil {
+				current.controller.cfg.Logger.Warning("Gapless queue update failed; using ordinary autoplay")
+				current.controller.cfg.Logger.Debug("Gapless queue update detail: " + err.Error())
+			}
+			now := current.desiredGapless(active.itemID, active.target)
+			if queued != nil && !gaplessMatches(now, queued) || err != nil && !sameGaplessCandidate(now, desired) {
+				current.reconcileGapless()
+			}
+		}})
+	})
+}
+
+func oldRouteIDs(session *gaplessSession) []string {
+	if session == nil {
+		return nil
+	}
+	return session.routeIDs
 }
 
 func rendererCleanupTimeout(timeout time.Duration) time.Duration {
@@ -1153,6 +1422,16 @@ func teardownSession(ctx context.Context, session *activeSession, server playbac
 		return nil
 	}
 	var result error
+	if session.queued != nil || session.gaplessQueueing {
+		session.gaplessActive.Store(false)
+		result = errors.Join(result, rendererCleanup(session.transport, closeTimeout, func(ctx context.Context, transport Transport) error {
+			gapless, ok := transport.(playback.DLNAGaplessTransport)
+			if !ok {
+				return nil
+			}
+			return gapless.ClearNext(ctx)
+		}))
+	}
 	if session.target.Protocol != "Chromecast" || session.reusable {
 		result = errors.Join(result, rendererCleanup(session.transport, closeTimeout, func(ctx context.Context, transport Transport) error {
 			return transport.Stop(ctx)
@@ -1173,6 +1452,16 @@ func teardownSession(ctx context.Context, session *activeSession, server playbac
 func transitionSession(ctx context.Context, session *activeSession, server playback.MediaServer, closeTimeout time.Duration) error {
 	if session == nil {
 		return nil
+	}
+	if session.queued != nil || session.gaplessQueueing {
+		session.gaplessActive.Store(false)
+		_ = rendererCleanup(session.transport, closeTimeout, func(ctx context.Context, transport Transport) error {
+			gapless, ok := transport.(playback.DLNAGaplessTransport)
+			if !ok {
+				return nil
+			}
+			return gapless.ClearNext(ctx)
+		})
 	}
 	if session.target.Protocol != "Chromecast" || session.reusable {
 		_ = rendererCleanup(session.transport, closeTimeout, func(ctx context.Context, transport Transport) error {
@@ -1682,7 +1971,14 @@ func (s *actorState) monitor(event playback.MonitorEvent) {
 		return
 	}
 	changed := false
-	if event.Position != 0 || event.Duration != 0 {
+	if event.NextURIObserved && event.NextURI == gaplessUnsupportedURI {
+		s.disableGapless()
+	}
+	promoted := event.NextURIObserved && event.NextURI == "" && s.promoteGapless()
+	if promoted {
+		changed = true
+	}
+	if !promoted && (event.Position != 0 || event.Duration != 0) {
 		s.position, s.duration, changed = event.Position, event.Duration, true
 	}
 	if event.State != "" {
@@ -1731,6 +2027,81 @@ func (s *actorState) monitor(event playback.MonitorEvent) {
 	if changed {
 		s.commit()
 	}
+}
+
+// disableGapless tears down staged gapless queueing for the active session when
+// the renderer reports it cannot stage a next URI. The device is remembered so
+// later tracks fall back to ordinary autoplay (driven by the terminal STOPPED)
+// instead of re-attempting gapless on every session.
+func (s *actorState) disableGapless() {
+	active := s.active
+	if active == nil || active.gaplessQueueing {
+		return
+	}
+	if s.gaplessUnsupported == nil {
+		s.gaplessUnsupported = map[string]bool{}
+	}
+	newlyMarked := !s.gaplessUnsupported[active.target.ID]
+	s.gaplessUnsupported[active.target.ID] = true
+	queued := active.queued
+	active.queued = nil
+	active.gaplessActive.Store(false)
+	if newlyMarked && s.controller.cfg.Logger != nil {
+		s.controller.cfg.Logger.Info("Renderer does not support gapless playback; using ordinary autoplay")
+	}
+	if queued == nil {
+		return
+	}
+	transport := active.transport
+	routeIDs := queued.routeIDs
+	s.controller.goOwned(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), s.controller.cfg.OperationTimeout)
+		defer cleanupCancel()
+		if gapless, ok := transport.(playback.DLNAGaplessTransport); ok {
+			_ = gapless.ClearNext(cleanupCtx)
+		}
+		s.controller.removeRoutes(cleanupCtx, routeIDs)
+	})
+}
+
+func (s *actorState) promoteGapless() bool {
+	active := s.active
+	if active == nil || active.queued == nil || !active.gaplessActive.Load() {
+		return false
+	}
+	queued := active.queued
+	oldRoutes := slices.Clone(active.routeIDs)
+	active.itemID = queued.itemID
+	active.media = queued.media
+	active.subtitle = queued.subtitle
+	active.kind = queued.kind
+	active.server = queued.server
+	active.load = queued.load
+	active.routeIDs = queued.routeIDs
+	active.seekOffset = 0
+	active.expectedDuration = int(queued.load.Duration)
+	active.imageReady = true
+	active.queued = nil
+	active.gaplessActive.Store(false)
+	if index := queueIndex(s.queue, queued.itemID); index >= 0 {
+		s.queue.SetCurrentIndex(index)
+		s.mediaQueueID = queued.itemID
+	}
+	s.media = queued.media
+	s.artworkID = mediaArtworkID(queued.media)
+	s.position, s.duration = 0, 0
+	s.state, s.terminal = PlaybackStatePlaying, ""
+	s.syncImageTimer()
+	if s.controller.cfg.Logger != nil {
+		s.controller.cfg.Logger.Info("Gapless playback started: " + queued.media.Name)
+	}
+	s.controller.goOwned(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), s.controller.cfg.OperationTimeout)
+		defer cleanupCancel()
+		s.controller.removeRoutes(cleanupCtx, oldRoutes)
+	})
+	s.reconcileGapless()
+	return true
 }
 
 func (s *actorState) deferMonitor(event playback.MonitorEvent) {

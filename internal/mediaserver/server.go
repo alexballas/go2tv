@@ -198,6 +198,7 @@ func (s *Server) Start(ctx context.Context, request playback.ServerRequest) (pla
 		result := playback.MediaRoute{URL: base + mediaRoute.path, ID: mediaRoute.id}
 		if subtitleRoute.path != "" {
 			result.SubtitleURL = base + subtitleRoute.path
+			result.SubtitleID = subtitleRoute.id
 		}
 		return result, nil
 	case <-ctx.Done():
@@ -250,9 +251,9 @@ func (s *Server) Add(_ context.Context, request playback.RouteRequest) (playback
 	return playback.MediaRoute{URL: "http://" + s.listener.Addr().String() + r.path, ID: r.id}, nil
 }
 
-// AddMedia registers another primary media route without restarting the
-// listener. The caller removes superseded routes after the renderer accepts
-// the replacement load.
+// AddMedia registers another media and optional subtitle route without
+// restarting the listener. The caller removes superseded routes after the
+// renderer accepts the replacement load.
 func (s *Server) AddMedia(_ context.Context, request playback.ServerRequest) (playback.MediaRoute, error) {
 	if request.Media == nil {
 		return playback.MediaRoute{}, ErrOpenRequired
@@ -266,7 +267,23 @@ func (s *Server) AddMedia(_ context.Context, request playback.ServerRequest) (pl
 	if err != nil {
 		return playback.MediaRoute{}, err
 	}
-	return playback.MediaRoute{URL: "http://" + s.listener.Addr().String() + r.path, ID: r.id}, nil
+	var subtitle route
+	if request.Subtitle != nil && !request.BurnSubtitle {
+		subtitleRequest := playback.ServerRequest{Media: request.Subtitle, MediaExt: request.SubtitleExt, MediaType: subtitleMediaType(request.SubtitleExt), Target: request.Target}
+		subtitle, err = s.newSourceRouteLocked("subtitle", request.Subtitle, request.SubtitleExt, subtitleRequest.MediaType, subtitleRequest)
+		if err != nil {
+			delete(s.routes, r.path)
+			delete(s.byID, r.id)
+			return playback.MediaRoute{}, err
+		}
+	}
+	base := "http://" + s.listener.Addr().String()
+	result := playback.MediaRoute{URL: base + r.path, ID: r.id}
+	if subtitle.path != "" {
+		result.SubtitleURL = base + subtitle.path
+		result.SubtitleID = subtitle.id
+	}
+	return result, nil
 }
 
 // AddArtwork registers content-addressed immutable renderer artwork.

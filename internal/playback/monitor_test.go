@@ -3,6 +3,7 @@ package playback
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -41,6 +42,19 @@ type failingPositionDLNA struct {
 	seekDLNA
 	polled chan struct{}
 }
+
+type gaplessMonitorDLNA struct {
+	seekDLNA
+	nextURI string
+	polls   int
+}
+
+func (*gaplessMonitorDLNA) SetNext(context.Context, LoadRequest) error { return nil }
+func (d *gaplessMonitorDLNA) NextURI(context.Context) (string, error) {
+	d.polls++
+	return d.nextURI, nil
+}
+func (*gaplessMonitorDLNA) ClearNext(context.Context) error { return nil }
 
 func (d *failingPositionDLNA) Position(context.Context) (Position, error) {
 	d.polled <- struct{}{}
@@ -90,6 +104,63 @@ func TestDLNAMonitorProgressCompletionAndCancellation(t *testing.T) {
 	e = waitMonitor(t, events)
 	if e.Terminal != TerminalReplacement {
 		t.Fatalf("cancel %q", e.Terminal)
+	}
+}
+
+func TestDLNAMonitorObservesConsumedNextURIOnlyWhileGaplessActive(t *testing.T) {
+	clock := newManualClock()
+	events := make(chan MonitorEvent, 2)
+	dlna := &gaplessMonitorDLNA{seekDLNA: seekDLNA{posErr: errors.New("position unavailable")}}
+	var active atomic.Bool
+	go RunDLNAMonitor(t.Context(), MonitorConfig{
+		Generation: 2, Clock: clock, Sink: monitorCollector{events},
+		GaplessActive: active.Load,
+	}, dlna, nil)
+	clock.tick.ch <- time.Time{}
+	select {
+	case event := <-events:
+		t.Fatalf("inactive gapless observation = %#v", event)
+	case <-time.After(10 * time.Millisecond):
+	}
+	active.Store(true)
+	clock.tick.ch <- time.Time{}
+	event := waitMonitor(t, events)
+	if !event.NextURIObserved || event.NextURI != "" || dlna.polls != 1 {
+		t.Fatalf("gapless observation = %#v, polls=%d", event, dlna.polls)
+	}
+}
+
+func TestDLNAMonitorDefersBoundaryStopWhileGaplessActive(t *testing.T) {
+	clock := newManualClock()
+	events := make(chan MonitorEvent, 4)
+	callbacks := make(chan DLNACallbackEvent, 2)
+	dlna := &gaplessMonitorDLNA{seekDLNA: seekDLNA{posErr: errors.New("stopped")}, nextURI: "NOT_IMPLEMENTED"}
+	var active atomic.Bool
+	active.Store(true)
+	go RunDLNAMonitor(t.Context(), MonitorConfig{
+		Generation: 5, Clock: clock, Sink: monitorCollector{events},
+		GaplessActive: active.Load,
+	}, dlna, callbacks)
+
+	// Arm the stop gate so the boundary STOPPED isn't taken for the initial one.
+	callbacks <- DLNACallbackEvent{Generation: 5, TransportState: "PLAYING"}
+	if event := waitMonitor(t, events); event.State != "PLAYING" {
+		t.Fatalf("playing = %#v", event)
+	}
+	// A track-boundary STOPPED while a gapless next is staged must not complete
+	// playback. The follow-up tick still observes NextURI, proving the monitor
+	// kept running instead of exiting on the STOPPED.
+	callbacks <- DLNACallbackEvent{Generation: 5, TransportState: "STOPPED"}
+	clock.tick.ch <- time.Time{}
+	if event := waitMonitor(t, events); event.Terminal != "" || !event.NextURIObserved {
+		t.Fatalf("boundary stop not deferred: %#v", event)
+	}
+	// Once gapless disengages without a promotion, the deferred stop surfaces as
+	// end-of-media rather than being lost.
+	active.Store(false)
+	clock.tick.ch <- time.Time{}
+	if event := waitMonitor(t, events); event.Terminal != TerminalFinished {
+		t.Fatalf("deferred completion = %#v", event)
 	}
 }
 

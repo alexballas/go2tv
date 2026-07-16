@@ -70,6 +70,16 @@ func (r *runtime) Close() {
 type runtimeMediaServer struct{ *mediaserver.Server }
 
 func (s *runtimeMediaServer) Start(ctx context.Context, request playback.ServerRequest) (playback.MediaRoute, error) {
+	request = s.prepareRequest(request)
+	return s.Server.Start(ctx, request)
+}
+
+func (s *runtimeMediaServer) AddMedia(ctx context.Context, request playback.ServerRequest) (playback.MediaRoute, error) {
+	request = s.prepareRequest(request)
+	return s.Server.AddMedia(ctx, request)
+}
+
+func (s *runtimeMediaServer) prepareRequest(request playback.ServerRequest) playback.ServerRequest {
 	request = prepareServerRequest(request)
 	if request.Subtitle != nil && request.Transcode {
 		request.BurnSubtitle = true
@@ -90,7 +100,7 @@ func (s *runtimeMediaServer) Start(ctx context.Context, request playback.ServerR
 		}
 		request.SubtitleExt = ".vtt"
 	}
-	return s.Server.Start(ctx, request)
+	return request
 }
 
 func prepareServerRequest(request playback.ServerRequest) playback.ServerRequest {

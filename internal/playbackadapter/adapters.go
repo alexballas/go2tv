@@ -487,6 +487,29 @@ func (d *DLNA) Seek(ctx context.Context, value string) error {
 	return d.call(ctx, func(p *soapcalls.TVPayload) error { return p.SeekSoapCall(value) })
 }
 
+func (d *DLNA) SetNext(ctx context.Context, req playback.LoadRequest) error {
+	return d.call(ctx, func(p *soapcalls.TVPayload) error {
+		p.MediaURL, p.MediaType, p.SubtitlesURL = req.MediaURL, req.MediaType, req.SubtitleURL
+		p.Seekable = req.Seekable
+		p.Metadata = req.Metadata
+		return p.SetNextAVTransportURI(false)
+	})
+}
+
+func (d *DLNA) NextURI(ctx context.Context) (string, error) {
+	var nextURI string
+	err := d.call(ctx, func(p *soapcalls.TVPayload) error {
+		var err error
+		nextURI, err = p.Gapless()
+		return err
+	})
+	return nextURI, err
+}
+
+func (d *DLNA) ClearNext(ctx context.Context) error {
+	return d.call(ctx, func(p *soapcalls.TVPayload) error { return p.SetNextAVTransportURI(true) })
+}
+
 func (d *DLNA) Position(ctx context.Context) (playback.Position, error) {
 	var result playback.Position
 	err := d.call(ctx, func(p *soapcalls.TVPayload) error {
@@ -763,9 +786,10 @@ func RunMonitor(ctx context.Context, cfg playback.MonitorConfig, device playback
 }
 
 var (
-	_ playback.DiscoveryScanner    = Scanner{}
-	_ playback.DLNATransport       = (*DLNA)(nil)
-	_ playback.Transport           = (*DLNA)(nil)
-	_ playback.ChromecastTransport = (*Chromecast)(nil)
-	_ playback.Transport           = (*Chromecast)(nil)
+	_ playback.DiscoveryScanner     = Scanner{}
+	_ playback.DLNATransport        = (*DLNA)(nil)
+	_ playback.DLNAGaplessTransport = (*DLNA)(nil)
+	_ playback.Transport            = (*DLNA)(nil)
+	_ playback.ChromecastTransport  = (*Chromecast)(nil)
+	_ playback.Transport            = (*Chromecast)(nil)
 )

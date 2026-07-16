@@ -183,6 +183,15 @@ func (t *fakeTransport) Seek(_ context.Context, value string) error {
 func (t *fakeTransport) Position(context.Context) (playback.Position, error) {
 	return playback.Position{}, nil
 }
+func (t *fakeTransport) SetNext(_ context.Context, request playback.LoadRequest) error {
+	t.log.add("next:" + request.Metadata.Title)
+	return nil
+}
+func (t *fakeTransport) NextURI(context.Context) (string, error) { return "", nil }
+func (t *fakeTransport) ClearNext(context.Context) error {
+	t.log.add("next:clear")
+	return nil
+}
 
 type fakeServer struct {
 	log    *eventLog

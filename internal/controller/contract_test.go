@@ -51,7 +51,7 @@ func TestLegacyJSONFieldNamesRemainStable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantPolicy := `{"LoopSelected":false,"AutoPlayNext":true,"AutoPlaySameType":false,"ImageDurationSeconds":10}`
+	wantPolicy := `{"LoopSelected":false,"AutoPlayNext":true,"AutoPlaySameType":false,"GaplessEnabled":false,"ImageDurationSeconds":10}`
 	if string(policy) != wantPolicy {
 		t.Fatalf("policy JSON = %s", policy)
 	}
@@ -98,6 +98,9 @@ func TestInputValidationContracts(t *testing.T) {
 	}
 	if err := (Policy{}).Validate(); err != nil {
 		t.Fatalf("zero policy: %v", err)
+	}
+	if err := (Policy{GaplessEnabled: true}).Validate(); !errors.Is(err, ErrInvalidPolicy) {
+		t.Fatalf("gapless without autoplay: %v", err)
 	}
 	if err := (Config{OperationTimeout: -time.Second}).Validate(); !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("negative timeout: %v", err)

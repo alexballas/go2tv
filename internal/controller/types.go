@@ -209,6 +209,7 @@ type Policy struct {
 	LoopSelected         bool `json:"LoopSelected"`
 	AutoPlayNext         bool `json:"AutoPlayNext"`
 	AutoPlaySameType     bool `json:"AutoPlaySameType"`
+	GaplessEnabled       bool `json:"GaplessEnabled"`
 	ImageDurationSeconds int  `json:"ImageDurationSeconds"`
 }
 
@@ -222,7 +223,7 @@ func (p Policy) Validate() error {
 	if p.LoopSelected && p.AutoPlayNext {
 		return fmt.Errorf("loop and autoplay are mutually exclusive: %w", ErrInvalidPolicy)
 	}
-	if !p.AutoPlayNext && p.AutoPlaySameType {
+	if !p.AutoPlayNext && (p.AutoPlaySameType || p.GaplessEnabled) {
 		return fmt.Errorf("autoplay options require autoplay: %w", ErrInvalidPolicy)
 	}
 	return nil

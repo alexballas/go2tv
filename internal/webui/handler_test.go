@@ -134,6 +134,9 @@ func TestBootstrapAndLibrarySanitizedNoStore(t *testing.T) {
 	if strings.Contains(response.Body.String(), `"endpoint"`) || strings.Contains(response.Body.String(), `"source"`) {
 		t.Fatal("private field leak")
 	}
+	if !strings.Contains(response.Body.String(), `"gapless":true`) {
+		t.Fatal("gapless feature missing")
+	}
 	request = httptest.NewRequest(http.MethodGet, "/api/library?root_id="+rootID, nil)
 	response = httptest.NewRecorder()
 	h.ServeHTTP(response, request)

@@ -80,6 +80,8 @@ When transcoding is enabled, Go2TV probes available GPU H.264 encoders first and
 
 ![Go2TV Web UI](assets/webui.png)
 
+Enable **Autoplay next** and **Gapless** to queue the next playlist item with DLNA `SetNextAVTransportURI` on compatible renderers. Chromecast keeps ordinary autoplay.
+
 ---
 
 ## Playlist (GUI)

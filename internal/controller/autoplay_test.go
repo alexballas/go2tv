@@ -170,6 +170,132 @@ func TestAutoplayQueueTraversalMatchesDesktop(t *testing.T) {
 	}
 }
 
+func TestDLNAGaplessPromotesQueuedNextWithoutReload(t *testing.T) {
+	device := playback.Device{ID: "renderer", Protocol: "DLNA"}
+	c, log, _ := newTestController(device)
+	defer c.Close()
+	awaitDevices(t, c, 1)
+	c.SelectDevice(context.Background(), Mutation{}, device.ID)
+	addTestQueue(t, c,
+		testMedia("a.mp3", mediamodel.MediaKindAudio),
+		testMedia("b.mp3", mediamodel.MediaKindAudio),
+		testMedia("c.mp3", mediamodel.MediaKindAudio),
+	)
+	queued, _ := c.Snapshot(context.Background())
+	policy := Policy{AutoPlayNext: true, GaplessEnabled: true, ImageDurationSeconds: 10}
+	if result := c.SetPolicy(context.Background(), PolicyRequest{Policy: policy}); !result.OK() {
+		t.Fatal(result)
+	}
+	if result := c.Play(context.Background(), PlayRequest{QueueItemID: queued.Queue[0].ID}); !result.OK() {
+		t.Fatal(result)
+	}
+	playing, _ := c.Snapshot(context.Background())
+	if !slices.Contains(log.snapshot(), "next:b.mp3") {
+		t.Fatalf("next URI not queued: %v", log.snapshot())
+	}
+	c.HandleMonitorEvent(context.Background(), playback.MonitorEvent{Generation: playing.Generation, NextURIObserved: true})
+	after := awaitAutoplaySnapshot(t, c, func(snapshot Snapshot) bool {
+		return snapshot.Generation == playing.Generation && snapshot.Queue[1].IsActive
+	})
+	if !after.Queue[1].IsSelected || after.ActiveMediaName != "b.mp3" {
+		t.Fatalf("gapless promotion = %#v", after)
+	}
+	deadline := time.Now().Add(time.Second)
+	for !slices.Contains(log.snapshot(), "next:c.mp3") && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	events := log.snapshot()
+	if !slices.Contains(events, "next:c.mp3") {
+		t.Fatalf("following URI not queued: %v", events)
+	}
+	loads := 0
+	for _, event := range events {
+		if event == "load:renderer" {
+			loads++
+		}
+	}
+	if loads != 1 {
+		t.Fatalf("gapless transition reloaded renderer: %v", events)
+	}
+}
+
+func TestChromecastIgnoresGaplessAndUsesOrdinaryAutoplay(t *testing.T) {
+	device := playback.Device{ID: "renderer", Protocol: "Chromecast"}
+	c, log, _ := newTestController(device)
+	defer c.Close()
+	awaitDevices(t, c, 1)
+	c.SelectDevice(context.Background(), Mutation{}, device.ID)
+	addTestQueue(t, c,
+		testMedia("a.mp3", mediamodel.MediaKindAudio),
+		testMedia("b.mp3", mediamodel.MediaKindAudio),
+	)
+	queued, _ := c.Snapshot(context.Background())
+	policy := Policy{AutoPlayNext: true, GaplessEnabled: true, ImageDurationSeconds: 10}
+	if result := c.SetPolicy(context.Background(), PolicyRequest{Policy: policy}); !result.OK() {
+		t.Fatal(result)
+	}
+	if result := c.Play(context.Background(), PlayRequest{QueueItemID: queued.Queue[0].ID}); !result.OK() {
+		t.Fatal(result)
+	}
+	playing, _ := c.Snapshot(context.Background())
+	if slices.Contains(log.snapshot(), "next:b.mp3") {
+		t.Fatalf("Chromecast queued DLNA NextURI: %v", log.snapshot())
+	}
+	c.HandleMonitorEvent(context.Background(), playback.MonitorEvent{Generation: playing.Generation, Terminal: playback.TerminalFinished})
+	after := awaitAutoplaySnapshot(t, c, func(snapshot Snapshot) bool {
+		return snapshot.Generation > playing.Generation && snapshot.Queue[1].IsActive
+	})
+	if !after.Queue[1].IsSelected {
+		t.Fatalf("ordinary autoplay = %#v", after.Queue)
+	}
+}
+
+func TestDLNAGaplessFallsBackWhenRendererCannotStageNext(t *testing.T) {
+	device := playback.Device{ID: "renderer", Protocol: "DLNA"}
+	c, log, _ := newTestController(device)
+	defer c.Close()
+	awaitDevices(t, c, 1)
+	c.SelectDevice(context.Background(), Mutation{}, device.ID)
+	addTestQueue(t, c,
+		testMedia("a.mp3", mediamodel.MediaKindAudio),
+		testMedia("b.mp3", mediamodel.MediaKindAudio),
+	)
+	queued, _ := c.Snapshot(context.Background())
+	policy := Policy{AutoPlayNext: true, GaplessEnabled: true, ImageDurationSeconds: 10}
+	if result := c.SetPolicy(context.Background(), PolicyRequest{Policy: policy}); !result.OK() {
+		t.Fatal(result)
+	}
+	if result := c.Play(context.Background(), PlayRequest{QueueItemID: queued.Queue[0].ID}); !result.OK() {
+		t.Fatal(result)
+	}
+	playing, _ := c.Snapshot(context.Background())
+	if !slices.Contains(log.snapshot(), "next:b.mp3") {
+		t.Fatalf("next URI not staged: %v", log.snapshot())
+	}
+	// The renderer reports it cannot track a staged next URI: the staged next is
+	// cleared and the device is remembered as gapless-incapable.
+	c.HandleMonitorEvent(context.Background(), playback.MonitorEvent{Generation: playing.Generation, NextURIObserved: true, NextURI: gaplessUnsupportedURI})
+	deadline := time.Now().Add(time.Second)
+	for !slices.Contains(log.snapshot(), "next:clear") && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if !slices.Contains(log.snapshot(), "next:clear") {
+		t.Fatalf("staged next not cleared: %v", log.snapshot())
+	}
+	// End-of-media now advances via ordinary autoplay instead of gapless promotion.
+	c.HandleMonitorEvent(context.Background(), playback.MonitorEvent{Generation: playing.Generation, Terminal: playback.TerminalFinished})
+	after := awaitAutoplaySnapshot(t, c, func(snapshot Snapshot) bool {
+		return snapshot.Generation > playing.Generation && snapshot.Queue[1].IsActive
+	})
+	if !after.Queue[1].IsSelected || after.ActiveMediaName != "b.mp3" {
+		t.Fatalf("ordinary autoplay after not-implemented = %#v", after)
+	}
+	// A renderer known to be gapless-incapable is not re-attempted on later tracks.
+	if slices.Contains(log.snapshot(), "next:a.mp3") {
+		t.Fatalf("gapless re-attempted on unsupported renderer: %v", log.snapshot())
+	}
+}
+
 func TestAutoplayTransitionAnchorsActiveQueueID(t *testing.T) {
 	for _, protocol := range []string{"DLNA", "Chromecast"} {
 		t.Run(protocol, func(t *testing.T) {

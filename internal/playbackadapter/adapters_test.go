@@ -3,6 +3,7 @@ package playbackadapter
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -386,6 +387,44 @@ func TestDLNARegistersCallbacksBeforeSetURIAndRecoversGapState(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("recovered STOPPED missing")
+	}
+}
+
+func TestDLNAGaplessQueuesAndReadsNextURI(t *testing.T) {
+	var setNextBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			_, _ = w.Write([]byte(`<root><device><serviceList>
+<service><serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType><serviceId>urn:upnp-org:serviceId:AVTransport</serviceId><controlURL>/transport</controlURL><eventSubURL>/events</eventSubURL></service>
+</serviceList></device></root>`))
+		case http.MethodPost:
+			action := r.Header.Get("SOAPAction")
+			switch {
+			case strings.Contains(action, "#SetNextAVTransportURI"):
+				body, _ := io.ReadAll(r.Body)
+				setNextBody = string(body)
+			case strings.Contains(action, "#GetMediaInfo"):
+				_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetMediaInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><NextURI>http://127.0.0.1/next.mp3</NextURI></u:GetMediaInfoResponse></s:Body></s:Envelope>`))
+			}
+		}
+	}))
+	defer server.Close()
+	dlna, err := NewDLNA(context.Background(), DLNAConfig{Endpoint: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := playback.LoadRequest{MediaURL: "http://127.0.0.1/next.mp3", MediaType: "audio/mpeg", Seekable: true}
+	request.Metadata.Title = "Next track"
+	if err := dlna.SetNext(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(setNextBody, "<NextURI>http://127.0.0.1/next.mp3</NextURI>") || !strings.Contains(setNextBody, "Next track") {
+		t.Fatalf("SetNextAVTransportURI body = %q", setNextBody)
+	}
+	nextURI, err := dlna.NextURI(context.Background())
+	if err != nil || nextURI != request.MediaURL {
+		t.Fatalf("NextURI = %q, %v", nextURI, err)
 	}
 }
 

@@ -35,6 +35,7 @@ export function startClient(env) {
       LoopSelected: false,
       AutoPlayNext: false,
       AutoPlaySameType: false,
+      GaplessEnabled: false,
       ImageDurationSeconds: 10,
     },
     selected_device_id: "",
@@ -645,13 +646,19 @@ export function startClient(env) {
   }
   function renderPolicy() {
     const p = state.policy || {};
+    const deviceID = state.active_device_id || state.selected_device_id,
+      gaplessSupported =
+        state.devices.find((device) => device.id === deviceID)?.protocol ===
+        "DLNA";
     byID("loop").checked = !!p.LoopSelected;
     byID("autoplay").checked = !!p.AutoPlayNext;
     byID("same-type").checked = !!p.AutoPlaySameType;
+    byID("gapless").checked = !!p.GaplessEnabled;
     byID("image-duration").value = String(
       normalizeImageDuration(p.ImageDurationSeconds ?? 10),
     );
     byID("same-type").disabled = !p.AutoPlayNext;
+    byID("gapless").disabled = !p.AutoPlayNext || !gaplessSupported;
   }
   function playLibraryMedia(item) {
     const previousCurrentID =
@@ -699,6 +706,7 @@ export function startClient(env) {
         state.revision = p.revision ?? state.revision;
         state.devices = p.devices || [];
         renderDevices();
+        renderPolicy();
         break;
       case "state.queue":
         state.revision = p.revision ?? state.revision;
@@ -734,6 +742,7 @@ export function startClient(env) {
         });
         renderDevices();
         renderPlayback();
+        renderPolicy();
         break;
       case "state.policy":
         state.revision = p.revision ?? state.revision;
@@ -1007,6 +1016,7 @@ export function startClient(env) {
     if (changed === "loop" && byID("loop").checked) {
       byID("autoplay").checked = false;
       byID("same-type").checked = false;
+      byID("gapless").checked = false;
     } else if (changed === "autoplay" && byID("autoplay").checked)
       byID("loop").checked = false;
     const auto = byID("autoplay").checked,
@@ -1017,6 +1027,7 @@ export function startClient(env) {
         LoopSelected: byID("loop").checked,
         AutoPlayNext: auto,
         AutoPlaySameType: auto && byID("same-type").checked,
+        GaplessEnabled: auto && byID("gapless").checked,
         ImageDurationSeconds: duration,
       },
     });
@@ -1108,7 +1119,13 @@ export function startClient(env) {
   byID("artwork-modal").addEventListener("click", (event) => {
     if (event.target === byID("artwork-modal")) closeArtwork();
   });
-  for (const id of ["loop", "autoplay", "same-type", "image-duration"])
+  for (const id of [
+    "loop",
+    "autoplay",
+    "same-type",
+    "gapless",
+    "image-duration",
+  ])
     byID(id).addEventListener("change", () => sendPolicy(id));
   byID("theme-toggle").addEventListener("click", () => {
     themeChoice =

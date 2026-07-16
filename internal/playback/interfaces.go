@@ -36,6 +36,15 @@ type DLNATransport interface {
 	Position(context.Context) (Position, error)
 }
 
+// DLNAGaplessTransport is the optional DLNA SetNextAVTransportURI surface.
+// NextURI reports the renderer's currently staged URI; an empty URI after a
+// successful SetNext marks promotion to that item on compatible renderers.
+type DLNAGaplessTransport interface {
+	SetNext(context.Context, LoadRequest) error
+	NextURI(context.Context) (string, error)
+	ClearNext(context.Context) error
+}
+
 type ChromecastTransport interface {
 	LoadOnExisting(context.Context, LoadRequest) error
 	Seek(context.Context, int) error
@@ -132,6 +141,7 @@ type MediaRoute struct {
 	URL         string
 	SubtitleURL string
 	ID          string
+	SubtitleID  string
 }
 
 type realClock struct{}

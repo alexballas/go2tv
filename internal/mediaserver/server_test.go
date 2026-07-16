@@ -173,6 +173,41 @@ func TestAddMediaKeepsChromecastListenerAndRevokesPreviousRoute(t *testing.T) {
 	}
 }
 
+func TestAddMediaRegistersRemovableSubtitleRoute(t *testing.T) {
+	server := New(Config{ListenAddr: "127.0.0.1:0"})
+	startTestServer(t, server, mediaRequest([]byte("first"), ".mp3", "audio/mpeg"))
+	route, err := server.AddMedia(context.Background(), playback.ServerRequest{
+		Media: byteOpener([]byte("second")), MediaExt: ".mp4", MediaType: "video/mp4",
+		Subtitle: byteOpener([]byte("subtitle")), SubtitleExt: ".srt",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if route.SubtitleURL == "" || route.SubtitleID == "" {
+		t.Fatalf("subtitle route = %#v", route)
+	}
+	response, err := http.Get(route.SubtitleURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || string(body) != "subtitle" {
+		t.Fatalf("subtitle status=%d body=%q", response.StatusCode, body)
+	}
+	if err := server.Remove(context.Background(), route.SubtitleID); err != nil {
+		t.Fatal(err)
+	}
+	response, err = http.Get(route.SubtitleURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("removed subtitle status=%d", response.StatusCode)
+	}
+}
+
 func TestSRTSubtitleRegisteredBeforeReady(t *testing.T) {
 	server := New(Config{ListenAddr: "127.0.0.1:0"})
 	route := startTestServer(t, server, playback.ServerRequest{

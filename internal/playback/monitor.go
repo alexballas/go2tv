@@ -28,14 +28,16 @@ const (
 func (r TerminalReason) Error() string { return string(r) }
 
 type MonitorEvent struct {
-	Generation uint64
-	TimerEpoch uint64
-	State      string
-	Position   int
-	Duration   int
-	ImageReady bool
-	Terminal   TerminalReason
-	Err        error
+	Generation      uint64
+	TimerEpoch      uint64
+	State           string
+	Position        int
+	Duration        int
+	ImageReady      bool
+	NextURI         string
+	NextURIObserved bool
+	Terminal        TerminalReason
+	Err             error
 }
 
 type DLNACallbackEvent struct {
@@ -56,6 +58,7 @@ type MonitorConfig struct {
 	Sink             MonitorSink
 	ExplicitStop     func() bool
 	DLNAStopGate     *DLNAStopGate
+	GaplessActive    func() bool
 }
 
 // DLNAStopGate suppresses the renderer's initial STOPPED callback. Keeping it
@@ -83,6 +86,12 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNATransp
 	if stopGate == nil {
 		stopGate = &DLNAStopGate{}
 	}
+	// gaplessStopped records a track-boundary STOPPED that was deferred while a
+	// gapless next was staged. Compatible renderers promote the queued item
+	// without a genuine stop, so the terminal is withheld until the NextURI poll
+	// observes the promotion. If gapless is disengaged without one, the deferred
+	// stop is surfaced as end-of-media.
+	gaplessStopped := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -99,6 +108,7 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNATransp
 			switch event.TransportState {
 			case "PLAYING":
 				stopGate.Arm()
+				gaplessStopped = false
 				emitMonitor(ctx, cfg, MonitorEvent{State: "PLAYING"})
 			case "PAUSED_PLAYBACK":
 				emitMonitor(ctx, cfg, MonitorEvent{State: "PAUSED"})
@@ -109,19 +119,48 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNATransp
 				if !stopGate.acceptStop() {
 					continue
 				}
+				if cfg.GaplessActive != nil && cfg.GaplessActive() {
+					// The renderer reports STOPPED as it promotes the staged
+					// gapless next. Defer completion and keep polling so the
+					// NextURI observation drives the seamless transition.
+					gaplessStopped = true
+					continue
+				}
 				emitMonitor(ctx, cfg, MonitorEvent{Terminal: TerminalFinished})
 				return
 			}
 		case <-ticker.C():
+			event := MonitorEvent{}
 			position, err := transport.Position(ctx)
-			if err != nil {
+			if err == nil {
+				if position.Current > 0 || position.Duration > 0 {
+					stopGate.Arm()
+					gaplessStopped = false
+				}
+				position.Current += cfg.SeekOffset
+				event.Position = position.Current
+				event.Duration = position.Duration
+			}
+			if cfg.GaplessActive != nil && cfg.GaplessActive() {
+				if gapless, ok := transport.(DLNAGaplessTransport); ok {
+					if nextURI, nextErr := gapless.NextURI(ctx); nextErr == nil {
+						event.NextURI = nextURI
+						event.NextURIObserved = true
+						if nextURI == "" {
+							gaplessStopped = false
+						}
+					}
+				}
+			} else if gaplessStopped {
+				// A deferred boundary STOPPED with gapless now disengaged and no
+				// promotion observed means the media genuinely ended.
+				emitMonitor(ctx, cfg, MonitorEvent{Terminal: TerminalFinished})
+				return
+			}
+			if err != nil && !event.NextURIObserved {
 				continue
 			}
-			if position.Current > 0 || position.Duration > 0 {
-				stopGate.Arm()
-			}
-			position.Current += cfg.SeekOffset
-			emitMonitor(ctx, cfg, MonitorEvent{Position: position.Current, Duration: position.Duration})
+			emitMonitor(ctx, cfg, event)
 		}
 	}
 }
