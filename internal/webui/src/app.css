@@ -64,37 +64,41 @@
   }
   * {
     @apply box-border;
+  }
+  /* Keep the root scroller on native overlay scrollbars: custom scrollbar
+     styles there force main-thread scrollbar painting on Android. */
+  :where(:not(html, body)) {
     scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
     scrollbar-width: thin;
   }
-  *::-webkit-scrollbar {
+  :not(html, body)::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
-  *::-webkit-scrollbar-track {
+  :not(html, body)::-webkit-scrollbar-track {
     background: var(--scrollbar-track);
   }
-  *::-webkit-scrollbar-thumb {
+  :not(html, body)::-webkit-scrollbar-thumb {
     background: var(--scrollbar-thumb);
     background-clip: padding-box;
     border: 2px solid transparent;
     border-radius: 9999px;
   }
-  *::-webkit-scrollbar-thumb:hover {
+  :not(html, body)::-webkit-scrollbar-thumb:hover {
     background: var(--scrollbar-thumb-hover);
     background-clip: padding-box;
   }
-  *::-webkit-scrollbar-corner {
+  :not(html, body)::-webkit-scrollbar-corner {
     background: transparent;
   }
   ::selection {
     background: rgb(155 59 221 / 0.18);
   }
   body {
-    @apply min-h-screen bg-[#f3f1f8] text-[#231e30] antialiased dark:bg-[#0b0a0f] dark:text-[#eae7f2];
+    @apply min-h-screen bg-[#e9e5f1] text-[#231e30] antialiased dark:bg-[#0b0a0f] dark:text-[#eae7f2];
     background-image: radial-gradient(
       72rem 30rem at 70% -10%,
-      rgb(155 59 221 / 0.04),
+      rgb(155 59 221 / 0.08),
       transparent 70%
     );
     @variant dark {
@@ -125,6 +129,7 @@
   }
   button {
     @apply font-semibold hover:-translate-y-px hover:border-[#aaa4b8] hover:bg-[#edeaf4] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 dark:hover:border-[#4a4658] dark:hover:bg-[#26222f];
+    caret-color: transparent;
   }
   select {
     @apply py-2;
@@ -181,6 +186,9 @@
   .brand p {
     @apply mt-1 text-xs font-medium;
     color: var(--g2tv-blue);
+    @variant dark {
+      color: #4da3e0;
+    }
   }
   .header-tools {
     @apply flex shrink-0 items-center gap-2;
@@ -283,7 +291,7 @@
   }
   .device-trigger::after {
     content: "⌄";
-    @apply ml-1 text-base leading-none text-[#9a94ab] transition-transform dark:text-[#5e5970];
+    @apply ml-1 text-base leading-none text-[#6d6782] transition-transform dark:text-[#8f899d];
   }
   .device-trigger[aria-expanded="true"]::after {
     @apply rotate-180;
@@ -305,7 +313,7 @@
     @apply flex shrink-0 flex-wrap justify-end gap-1;
   }
   .device-badge {
-    @apply rounded-md px-2 py-1 text-[.62rem] font-bold uppercase leading-none tracking-wider;
+    @apply inline-flex items-center justify-center rounded-md px-2 py-1 text-[.62rem] font-bold uppercase leading-[1.25] tracking-wider;
     background: #eae7ef;
     color: #6d6782;
     @variant dark {
@@ -371,7 +379,7 @@
     @apply grid gap-1;
   }
   #time {
-    @apply text-right font-mono text-[.68rem] tabular-nums text-[#9a94ab] dark:text-[#5e5970];
+    @apply text-right font-mono text-[.68rem] tabular-nums text-[#6d6782] dark:text-[#8f899d];
   }
   .transport-row {
     @apply mt-4 flex flex-wrap items-center gap-3;
@@ -433,7 +441,7 @@
     @apply block min-w-0 truncate text-sm;
   }
   .status-label {
-    @apply mb-0.5 text-[.62rem]! font-bold uppercase tracking-[.13em] text-[#9a94ab] dark:text-[#5e5970];
+    @apply mb-0.5 text-[.62rem]! font-bold uppercase tracking-[.13em] text-[#6d6782] dark:text-[#8f899d];
   }
   #media-selected {
     @apply text-brand-700 dark:text-brand-300;
@@ -471,6 +479,9 @@
   }
   .library-row {
     @apply grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-1 py-3;
+    /* Containment without content-visibility's deferral: deferred rows get
+       laid out mid-scroll, which stutters on mobile (measured on a Galaxy A54). */
+    contain: layout paint;
   }
   .library-row:hover {
     @apply rounded-xl bg-[#f8f6fb] dark:bg-[#17151f];
@@ -515,7 +526,7 @@
     @apply min-w-0 truncate text-[.84rem] font-semibold;
   }
   .entry-meta {
-    @apply min-w-0 truncate text-[.7rem] text-[#9a94ab] dark:text-[#5e5970];
+    @apply min-w-0 truncate text-[.7rem] text-[#6d6782] dark:text-[#8f899d];
   }
   .row-actions {
     @apply flex shrink-0 flex-wrap justify-end gap-2;
@@ -547,7 +558,7 @@
     @apply px-0.5;
   }
   #queue-count {
-    @apply ml-1 align-middle font-mono text-xs font-medium text-[#9a94ab] dark:text-[#5e5970];
+    @apply ml-1 align-middle font-mono text-xs font-medium text-[#6d6782] dark:text-[#8f899d];
   }
   #queue {
     @apply grid max-h-[34rem] gap-2 overflow-y-auto p-0.5 pb-2;
@@ -615,10 +626,10 @@
     @apply text-sm;
   }
   .policies small {
-    @apply text-[.7rem] text-[#9a94ab] dark:text-[#5e5970];
+    @apply text-[.7rem] text-[#6d6782] dark:text-[#8f899d];
   }
   .policies input:disabled + span {
-    @apply opacity-40;
+    @apply opacity-60;
   }
   .image-duration {
     @apply mt-2 grid grid-cols-[1fr_4.5rem] border-t border-[#e6e2ee] pt-3 dark:border-[#221f2c];
@@ -628,10 +639,11 @@
   }
 
   #back-to-top {
-    @apply fixed bottom-4 right-4 z-40 grid size-12 min-h-12 place-items-center rounded-full border-brand-500 bg-brand-500 p-0 text-white shadow-xl shadow-brand-900/25 hover:border-brand-400 hover:bg-brand-400 dark:border-brand-500 dark:bg-brand-500 dark:hover:border-brand-400 dark:hover:bg-brand-400;
+    @apply pointer-events-none fixed bottom-4 right-4 z-40 grid size-12 min-h-12 place-items-center rounded-full border-brand-500 bg-brand-500 p-0 text-white opacity-0 hover:border-brand-400 hover:bg-brand-400 dark:border-brand-500 dark:bg-brand-500 dark:hover:border-brand-400 dark:hover:bg-brand-400;
+    transition: opacity 150ms ease-out;
   }
-  #back-to-top[hidden] {
-    @apply hidden;
+  #back-to-top[data-visible="true"] {
+    @apply pointer-events-auto opacity-100;
   }
   #toast {
     @apply fixed bottom-20 right-4 z-50 grid max-w-sm gap-2;
@@ -689,6 +701,13 @@
       max-height: none;
       overflow-y: visible;
       overscroll-behavior: auto;
+    }
+    /* Large blurred shadows are expensive to rasterize on mobile GPUs while scrolling. */
+    section {
+      box-shadow: none;
+    }
+    .artwork-shell {
+      box-shadow: 0 8px 18px -14px rgb(35 30 48 / 0.5);
     }
   }
 

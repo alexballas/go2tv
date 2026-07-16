@@ -282,6 +282,29 @@ func TestPolicyAtomicAndExpectedRevision(t *testing.T) {
 	}
 }
 
+func TestRepeatedObservableStateDoesNotAdvanceRevision(t *testing.T) {
+	device := playback.Device{ID: "one", Protocol: "DLNA"}
+	state := actorState{
+		controller: &Controller{},
+		revision:   7,
+		devices:    []playback.Device{device},
+		generation: 1,
+		active:     &activeSession{generation: 1},
+		state:      PlaybackStatePlaying,
+		position:   5,
+		duration:   60,
+	}
+	state.setDevices([]playback.Device{device})
+	state.monitor(playback.MonitorEvent{Generation: 1, State: PlaybackStatePlaying, Position: 5, Duration: 60})
+	if state.revision != 7 {
+		t.Fatalf("unchanged state revision = %d", state.revision)
+	}
+	state.monitor(playback.MonitorEvent{Generation: 1, State: PlaybackStatePlaying, Position: 6, Duration: 60})
+	if state.revision != 8 {
+		t.Fatalf("changed state revision = %d", state.revision)
+	}
+}
+
 func TestCanceledQueuedMutationDoesNotCommit(t *testing.T) {
 	c := New(Config{})
 	defer c.Close()

@@ -422,6 +422,9 @@ func (s *actorState) snapshot() Snapshot {
 }
 
 func (s *actorState) setDevices(devices []playback.Device) {
+	if slices.Equal(s.devices, devices) {
+		return
+	}
 	s.devices = slices.Clone(devices)
 	if s.selectedID != "" && !slices.ContainsFunc(devices, func(device playback.Device) bool { return device.ID == s.selectedID }) {
 		s.selectedID = ""
@@ -1979,18 +1982,23 @@ func (s *actorState) monitor(event playback.MonitorEvent) {
 		changed = true
 	}
 	if !promoted && (event.Position != 0 || event.Duration != 0) {
-		s.position, s.duration, changed = event.Position, event.Duration, true
+		if s.position != event.Position || s.duration != event.Duration {
+			s.position, s.duration, changed = event.Position, event.Duration, true
+		}
 	}
 	if event.State != "" {
 		previousState := s.state
-		s.state, changed = event.State, true
-		if s.controller.cfg.Logger != nil && previousState != s.state {
-			switch s.state {
-			case PlaybackStatePaused:
-				s.controller.cfg.Logger.Info("Playback paused at " + playbackTime(s.position))
-			case PlaybackStatePlaying:
-				if previousState == PlaybackStatePaused {
-					s.controller.cfg.Logger.Info("Playback resumed at " + playbackTime(s.position))
+		s.state = event.State
+		if previousState != s.state {
+			changed = true
+			if s.controller.cfg.Logger != nil {
+				switch s.state {
+				case PlaybackStatePaused:
+					s.controller.cfg.Logger.Info("Playback paused at " + playbackTime(s.position))
+				case PlaybackStatePlaying:
+					if previousState == PlaybackStatePaused {
+						s.controller.cfg.Logger.Info("Playback resumed at " + playbackTime(s.position))
+					}
 				}
 			}
 		}

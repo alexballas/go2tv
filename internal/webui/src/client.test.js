@@ -520,6 +520,33 @@ test("control interactions emit typed payloads and subtitle selection", async ()
   );
 });
 
+test("position-only playback update redraws progress only", async () => {
+  const { ids, env } = fixture();
+  const client = startClient(env);
+  await settle();
+  ids["playback-state"].textContent = "unchanged";
+  ids["media-selected"].textContent = "unchanged";
+  client.handle({
+    protocol_version: 1,
+    type: "state.playback",
+    payload: { revision: 4, position: 5, duration: 60 },
+  });
+  assert.equal(ids.time.textContent, "0:05 / 1:00");
+  assert.equal(ids.seek.value, "5");
+  assert.equal(ids["playback-state"].textContent, "unchanged");
+  assert.equal(ids["media-selected"].textContent, "unchanged");
+});
+
+test("player pending state preserves device picker DOM", async () => {
+  const { ids, env } = fixture();
+  const client = startClient(env);
+  await settle();
+  FakeSocket.instances[0].emit("open");
+  const selectedDevice = ids["device-trigger"].children[0];
+  client.send("player.seek", { seconds: 5 });
+  assert.equal(ids["device-trigger"].children[0], selectedDevice);
+});
+
 test("protocol mismatch reloads at most once", async () => {
   const first = fixture();
   startClient(first.env);
@@ -1272,15 +1299,21 @@ test("back to top appears after scrolling and returns smoothly", async () => {
   const { ids, window, env } = fixture();
   startClient(env);
   await settle();
-  assert.equal(ids["back-to-top"].hidden, true);
+  assert.equal(ids["back-to-top"].dataset.visible, "false");
+  assert.equal(ids["back-to-top"].ariaHidden, "true");
+  assert.equal(ids["back-to-top"].tabIndex, -1);
   window.scrollY = 500;
   window.emit("scroll");
-  assert.equal(ids["back-to-top"].hidden, false);
+  assert.equal(ids["back-to-top"].dataset.visible, "true");
+  assert.equal(ids["back-to-top"].ariaHidden, "false");
+  assert.equal(ids["back-to-top"].tabIndex, 0);
   ids["back-to-top"].emit("click");
   assert.deepEqual(window.scrolledTo, { top: 0, behavior: "smooth" });
   window.scrollY = 10;
   window.emit("scroll");
-  assert.equal(ids["back-to-top"].hidden, true);
+  assert.equal(ids["back-to-top"].dataset.visible, "false");
+  assert.equal(ids["back-to-top"].ariaHidden, "true");
+  assert.equal(ids["back-to-top"].tabIndex, -1);
 });
 
 test("loop and autoplay remain mutually exclusive", async () => {

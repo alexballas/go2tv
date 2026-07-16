@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -376,22 +377,62 @@ func mustEnvelope(kind, id string, payload any) []byte {
 	}{ProtocolVersion, kind, id, payload})
 	return data
 }
+
+func stateUpdates(previous, current snapshotDTO) []outbound {
+	// Active playback identity has no granular protocol message.
+	if previous.ActiveDeviceID != current.ActiveDeviceID || previous.ActiveMediaName != current.ActiveMediaName {
+		return []outbound{{kind: "state.snapshot", data: mustEnvelope("state.snapshot", "", current)}}
+	}
+	updates := make([]outbound, 0, 5)
+	devicesEqual := slices.EqualFunc(previous.Devices, current.Devices, func(a, b deviceDTO) bool {
+		return a.ID == b.ID && a.Label == b.Label && a.Protocol == b.Protocol && slices.Equal(a.Capabilities, b.Capabilities)
+	})
+	if !devicesEqual {
+		updates = append(updates, outbound{kind: "state.devices", data: mustEnvelope("state.devices", "", map[string]any{"revision": current.Revision, "devices": current.Devices})})
+	}
+	if !slices.Equal(previous.Queue, current.Queue) {
+		updates = append(updates, outbound{kind: "state.queue", data: mustEnvelope("state.queue", "", map[string]any{"revision": current.Revision, "queue": current.Queue})})
+	}
+	if previous.PlaybackState != current.PlaybackState || previous.Position != current.Position || previous.Duration != current.Duration || previous.Volume != current.Volume || previous.Muted != current.Muted || previous.HasSession != current.HasSession {
+		updates = append(updates, outbound{kind: "state.playback", data: mustEnvelope("state.playback", "", map[string]any{"revision": current.Revision, "state": current.PlaybackState, "position": current.Position, "duration": current.Duration, "volume": current.Volume, "muted": current.Muted, "has_session": current.HasSession})})
+	}
+	if previous.SelectedDeviceID != current.SelectedDeviceID || previous.SelectedMedia != current.SelectedMedia || previous.SelectedMediaName != current.SelectedMediaName || previous.SelectedSubtitle != current.SelectedSubtitle || previous.SelectedSubtitleName != current.SelectedSubtitleName || previous.Transcode != current.Transcode || previous.MediaType != current.MediaType || previous.ArtworkID != current.ArtworkID {
+		updates = append(updates, outbound{kind: "state.selection", data: mustEnvelope("state.selection", "", map[string]any{"revision": current.Revision, "device_id": current.SelectedDeviceID, "media": current.SelectedMedia, "media_name": current.SelectedMediaName, "subtitle": current.SelectedSubtitle, "subtitle_name": current.SelectedSubtitleName, "transcode": current.Transcode, "media_type": current.MediaType, "artwork_id": current.ArtworkID})})
+	}
+	if previous.Policy != current.Policy {
+		updates = append(updates, outbound{kind: "state.policy", data: mustEnvelope("state.policy", "", map[string]any{"revision": current.Revision, "policy": current.Policy})})
+	}
+	// A changed revision outside granular DTO fields needs authoritative state.
+	if len(updates) == 0 {
+		updates = append(updates, outbound{kind: "state.snapshot", data: mustEnvelope("state.snapshot", "", current)})
+	}
+	return updates
+}
+
 func (h *hub) snapshots() {
 	defer close(h.done)
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
-	var revision uint64 = ^uint64(0)
+	var previous snapshotDTO
+	havePrevious := false
+	if snapshot, err := h.controller.Snapshot(context.Background()); err == nil {
+		previous, havePrevious = safeSnapshot(snapshot), true
+	}
 	for {
 		select {
 		case <-h.stop:
 			return
 		case <-ticker.C:
 			s, err := h.controller.Snapshot(context.Background())
-			if err != nil || s.Revision == revision {
+			if err != nil || havePrevious && s.Revision == previous.Revision {
 				continue
 			}
-			revision = s.Revision
-			snapshot := safeSnapshot(s)
+			current := safeSnapshot(s)
+			updates := []outbound{{kind: "state.snapshot", data: mustEnvelope("state.snapshot", "", current)}}
+			if havePrevious {
+				updates = stateUpdates(previous, current)
+			}
+			previous, havePrevious = current, true
 			h.mu.Lock()
 			clients := make([]*client, 0, len(h.clients))
 			for c := range h.clients {
@@ -399,12 +440,9 @@ func (h *hub) snapshots() {
 			}
 			h.mu.Unlock()
 			for _, c := range clients {
-				c.enqueue("state.snapshot", mustEnvelope("state.snapshot", "", snapshot))
-				c.enqueue("state.devices", mustEnvelope("state.devices", "", map[string]any{"revision": snapshot.Revision, "devices": snapshot.Devices}))
-				c.enqueue("state.queue", mustEnvelope("state.queue", "", map[string]any{"revision": snapshot.Revision, "queue": snapshot.Queue}))
-				c.enqueue("state.playback", mustEnvelope("state.playback", "", map[string]any{"revision": snapshot.Revision, "state": snapshot.PlaybackState, "position": snapshot.Position, "duration": snapshot.Duration, "volume": snapshot.Volume, "muted": snapshot.Muted, "has_session": snapshot.HasSession}))
-				c.enqueue("state.selection", mustEnvelope("state.selection", "", map[string]any{"revision": snapshot.Revision, "device_id": snapshot.SelectedDeviceID, "media": snapshot.SelectedMedia, "media_name": snapshot.SelectedMediaName, "subtitle": snapshot.SelectedSubtitle, "subtitle_name": snapshot.SelectedSubtitleName, "transcode": snapshot.Transcode, "media_type": snapshot.MediaType, "artwork_id": snapshot.ArtworkID}))
-				c.enqueue("state.policy", mustEnvelope("state.policy", "", map[string]any{"revision": snapshot.Revision, "policy": snapshot.Policy}))
+				for _, update := range updates {
+					c.enqueue(update.kind, update.data)
+				}
 			}
 		}
 	}

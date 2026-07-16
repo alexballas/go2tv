@@ -170,6 +170,53 @@ func TestSafeSnapshotDeviceMetadata(t *testing.T) {
 	}
 }
 
+func TestStateUpdatesOnlyChangedDomains(t *testing.T) {
+	base := func() snapshotDTO {
+		return snapshotDTO{
+			Revision:      1,
+			Devices:       []deviceDTO{{ID: "tv", Label: "TV", Protocol: "DLNA"}},
+			Queue:         []queueDTO{{ID: "one", Name: "One", Kind: "video", Selected: true}},
+			PlaybackState: controller.PlaybackStatePlaying,
+			Duration:      60,
+			Volume:        25,
+			HasSession:    true,
+			Policy:        controller.DefaultPolicy(),
+		}
+	}
+	tt := []struct {
+		name   string
+		change func(*snapshotDTO)
+		want   []string
+	}{
+		{name: "playback", change: func(s *snapshotDTO) { s.Position = 1 }, want: []string{"state.playback"}},
+		{name: "devices", change: func(s *snapshotDTO) { s.Devices[0].Label = "Living room" }, want: []string{"state.devices"}},
+		{name: "queue", change: func(s *snapshotDTO) { s.Queue[0].Active = true }, want: []string{"state.queue"}},
+		{name: "selection", change: func(s *snapshotDTO) { s.SelectedMediaName = "One" }, want: []string{"state.selection"}},
+		{name: "policy", change: func(s *snapshotDTO) { s.Policy.AutoPlayNext = true }, want: []string{"state.policy"}},
+		{name: "multiple", change: func(s *snapshotDTO) { s.Position = 1; s.Queue[0].Active = true }, want: []string{"state.queue", "state.playback"}},
+		{name: "snapshot fallback", change: func(s *snapshotDTO) { s.ActiveMediaName = "One" }, want: []string{"state.snapshot"}},
+		{name: "unmapped change", change: func(*snapshotDTO) {}, want: []string{"state.snapshot"}},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			previous, current := base(), base()
+			current.Revision = 2
+			tc.change(&current)
+			updates := stateUpdates(previous, current)
+			got := make([]string, 0, len(updates))
+			for _, update := range updates {
+				got = append(got, update.kind)
+				if !bytes.Contains(update.data, []byte(`"revision":2`)) {
+					t.Fatalf("missing revision: %s", update.data)
+				}
+			}
+			if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+				t.Fatalf("updates = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestLibraryImageThumbnailModalAndPlayerArtwork(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	root := t.TempDir()

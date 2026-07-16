@@ -71,6 +71,22 @@ export function startClient(env) {
     queueDrag = null,
     reloaded = sessionStorage.getItem("go2tv-protocol-reload") === "1";
   const pending = new Map();
+  const queuePendingTypes = new Set([
+      "library.play",
+      "player.play",
+      "player.pause",
+      "player.resume",
+      "player.stop",
+    ]),
+    playbackPendingTypes = new Set([
+      ...queuePendingTypes,
+      "library.clear_subtitle",
+      "player.seek",
+      "player.volume",
+      "player.mute",
+      "player.transcode",
+    ]),
+    devicePendingTypes = new Set(["devices.select", "devices.refresh"]);
   const svgNS = "http://www.w3.org/2000/svg";
   const option = (value, label) => {
     const node = document.createElement("option");
@@ -136,20 +152,14 @@ export function startClient(env) {
         request?.type === type &&
         (!itemID || request.payload?.item_id === itemID),
     );
+  const affectsQueue = (request) =>
+      request?.type?.startsWith("queue.") ||
+      queuePendingTypes.has(request?.type),
+    affectsPlayback = (request) => playbackPendingTypes.has(request?.type),
+    affectsDevices = (request) => devicePendingTypes.has(request?.type);
   const queueLocked = () =>
     ["LOADING", "STOPPING"].includes(playbackState()) ||
-    [...pending.values()].some(
-      (request) =>
-        request &&
-        (request.type?.startsWith("queue.") ||
-          [
-            "library.play",
-            "player.play",
-            "player.pause",
-            "player.resume",
-            "player.stop",
-          ].includes(request.type)),
-    );
+    [...pending.values()].some(affectsQueue);
   const connection = (label, value = "") => {
     status.textContent = label;
     connectionDot.dataset.state = value;
@@ -195,7 +205,7 @@ export function startClient(env) {
         : themeChoice;
     document.documentElement.dataset.theme = resolved;
     for (const meta of document.querySelectorAll('meta[name="theme-color"]'))
-      meta.content = resolved === "dark" ? "#07070b" : "#f8f7fb";
+      meta.content = resolved === "dark" ? "#0b0a0f" : "#e9e5f1";
     const toggle = byID("theme-toggle"),
       label = `Theme: ${themeLabels[themeChoice]}`;
     toggle.dataset.mode = themeChoice;
@@ -252,11 +262,18 @@ export function startClient(env) {
     thumbnail.append(image, fallback);
     return thumbnail;
   }
-  function renderPending() {
+  function renderPending(request) {
     pendingNode.textContent = pending.size ? `${pending.size} working` : "";
-    renderPlayback();
-    renderQueue();
-    renderDevices();
+    const type = request?.type;
+    if (!type) {
+      renderPlayback();
+      renderQueue();
+      renderDevices();
+      return;
+    }
+    if (affectsDevices(request)) renderDevices();
+    if (affectsQueue(request)) renderQueue();
+    if (affectsPlayback(request)) renderPlayback();
   }
   function renderDevices() {
     const selected = state.selected_device_id || "",
@@ -549,16 +566,8 @@ export function startClient(env) {
       currentRow?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
   }
-  function renderPlayback() {
-    const current = playbackState(),
-      displayState = current.charAt(0) + current.slice(1).toLowerCase();
-    text("playback-state", displayState);
+  function renderProgress() {
     text("time", `${format(state.position)} / ${format(state.duration)}`);
-    const title =
-      current === "LOADING"
-        ? state.selected_media_name
-        : state.active_media_name || state.selected_media_name;
-    text("now-playing-title", title || "Nothing playing");
     const seek = byID("seek");
     seek.max = String(Math.max(0, state.duration || 0));
     seek.value = String(Math.min(state.position || 0, state.duration || 0));
@@ -566,9 +575,20 @@ export function startClient(env) {
       !connected ||
       !state.has_session ||
       !state.duration ||
-      current === "LOADING" ||
-      current === "STOPPING" ||
+      playbackState() === "LOADING" ||
+      playbackState() === "STOPPING" ||
       hasPending("player.seek");
+  }
+  function renderPlayback() {
+    const current = playbackState(),
+      displayState = current.charAt(0) + current.slice(1).toLowerCase();
+    text("playback-state", displayState);
+    renderProgress();
+    const title =
+      current === "LOADING"
+        ? state.selected_media_name
+        : state.active_media_name || state.selected_media_name;
+    text("now-playing-title", title || "Nothing playing");
     const volumePending = hasPending("player.volume"),
       canControlVolume =
         connected && (state.has_session || !!state.selected_device_id),
@@ -714,7 +734,7 @@ export function startClient(env) {
         renderQueue();
         break;
       case "state.playback":
-        Object.assign(state, {
+        const playback = {
           revision: p.revision ?? state.revision,
           playback_state: p.state ?? state.playback_state,
           position: p.position ?? state.position,
@@ -722,9 +742,22 @@ export function startClient(env) {
           volume: p.volume ?? state.volume,
           muted: p.muted ?? state.muted,
           has_session: p.has_session ?? state.has_session,
-        });
-        renderPlayback();
-        renderQueue();
+        };
+        const progressChanged =
+            state.position !== playback.position ||
+            state.duration !== playback.duration,
+          controlsChanged = [
+            "playback_state",
+            "volume",
+            "muted",
+            "has_session",
+          ].some((key) => state[key] !== playback[key]),
+          playbackStateChanged =
+            state.playback_state !== playback.playback_state;
+        Object.assign(state, playback);
+        if (controlsChanged) renderPlayback();
+        else if (progressChanged) renderProgress();
+        if (playbackStateChanged) renderQueue();
         break;
       case "state.selection":
         if (p.artwork_id !== undefined) selectedArtworkURL = "";
@@ -751,13 +784,15 @@ export function startClient(env) {
         break;
       case "pending":
         if (!pending.has(message.id)) pending.set(message.id, null);
-        renderPending();
+        renderPending(pending.get(message.id));
         break;
-      case "ack":
+      case "ack": {
+        const request = pending.get(message.id);
         pending.delete(message.id);
         state.revision = p.revision ?? state.revision;
-        renderPending();
+        renderPending(request);
         break;
+      }
       case "error": {
         const request = pending.get(message.id),
           focusRetry = queueFocus?.requestID === message.id;
@@ -784,7 +819,7 @@ export function startClient(env) {
             : p.message || p.code || "Request failed",
           "error",
         );
-        renderPending();
+        renderPending(request);
         break;
       }
       case "toast":
@@ -841,7 +876,7 @@ export function startClient(env) {
       clean = { ...payload };
     delete clean.expected_revision;
     pending.set(id, { type, payload: clean, attempt });
-    renderPending();
+    renderPending(pending.get(id));
     ws.send(
       JSON.stringify({
         protocol_version: protocolVersion,
@@ -1061,8 +1096,14 @@ export function startClient(env) {
   });
   byID("refresh").addEventListener("click", () => send("devices.refresh"));
   byID("queue-clear").addEventListener("click", () => send("queue.clear"));
+  let backToTopVisible;
   const updateBackToTop = () => {
-    backToTop.hidden = window.scrollY < 400;
+    const visible = window.scrollY >= 400;
+    if (visible === backToTopVisible) return;
+    backToTopVisible = visible;
+    backToTop.dataset.visible = String(visible);
+    backToTop.ariaHidden = String(!visible);
+    backToTop.tabIndex = visible ? 0 : -1;
   };
   window.addEventListener("scroll", updateBackToTop, { passive: true });
   backToTop.addEventListener("click", () =>
