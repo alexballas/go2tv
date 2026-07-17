@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -101,6 +102,7 @@ type fakeTransport struct {
 	closeErr   error
 	reloadErr  error
 	load       playback.LoadRequest
+	next       playback.LoadRequest
 	volume     int
 }
 
@@ -184,6 +186,7 @@ func (t *fakeTransport) Position(context.Context) (playback.Position, error) {
 	return playback.Position{}, nil
 }
 func (t *fakeTransport) SetNext(_ context.Context, request playback.LoadRequest) error {
+	t.next = request
 	t.log.add("next:" + request.Metadata.Title)
 	return nil
 }
@@ -525,6 +528,103 @@ func TestQueueAddDeduplicatesAbsolutePath(t *testing.T) {
 	}
 }
 
+func TestQueueAddManyPreservesOrderAndCounts(t *testing.T) {
+	c, _, _ := newTestController()
+	defer c.Close()
+	if result := c.AddQueueItem(context.Background(), QueueAddRequest{Media: testMedia("b.mp3", mediamodel.MediaKindAudio)}); !result.OK() {
+		t.Fatal(result.Result)
+	}
+	before, _ := c.Snapshot(context.Background())
+	result := c.AddQueueItems(context.Background(), QueueAddManyRequest{Items: []MediaRef{
+		testMedia("a.mp3", mediamodel.MediaKindAudio),
+		testMedia("b.mp3", mediamodel.MediaKindAudio),
+		testMedia("c.mp3", mediamodel.MediaKindAudio),
+	}})
+	if !result.OK() || result.Added != 2 || result.Duplicates != 1 || result.Dropped != 0 {
+		t.Fatalf("result = %#v", result)
+	}
+	snapshot, _ := c.Snapshot(context.Background())
+	names := make([]string, 0, len(snapshot.Queue))
+	for _, item := range snapshot.Queue {
+		names = append(names, item.Name)
+	}
+	if !slices.Equal(names, []string{"b.mp3", "a.mp3", "c.mp3"}) {
+		t.Fatalf("names = %v", names)
+	}
+	if snapshot.Revision != before.Revision+1 {
+		t.Fatalf("revisions = %d/%d", before.Revision, snapshot.Revision)
+	}
+}
+
+func TestQueueAddManyFillsToCapacityThenFails(t *testing.T) {
+	c, _, _ := newTestController()
+	defer c.Close()
+	items := make([]MediaRef, 0, MaxQueueItems+2)
+	for i := range MaxQueueItems + 2 {
+		items = append(items, testMedia("item-"+strconv.Itoa(i)+".mp3", mediamodel.MediaKindAudio))
+	}
+	result := c.AddQueueItems(context.Background(), QueueAddManyRequest{Items: items})
+	if !result.OK() || result.Added != MaxQueueItems || result.Dropped != 2 || result.Duplicates != 0 {
+		t.Fatalf("result = %#v", result.Result)
+	}
+	full := c.AddQueueItems(context.Background(), QueueAddManyRequest{Items: []MediaRef{testMedia("overflow.mp3", mediamodel.MediaKindAudio)}})
+	if full.Code != CodeQueueLimit || full.Added != 0 || full.Dropped != 1 {
+		t.Fatalf("full = %#v", full.Result)
+	}
+	duplicateOnly := c.AddQueueItems(context.Background(), QueueAddManyRequest{Items: []MediaRef{testMedia("item-0.mp3", mediamodel.MediaKindAudio)}})
+	if !duplicateOnly.OK() || duplicateOnly.Added != 0 || duplicateOnly.Duplicates != 1 || duplicateOnly.Dropped != 0 {
+		t.Fatalf("duplicateOnly = %#v", duplicateOnly.Result)
+	}
+}
+
+func TestQueueAddManyValidationAndConflict(t *testing.T) {
+	c, _, _ := newTestController()
+	defer c.Close()
+	if result := c.AddQueueItems(context.Background(), QueueAddManyRequest{}); result.Code != CodeInvalid {
+		t.Fatalf("empty = %#v", result.Result)
+	}
+	invalid := c.AddQueueItems(context.Background(), QueueAddManyRequest{Items: []MediaRef{testMedia("a.mp3", mediamodel.MediaKindAudio), {}}})
+	if invalid.Code != CodeInvalid || invalid.Added != 0 {
+		t.Fatalf("invalid = %#v", invalid.Result)
+	}
+	after, _ := c.Snapshot(context.Background())
+	if len(after.Queue) != 0 {
+		t.Fatalf("queue mutated: %#v", after.Queue)
+	}
+	stale := after.Revision + 1
+	conflict := c.AddQueueItems(context.Background(), QueueAddManyRequest{Mutation: Mutation{ExpectedRevision: &stale}, Items: []MediaRef{testMedia("a.mp3", mediamodel.MediaKindAudio)}})
+	if conflict.Code != CodeConflict {
+		t.Fatalf("conflict = %#v", conflict.Result)
+	}
+}
+
+func TestQueueAddManyDefersArtworkUntilPlayback(t *testing.T) {
+	c, _, factory := newTestController(playback.Device{ID: "one", Protocol: "DLNA"})
+	defer c.Close()
+	awaitDevices(t, c, 1)
+	c.SelectDevice(context.Background(), Mutation{}, "one")
+	media := testMedia("bulk.mp3", mediamodel.MediaKindAudio)
+	loads := 0
+	media.LoadArtwork = func(context.Context) (*metadata.ArtworkAsset, error) {
+		loads++
+		return &metadata.ArtworkAsset{ID: "bulk-cover", Data: []byte("art"), MIMEType: "image/jpeg"}, nil
+	}
+	if result := c.AddQueueItems(context.Background(), QueueAddManyRequest{Items: []MediaRef{media}}); !result.OK() {
+		t.Fatal(result.Result)
+	}
+	queued, _ := c.Snapshot(context.Background())
+	if loads != 0 || queued.ArtworkID != "" {
+		t.Fatalf("bulk add resolved artwork: loads=%d snapshot=%#v", loads, queued)
+	}
+	if result := c.Play(context.Background(), PlayRequest{QueueItemID: queued.Queue[0].ID}); !result.OK() {
+		t.Fatal(result)
+	}
+	playing, _ := c.Snapshot(context.Background())
+	if loads != 1 || playing.ArtworkID != "bulk-cover" || factory.opened[0].load.Metadata.Artwork == nil {
+		t.Fatalf("playback artwork: loads=%d snapshot=%#v load=%#v", loads, playing, factory.opened[0].load)
+	}
+}
+
 func TestSelectedQueueItemTopCardPlayPreservesIdentity(t *testing.T) {
 	c, _, _ := newTestController(playback.Device{ID: "one", Protocol: "DLNA"})
 	defer c.Close()
@@ -827,9 +927,16 @@ func TestLoadUsesDisplayNameAndArtwork(t *testing.T) {
 	media := testMedia("opaque-id", mediamodel.MediaKindAudio)
 	media.Name = "Actual Song.mp3"
 	media.MIMEType = "audio/mpeg"
-	media.Artwork = &metadata.ArtworkAsset{ID: "cover", Data: []byte("art"), MIMEType: "image/jpeg", Width: 20, Height: 30}
+	loads := 0
+	media.LoadArtwork = func(context.Context) (*metadata.ArtworkAsset, error) {
+		loads++
+		return &metadata.ArtworkAsset{ID: "cover", Data: []byte("art"), MIMEType: "image/jpeg", Width: 20, Height: 30}, nil
+	}
 	c.SelectMedia(context.Background(), Mutation{}, media)
-	media.Artwork.Data[0] = 'X'
+	selected, _ := c.Snapshot(context.Background())
+	if selected.ArtworkID != "" || loads != 0 {
+		t.Fatalf("selection resolved artwork: %#v loads=%d", selected, loads)
+	}
 	if result := c.Play(context.Background(), PlayRequest{}); !result.OK() {
 		t.Fatal(result)
 	}
@@ -840,6 +947,82 @@ func TestLoadUsesDisplayNameAndArtwork(t *testing.T) {
 	snapshot, _ := c.Snapshot(context.Background())
 	if snapshot.SelectedMedia != "Actual Song.mp3" || snapshot.ArtworkID != "cover" {
 		t.Fatalf("snapshot = %#v", snapshot)
+	}
+	if result := c.Play(context.Background(), PlayRequest{}); !result.OK() {
+		t.Fatal(result)
+	}
+	if loads != 1 {
+		t.Fatalf("artwork loads = %d", loads)
+	}
+}
+
+func TestArtworkTimeoutDoesNotFailPlaybackOrRetry(t *testing.T) {
+	device := playback.Device{ID: "one", Protocol: "DLNA"}
+	log := &eventLog{}
+	factory := &fakeFactory{log: log}
+	c := New(Config{Discovery: newFakeDiscovery(device), TransportFactory: factory, MediaServer: &fakeServer{log: log}, OperationTimeout: 3 * time.Second})
+	defer c.Close()
+	awaitDevices(t, c, 1)
+	c.SelectDevice(context.Background(), Mutation{}, device.ID)
+	media := testMedia("slow.mp3", mediamodel.MediaKindAudio)
+	var loads atomic.Int32
+	media.LoadArtwork = func(ctx context.Context) (*metadata.ArtworkAsset, error) {
+		loads.Add(1)
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	c.SelectMedia(context.Background(), Mutation{}, media)
+	started := time.Now()
+	if result := c.Play(context.Background(), PlayRequest{}); !result.OK() {
+		t.Fatal(result)
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("play delayed %s", elapsed)
+	}
+	if factory.opened[0].load.Metadata.Artwork != nil {
+		t.Fatalf("timed-out artwork attached: %#v", factory.opened[0].load.Metadata.Artwork)
+	}
+	started = time.Now()
+	if result := c.Play(context.Background(), PlayRequest{}); !result.OK() {
+		t.Fatal(result)
+	}
+	if elapsed := time.Since(started); elapsed > artworkTimeout/2 {
+		t.Fatalf("replay retried artwork: %s", elapsed)
+	}
+	if loads.Load() != 1 {
+		t.Fatalf("artwork loads = %d", loads.Load())
+	}
+}
+
+func TestArtworkClearsWhenNextMediaHasNone(t *testing.T) {
+	c, _, factory := newTestController(playback.Device{ID: "one", Protocol: "DLNA"})
+	defer c.Close()
+	awaitDevices(t, c, 1)
+	c.SelectDevice(context.Background(), Mutation{}, "one")
+	withArtwork := testMedia("with.mp3", mediamodel.MediaKindAudio)
+	withArtwork.LoadArtwork = func(context.Context) (*metadata.ArtworkAsset, error) {
+		return &metadata.ArtworkAsset{ID: "cover", Data: []byte("art"), MIMEType: "image/jpeg"}, nil
+	}
+	c.SelectMedia(context.Background(), Mutation{}, withArtwork)
+	if result := c.Play(context.Background(), PlayRequest{}); !result.OK() {
+		t.Fatal(result)
+	}
+	withSnapshot, _ := c.Snapshot(context.Background())
+	if withSnapshot.ArtworkID != "cover" {
+		t.Fatalf("first artwork = %q", withSnapshot.ArtworkID)
+	}
+	withoutArtwork := testMedia("without.mp3", mediamodel.MediaKindAudio)
+	withoutArtwork.LoadArtwork = func(context.Context) (*metadata.ArtworkAsset, error) {
+		return nil, metadata.ErrArtworkEmpty
+	}
+	c.SelectMedia(context.Background(), Mutation{}, withoutArtwork)
+	if result := c.Play(context.Background(), PlayRequest{}); !result.OK() {
+		t.Fatal(result)
+	}
+	withoutSnapshot, _ := c.Snapshot(context.Background())
+	load := factory.opened[len(factory.opened)-1].load
+	if withoutSnapshot.ArtworkID != "" || load.Metadata.Artwork != nil || len(load.ArtworkData) != 0 {
+		t.Fatalf("stale artwork: snapshot=%#v load=%#v", withoutSnapshot, load)
 	}
 }
 
@@ -985,6 +1168,16 @@ func TestRemoveActiveQueueItemRejected(t *testing.T) {
 	if !after.HasSession || len(after.Queue) != 2 || !after.Queue[0].IsActive || after.SelectedMedia != "a.mp3" || count(log.snapshot(), "stop:one") != beforeStops {
 		t.Fatalf("active item changed: %#v %v", after, log.snapshot())
 	}
+	if result := c.Pause(context.Background(), Mutation{}); !result.OK() {
+		t.Fatal(result)
+	}
+	if result := c.RemoveQueueItem(context.Background(), Mutation{}, id); result.Code != CodeInvalid {
+		t.Fatalf("paused remove = %#v", result)
+	}
+	paused, _ := c.Snapshot(context.Background())
+	if !paused.HasSession || paused.PlaybackState != PlaybackStatePaused || !paused.Queue[0].IsActive {
+		t.Fatalf("paused item changed: %#v", paused)
+	}
 }
 
 func TestClearQueueRetainsActiveItemAndArtwork(t *testing.T) {
@@ -995,7 +1188,9 @@ func TestClearQueueRetainsActiveItemAndArtwork(t *testing.T) {
 		t.Fatal(result)
 	}
 	active := testMedia("a.mp3", mediamodel.MediaKindAudio)
-	active.Artwork = &metadata.ArtworkAsset{ID: "cover"}
+	active.LoadArtwork = func(context.Context) (*metadata.ArtworkAsset, error) {
+		return &metadata.ArtworkAsset{ID: "cover", Data: []byte("art"), MIMEType: "image/jpeg"}, nil
+	}
 	addTestQueue(t, c, active, testMedia("b.mp3", mediamodel.MediaKindAudio))
 	before, _ := c.Snapshot(context.Background())
 	activeID := before.Queue[0].ID
@@ -1048,23 +1243,39 @@ func TestClearQueueResetsStoppedPlaybackProgress(t *testing.T) {
 	}
 }
 
-func TestRemoveSelectedQueueItemRejected(t *testing.T) {
-	c, _, _ := newTestController()
+func TestRemoveSelectedStoppedQueueItemClearsPlayerPresentation(t *testing.T) {
+	c, _, _ := newTestController(playback.Device{ID: "one", Protocol: "DLNA"})
 	defer c.Close()
-	addTestQueue(t, c, testMedia("a.mp3", mediamodel.MediaKindAudio), testMedia("b.mp3", mediamodel.MediaKindAudio))
+	awaitDevices(t, c, 1)
+	c.SelectDevice(context.Background(), Mutation{}, "one")
+	selected := testMedia("a.mp3", mediamodel.MediaKindAudio)
+	selected.LoadArtwork = func(context.Context) (*metadata.ArtworkAsset, error) {
+		return &metadata.ArtworkAsset{ID: "cover", Data: []byte("art"), MIMEType: "image/jpeg"}, nil
+	}
+	addTestQueue(t, c, selected, testMedia("b.mp3", mediamodel.MediaKindAudio))
 	snapshot, _ := c.Snapshot(context.Background())
-	selectedID, otherID := snapshot.Queue[0].ID, snapshot.Queue[1].ID
-	if result := c.SelectQueueItem(context.Background(), Mutation{}, selectedID); !result.OK() {
+	selectedID := snapshot.Queue[0].ID
+	if result := c.Play(context.Background(), PlayRequest{QueueItemID: selectedID}); !result.OK() {
 		t.Fatal(result)
 	}
-	if result := c.RemoveQueueItem(context.Background(), Mutation{}, selectedID); result.Code != CodeInvalid {
+	playing, _ := c.Snapshot(context.Background())
+	c.HandleMonitorEvent(context.Background(), playback.MonitorEvent{Generation: playing.Generation, Position: 54, Duration: 144})
+	awaitSnapshotState(t, c, func(snapshot Snapshot) bool { return snapshot.Position == 54 && snapshot.Duration == 144 })
+	c.HandleMonitorEvent(context.Background(), playback.MonitorEvent{Generation: playing.Generation, Terminal: playback.TerminalFinished})
+	stopped := awaitSnapshotState(t, c, func(snapshot Snapshot) bool {
+		return !snapshot.HasSession && snapshot.PlaybackState == PlaybackStateStopped
+	})
+	if stopped.ArtworkID != "cover" || stopped.SelectedMedia != "a.mp3" {
+		t.Fatalf("stopped presentation = %#v", stopped)
+	}
+	if result := c.RemoveQueueItem(context.Background(), Mutation{}, selectedID); !result.OK() {
 		t.Fatalf("selected remove = %#v", result)
 	}
-	if result := c.RemoveQueueItem(context.Background(), Mutation{}, otherID); !result.OK() {
-		t.Fatalf("unselected remove = %#v", result)
-	}
 	after, _ := c.Snapshot(context.Background())
-	if len(after.Queue) != 1 || after.Queue[0].ID != selectedID || !after.Queue[0].IsSelected || after.SelectedMedia != "a.mp3" {
+	if len(after.Queue) != 1 || after.Queue[0].Name != "b.mp3" || after.Queue[0].IsSelected {
+		t.Fatalf("queue = %#v", after.Queue)
+	}
+	if after.SelectedMedia != "" || after.ArtworkID != "" || after.Position != 0 || after.Duration != 0 {
 		t.Fatalf("snapshot = %#v", after)
 	}
 }

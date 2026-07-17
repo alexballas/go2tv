@@ -344,6 +344,19 @@
                 class="breadcrumbs"
                 aria-label="Current folder"
               ></div>
+              <button
+                id="add-visible"
+                type="button"
+                class="icon-action"
+                aria-label="Add listed files to playlist"
+                title="Add listed files to playlist"
+                disabled
+              >
+                <svg class="action-icon" aria-hidden="true">
+                  <use href="#icon-list-plus"></use>
+                </svg>
+                <span id="add-visible-count" class="count-badge" hidden></span>
+              </button>
             </div>
             <ul id="library" class="library-list"></ul>
           </section>

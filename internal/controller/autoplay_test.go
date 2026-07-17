@@ -10,6 +10,7 @@ import (
 
 	"go2tv.app/go2tv/v2/internal/mediamodel"
 	"go2tv.app/go2tv/v2/internal/playback"
+	"go2tv.app/go2tv/v2/metadata"
 )
 
 type autoplayTimer struct {
@@ -172,19 +173,28 @@ func TestAutoplayQueueTraversalMatchesDesktop(t *testing.T) {
 
 func TestDLNAGaplessPromotesQueuedNextWithoutReload(t *testing.T) {
 	device := playback.Device{ID: "renderer", Protocol: "DLNA"}
-	c, log, _ := newTestController(device)
+	c, log, factory := newTestController(device)
 	defer c.Close()
 	awaitDevices(t, c, 1)
 	c.SelectDevice(context.Background(), Mutation{}, device.ID)
+	next := testMedia("b.mp3", mediamodel.MediaKindAudio)
+	artworkLoads := 0
+	next.LoadArtwork = func(context.Context) (*metadata.ArtworkAsset, error) {
+		artworkLoads++
+		return &metadata.ArtworkAsset{ID: "b-cover", Data: []byte("art"), MIMEType: "image/jpeg", Width: 20, Height: 30}, nil
+	}
 	addTestQueue(t, c,
 		testMedia("a.mp3", mediamodel.MediaKindAudio),
-		testMedia("b.mp3", mediamodel.MediaKindAudio),
+		next,
 		testMedia("c.mp3", mediamodel.MediaKindAudio),
 	)
 	queued, _ := c.Snapshot(context.Background())
 	policy := Policy{AutoPlayNext: true, GaplessEnabled: true, ImageDurationSeconds: 10}
 	if result := c.SetPolicy(context.Background(), PolicyRequest{Policy: policy}); !result.OK() {
 		t.Fatal(result)
+	}
+	if artworkLoads != 0 {
+		t.Fatalf("queue add resolved artwork: %d", artworkLoads)
 	}
 	if result := c.Play(context.Background(), PlayRequest{QueueItemID: queued.Queue[0].ID}); !result.OK() {
 		t.Fatal(result)
@@ -193,11 +203,15 @@ func TestDLNAGaplessPromotesQueuedNextWithoutReload(t *testing.T) {
 	if !slices.Contains(log.snapshot(), "next:b.mp3") {
 		t.Fatalf("next URI not queued: %v", log.snapshot())
 	}
+	staged := factory.opened[0].next
+	if artworkLoads != 1 || staged.Metadata.Artwork == nil || staged.Metadata.Artwork.URL != "http://127.0.0.1/artwork.jpg" || string(staged.ArtworkData) != "art" {
+		t.Fatalf("staged artwork = %#v loads=%d", staged, artworkLoads)
+	}
 	c.HandleMonitorEvent(context.Background(), playback.MonitorEvent{Generation: playing.Generation, NextURIObserved: true})
 	after := awaitAutoplaySnapshot(t, c, func(snapshot Snapshot) bool {
 		return snapshot.Generation == playing.Generation && snapshot.Queue[1].IsActive
 	})
-	if !after.Queue[1].IsSelected || after.ActiveMediaName != "b.mp3" {
+	if !after.Queue[1].IsSelected || after.ActiveMediaName != "b.mp3" || after.ArtworkID != "b-cover" {
 		t.Fatalf("gapless promotion = %#v", after)
 	}
 	deadline := time.Now().Add(time.Second)

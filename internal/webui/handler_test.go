@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -136,6 +137,9 @@ func TestBootstrapAndLibrarySanitizedNoStore(t *testing.T) {
 	}
 	if !strings.Contains(response.Body.String(), `"gapless":true`) {
 		t.Fatal("gapless feature missing")
+	}
+	if !strings.Contains(response.Body.String(), `"artwork_id":""`) {
+		t.Fatal("empty artwork state omitted")
 	}
 	request = httptest.NewRequest(http.MethodGet, "/api/library?root_id="+rootID, nil)
 	response = httptest.NewRecorder()
@@ -262,16 +266,24 @@ func TestLibraryImageThumbnailModalAndPlayerArtwork(t *testing.T) {
 	h.ServeHTTP(artwork, httptest.NewRequest(http.MethodGet, entry.ArtworkURL, nil))
 	assertJPEGDimensions(t, artwork, 80, 40)
 
-	result := h.command(context.Background(), envelope{Type: "library.select_media", ID: "select-image", Payload: json.RawMessage(`{"root_id":"` + rootID + `","entry_id":"` + entry.ID + `"}`)})
+	result, _ := h.command(context.Background(), envelope{Type: "library.select_media", ID: "select-image", Payload: json.RawMessage(`{"root_id":"` + rootID + `","entry_id":"` + entry.ID + `"}`)})
 	if !result.OK() {
 		t.Fatal(result)
 	}
 	snapshot, err := control.Snapshot(context.Background())
-	if err != nil || snapshot.ArtworkID == "" {
+	if err != nil || snapshot.ArtworkID != "" {
 		t.Fatalf("snapshot artwork = %q, err=%v", snapshot.ArtworkID, err)
 	}
+	ref, err := h.mediaRef(context.Background(), rootID, entry.ID)
+	if err != nil || ref.LoadArtwork == nil {
+		t.Fatalf("media ref artwork loader: %v", err)
+	}
+	resolved, err := ref.LoadArtwork(context.Background())
+	if err != nil || resolved == nil {
+		t.Fatalf("resolve artwork: %#v, %v", resolved, err)
+	}
 	player := httptest.NewRecorder()
-	h.ServeHTTP(player, httptest.NewRequest(http.MethodGet, "/api/artwork/"+snapshot.ArtworkID+".jpg", nil))
+	h.ServeHTTP(player, httptest.NewRequest(http.MethodGet, "/api/artwork/"+resolved.ID+".jpg", nil))
 	assertJPEGDimensions(t, player, 80, 40)
 }
 
@@ -318,6 +330,13 @@ func TestLibraryVideoArtworkUsesFFmpegCache(t *testing.T) {
 		t.Fatalf("browse = %#v, err=%v", page, err)
 	}
 	entryID := page.Entries[0].ID
+	result, _ := h.command(context.Background(), envelope{Type: "library.select_media", ID: "select-video", Payload: json.RawMessage(`{"root_id":"` + rootID + `","entry_id":"` + entryID + `"}`)})
+	if !result.OK() {
+		t.Fatal(result)
+	}
+	if count, readErr := os.ReadFile(counterPath); !os.IsNotExist(readErr) {
+		t.Fatalf("selection resolved artwork: %q, err=%v", count, readErr)
+	}
 	for _, path := range []string{
 		libraryArtworkURL("/api/thumbnail", rootID, entryID),
 		libraryArtworkURL("/api/media-artwork", rootID, entryID),
@@ -327,10 +346,6 @@ func TestLibraryVideoArtworkUsesFFmpegCache(t *testing.T) {
 		if response.Code != http.StatusOK {
 			t.Fatalf("%s = %d %s", path, response.Code, response.Body.String())
 		}
-	}
-	result := h.command(context.Background(), envelope{Type: "library.select_media", ID: "select-video", Payload: json.RawMessage(`{"root_id":"` + rootID + `","entry_id":"` + entryID + `"}`)})
-	if !result.OK() {
-		t.Fatal(result)
 	}
 	count, err := os.ReadFile(counterPath)
 	if err != nil || string(count) != "x" {
@@ -402,15 +417,23 @@ func TestArtworkContentAddressedCache(t *testing.T) {
 			mediaID = entry.ID
 		}
 	}
-	result := h.command(context.Background(), envelope{Type: "library.select_media", ID: "select", Payload: json.RawMessage(`{"root_id":"` + rootID + `","entry_id":"` + mediaID + `"}`)})
+	result, _ := h.command(context.Background(), envelope{Type: "library.select_media", ID: "select", Payload: json.RawMessage(`{"root_id":"` + rootID + `","entry_id":"` + mediaID + `"}`)})
 	if !result.OK() {
 		t.Fatal(result)
 	}
 	snapshot, _ := control.Snapshot(context.Background())
-	if snapshot.ArtworkID == "" || strings.Contains(snapshot.ArtworkID, "song") {
+	if snapshot.ArtworkID != "" {
 		t.Fatalf("artwork ID = %q", snapshot.ArtworkID)
 	}
-	path := "/api/artwork/" + snapshot.ArtworkID + ".jpg"
+	ref, err := h.mediaRef(context.Background(), rootID, mediaID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := ref.LoadArtwork(context.Background())
+	if err != nil || resolved == nil || resolved.ID != asset.ID || strings.Contains(resolved.ID, "song") {
+		t.Fatalf("resolved artwork = %#v, err=%v", resolved, err)
+	}
+	path := "/api/artwork/" + resolved.ID + ".jpg"
 	response := httptest.NewRecorder()
 	h.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 	if response.Code != http.StatusOK || !bytes.Equal(response.Body.Bytes(), asset.Data) || response.Header().Get("Cache-Control") != "private, max-age=31536000, immutable" || response.Header().Get("ETag") == "" {
@@ -463,7 +486,8 @@ func TestCommandStableQueueIDsAndStrictPayload(t *testing.T) {
 	}
 	entryID := page.Entries[0].ID
 	command := func(kind, id, payload string) controller.Result {
-		return h.command(context.Background(), envelope{ProtocolVersion: ProtocolVersion, Type: kind, ID: id, Payload: json.RawMessage(payload)})
+		result, _ := h.command(context.Background(), envelope{ProtocolVersion: ProtocolVersion, Type: kind, ID: id, Payload: json.RawMessage(payload)})
+		return result
 	}
 	if result := command("library.select_media", "select", `{"root_id":"`+rootID+`","entry_id":"`+entryID+`"}`); !result.OK() {
 		t.Fatal(result)
@@ -526,6 +550,61 @@ func TestCommandStableQueueIDsAndStrictPayload(t *testing.T) {
 	}
 }
 
+func TestCommandQueueAddManyKeepsRequestOrder(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"b.mp4", "a.mp4", "c.mp4", "captions.srt"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("media"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lib, err := library.Open(library.Config{Roots: []string{root}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	control := controller.New(controller.Config{})
+	h, err := New(Config{Version: "test", Controller: control, Library: lib})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { h.Close(); control.Close(); _ = lib.Close() })
+	rootID := lib.Roots()[0].ID
+	page, err := lib.Browse(rootID, "", "", 10)
+	if err != nil || len(page.Entries) != 4 {
+		t.Fatalf("browse: %#v %v", page, err)
+	}
+	ids := make(map[string]string, len(page.Entries))
+	for _, entry := range page.Entries {
+		ids[entry.Name] = entry.ID
+	}
+	payload := `{"root_id":"` + rootID + `","entry_ids":["` + ids["a.mp4"] + `","` + ids["b.mp4"] + `","` + ids["c.mp4"] + `","` + ids["captions.srt"] + `","bogus"]}`
+	result, extra := h.command(context.Background(), envelope{Type: "queue.add_many", ID: "bulk", Payload: json.RawMessage(payload)})
+	if !result.OK() {
+		t.Fatal(result)
+	}
+	if extra["added"] != 3 || extra["duplicates"] != 0 || extra["dropped"] != 0 || extra["failed"] != 2 {
+		t.Fatalf("extra = %#v", extra)
+	}
+	snapshot, _ := control.Snapshot(context.Background())
+	names := make([]string, 0, len(snapshot.Queue))
+	for _, item := range snapshot.Queue {
+		names = append(names, item.Name)
+	}
+	if !slices.Equal(names, []string{"a.mp4", "b.mp4", "c.mp4"}) {
+		t.Fatalf("queue order = %v", names)
+	}
+	again, extra := h.command(context.Background(), envelope{Type: "queue.add_many", ID: "bulk-again", Payload: json.RawMessage(payload)})
+	repeat, _ := control.Snapshot(context.Background())
+	if !again.OK() || extra["added"] != 0 || extra["duplicates"] != 3 || repeat.Revision != snapshot.Revision {
+		t.Fatalf("repeat = %#v extra = %#v revisions = %d/%d", again, extra, snapshot.Revision, repeat.Revision)
+	}
+	if result, _ := h.command(context.Background(), envelope{Type: "queue.add_many", ID: "empty", Payload: json.RawMessage(`{"root_id":"` + rootID + `","entry_ids":[]}`)}); result.Code != controller.CodeInvalid {
+		t.Fatalf("empty = %#v", result)
+	}
+	if result, _ := h.command(context.Background(), envelope{Type: "queue.add_many", ID: "unresolvable", Payload: json.RawMessage(`{"root_id":"` + rootID + `","entry_ids":["bogus"]}`)}); result.Code != controller.CodeInvalid {
+		t.Fatalf("unresolvable = %#v", result)
+	}
+}
+
 func TestQueuedPlaybackActive(t *testing.T) {
 	playing := controller.Snapshot{PlaybackState: "PLAYING", Queue: []controller.QueueItem{{IsActive: true}}}
 	if !queuedPlaybackActive(playing) {
@@ -553,7 +632,7 @@ func TestCommandClearsSubtitle(t *testing.T) {
 	if result := control.SelectSubtitle(context.Background(), controller.Mutation{}, ref); !result.OK() {
 		t.Fatal(result)
 	}
-	result := h.command(context.Background(), envelope{Type: "library.clear_subtitle", ID: "clear", Payload: json.RawMessage(`{}`)})
+	result, _ := h.command(context.Background(), envelope{Type: "library.clear_subtitle", ID: "clear", Payload: json.RawMessage(`{}`)})
 	if !result.OK() {
 		t.Fatal(result)
 	}
@@ -564,7 +643,7 @@ func TestCommandClearsSubtitle(t *testing.T) {
 	if snapshot.SelectedSubtitle != "" {
 		t.Fatalf("selected subtitle = %q", snapshot.SelectedSubtitle)
 	}
-	if result := h.command(context.Background(), envelope{Type: "library.clear_subtitle", ID: "bad", Payload: json.RawMessage(`{"extra":true}`)}); result.Code != controller.CodeInvalid {
+	if result, _ := h.command(context.Background(), envelope{Type: "library.clear_subtitle", ID: "bad", Payload: json.RawMessage(`{"extra":true}`)}); result.Code != controller.CodeInvalid {
 		t.Fatal(result)
 	}
 }
@@ -841,7 +920,7 @@ func TestOutboundStateCoalescingPreservesControl(t *testing.T) {
 
 func TestCommandFailureEmitsOneTerminalMessage(t *testing.T) {
 	c := &client{send: make(chan outbound, outboundSize)}
-	c.enqueueResult(controller.Result{RequestID: "request", Revision: 7, Code: controller.CodeConflict, Message: "state changed"})
+	c.enqueueResult(controller.Result{RequestID: "request", Revision: 7, Code: controller.CodeConflict, Message: "state changed"}, nil)
 	if len(c.send) != 1 {
 		t.Fatalf("terminal messages = %d", len(c.send))
 	}

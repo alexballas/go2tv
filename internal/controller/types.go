@@ -286,9 +286,12 @@ type PlayRequest struct {
 	queueMedia  bool
 }
 
+// MediaArtworkLoader lazily resolves normalized artwork for one media item.
+type MediaArtworkLoader func(context.Context) (*metadata.ArtworkAsset, error)
+
 // MediaRef is an in-process media capability, not a wire DTO. Each opener must
-// return a fresh handle; the consumer closes it. Controller copies Artwork data
-// on ingress, so the caller may reuse or mutate its input after the call.
+// return a fresh handle; the consumer closes it. LoadArtwork is attempted only
+// when the controller prepares a renderer load.
 type MediaRef struct {
 	RootID        string
 	ID            string
@@ -299,7 +302,10 @@ type MediaRef struct {
 	MIMEType      string
 	OpenDirect    playback.SourceOpener
 	OpenTranscode playback.SourceOpener
-	Artwork       *metadata.ArtworkAsset
+	LoadArtwork   MediaArtworkLoader
+
+	artwork          *metadata.ArtworkAsset
+	artworkAttempted bool
 }
 
 // Validate checks that the reference can be selected and served.
@@ -380,6 +386,22 @@ type QueueAddRequest struct {
 type QueueAddResult struct {
 	Result
 	ItemID string
+}
+
+// QueueAddManyRequest appends Items in order, skipping already-queued paths
+// and dropping the remainder once the queue reaches MaxQueueItems.
+type QueueAddManyRequest struct {
+	Mutation
+	Items []MediaRef
+}
+
+// QueueAddManyResult counts appended items, duplicates skipped, and items
+// dropped for capacity. Counts are zero unless Result is OK or CodeQueueLimit.
+type QueueAddManyResult struct {
+	Result
+	Added      int
+	Duplicates int
+	Dropped    int
 }
 
 // SeekRequest seeks to an absolute non-negative position in seconds.

@@ -22,6 +22,7 @@ import (
 const (
 	actorQueueSize    = 64
 	callbackQueueSize = 128
+	artworkTimeout    = 1500 * time.Millisecond
 )
 
 type message struct {
@@ -516,19 +517,19 @@ func (c *Controller) SelectMedia(ctx context.Context, mutation Mutation, media M
 		}
 		s.media = cloneMediaRef(media)
 		s.mediaQueueID = ""
-		s.artworkID = mediaArtworkID(media)
+		s.artworkID = ""
 		s.commit()
 		return Result{RequestID: mutation.RequestID, Revision: s.revision}
 	})
 }
 
 func cloneMediaRef(media MediaRef) MediaRef {
-	if media.Artwork == nil {
+	if media.artwork == nil {
 		return media
 	}
-	artwork := *media.Artwork
-	artwork.Data = bytes.Clone(media.Artwork.Data)
-	media.Artwork = &artwork
+	artwork := *media.artwork
+	artwork.Data = bytes.Clone(media.artwork.Data)
+	media.artwork = &artwork
 	return media
 }
 
@@ -596,6 +597,54 @@ func (c *Controller) AddQueueItem(ctx context.Context, request QueueAddRequest) 
 	return QueueAddResult{Result: result, ItemID: itemID}
 }
 
+// AddQueueItems validates every item, then appends the batch in request order
+// with one commit, skipping already-queued paths and dropping the remainder
+// once the queue reaches MaxQueueItems. A batch with no room for any item
+// fails with ErrQueueLimit.
+func (c *Controller) AddQueueItems(ctx context.Context, request QueueAddManyRequest) QueueAddManyResult {
+	var added, duplicates, dropped int
+	result := c.mutate(ctx, request.Mutation, func(s *actorState) Result {
+		if result := s.check(request.Mutation); !result.OK() {
+			return result
+		}
+		if len(request.Items) == 0 {
+			return fail(request.RequestID, s.revision, ErrInvalidOperation)
+		}
+		items := make([]mediamodel.QueueItem, 0, len(request.Items))
+		for _, media := range request.Items {
+			if !media.valid() {
+				return fail(request.RequestID, s.revision, ErrInvalidOperation)
+			}
+			item, ok := mediamodel.NewQueueReference(media.Name, media.Parent, media.Kind)
+			if !ok {
+				return fail(request.RequestID, s.revision, ErrInvalidOperation)
+			}
+			items = append(items, item)
+		}
+		for index, media := range request.Items {
+			if _, ok := s.queueItemByMedia(media); ok {
+				duplicates++
+				continue
+			}
+			if s.queue != nil && s.queue.Len() >= MaxQueueItems {
+				dropped++
+				continue
+			}
+			s.appendQueueItem(items[index], media, false)
+			added++
+		}
+		if added == 0 && dropped > 0 {
+			return fail(request.RequestID, s.revision, ErrQueueLimit)
+		}
+		if added > 0 {
+			s.commit()
+			s.reconcileGapless()
+		}
+		return Result{RequestID: request.RequestID, Revision: s.revision}
+	})
+	return QueueAddManyResult{Result: result, Added: added, Duplicates: duplicates, Dropped: dropped}
+}
+
 func (s *actorState) queueItemByMedia(media MediaRef) (mediamodel.QueueItem, bool) {
 	if s.queue == nil {
 		return mediamodel.QueueItem{}, false
@@ -621,11 +670,16 @@ func sameMediaPath(a, b MediaRef) bool {
 
 func (s *actorState) selectQueueMedia(item mediamodel.QueueItem, media MediaRef) {
 	s.queue.SetCurrentIndex(queueIndex(s.queue, item.ID()))
+	if queued, ok := s.queueRefs[item.ID()]; ok && queued.artworkAttempted {
+		media.LoadArtwork = nil
+		media.artwork = queued.artwork
+		media.artworkAttempted = true
+	}
 	media = cloneMediaRef(media)
 	s.queueRefs[item.ID()] = media
 	s.media = media
 	s.mediaQueueID = item.ID()
-	s.artworkID = mediaArtworkID(media)
+	s.artworkID = ""
 }
 
 func (s *actorState) appendQueueItem(item mediamodel.QueueItem, media MediaRef, selectItem bool) {
@@ -646,7 +700,7 @@ func (s *actorState) appendQueueItem(item mediamodel.QueueItem, media MediaRef, 
 	if selectItem {
 		s.media = media
 		s.mediaQueueID = item.ID()
-		s.artworkID = mediaArtworkID(media)
+		s.artworkID = ""
 	}
 }
 
@@ -697,14 +751,15 @@ func (c *Controller) SelectQueueItem(ctx context.Context, mutation Mutation, id 
 		s.queue.SetCurrentIndex(index)
 		s.media = media
 		s.mediaQueueID = id
-		s.artworkID = mediaArtworkID(media)
+		s.artworkID = ""
 		s.commit()
 		s.reconcileGapless()
 		return Result{RequestID: mutation.RequestID, Revision: s.revision}
 	})
 }
 
-// RemoveQueueItem removes a non-selected, inactive item.
+// RemoveQueueItem removes an inactive item. The selected item may only be
+// removed while playback is stopped; doing so clears the player selection.
 func (c *Controller) RemoveQueueItem(ctx context.Context, mutation Mutation, id string) Result {
 	return c.mutate(ctx, mutation, func(s *actorState) Result {
 		if result := s.check(mutation); !result.OK() {
@@ -715,14 +770,17 @@ func (c *Controller) RemoveQueueItem(ctx context.Context, mutation Mutation, id 
 			return fail(mutation.RequestID, s.revision, ErrNotFound)
 		}
 		selected, _ := s.queue.Current()
-		if selected.ID() == id || s.active != nil && s.active.itemID == id {
+		selectedItem := selected.ID() == id
+		activeItem := s.active != nil && s.active.itemID == id
+		if activeItem || selectedItem && s.state != PlaybackStateStopped {
 			return fail(mutation.RequestID, s.revision, ErrInvalidOperation)
 		}
 		s.queue.Remove(index)
 		delete(s.queueRefs, id)
-		if s.mediaQueueID == id {
+		if selectedItem || s.mediaQueueID == id {
 			s.media, s.mediaQueueID = MediaRef{}, ""
 			s.artworkID = ""
+			s.position, s.duration = 0, 0
 		}
 		s.commit()
 		s.reconcileGapless()
@@ -850,10 +908,79 @@ func mediaMIME(media MediaRef, kind mediamodel.MediaKind) string {
 }
 
 func mediaArtworkID(media MediaRef) string {
-	if media.Artwork == nil {
+	if media.artwork == nil {
 		return ""
 	}
-	return media.Artwork.ID
+	return media.artwork.ID
+}
+
+type mediaArtworkResult struct {
+	asset *metadata.ArtworkAsset
+	err   error
+}
+
+func resolveMediaArtwork(ctx context.Context, media MediaRef) MediaRef {
+	if media.artworkAttempted || media.LoadArtwork == nil {
+		return media
+	}
+	loader := media.LoadArtwork
+	media.LoadArtwork = nil
+	media.artworkAttempted = true
+	resolveCtx, cancel := context.WithTimeout(ctx, artworkTimeout)
+	defer cancel()
+	result := make(chan mediaArtworkResult, 1)
+	go func() {
+		asset, err := loader(resolveCtx)
+		result <- mediaArtworkResult{asset: asset, err: err}
+	}()
+	select {
+	case <-resolveCtx.Done():
+		return media
+	case resolved := <-result:
+		if resolved.err != nil || resolved.asset == nil {
+			return media
+		}
+		artwork := *resolved.asset
+		artwork.Data = bytes.Clone(resolved.asset.Data)
+		media.artwork = &artwork
+		return media
+	}
+}
+
+func (c *Controller) rememberPreparedMedia(itemID string, media MediaRef) {
+	media = cloneMediaRef(media)
+	_ = c.enqueueInternal(message{fn: func(s *actorState) {
+		if queued, ok := s.queueRefs[itemID]; ok && sameMediaPath(queued, media) {
+			s.queueRefs[itemID] = cloneMediaRef(media)
+		}
+		if s.mediaQueueID == itemID || s.mediaQueueID == "" && s.media.valid() && sameMediaPath(s.media, media) {
+			s.media = cloneMediaRef(media)
+		}
+	}})
+}
+
+func (c *Controller) attachArtwork(ctx context.Context, itemID string, media *MediaRef, load *playback.LoadRequest, routeIDs *[]string) {
+	if media == nil || load == nil {
+		return
+	}
+	artworkCtx, cancel := context.WithTimeout(ctx, artworkTimeout)
+	defer cancel()
+	if !media.artworkAttempted && media.LoadArtwork != nil {
+		*media = resolveMediaArtwork(artworkCtx, *media)
+		c.rememberPreparedMedia(itemID, *media)
+	}
+	if media.artwork == nil {
+		return
+	}
+	load.ArtworkData = bytes.Clone(media.artwork.Data)
+	route, err := c.cfg.MediaServer.Add(artworkCtx, playback.RouteRequest{MediaType: media.artwork.MIMEType, Contents: load.ArtworkData})
+	if err != nil || strings.TrimSpace(route.URL) == "" {
+		return
+	}
+	load.Metadata.Artwork = &metadata.Artwork{URL: route.URL, MIMEType: media.artwork.MIMEType, Width: media.artwork.Width, Height: media.artwork.Height}
+	if route.ID != "" {
+		*routeIDs = append(*routeIDs, route.ID)
+	}
 }
 
 func (s *actorState) choosePlay(request PlayRequest) (playback.Device, mediamodel.QueueItem, MediaRef, error) {
@@ -982,7 +1109,7 @@ func (s *actorState) beginPlay(request PlayRequest, response chan<- Result) {
 		s.mediaQueueID = ""
 	}
 	s.media = media
-	s.artworkID = mediaArtworkID(media)
+	s.artworkID = ""
 	s.commit()
 	opCtx, cancel := context.WithCancelCause(s.controller.ctx)
 	operation := &playOperation{generation: generation, cancel: cancel, done: make(chan struct{})}
@@ -1114,16 +1241,7 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 		loadMediaType = "video/mp4"
 	}
 	loadRequest := playback.LoadRequest{MediaURL: route.URL, MediaType: loadMediaType, SubtitleURL: route.SubtitleURL, Duration: duration, Seekable: !transcode, Metadata: metadata.Media{Title: item.BaseName()}}
-	if media.Artwork != nil {
-		loadRequest.ArtworkData = append([]byte(nil), media.Artwork.Data...)
-		artRoute, artErr := c.cfg.MediaServer.Add(ioCtx, playback.RouteRequest{MediaType: media.Artwork.MIMEType, Contents: loadRequest.ArtworkData})
-		if artErr == nil && strings.TrimSpace(artRoute.URL) != "" {
-			loadRequest.Metadata.Artwork = &metadata.Artwork{URL: artRoute.URL, MIMEType: media.Artwork.MIMEType, Width: media.Artwork.Width, Height: media.Artwork.Height}
-			if artRoute.ID != "" {
-				routeIDs = append(routeIDs, artRoute.ID)
-			}
-		}
-	}
+	c.attachArtwork(ioCtx, item.ID(), &media, &loadRequest, &routeIDs)
 	if err == nil && target.Protocol == "DLNA" {
 		if activator, ok := transport.(callbackActivator); ok {
 			err = activator.ActivateCallbacks(generation)
@@ -1268,22 +1386,14 @@ func (c *Controller) queueGapless(ctx context.Context, active *activeSession, ca
 		Seekable:    !candidate.transcode,
 		Metadata:    metadata.Media{Title: candidate.item.BaseName()},
 	}
-	if candidate.media.Artwork != nil {
-		loadRequest.ArtworkData = append([]byte(nil), candidate.media.Artwork.Data...)
-		artRoute, artErr := c.cfg.MediaServer.Add(ctx, playback.RouteRequest{MediaType: candidate.media.Artwork.MIMEType, Contents: loadRequest.ArtworkData})
-		if artErr == nil && strings.TrimSpace(artRoute.URL) != "" {
-			loadRequest.Metadata.Artwork = &metadata.Artwork{URL: artRoute.URL, MIMEType: candidate.media.Artwork.MIMEType, Width: candidate.media.Artwork.Width, Height: candidate.media.Artwork.Height}
-			if artRoute.ID != "" {
-				routeIDs = append(routeIDs, artRoute.ID)
-			}
-		}
-	}
+	media := candidate.media
+	c.attachArtwork(ctx, candidate.item.ID(), &media, &loadRequest, &routeIDs)
 	if err := gapless.SetNext(ctx, loadRequest); err != nil {
 		cleanup()
 		return nil, err
 	}
 	return &gaplessSession{
-		itemID: candidate.item.ID(), media: candidate.media, subtitle: candidate.subtitle,
+		itemID: candidate.item.ID(), media: media, subtitle: candidate.subtitle,
 		kind: candidate.item.MediaKind(), server: serverRequest, load: loadRequest,
 		routeIDs: routeIDs, transcode: candidate.transcode,
 	}, nil
@@ -1514,6 +1624,10 @@ func (c *Controller) completePlay(completion playCompletion) {
 		s.pending = nil
 		s.mutation = false
 		s.active, s.state, s.position, s.duration, s.lastError, s.terminal = completion.session, PlaybackStatePlaying, 0, 0, "", ""
+		if s.mediaQueueID == completion.session.itemID || s.mediaQueueID == "" && sameMediaPath(s.media, completion.session.media) {
+			s.media = cloneMediaRef(completion.session.media)
+		}
+		s.artworkID = mediaArtworkID(completion.session.media)
 		s.syncImageTimer()
 		s.commit()
 		if c.cfg.Logger != nil {

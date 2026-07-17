@@ -144,7 +144,11 @@
     @apply flex items-center gap-2;
   }
   input[type="range"] {
-    @apply w-full accent-brand-500;
+    @apply w-full rounded-full accent-brand-500 outline-none;
+    caret-color: transparent;
+  }
+  input[type="range"]:focus-visible {
+    @apply ring-2 ring-brand-500/30 dark:ring-brand-400/30;
   }
   input[type="checkbox"] {
     @apply size-4 shrink-0 accent-brand-500;
@@ -510,6 +514,15 @@
   }
   #folder-up .action-icon {
     @apply size-4;
+  }
+  #add-visible {
+    @apply relative ml-auto size-8 min-h-8 shrink-0 border-transparent bg-transparent p-0 text-[#6d6782] shadow-none hover:translate-y-0 hover:bg-[#edeaf4] hover:text-brand-600 dark:text-[#8b86a0] dark:hover:bg-[#1d1a26] dark:hover:text-brand-300;
+  }
+  #add-visible .action-icon {
+    @apply size-4;
+  }
+  .count-badge {
+    @apply pointer-events-none absolute -top-1 -right-1 min-w-4 rounded-full bg-brand-500 px-1 text-center text-[.6rem] leading-4 font-bold text-white;
   }
   .breadcrumbs {
     @apply flex min-w-0 items-center gap-1 overflow-x-auto;

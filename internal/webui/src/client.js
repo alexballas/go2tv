@@ -27,6 +27,8 @@ export function startClient(env) {
     pendingNode = byID("pending"),
     breadcrumbs = byID("breadcrumbs"),
     folderUp = byID("folder-up"),
+    addVisible = byID("add-visible"),
+    addVisibleCount = byID("add-visible-count"),
     backToTop = byID("back-to-top");
   const state = {
     revision: 0,
@@ -62,11 +64,11 @@ export function startClient(env) {
     connected = false,
     deviceMenuOpen = false,
     selectedRoot = "",
-    selectedArtworkURL = "",
     parents = [],
     libraryEntries = [],
     libraryParent = "",
     libraryCursor = "",
+    queueLimit = 1000,
     queueRenderKey = "",
     queueFocus = null,
     queueDrag = null,
@@ -183,7 +185,7 @@ export function startClient(env) {
     ({ audio: "Audio", video: "Video", image: "Image" })[kind] || "Media";
   const entryMeta = (item) => {
     if (item.kind === "directory") return "Folder";
-    const subtitle = /\.(srt|vtt)$/i.test(item.name),
+    const subtitle = isSubtitle(item.name),
       label = subtitle ? "Subtitle" : kindLabel(item.media_kind),
       dot = item.name.lastIndexOf("."),
       format = dot > 0 ? item.name.slice(dot + 1).toUpperCase() : "";
@@ -196,6 +198,19 @@ export function startClient(env) {
       numeric: true,
       sensitivity: "base",
     });
+  const isSubtitle = (name) => /\.(srt|vtt)$/i.test(name);
+  const filteredEntries = () => {
+    const filter = byID("library-filter").value.trim().toLowerCase();
+    return filter
+      ? libraryEntries.filter((item) =>
+          item.name.toLowerCase().includes(filter),
+        )
+      : libraryEntries;
+  };
+  const playableEntries = (entries) =>
+    entries.filter(
+      (item) => item.kind !== "directory" && !isSubtitle(item.name),
+    );
   const themeOrder = ["auto", "light", "dark"],
     themeLabels = { auto: "Auto", light: "Light", dark: "Dark" },
     prefersDark = matchMedia("(prefers-color-scheme: dark)");
@@ -221,6 +236,21 @@ export function startClient(env) {
     toggle.dataset.mode = themeChoice;
     toggle.title = label;
     toggle.ariaLabel = label;
+  }
+  function bulkAddToast(p, truncated = 0) {
+    const added = p.added || 0,
+      duplicates = p.duplicates || 0,
+      dropped = (p.dropped || 0) + truncated,
+      failed = p.failed || 0,
+      parts = [];
+    if (added)
+      parts.push(
+        `Added ${added} ${added === 1 ? "file" : "files"} to playlist`,
+      );
+    if (duplicates) parts.push(`${duplicates} already in playlist`);
+    if (dropped) parts.push(`${dropped} skipped (playlist full)`);
+    if (failed) parts.push(`${failed} unavailable`);
+    if (parts.length) showToast(parts.join("; "), added ? "info" : "error");
   }
   function showToast(message, level = "info") {
     const node = document.createElement("p");
@@ -543,12 +573,14 @@ export function startClient(env) {
       copy.append(meta);
       row.append(number, copy);
       const primary = queueAction(item, locked),
-        removeProtected = item.selected || item.active,
-        removeTitle = item.selected
-          ? "Cannot remove current item"
-          : item.active
-            ? "Cannot remove active item"
-            : "Remove";
+        removeProtected =
+          item.active || (item.selected && playbackState() !== "STOPPED"),
+        removeTitle =
+          item.selected && playbackState() !== "STOPPED"
+            ? "Cannot remove current item"
+            : item.active
+              ? "Cannot remove active item"
+              : "Remove";
       const actions = actionGroup(
         button(primary.label, primary.run, {
           disabled: primary.disabled,
@@ -631,7 +663,8 @@ export function startClient(env) {
     clearSubtitle.disabled = !connected || hasPending("library.clear_subtitle");
     subtitleSelection.hidden = !supportsSubtitles;
     selectionStatus.dataset.hasDetails = String(supportsSubtitles);
-    if (!supportsSubtitles) selectionStatus.open = false;
+    if (state.selected_subtitle) selectionStatus.open = true;
+    else if (!supportsSubtitles) selectionStatus.open = false;
     const play = byID("play-toggle"),
       stop = byID("stop-button");
     let command = "player.play",
@@ -671,7 +704,7 @@ export function startClient(env) {
       placeholder = byID("artwork-placeholder"),
       artworkURL = state.artwork_id
         ? `/api/artwork/${encodeURIComponent(state.artwork_id)}.jpg`
-        : selectedArtworkURL;
+        : "";
     if (artworkURL) {
       art.src = artworkURL;
       art.hidden = false;
@@ -705,7 +738,6 @@ export function startClient(env) {
     state.selected_media_name = item.name;
     state.media_type = item.media_kind;
     state.artwork_id = "";
-    selectedArtworkURL = item.artwork_url || "";
     renderPlayback();
     renderLibrary();
     const requestID = send("library.play", {
@@ -713,6 +745,16 @@ export function startClient(env) {
       entry_id: item.id,
     });
     queueFocus = requestID ? { requestID, previousCurrentID } : null;
+  }
+  function selectLibrarySubtitle(item) {
+    const requestID = send("library.select_subtitle", {
+      root_id: selectedRoot,
+      entry_id: item.id,
+    });
+    if (!requestID) return;
+    state.selected_subtitle = true;
+    state.selected_subtitle_name = item.name;
+    renderPlayback();
   }
   function renderAll() {
     renderDevices();
@@ -723,6 +765,7 @@ export function startClient(env) {
   }
   function mergeSnapshot(payload) {
     Object.assign(state, payload);
+    state.artwork_id = payload.artwork_id ?? "";
     state.selected_media_name = payload.selected_media_name ?? "";
     state.active_media_name = payload.active_media_name ?? "";
     state.playback_state = payload.playback_state ?? state.playback_state;
@@ -786,7 +829,6 @@ export function startClient(env) {
           (p.media_name !== undefined &&
             p.media_name !== state.selected_media_name) ||
           (p.media_type !== undefined && p.media_type !== state.media_type);
-        if (p.artwork_id !== undefined) selectedArtworkURL = "";
         Object.assign(state, {
           revision: p.revision ?? state.revision,
           selected_device_id: p.device_id ?? state.selected_device_id,
@@ -817,6 +859,8 @@ export function startClient(env) {
         const request = pending.get(message.id);
         pending.delete(message.id);
         state.revision = p.revision ?? state.revision;
+        if (request?.type === "queue.add_many")
+          bulkAddToast(p, request.truncated || 0);
         renderPending(request);
         break;
       }
@@ -835,6 +879,8 @@ export function startClient(env) {
             request.payload,
             request.attempt + 1,
           );
+          if (retryID && request.truncated)
+            pending.get(retryID).truncated = request.truncated;
           if (focusRetry)
             queueFocus = retryID ? { ...queueFocus, requestID: retryID } : null;
           break;
@@ -939,16 +985,12 @@ export function startClient(env) {
   }
   function renderLibrary() {
     library.replaceChildren();
-    const filter = byID("library-filter").value.trim().toLowerCase(),
-      entries = filter
-        ? libraryEntries.filter((item) =>
-            item.name.toLowerCase().includes(filter),
-          )
-        : libraryEntries;
+    const entries = filteredEntries();
+    renderAddVisible(playableEntries(entries).length);
     if (!entries.length) {
       const empty = document.createElement("li");
       empty.className = "empty-state";
-      empty.textContent = filter
+      empty.textContent = byID("library-filter").value.trim()
         ? "No matches in this folder."
         : "This folder is empty.";
       library.append(empty);
@@ -964,7 +1006,7 @@ export function startClient(env) {
       row.className = "library-row";
       const selected =
         item.kind !== "directory" &&
-        !/\.(srt|vtt)$/i.test(item.name) &&
+        !isSubtitle(item.name) &&
         state.selected_media &&
         item.name === state.selected_media_name;
       row.dataset.selected = String(selected);
@@ -1001,18 +1043,12 @@ export function startClient(env) {
             ),
           ),
         );
-      else if (/\.(srt|vtt)$/i.test(item.name))
+      else if (isSubtitle(item.name))
         row.append(
           actionGroup(
-            button(
-              "Use subtitle",
-              () =>
-                send("library.select_subtitle", {
-                  root_id: selectedRoot,
-                  entry_id: item.id,
-                }),
-              { className: "primary-action" },
-            ),
+            button("Use subtitle", () => selectLibrarySubtitle(item), {
+              className: "primary-action",
+            }),
           ),
         );
       else
@@ -1040,6 +1076,20 @@ export function startClient(env) {
       library.append(row);
     }
     renderLoadMore();
+  }
+  function renderAddVisible(count) {
+    const label = count
+      ? `Add ${count} listed ${count === 1 ? "file" : "files"} to playlist`
+      : "Add listed files to playlist";
+    addVisible.disabled = !count;
+    addVisible.title = label;
+    addVisible.ariaLabel = label;
+    addVisibleCount.hidden = !count;
+    addVisibleCount.textContent = !count
+      ? ""
+      : count > 999
+        ? "999+"
+        : String(count);
   }
   function renderLoadMore() {
     if (!libraryCursor) return;
@@ -1117,6 +1167,7 @@ export function startClient(env) {
       return;
     }
     sessionStorage.removeItem("go2tv-protocol-reload");
+    queueLimit = bootstrap.limits?.queue_items || queueLimit;
     mergeSnapshot(bootstrap.snapshot);
     roots.replaceChildren();
     for (const root of bootstrap.roots || [])
@@ -1134,6 +1185,17 @@ export function startClient(env) {
     if (!parents.length) return;
     parents.pop();
     browse(parents.at(-1)?.id || "");
+  });
+  addVisible.addEventListener("click", () => {
+    const playable = playableEntries(filteredEntries());
+    if (!playable.length || hasPending("queue.add_many")) return;
+    const batch = playable.slice(0, queueLimit),
+      id = send("queue.add_many", {
+        root_id: selectedRoot,
+        entry_ids: batch.map((item) => item.id),
+      }),
+      request = id && pending.get(id);
+    if (request) request.truncated = playable.length - batch.length;
   });
   byID("refresh").addEventListener("click", () => send("devices.refresh"));
   byID("queue-clear").addEventListener("click", () => send("queue.clear"));

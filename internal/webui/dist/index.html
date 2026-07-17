@@ -20,7 +20,7 @@
       type="image/svg+xml"
       href="data:image/svg+xml,%3Csvg viewBox=%221580 -40 1880 2040%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cdefs%3E%3ClinearGradient id=%22g2tv-frame%22 gradientUnits=%22userSpaceOnUse%22 x1=%221616%22 y1=%22975%22 x2=%223384%22 y2=%22975%22%3E%3Cstop offset=%220%22 stop-color=%22%23ff00ff%22/%3E%3Cstop offset=%221%22 stop-color=%22%2300e2e2%22/%3E%3C/linearGradient%3E%3ClinearGradient id=%22g2tv-dot1%22 gradientUnits=%22userSpaceOnUse%22 x1=%222229%22 y1=%22811%22 x2=%222567%22 y2=%22811%22%3E%3Cstop offset=%220%22 stop-color=%22%23ff00ff%22/%3E%3Cstop offset=%221%22 stop-color=%22%2300c0c0%22/%3E%3C/linearGradient%3E%3ClinearGradient id=%22g2tv-dot2%22 gradientUnits=%22userSpaceOnUse%22 x1=%222405%22 y1=%221144%22 x2=%222658%22 y2=%221144%22%3E%3Cstop offset=%220%22 stop-color=%22%23ff00ff%22/%3E%3Cstop offset=%221%22 stop-color=%22%2300c0c0%22/%3E%3C/linearGradient%3E%3ClinearGradient id=%22g2tv-dot3%22 gradientUnits=%22userSpaceOnUse%22 x1=%222549%22 y1=%221399%22 x2=%222718%22 y2=%221399%22%3E%3Cstop offset=%220%22 stop-color=%22%23ff00ff%22/%3E%3Cstop offset=%221%22 stop-color=%22%2300c0c0%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath fill=%22url(%23g2tv-dot1)%22 opacity=%22.7%22 d=%22m 2335.5,653.5 c -86.7,34.6 -128.9,132.9 -94.3,219.6 34.6,86.7 132.9,128.9 219.6,94.3 86.7,-34.6 128.9,-132.9 94.3,-219.6 -34.6,-86.6 -132.9,-128.9 -219.6,-94.3 z%22/%3E%3Cpath fill=%22url(%23g2tv-dot2)%22 opacity=%22.7%22 d=%22m 2484.3,1026.4 c -65,26 -96.7,99.7 -70.7,164.7 26,65 99.7,96.7 164.7,70.7 65,-26 96.7,-99.7 70.7,-164.7 -25.9,-65 -99.6,-96.7 -164.7,-70.7 z%22/%3E%3Cpath fill=%22url(%23g2tv-dot3)%22 opacity=%22.7%22 d=%22m 2601.8,1320.7 c -43.3,17.3 -64.5,66.5 -47.2,109.8 17.3,43.3 66.5,64.5 109.8,47.2 43.3,-17.3 64.5,-66.5 47.2,-109.8 -17.3,-43.3 -66.4,-64.5 -109.8,-47.2 z%22/%3E%3Cpath fill=%22url(%23g2tv-frame)%22 d=%22m 2564,209.8 -258.1,103 91.8,-213.7 c 15.5,-36 -1.2,-77.8 -37.2,-93.3 -36.1,-15.5 -77.8,1.2 -93.3,37.2 l -92.8,216 -216,-92.8 c -36.1,-15.5 -77.8,1.2 -93.3,37.2 -15.5,36 1.2,77.8 37.2,93.3 L 2116,388.5 1864.3,489 c -202,80.6 -300.7,310.6 -220.1,512.6 l 279.3,699.7 c 80.6,202 310.6,300.7 512.6,220.1 l 699.7,-279.3 c 202,-80.6 300.7,-310.6 220.1,-512.6 L 3076.6,429.8 C 2995.9,227.9 2766,129.2 2564,209.8 Z m 659.9,972.5 c 51.6,129.2 -11.6,276.4 -140.8,327.9 l -699.7,279.3 c -129.2,51.6 -276.4,-11.6 -327.9,-140.8 L 1776.1,949 c -51.6,-129.2 11.6,-276.4 140.8,-327.9 l 699.7,-279.3 c 129.2,-51.6 276.4,11.6 327.9,140.8 z%22/%3E%3C/svg%3E"
     />
-    <link rel="stylesheet" href="/assets/app.229a06df.css" />
+    <link rel="stylesheet" href="/assets/app.974f27a1.css" />
   </head>
   <body>
     <svg
@@ -344,6 +344,19 @@
                 class="breadcrumbs"
                 aria-label="Current folder"
               ></div>
+              <button
+                id="add-visible"
+                type="button"
+                class="icon-action"
+                aria-label="Add listed files to playlist"
+                title="Add listed files to playlist"
+                disabled
+              >
+                <svg class="action-icon" aria-hidden="true">
+                  <use href="#icon-list-plus"></use>
+                </svg>
+                <span id="add-visible-count" class="count-badge" hidden></span>
+              </button>
             </div>
             <ul id="library" class="library-list"></ul>
           </section>
@@ -487,6 +500,6 @@
         <p id="artwork-modal-title"></p>
       </div>
     </dialog>
-    <script type="module" src="/assets/app.3e9d395a.js"></script>
+    <script type="module" src="/assets/app.7f9958e8.js"></script>
   </body>
 </html>

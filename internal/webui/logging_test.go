@@ -58,7 +58,7 @@ func TestWebUIActionLogging(t *testing.T) {
 		t.Fatalf("browse=%#v err=%v", page, err)
 	}
 	rootID, entryID := lib.Roots()[0].ID, page.Entries[0].ID
-	result := handler.command(context.Background(), envelope{Type: "queue.add", ID: "add", Payload: []byte(`{"root_id":"` + rootID + `","entry_id":"` + entryID + `"}`)})
+	result, _ := handler.command(context.Background(), envelope{Type: "queue.add", ID: "add", Payload: []byte(`{"root_id":"` + rootID + `","entry_id":"` + entryID + `"}`)})
 	if !result.OK() || len(log.info) != 1 || log.info[0] != "Media added to queue: media.mp4" {
 		t.Fatalf("result=%#v info=%v", result, log.info)
 	}
@@ -66,20 +66,20 @@ func TestWebUIActionLogging(t *testing.T) {
 	if err != nil || len(snapshot.Queue) != 1 {
 		t.Fatalf("snapshot=%#v err=%v", snapshot, err)
 	}
-	result = handler.command(context.Background(), envelope{Type: "queue.remove", ID: "remove", Payload: []byte(`{"item_id":"` + snapshot.Queue[0].ID + `"}`)})
+	result, _ = handler.command(context.Background(), envelope{Type: "queue.remove", ID: "remove", Payload: []byte(`{"item_id":"` + snapshot.Queue[0].ID + `"}`)})
 	if !result.OK() || len(log.info) != 2 || log.info[1] != "Queue item removed: media.mp4" {
 		t.Fatalf("result=%#v info=%v", result, log.info)
 	}
 
-	result = handler.command(context.Background(), envelope{Type: "player.transcode", ID: "enable", Payload: []byte(`{"enabled":true}`)})
+	result, _ = handler.command(context.Background(), envelope{Type: "player.transcode", ID: "enable", Payload: []byte(`{"enabled":true}`)})
 	if !result.OK() || len(log.info) != 3 || log.info[2] != "Transcoding enabled" {
 		t.Fatalf("result=%#v info=%v", result, log.info)
 	}
-	result = handler.command(context.Background(), envelope{Type: "player.seek", ID: "seek", Payload: []byte(`{"seconds":12}`)})
+	result, _ = handler.command(context.Background(), envelope{Type: "player.seek", ID: "seek", Payload: []byte(`{"seconds":12}`)})
 	if result.OK() || len(log.warnings) != 1 || log.warnings[0] != "WebUI action failed: player seek (nothing playing)" {
 		t.Fatalf("result=%#v warnings=%v", result, log.warnings)
 	}
-	result = handler.command(context.Background(), envelope{Type: "player.transcode", ID: "stale", Payload: []byte(`{"enabled":false,"expected_revision":0}`)})
+	result, _ = handler.command(context.Background(), envelope{Type: "player.transcode", ID: "stale", Payload: []byte(`{"enabled":false,"expected_revision":0}`)})
 	if result.Code != controller.CodeConflict || len(log.warnings) != 1 {
 		t.Fatalf("conflict result=%#v warnings=%v", result, log.warnings)
 	}

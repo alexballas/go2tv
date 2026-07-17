@@ -80,6 +80,6 @@ type snapshotDTO struct {
 	Volume               int               `json:"volume"`
 	Muted                bool              `json:"muted"`
 	MediaType            string            `json:"media_type,omitempty"`
-	ArtworkID            string            `json:"artwork_id,omitempty"`
+	ArtworkID            string            `json:"artwork_id"`
 	Policy               controller.Policy `json:"policy"`
 }

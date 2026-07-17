@@ -150,6 +150,8 @@ function fixture() {
     "queue-clear",
     "breadcrumbs",
     "folder-up",
+    "add-visible",
+    "add-visible-count",
     "library-filter",
     "play-toggle",
     "stop-button",
@@ -496,6 +498,11 @@ test("control interactions emit typed payloads and subtitle selection", async ()
   await settle();
   const ws = FakeSocket.instances[0];
   ids.library.children[1].children[1].children[0].emit("click");
+  assert.equal(ids["subtitle-selected"].textContent, "captions.srt");
+  assert.equal(ids["subtitle-clear"].hidden, false);
+  assert.equal(ids["subtitle-selection"].hidden, false);
+  assert.equal(ids["selection-status"].dataset.hasDetails, "true");
+  assert.equal(ids["selection-status"].open, true);
   ids.seek.value = "42";
   ids.seek.emit("change");
   ids["volume-up"].emit("click");
@@ -699,7 +706,8 @@ test("loads browser thumbnails, opens artwork modal and updates player artwork",
   ids["artwork-modal-close"].emit("click");
   assert.equal(ids["artwork-modal"].open, false);
   row.children[1].children[0].emit("click");
-  assert.equal(ids.artwork.src, "/api/media-artwork?entry_id=media-1");
+  assert.equal(ids.artwork.src, "");
+  assert.equal(ids.artwork.hidden, true);
   FakeSocket.instances[0].message({
     protocol_version: 1,
     type: "state.selection",
@@ -707,6 +715,14 @@ test("loads browser thumbnails, opens artwork modal and updates player artwork",
   });
   assert.equal(ids.artwork.src, "/api/artwork/cover-id.jpg");
   assert.equal(ids["artwork-placeholder"].hidden, true);
+  FakeSocket.instances[0].message({
+    protocol_version: 1,
+    type: "state.snapshot",
+    payload: { revision: 5, artwork_id: "" },
+  });
+  assert.equal(ids.artwork.src, "");
+  assert.equal(ids.artwork.hidden, true);
+  assert.equal(ids["artwork-placeholder"].hidden, false);
 });
 
 test("queue and primary transport follow loading and active state", async () => {
@@ -788,6 +804,11 @@ test("queue and primary transport follow loading and active state", async () => 
   assert.equal(
     ids.queue.children[0].children[2].children[0].ariaLabel,
     "Resume current.flac",
+  );
+  assert.equal(ids.queue.children[0].children[2].children[2].disabled, true);
+  assert.equal(
+    ids.queue.children[0].children[2].children[2].title,
+    "Cannot remove current item",
   );
   ws.message({
     protocol_version: 1,
@@ -900,11 +921,8 @@ test("playlist locks every row during mutations and transitions", async () => {
       ],
     },
   });
-  assert.equal(ids.queue.children[0].children[2].children[2].disabled, true);
-  assert.equal(
-    ids.queue.children[0].children[2].children[2].title,
-    "Cannot remove current item",
-  );
+  assert.equal(ids.queue.children[0].children[2].children[2].disabled, false);
+  assert.equal(ids.queue.children[0].children[2].children[2].title, "Remove");
   assert.equal(ids.queue.children[1].children[2].children[2].disabled, false);
   assert.equal(ids.queue.children[1].children[2].children[0].disabled, false);
   ids.queue.children[0].children[2].children[0].emit("click");
@@ -1144,6 +1162,153 @@ test("orders library entries by name across pages", async () => {
   ]);
 });
 
+test("bulk add sends listed media in display order and reports counts", async () => {
+  const { ids, env } = fixture();
+  const bootstrapFetch = env.fetch;
+  env.fetch = async (url) =>
+    url.startsWith("/api/library")
+      ? {
+          ok: true,
+          json: async () => ({
+            entries: [
+              { id: "id-b", name: "b.mp4", kind: "file", media_kind: "video" },
+              { id: "dir-1", name: "a folder", kind: "directory" },
+              { id: "sub-1", name: "a.srt", kind: "file" },
+              {
+                id: "id-c10",
+                name: "c 10.mp4",
+                kind: "file",
+                media_kind: "video",
+              },
+              { id: "id-a", name: "a.mp4", kind: "file", media_kind: "video" },
+              {
+                id: "id-c2",
+                name: "c 2.mp4",
+                kind: "file",
+                media_kind: "video",
+              },
+            ],
+          }),
+        }
+      : bootstrapFetch(url);
+  startClient(env);
+  await settle();
+  const ws = FakeSocket.instances[0];
+  assert.equal(ids["add-visible"].disabled, false);
+  assert.equal(ids["add-visible-count"].hidden, false);
+  assert.equal(ids["add-visible-count"].textContent, "4");
+  assert.equal(ids["add-visible"].ariaLabel, "Add 4 listed files to playlist");
+  ids["add-visible"].emit("click");
+  assert.equal(ws.sent[0].type, "queue.add_many");
+  assert.deepEqual(ws.sent[0].payload, {
+    root_id: "root-1",
+    entry_ids: ["id-a", "id-b", "id-c2", "id-c10"],
+    expected_revision: 3,
+  });
+  ws.message({
+    protocol_version: 1,
+    type: "ack",
+    id: ws.sent[0].id,
+    payload: { revision: 4, added: 3, duplicates: 1, dropped: 0, failed: 0 },
+  });
+  const toast = ids.toast.children.at(-1);
+  assert.equal(
+    toast.textContent,
+    "Added 3 files to playlist; 1 already in playlist",
+  );
+  assert.equal(toast.dataset.level, "info");
+  ids["library-filter"].value = "c ";
+  ids["library-filter"].emit("input");
+  assert.equal(ids["add-visible-count"].textContent, "2");
+  ids["add-visible"].emit("click");
+  assert.deepEqual(ws.sent[1].payload, {
+    root_id: "root-1",
+    entry_ids: ["id-c2", "id-c10"],
+    expected_revision: 4,
+  });
+  ids["library-filter"].value = "zzz";
+  ids["library-filter"].emit("input");
+  assert.equal(ids["add-visible"].disabled, true);
+  assert.equal(ids["add-visible-count"].hidden, true);
+  ids["add-visible"].emit("click");
+  assert.equal(ws.sent.length, 2);
+});
+
+test("bulk add truncates to the queue limit and reports unsent files", async () => {
+  const { ids, env } = fixture();
+  const bootstrapFetch = env.fetch;
+  env.fetch = async (url) => {
+    if (url === "/api/bootstrap") {
+      const response = await bootstrapFetch(url),
+        body = await response.json();
+      return {
+        ok: true,
+        json: async () => ({ ...body, limits: { queue_items: 3 } }),
+      };
+    }
+    return {
+      ok: true,
+      json: async () => ({
+        entries: ["a", "b", "c", "d", "e"].map((name) => ({
+          id: `id-${name}`,
+          name: `${name}.mp4`,
+          kind: "file",
+          media_kind: "video",
+        })),
+      }),
+    };
+  };
+  startClient(env);
+  await settle();
+  const ws = FakeSocket.instances[0];
+  ids["add-visible"].emit("click");
+  assert.deepEqual(ws.sent[0].payload, {
+    root_id: "root-1",
+    entry_ids: ["id-a", "id-b", "id-c"],
+    expected_revision: 3,
+  });
+  ws.message({
+    protocol_version: 1,
+    type: "ack",
+    id: ws.sent[0].id,
+    payload: { revision: 4, added: 2, duplicates: 0, dropped: 1, failed: 0 },
+  });
+  assert.equal(
+    ids.toast.children.at(-1).textContent,
+    "Added 2 files to playlist; 3 skipped (playlist full)",
+  );
+});
+
+test("bulk add badge caps its display at 999+", async () => {
+  const { ids, env } = fixture();
+  const bootstrapFetch = env.fetch;
+  env.fetch = async (url) =>
+    url.startsWith("/api/library")
+      ? {
+          ok: true,
+          json: async () => ({
+            entries: Array.from({ length: 1200 }, (_, index) => ({
+              id: `id-${index}`,
+              name: `clip ${String(index).padStart(4, "0")}.mp4`,
+              kind: "file",
+              media_kind: "video",
+            })),
+          }),
+        }
+      : bootstrapFetch(url);
+  startClient(env);
+  await settle();
+  assert.equal(ids["add-visible-count"].textContent, "999+");
+  assert.equal(
+    ids["add-visible"].ariaLabel,
+    "Add 1200 listed files to playlist",
+  );
+  const ws = FakeSocket.instances[0];
+  ids["add-visible"].emit("click");
+  assert.equal(ws.sent[0].payload.entry_ids.length, 1000);
+  assert.equal(ws.sent[0].payload.entry_ids[0], "id-0");
+});
+
 test("folder navigation exposes current location and one-level up", async () => {
   const { ids, env } = fixture(),
     bootstrapFetch = env.fetch,
@@ -1184,6 +1349,85 @@ test("folder navigation exposes current location and one-level up", async () => 
   assert.equal(ids["folder-up"].hidden, true);
   assert.equal(ids.breadcrumbs.children[0].ariaCurrent, "page");
   assert.deepEqual(browsedParents, ["", "anime", ""]);
+});
+
+test("stopped selected playlist item can be removed and clears player", async () => {
+  const { ids, env } = fixture();
+  startClient(env);
+  await settle();
+  const ws = FakeSocket.instances[0];
+  ws.emit("open");
+  ws.message({
+    protocol_version: 1,
+    type: "state.snapshot",
+    payload: {
+      revision: 4,
+      selected_media: true,
+      selected_media_name: "one.mp3",
+      artwork_id: "cover",
+      has_session: false,
+      playback_state: "STOPPED",
+      position: 54,
+      duration: 144,
+      queue: [
+        {
+          id: "q1",
+          name: "one.mp3",
+          kind: "audio",
+          selected: true,
+          active: false,
+        },
+        {
+          id: "q2",
+          name: "two.mp3",
+          kind: "audio",
+          selected: false,
+          active: false,
+        },
+      ],
+    },
+  });
+  const remove = ids.queue.children[0].children[2].children[2];
+  assert.equal(remove.disabled, false);
+  assert.equal(remove.title, "Remove");
+  remove.emit("click");
+  const request = ws.sent.at(-1);
+  assert.equal(request.type, "queue.remove");
+  assert.deepEqual(request.payload, { item_id: "q1", expected_revision: 4 });
+  ws.message({
+    protocol_version: 1,
+    type: "ack",
+    id: request.id,
+    payload: { revision: 5 },
+  });
+  ws.message({
+    protocol_version: 1,
+    type: "state.snapshot",
+    payload: {
+      revision: 5,
+      selected_media: false,
+      artwork_id: "",
+      has_session: false,
+      playback_state: "STOPPED",
+      position: 0,
+      duration: 0,
+      queue: [
+        {
+          id: "q2",
+          name: "two.mp3",
+          kind: "audio",
+          selected: false,
+          active: false,
+        },
+      ],
+    },
+  });
+  assert.equal(ids["now-playing-title"].textContent, "Nothing playing");
+  assert.equal(ids.time.textContent, "0:00 / 0:00");
+  assert.equal(ids.seek.value, "0");
+  assert.equal(ids.artwork.src, "");
+  assert.equal(ids.artwork.hidden, true);
+  assert.equal(ids["artwork-placeholder"].hidden, false);
 });
 
 test("clear queue button sends queue.clear and tracks queue state", async () => {

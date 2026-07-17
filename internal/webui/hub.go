@@ -19,7 +19,9 @@ import (
 )
 
 const (
-	maxMessageBytes = 64 << 10
+	// maxMessageBytes fits a queue.add_many payload of MaxQueueItems signed
+	// entry tokens at typical relative-path lengths.
+	maxMessageBytes = 256 << 10
 	maxClients      = 16
 	maxClientsPerIP = 4
 	outboundSize    = 32
@@ -29,7 +31,7 @@ const (
 	pingEvery       = 25 * time.Second
 )
 
-type commandFunc func(context.Context, envelope) controller.Result
+type commandFunc func(context.Context, envelope) (controller.Result, map[string]any)
 type hubConfig struct {
 	writeWait  time.Duration
 	pongWait   time.Duration
@@ -299,14 +301,18 @@ func (c *client) reader() {
 		}
 		c.enqueue("pending", mustEnvelope("pending", message.ID, map[string]any{}))
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		result := c.hub.command(ctx, message)
+		result, extra := c.hub.command(ctx, message)
 		cancel()
-		c.enqueueResult(result)
+		c.enqueueResult(result, extra)
 	}
 }
-func (c *client) enqueueResult(result controller.Result) {
+func (c *client) enqueueResult(result controller.Result, extra map[string]any) {
 	if result.OK() {
-		c.enqueue("ack", mustEnvelope("ack", result.RequestID, map[string]any{"revision": result.Revision}))
+		payload := map[string]any{"revision": result.Revision}
+		for key, value := range extra {
+			payload[key] = value
+		}
+		c.enqueue("ack", mustEnvelope("ack", result.RequestID, payload))
 		return
 	}
 	c.enqueue("error", mustEnvelope("error", result.RequestID, map[string]any{"code": result.Code, "message": result.Message, "revision": result.Revision}))

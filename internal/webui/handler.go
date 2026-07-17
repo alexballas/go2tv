@@ -361,27 +361,66 @@ func readStrict(raw []byte, dst any) error {
 func expectedMutation(id string, revision *uint64) controller.Mutation {
 	return controller.Mutation{RequestID: id, ExpectedRevision: revision}
 }
-func (h *Handler) command(ctx context.Context, message envelope) controller.Result {
+func (h *Handler) command(ctx context.Context, message envelope) (controller.Result, map[string]any) {
 	var before controller.Snapshot
 	if h.cfg.Logger != nil && knownAction(message.Type) {
 		before, _ = h.cfg.Controller.Snapshot(ctx)
 	}
-	result := h.executeCommand(ctx, message)
+	var result controller.Result
+	var extra map[string]any
+	// queue.add_many is dispatched here, not in executeCommand, because it is
+	// the only command that acknowledges with extra payload fields.
+	if message.Type == "queue.add_many" {
+		result, extra = h.queueAddMany(ctx, message)
+	} else {
+		result = h.executeCommand(ctx, message)
+	}
 	if h.cfg.Logger == nil || !knownAction(message.Type) {
-		return result
+		return result, extra
 	}
 	if !result.OK() {
 		if result.Code == controller.CodeConflict {
-			return result
+			return result, extra
 		}
 		h.cfg.Logger.Warning("WebUI action failed: " + actionName(message.Type) + " (" + result.Message + ")")
-		return result
+		return result, extra
 	}
 	snapshot, err := h.cfg.Controller.Snapshot(ctx)
 	if err == nil {
 		h.logAction(message.Type, before, snapshot)
 	}
-	return result
+	return result, extra
+}
+
+func (h *Handler) queueAddMany(ctx context.Context, message envelope) (controller.Result, map[string]any) {
+	var p struct {
+		RootID           string   `json:"root_id"`
+		EntryIDs         []string `json:"entry_ids"`
+		ExpectedRevision *uint64  `json:"expected_revision"`
+	}
+	if readStrict(message.Payload, &p) != nil || len(p.EntryIDs) == 0 || len(p.EntryIDs) > controller.MaxQueueItems {
+		return invalid(message.ID), nil
+	}
+	refs := make([]controller.MediaRef, 0, len(p.EntryIDs))
+	failed := 0
+	for _, entryID := range p.EntryIDs {
+		ref, err := h.queuedMediaRef(p.RootID, entryID)
+		if err != nil || ref.Kind == mediamodel.MediaKindUnknown {
+			// Entries listed by the client can vanish or change before the
+			// bulk add arrives; skip them instead of failing the batch.
+			failed++
+			continue
+		}
+		refs = append(refs, ref)
+	}
+	if len(refs) == 0 {
+		return invalid(message.ID), nil
+	}
+	result := h.cfg.Controller.AddQueueItems(ctx, controller.QueueAddManyRequest{Mutation: expectedMutation(message.ID, p.ExpectedRevision), Items: refs})
+	if !result.OK() {
+		return result.Result, nil
+	}
+	return result.Result, map[string]any{"added": result.Added, "duplicates": result.Duplicates, "dropped": result.Dropped, "failed": failed}
 }
 
 func (h *Handler) executeCommand(ctx context.Context, message envelope) controller.Result {
@@ -572,7 +611,7 @@ func (h *Handler) executeCommand(ctx context.Context, message envelope) controll
 func knownAction(kind string) bool {
 	switch kind {
 	case "devices.refresh", "devices.select", "library.play", "library.select_media", "library.select_subtitle", "library.clear_subtitle",
-		"queue.add", "queue.select", "queue.remove", "queue.move", "queue.clear", "player.play", "player.resume",
+		"queue.add", "queue.add_many", "queue.select", "queue.remove", "queue.move", "queue.clear", "player.play", "player.resume",
 		"player.pause", "player.stop", "player.volume", "player.mute", "player.transcode", "playback.policy", "player.seek":
 		return true
 	default:
@@ -610,6 +649,10 @@ func (h *Handler) logAction(kind string, before, snapshot controller.Snapshot) {
 				message = "Media added to queue: " + item.Name
 				break
 			}
+		}
+	case "queue.add_many":
+		if added := len(snapshot.Queue) - len(before.Queue); added > 0 {
+			message = fmt.Sprintf("Media added to queue: %d files", added)
 		}
 	case "queue.select":
 		message = "Queue item selected: " + snapshot.SelectedMedia
@@ -680,20 +723,24 @@ func invalid(id string) controller.Result {
 	return controller.Result{RequestID: id, Code: controller.CodeInvalid, Message: "invalid request"}
 }
 
-func (h *Handler) mediaRef(ctx context.Context, rootID, entryID string) (controller.MediaRef, error) {
+func (h *Handler) mediaRef(_ context.Context, rootID, entryID string) (controller.MediaRef, error) {
+	return h.buildMediaRef(rootID, entryID)
+}
+
+func (h *Handler) queuedMediaRef(rootID, entryID string) (controller.MediaRef, error) {
+	return h.buildMediaRef(rootID, entryID)
+}
+
+func (h *Handler) buildMediaRef(rootID, entryID string) (controller.MediaRef, error) {
 	file, meta, err := h.cfg.Library.OpenMedia(rootID, entryID)
 	if err != nil {
 		return controller.MediaRef{}, err
 	}
 	kind := mediamodel.KindForPath(meta.Name)
 	mediaType := detectMediaType(file)
-	artwork := h.resolveArtwork(ctx, rootID, entryID, meta.Name, kind, file)
-	if artwork != nil {
-		h.rememberArtwork(artwork.ID, h.artworkLoader(rootID, entryID, meta.Name, kind))
-	}
 	_ = file.Close()
 	open := h.opener(rootID, entryID)
-	return controller.MediaRef{RootID: rootID, ID: entryID, AbsolutePath: meta.AbsolutePath(), Name: meta.Name, Kind: kind, MIMEType: mediaType, OpenDirect: open, OpenTranscode: open, Artwork: artwork}, nil
+	return controller.MediaRef{RootID: rootID, ID: entryID, AbsolutePath: meta.AbsolutePath(), Name: meta.Name, Kind: kind, MIMEType: mediaType, OpenDirect: open, OpenTranscode: open, LoadArtwork: h.mediaArtworkLoader(rootID, entryID, meta.Name, kind)}, nil
 }
 
 func detectMediaType(file *os.File) string {
@@ -731,11 +778,6 @@ func (h *Handler) opener(rootID, entryID string) playback.SourceOpener {
 		return file, info.ModTime(), nil
 	}
 }
-func (h *Handler) resolveArtwork(ctx context.Context, rootID, mediaID, mediaName string, kind mediamodel.MediaKind, media *os.File) *metadata.ArtworkAsset {
-	asset, _ := h.resolveArtworkRequest(ctx, h.mediaArtworkRequest(rootID, mediaID, mediaName, kind, media))
-	return asset
-}
-
 func (h *Handler) resolveArtworkRequest(ctx context.Context, request mediaartwork.Request) (*metadata.ArtworkAsset, error) {
 	id, err := mediaartwork.CacheID(request)
 	if err != nil {
@@ -810,6 +852,21 @@ func (h *Handler) loadArtworkFile(open func() (*os.File, error), source string) 
 		return nil
 	}
 	return asset
+}
+
+func (h *Handler) mediaArtworkLoader(rootID, mediaID, mediaName string, kind mediamodel.MediaKind) controller.MediaArtworkLoader {
+	return func(ctx context.Context) (*metadata.ArtworkAsset, error) {
+		media, _, err := h.cfg.Library.OpenMedia(rootID, mediaID)
+		if err != nil {
+			return nil, err
+		}
+		defer media.Close()
+		asset, err := h.resolveArtworkRequest(ctx, h.mediaArtworkRequest(rootID, mediaID, mediaName, kind, media))
+		if err == nil && asset != nil {
+			h.rememberArtwork(asset.ID, h.artworkLoader(rootID, mediaID, mediaName, kind))
+		}
+		return asset, err
+	}
 }
 
 func (h *Handler) artworkLoader(rootID, mediaID, mediaName string, kind mediamodel.MediaKind) controller.ArtworkLoader {
