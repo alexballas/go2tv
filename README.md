@@ -78,7 +78,11 @@ When transcoding is enabled, Go2TV probes available GPU H.264 encoders first and
 
 **Web UI (Server Mode)**
 
-![Go2TV Web UI](assets/webui.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/webui-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="assets/webui-light.png">
+  <img alt="Go2TV Web UI" src="assets/webui-dark.png">
+</picture>
 
 Enable **Autoplay next** and **Gapless** to queue the next playlist item with DLNA `SetNextAVTransportURI` on compatible renderers. Chromecast keeps ordinary autoplay.
 

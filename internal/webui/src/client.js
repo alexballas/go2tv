@@ -73,6 +73,7 @@ export function startClient(env) {
     queueFocus = null,
     queueDrag = null,
     assetsHash = "",
+    instanceID = "",
     reloaded = sessionStorage.getItem("go2tv-protocol-reload") === "1";
   const pending = new Map();
   const queuePendingTypes = new Set([
@@ -960,11 +961,64 @@ export function startClient(env) {
         location.reload();
         return;
       }
+      if (instanceID !== (bootstrap.instance_id || ""))
+        await refreshLibrary(bootstrap);
       shuttingDown = false;
       connect();
     } catch {
       reconnectTimer = setTimeout(reconnect, 2000);
     }
+  }
+  async function findDirectory(parentID, name) {
+    let cursor = "";
+    do {
+      const query = new URLSearchParams({
+        root_id: selectedRoot,
+        limit: "200",
+      });
+      if (parentID) query.set("parent_id", parentID);
+      if (cursor) query.set("cursor", cursor);
+      const response = await fetch(`/api/library?${query}`, {
+          headers: { Accept: "application/json" },
+        }),
+        data = await response.json();
+      if (!response.ok) return "";
+      const match = (data.entries || []).find(
+        (item) => item.kind === "directory" && item.name === name,
+      );
+      if (match) return match.id;
+      cursor = data.cursor || "";
+    } while (cursor);
+    return "";
+  }
+  // Root and entry IDs are signed with per-process server secrets, so a
+  // restarted server rejects every ID this page cached. Re-resolve the
+  // current root and folder path by name to mint fresh IDs.
+  async function refreshLibrary(bootstrap) {
+    queueLimit = bootstrap.limits?.queue_items || queueLimit;
+    const previousRootName = [...roots.children].find(
+      (node) => node.value === selectedRoot,
+    )?.textContent;
+    roots.replaceChildren();
+    for (const root of bootstrap.roots || [])
+      roots.append(option(root.id, root.name));
+    const sameRoot = [...roots.children].find(
+      (node) => node.textContent === previousRootName,
+    );
+    if (sameRoot) roots.value = sameRoot.value;
+    selectedRoot = roots.value;
+    const path = parents;
+    parents = [];
+    let parentID = "";
+    if (sameRoot)
+      for (const crumb of path) {
+        const nextID = await findDirectory(parentID, crumb.name);
+        if (!nextID) break;
+        parents.push({ id: nextID, name: crumb.name });
+        parentID = nextID;
+      }
+    instanceID = bootstrap.instance_id || "";
+    await browse(parentID);
   }
   function send(type, payload = {}, attempt = 0) {
     if (ws?.readyState !== WebSocket.OPEN) {
@@ -1191,6 +1245,7 @@ export function startClient(env) {
     }
     sessionStorage.removeItem("go2tv-protocol-reload");
     assetsHash = bootstrap.assets_hash || "";
+    instanceID = bootstrap.instance_id || "";
     queueLimit = bootstrap.limits?.queue_items || queueLimit;
     mergeSnapshot(bootstrap.snapshot);
     roots.replaceChildren();

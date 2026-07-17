@@ -539,6 +539,68 @@ test("reloads the page when assets change across a server restart", async () => 
   assert.equal(FakeSocket.instances.length, 1);
 });
 
+test("re-resolves stale library and root IDs after a server restart", async () => {
+  const { ids, env, timers } = fixture();
+  const bootstrapFetch = env.fetch;
+  let generation = 1;
+  env.fetch = async (url) => {
+    if (url === "/api/bootstrap") {
+      const response = await bootstrapFetch(url),
+        body = await response.json();
+      return {
+        ok: true,
+        json: async () => ({
+          ...body,
+          instance_id: `gen-${generation}`,
+          roots: [{ id: `root-gen${generation}`, name: "Media" }],
+        }),
+      };
+    }
+    const params = new URL(`http://host${url}`).searchParams,
+      parent = params.get("parent_id") || "";
+    assert.equal(params.get("root_id"), `root-gen${generation}`);
+    return {
+      ok: true,
+      json: async () => ({
+        entries: parent
+          ? [
+              {
+                id: `episode-gen${generation}`,
+                name: "Episode 1.mkv",
+                kind: "file",
+                media_kind: "video",
+              },
+            ]
+          : [
+              { id: `anime-gen${generation}`, name: "Anime", kind: "directory" },
+            ],
+      }),
+    };
+  };
+  startClient(env);
+  await settle();
+  ids.library.children[0].children[1].children[0].emit("click");
+  await settle();
+  const ws = FakeSocket.instances[0];
+  ws.emit("open");
+  generation = 2;
+  ws.message({ protocol_version: 1, type: "server.shutdown", payload: {} });
+  ws.close();
+  timers.at(-1)();
+  await settle();
+  const ws2 = FakeSocket.instances[1];
+  assert.ok(ws2, "socket reopens after restart");
+  ws2.emit("open");
+  assert.equal(ids.breadcrumbs.children.at(-1).textContent, "Anime");
+  ids.library.children[0].children[1].children[1].emit("click");
+  assert.equal(ws2.sent.at(-1).type, "queue.add");
+  assert.deepEqual(ws2.sent.at(-1).payload, {
+    root_id: "root-gen2",
+    entry_id: "episode-gen2",
+    expected_revision: 3,
+  });
+});
+
 test("keeps probing while the server is down, then reconnects", async () => {
   const { ids, env, timers } = fixture();
   const bootstrapFetch = env.fetch;

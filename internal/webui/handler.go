@@ -2,6 +2,7 @@ package webui
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -34,6 +35,7 @@ const maxArtworkRefs = controller.MaxQueueItems + 1
 type Handler struct {
 	cfg          Config
 	hub          *hub
+	instanceID   string
 	artMu        sync.RWMutex
 	artworkRefs  map[string]controller.ArtworkLoader
 	artworkOrder []string
@@ -46,7 +48,13 @@ func New(cfg Config) (*Handler, error) {
 	if cfg.Artwork == nil {
 		cfg.Artwork = controller.NewArtworkCache(controller.ArtworkCacheBytes)
 	}
-	h := &Handler{cfg: cfg, artworkRefs: make(map[string]controller.ArtworkLoader)}
+	// Library and root IDs are signed with per-process secrets; clients watch
+	// this instance identifier to refresh cached IDs after a server restart.
+	instance := make([]byte, 8)
+	if _, err := rand.Read(instance); err != nil {
+		return nil, err
+	}
+	h := &Handler{cfg: cfg, instanceID: hex.EncodeToString(instance), artworkRefs: make(map[string]controller.ArtworkLoader)}
 	h.hub = newHub(cfg.Controller, h.command)
 	return h, nil
 }
@@ -136,7 +144,7 @@ func (h *Handler) bootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	roots := h.cfg.Library.Roots()
-	result := bootstrapDTO{ServerVersion: h.cfg.Version, ProtocolVersion: ProtocolVersion, AssetsHash: assetsHash, Snapshot: safeSnapshot(snapshot), Limits: map[string]int{"ws_message_bytes": maxMessageBytes, "ws_clients": maxClients, "ws_clients_per_ip": maxClientsPerIP, "queue_items": controller.MaxQueueItems, "library_page": library.MaxLimit}, Features: map[string]bool{"websocket": true, "artwork": true, "transcode": true, "gapless": true}}
+	result := bootstrapDTO{ServerVersion: h.cfg.Version, ProtocolVersion: ProtocolVersion, AssetsHash: assetsHash, InstanceID: h.instanceID, Snapshot: safeSnapshot(snapshot), Limits: map[string]int{"ws_message_bytes": maxMessageBytes, "ws_clients": maxClients, "ws_clients_per_ip": maxClientsPerIP, "queue_items": controller.MaxQueueItems, "library_page": library.MaxLimit}, Features: map[string]bool{"websocket": true, "artwork": true, "transcode": true, "gapless": true}}
 	for _, root := range roots {
 		result.Roots = append(result.Roots, rootDTO{ID: root.ID, Name: root.Name})
 	}

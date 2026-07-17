@@ -42,6 +42,7 @@ type bootstrapDTO struct {
 	ServerVersion   string          `json:"server_version"`
 	ProtocolVersion int             `json:"protocol_version"`
 	AssetsHash      string          `json:"assets_hash"`
+	InstanceID      string          `json:"instance_id"`
 	Snapshot        snapshotDTO     `json:"snapshot"`
 	Roots           []rootDTO       `json:"roots"`
 	Limits          map[string]int  `json:"limits"`
