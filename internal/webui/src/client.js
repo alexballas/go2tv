@@ -26,6 +26,7 @@ export function startClient(env) {
     toast = byID("toast"),
     pendingNode = byID("pending"),
     breadcrumbs = byID("breadcrumbs"),
+    folderUp = byID("folder-up"),
     backToTop = byID("back-to-top");
   const state = {
     revision: 0,
@@ -180,6 +181,14 @@ export function startClient(env) {
   };
   const kindLabel = (kind) =>
     ({ audio: "Audio", video: "Video", image: "Image" })[kind] || "Media";
+  const entryMeta = (item) => {
+    if (item.kind === "directory") return "Folder";
+    const subtitle = /\.(srt|vtt)$/i.test(item.name),
+      label = subtitle ? "Subtitle" : kindLabel(item.media_kind),
+      dot = item.name.lastIndexOf("."),
+      format = dot > 0 ? item.name.slice(dot + 1).toUpperCase() : "";
+    return format ? `${label} · ${format}` : label;
+  };
   const mediaGlyph = (kind) =>
     ({ audio: "♪", video: "▶", image: "▧" })[kind] || "•";
   const byName = (a, b) =>
@@ -196,6 +205,7 @@ export function startClient(env) {
   setButtonIcon(byID("volume-down"), "volume-1", "Volume down");
   setButtonIcon(byID("volume-up"), "volume-2", "Volume up");
   setButtonIcon(byID("queue-clear"), "list-x", "Clear playlist");
+  setButtonIcon(folderUp, "arrow-left", "Up one folder");
   function applyTheme() {
     const resolved =
       themeChoice === "auto"
@@ -607,13 +617,21 @@ export function startClient(env) {
       subtitleLabel = state.selected_subtitle
         ? state.selected_subtitle_name || "Subtitle"
         : "None",
-      clearSubtitle = byID("subtitle-clear");
+      clearSubtitle = byID("subtitle-clear"),
+      subtitleSelection = byID("subtitle-selection"),
+      selectionStatus = byID("selection-status"),
+      supportsSubtitles =
+        !!state.selected_subtitle ||
+        (!!state.selected_media && state.media_type === "video");
     text("media-selected", mediaLabel);
     text("subtitle-selected", subtitleLabel);
     byID("media-selected").title = mediaLabel;
     byID("subtitle-selected").title = subtitleLabel;
     clearSubtitle.hidden = !state.selected_subtitle;
     clearSubtitle.disabled = !connected || hasPending("library.clear_subtitle");
+    subtitleSelection.hidden = !supportsSubtitles;
+    selectionStatus.dataset.hasDetails = String(supportsSubtitles);
+    if (!supportsSubtitles) selectionStatus.open = false;
     const play = byID("play-toggle"),
       stop = byID("stop-button");
     let command = "player.play",
@@ -685,9 +703,11 @@ export function startClient(env) {
       state.queue.find((queued) => queued.selected)?.id || "";
     state.selected_media = true;
     state.selected_media_name = item.name;
+    state.media_type = item.media_kind;
     state.artwork_id = "";
     selectedArtworkURL = item.artwork_url || "";
     renderPlayback();
+    renderLibrary();
     const requestID = send("library.play", {
       root_id: selectedRoot,
       entry_id: item.id,
@@ -699,6 +719,7 @@ export function startClient(env) {
     renderQueue();
     renderPlayback();
     renderPolicy();
+    if (libraryEntries.length) renderLibrary();
   }
   function mergeSnapshot(payload) {
     Object.assign(state, payload);
@@ -760,6 +781,11 @@ export function startClient(env) {
         if (playbackStateChanged) renderQueue();
         break;
       case "state.selection":
+        const mediaChanged =
+          (p.media !== undefined && p.media !== state.selected_media) ||
+          (p.media_name !== undefined &&
+            p.media_name !== state.selected_media_name) ||
+          (p.media_type !== undefined && p.media_type !== state.media_type);
         if (p.artwork_id !== undefined) selectedArtworkURL = "";
         Object.assign(state, {
           revision: p.revision ?? state.revision,
@@ -776,6 +802,7 @@ export function startClient(env) {
         renderDevices();
         renderPlayback();
         renderPolicy();
+        if (mediaChanged) renderLibrary();
         break;
       case "state.policy":
         state.revision = p.revision ?? state.revision;
@@ -889,19 +916,26 @@ export function startClient(env) {
   }
   function renderBreadcrumbs() {
     breadcrumbs.replaceChildren();
-    breadcrumbs.append(
-      button("Library", () => {
-        parents = [];
-        browse();
-      }),
-    );
-    for (const [index, parent] of parents.entries())
-      breadcrumbs.append(
-        button(parent.name, () => {
-          parents = parents.slice(0, index + 1);
-          browse(parent.id);
-        }),
-      );
+    const root = button("Library", () => {
+      parents = [];
+      browse();
+    });
+    if (!parents.length) root.ariaCurrent = "page";
+    breadcrumbs.append(root);
+    for (const [index, parent] of parents.entries()) {
+      const crumb = button(parent.name, () => {
+        parents = parents.slice(0, index + 1);
+        browse(parent.id);
+      });
+      if (index === parents.length - 1) crumb.ariaCurrent = "page";
+      breadcrumbs.append(crumb);
+    }
+    folderUp.hidden = !parents.length;
+    if (parents.length) {
+      const destination =
+        parents.length > 1 ? parents[parents.length - 2].name : "Library";
+      setButtonIcon(folderUp, "arrow-left", `Up to ${destination}`);
+    }
   }
   function renderLibrary() {
     library.replaceChildren();
@@ -928,18 +962,20 @@ export function startClient(env) {
         label = document.createElement("strong"),
         meta = document.createElement("span");
       row.className = "library-row";
+      const selected =
+        item.kind !== "directory" &&
+        !/\.(srt|vtt)$/i.test(item.name) &&
+        state.selected_media &&
+        item.name === state.selected_media_name;
+      row.dataset.selected = String(selected);
+      if (selected) row.ariaCurrent = "true";
       main.className = "entry-main";
       copy.className = "entry-copy";
       label.className = "entry-name";
       label.textContent = item.name;
       label.title = item.name;
       meta.className = "entry-meta";
-      meta.textContent =
-        item.kind === "directory"
-          ? "Folder"
-          : /\.(srt|vtt)$/i.test(item.name)
-            ? "Subtitle"
-            : kindLabel(item.media_kind);
+      meta.textContent = entryMeta(item);
       copy.append(label, meta);
       if (item.thumbnail_url) main.append(mediaThumbnail(item));
       else {
@@ -1093,6 +1129,11 @@ export function startClient(env) {
     selectedRoot = roots.value;
     parents = [];
     browse();
+  });
+  folderUp.addEventListener("click", () => {
+    if (!parents.length) return;
+    parents.pop();
+    browse(parents.at(-1)?.id || "");
   });
   byID("refresh").addEventListener("click", () => send("devices.refresh"));
   byID("queue-clear").addEventListener("click", () => send("queue.clear"));

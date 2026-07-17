@@ -132,6 +132,8 @@ function fixture() {
     "media-selected",
     "subtitle-selected",
     "subtitle-clear",
+    "subtitle-selection",
+    "selection-status",
     "artwork",
     "artwork-placeholder",
     "artwork-modal",
@@ -147,6 +149,7 @@ function fixture() {
     "queue-count",
     "queue-clear",
     "breadcrumbs",
+    "folder-up",
     "library-filter",
     "play-toggle",
     "stop-button",
@@ -311,6 +314,16 @@ test("renders safe labels and sends playlist/play payloads", async () => {
     ids.library.children[0].children[0].children[1].children[0].textContent,
     "<movie>.mp4",
   );
+  assert.equal(
+    ids.library.children[0].children[0].children[1].children[1].textContent,
+    "Video · MP4",
+  );
+  assert.equal(
+    ids.library.children[1].children[0].children[1].children[1].textContent,
+    "Subtitle · SRT",
+  );
+  assert.equal(ids["subtitle-selection"].hidden, true);
+  assert.equal(ids["selection-status"].dataset.hasDetails, "false");
   ids.devices.children[1].emit("click");
   assert.equal(ws.sent[0].type, "devices.select");
   assert.deepEqual(ws.sent[0].payload, {
@@ -350,6 +363,10 @@ test("renders safe labels and sends playlist/play payloads", async () => {
     entry_id: "media-1",
     expected_revision: 4,
   });
+  assert.equal(ids.library.children[0].dataset.selected, "true");
+  assert.equal(ids.library.children[0].ariaCurrent, "true");
+  assert.equal(ids["subtitle-selection"].hidden, false);
+  assert.equal(ids["selection-status"].dataset.hasDetails, "true");
   ws.message({
     protocol_version: 1,
     type: "ack",
@@ -604,6 +621,7 @@ test("shows selected names and silently retries revision conflicts", async () =>
       revision: 4,
       media: true,
       media_name: "long song.flac",
+      media_type: "audio",
       subtitle: true,
       subtitle_name: "captions.srt",
     },
@@ -611,6 +629,7 @@ test("shows selected names and silently retries revision conflicts", async () =>
   assert.equal(ids["media-selected"].textContent, "long song.flac");
   assert.equal(ids["subtitle-selected"].textContent, "captions.srt");
   assert.equal(ids["subtitle-clear"].hidden, false);
+  assert.equal(ids["subtitle-selection"].hidden, false);
   ids["subtitle-clear"].emit("click");
   assert.equal(ws.sent.at(-1).type, "library.clear_subtitle");
   assert.deepEqual(ws.sent.at(-1).payload, { expected_revision: 4 });
@@ -621,6 +640,8 @@ test("shows selected names and silently retries revision conflicts", async () =>
   });
   assert.equal(ids["subtitle-selected"].textContent, "None");
   assert.equal(ids["subtitle-clear"].hidden, true);
+  assert.equal(ids["subtitle-selection"].hidden, true);
+  assert.equal(ids["selection-status"].dataset.hasDetails, "false");
   const first = client.send("player.seek", { seconds: 12 });
   ws.message({
     protocol_version: 1,
@@ -1121,6 +1142,48 @@ test("orders library entries by name across pages", async () => {
     "Episode 10.mkv",
     "zebra.mp4",
   ]);
+});
+
+test("folder navigation exposes current location and one-level up", async () => {
+  const { ids, env } = fixture(),
+    bootstrapFetch = env.fetch,
+    browsedParents = [];
+  env.fetch = async (url) => {
+    if (!url.startsWith("/api/library")) return bootstrapFetch(url);
+    const parent =
+      new URL(`http://host${url}`).searchParams.get("parent_id") || "";
+    browsedParents.push(parent);
+    return {
+      ok: true,
+      json: async () => ({
+        entries: parent
+          ? [
+              {
+                id: "episode-1",
+                name: "Episode 1.mkv",
+                kind: "file",
+                media_kind: "video",
+              },
+            ]
+          : [{ id: "anime", name: "Anime", kind: "directory" }],
+      }),
+    };
+  };
+  startClient(env);
+  await settle();
+  assert.equal(ids["folder-up"].hidden, true);
+  assert.equal(ids.breadcrumbs.children[0].ariaCurrent, "page");
+  ids.library.children[0].children[1].children[0].emit("click");
+  await settle();
+  assert.equal(ids["folder-up"].hidden, false);
+  assert.equal(ids["folder-up"].ariaLabel, "Up to Library");
+  assert.equal(ids.breadcrumbs.children.at(-1).textContent, "Anime");
+  assert.equal(ids.breadcrumbs.children.at(-1).ariaCurrent, "page");
+  ids["folder-up"].emit("click");
+  await settle();
+  assert.equal(ids["folder-up"].hidden, true);
+  assert.equal(ids.breadcrumbs.children[0].ariaCurrent, "page");
+  assert.deepEqual(browsedParents, ["", "anime", ""]);
 });
 
 test("clear queue button sends queue.clear and tracks queue state", async () => {

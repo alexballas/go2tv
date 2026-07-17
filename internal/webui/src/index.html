@@ -79,6 +79,9 @@
       <symbol id="icon-arrow-up" viewBox="0 0 24 24">
         <path d="m18 15-6-6-6 6" />
       </symbol>
+      <symbol id="icon-arrow-left" viewBox="0 0 24 24">
+        <path d="m15 18-6-6 6-6" />
+      </symbol>
       <symbol id="icon-grip-vertical" viewBox="0 0 24 24">
         <circle class="icon-fill" cx="9" cy="5" r="1.5" />
         <circle class="icon-fill" cx="15" cy="5" r="1.5" />
@@ -304,12 +307,16 @@
                 /><select id="roots" aria-label="Media root"></select>
               </div>
             </div>
-            <div class="selection-status">
-              <div>
-                <span class="status-label">Media</span
+            <details
+              id="selection-status"
+              class="selection-status"
+              data-has-details="false"
+            >
+              <summary>
+                <span class="status-label">Selected media</span
                 ><strong id="media-selected">No media</strong>
-              </div>
-              <div>
+              </summary>
+              <div id="subtitle-selection" class="selection-details" hidden>
                 <span class="status-label">Subtitles</span>
                 <div class="selection-value">
                   <span id="subtitle-selected">None</span
@@ -318,8 +325,20 @@
                   </button>
                 </div>
               </div>
-            </div>
+            </details>
             <div class="browser-toolbar">
+              <button
+                id="folder-up"
+                type="button"
+                class="icon-action"
+                aria-label="Up one folder"
+                title="Up one folder"
+                hidden
+              >
+                <svg class="action-icon" aria-hidden="true">
+                  <use href="#icon-arrow-left"></use>
+                </svg>
+              </button>
               <div
                 id="breadcrumbs"
                 class="breadcrumbs"
