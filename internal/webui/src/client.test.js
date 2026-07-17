@@ -486,10 +486,79 @@ test("merges partial playback/policy, clears pending, reports errors and shutdow
   ws.close();
   assert.equal(client.pending.size, 0);
   timers.at(-1)();
+  await settle();
   const ws2 = FakeSocket.instances[1];
   assert.ok(ws2);
   ws2.message({ protocol_version: 1, type: "server.shutdown", payload: {} });
   assert.equal(ids.status.textContent, "Server stopped");
+});
+
+test("reconnects after a server restart when assets are unchanged", async () => {
+  const { ids, env, timers } = fixture();
+  const bootstrapFetch = env.fetch;
+  env.fetch = async (url) => {
+    if (url !== "/api/bootstrap") return bootstrapFetch(url);
+    const response = await bootstrapFetch(url),
+      body = await response.json();
+    return { ok: true, json: async () => ({ ...body, assets_hash: "abc123" }) };
+  };
+  startClient(env);
+  await settle();
+  const ws = FakeSocket.instances[0];
+  ws.emit("open");
+  ws.message({ protocol_version: 1, type: "server.shutdown", payload: {} });
+  assert.equal(ids.status.textContent, "Server stopped");
+  ws.close();
+  assert.equal(ids.status.textContent, "Server stopped");
+  timers.at(-1)();
+  await settle();
+  const ws2 = FakeSocket.instances[1];
+  assert.ok(ws2, "socket reopens after restart");
+  assert.equal(env.location.reloaded, undefined);
+  ws2.emit("open");
+  assert.equal(ids.status.textContent, "Connected");
+});
+
+test("reloads the page when assets change across a server restart", async () => {
+  const { env, timers } = fixture();
+  const bootstrapFetch = env.fetch;
+  let hash = "abc123";
+  env.fetch = async (url) => {
+    if (url !== "/api/bootstrap") return bootstrapFetch(url);
+    const response = await bootstrapFetch(url),
+      body = await response.json();
+    return { ok: true, json: async () => ({ ...body, assets_hash: hash }) };
+  };
+  startClient(env);
+  await settle();
+  hash = "def456";
+  FakeSocket.instances[0].close();
+  timers.at(-1)();
+  await settle();
+  assert.equal(env.location.reloaded, true);
+  assert.equal(FakeSocket.instances.length, 1);
+});
+
+test("keeps probing while the server is down, then reconnects", async () => {
+  const { ids, env, timers } = fixture();
+  const bootstrapFetch = env.fetch;
+  let down = false;
+  env.fetch = async (url) => {
+    if (down) throw new Error("connection refused");
+    return bootstrapFetch(url);
+  };
+  startClient(env);
+  await settle();
+  down = true;
+  FakeSocket.instances[0].close();
+  assert.equal(ids.status.textContent, "Reconnecting…");
+  timers.at(-1)();
+  await settle();
+  assert.equal(FakeSocket.instances.length, 1);
+  down = false;
+  timers.at(-1)();
+  await settle();
+  assert.ok(FakeSocket.instances[1], "socket reopens once the server returns");
 });
 
 test("control interactions emit typed payloads and subtitle selection", async () => {

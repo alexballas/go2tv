@@ -72,6 +72,7 @@ export function startClient(env) {
     queueRenderKey = "",
     queueFocus = null,
     queueDrag = null,
+    assetsHash = "",
     reloaded = sessionStorage.getItem("go2tv-protocol-reload") === "1";
   const pending = new Map();
   const queuePendingTypes = new Set([
@@ -773,12 +774,15 @@ export function startClient(env) {
     state.revision = payload.revision ?? state.revision;
     renderAll();
   }
+  function protocolMismatch() {
+    if (!reloaded) {
+      sessionStorage.setItem("go2tv-protocol-reload", "1");
+      location.reload();
+    } else connection("Incompatible server", "error");
+  }
   function handle(message) {
     if (message.protocol_version !== protocolVersion) {
-      if (!reloaded) {
-        sessionStorage.setItem("go2tv-protocol-reload", "1");
-        location.reload();
-      } else connection("Incompatible server", "error");
+      protocolMismatch();
       return;
     }
     const p = message.payload || {};
@@ -901,7 +905,6 @@ export function startClient(env) {
       case "server.shutdown":
         shuttingDown = true;
         connected = false;
-        clearTimeout(reconnectTimer);
         pending.clear();
         connection("Server stopped", "error");
         renderPending();
@@ -928,9 +931,8 @@ export function startClient(env) {
       pending.clear();
       queueFocus = null;
       renderPending();
-      if (shuttingDown) return;
-      connection("Reconnecting…", "error");
-      reconnectTimer = setTimeout(connect, 1000);
+      if (!shuttingDown) connection("Reconnecting…", "error");
+      reconnectTimer = setTimeout(reconnect, 1000);
     });
     ws.addEventListener("message", (event) => {
       try {
@@ -939,6 +941,30 @@ export function startClient(env) {
         showToast("Invalid server message", "error");
       }
     });
+  }
+  // Probes the server before reopening the socket so a restart with new
+  // static assets reloads the page instead of running stale code against it.
+  async function reconnect() {
+    clearTimeout(reconnectTimer);
+    try {
+      const response = await fetch("/api/bootstrap", {
+          headers: { Accept: "application/json" },
+        }),
+        bootstrap = await response.json();
+      if (!response.ok) throw new Error();
+      if (bootstrap.protocol_version !== protocolVersion) {
+        protocolMismatch();
+        return;
+      }
+      if (assetsHash && bootstrap.assets_hash !== assetsHash) {
+        location.reload();
+        return;
+      }
+      shuttingDown = false;
+      connect();
+    } catch {
+      reconnectTimer = setTimeout(reconnect, 2000);
+    }
   }
   function send(type, payload = {}, attempt = 0) {
     if (ws?.readyState !== WebSocket.OPEN) {
@@ -1160,13 +1186,11 @@ export function startClient(env) {
       bootstrap = await response.json();
     if (!response.ok) throw new Error(bootstrap.error || "Bootstrap failed");
     if (bootstrap.protocol_version !== protocolVersion) {
-      if (!reloaded) {
-        sessionStorage.setItem("go2tv-protocol-reload", "1");
-        location.reload();
-      } else connection("Incompatible server", "error");
+      protocolMismatch();
       return;
     }
     sessionStorage.removeItem("go2tv-protocol-reload");
+    assetsHash = bootstrap.assets_hash || "";
     queueLimit = bootstrap.limits?.queue_items || queueLimit;
     mergeSnapshot(bootstrap.snapshot);
     roots.replaceChildren();
