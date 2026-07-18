@@ -16,5 +16,8 @@
     "esbuild": "^0.25.10",
     "prettier": "^3.6.2",
     "tailwindcss": "^4.1.14"
+  },
+  "dependencies": {
+    "@openai/codex": "^0.144.6"
   }
 }
