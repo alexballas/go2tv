@@ -199,5 +199,9 @@
     "the server exited unexpectedly": "服务器意外退出",
     "the server had to be stopped forcefully": "服务器被强制停止",
     "the server sent an invalid response": "服务器返回了无效响应",
+    "the selected port is already in use": "所选端口已被占用",
+    "the selected network address is unavailable": "所选网络地址不可用",
+    "permission denied while opening the selected port": "打开所选端口时权限被拒绝",
+    "the server could not open the selected address and port": "服务器无法打开所选地址和端口",
     "the server failed to start": "服务器启动失败"
 }

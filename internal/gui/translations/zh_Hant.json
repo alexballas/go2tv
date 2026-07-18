@@ -199,5 +199,9 @@
     "the server exited unexpectedly": "伺服器意外結束",
     "the server had to be stopped forcefully": "伺服器被強制停止",
     "the server sent an invalid response": "伺服器傳回了無效回應",
+    "the selected port is already in use": "所選連接埠已被使用",
+    "the selected network address is unavailable": "所選網路位址無法使用",
+    "permission denied while opening the selected port": "開啟所選連接埠時權限遭拒",
+    "the server could not open the selected address and port": "伺服器無法開啟所選位址和連接埠",
     "the server failed to start": "伺服器啟動失敗"
 }

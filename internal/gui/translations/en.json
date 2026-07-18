@@ -199,5 +199,9 @@
     "the server exited unexpectedly": "the server exited unexpectedly",
     "the server had to be stopped forcefully": "the server had to be stopped forcefully",
     "the server sent an invalid response": "the server sent an invalid response",
+    "the selected port is already in use": "the selected port is already in use",
+    "the selected network address is unavailable": "the selected network address is unavailable",
+    "permission denied while opening the selected port": "permission denied while opening the selected port",
+    "the server could not open the selected address and port": "the server could not open the selected address and port",
     "the server failed to start": "the server failed to start"
 }

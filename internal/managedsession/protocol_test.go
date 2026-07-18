@@ -135,6 +135,21 @@ func TestManagedFrameRefreshValidation(t *testing.T) {
 	}
 }
 
+func TestManagedFrameStartupErrorValidation(t *testing.T) {
+	t.Parallel()
+	line, err := EncodeManagedFrame(ManagedFrame{Type: TypeStartupError, ErrorCode: StartupErrorAddressInUse})
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame, isFrame, err := DecodeManagedLine(bytes.TrimSuffix(line, []byte("\n")))
+	if err != nil || !isFrame || frame.ErrorCode != StartupErrorAddressInUse {
+		t.Fatalf("frame = %+v isFrame=%v err=%v", frame, isFrame, err)
+	}
+	if _, err := EncodeManagedFrame(ManagedFrame{Type: TypeStartupError, ErrorCode: "raw OS error"}); err == nil {
+		t.Fatal("unknown startup error encoded")
+	}
+}
+
 func TestLineReaderCRLFAndBounds(t *testing.T) {
 	t.Parallel()
 	input := "first\r\nsecond\n"

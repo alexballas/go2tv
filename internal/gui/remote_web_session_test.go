@@ -358,6 +358,47 @@ func TestRemoteSessionUnexpectedExitFailsAndReleasesLease(t *testing.T) {
 	}
 }
 
+func TestRemoteSessionReportsAddressInUse(t *testing.T) {
+	t.Parallel()
+	h := newManagerHarness(t)
+	started := make(chan error, 1)
+	go func() { started <- h.manager.Start(context.Background(), validRemoteConfig(t), h.lease()) }()
+	process := <-h.processes
+	process.awaitFrame(t, 5*time.Second)
+	process.writeManaged(t, managedsession.ManagedFrame{Type: managedsession.TypeStartupError, ErrorCode: managedsession.StartupErrorAddressInUse})
+	process.exit()
+	if err := <-started; !errors.Is(err, errRemoteFailureReported) {
+		t.Fatal("Start succeeded after bind conflict")
+	}
+	if got := h.manager.Snapshot().LastError; got != remoteFailureAddressInUse {
+		t.Fatalf("last error = %q, want %q", got, remoteFailureAddressInUse)
+	}
+	if h.leaseCount.Load() != 1 {
+		t.Fatalf("lease releases = %d, want 1", h.leaseCount.Load())
+	}
+}
+
+func TestRemoteStartErrorDialogPolicy(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "validation", err: errors.New("invalid configuration"), want: true},
+		{name: "published failure", err: reportedRemoteFailure(remoteFailureAddressInUse)},
+		{name: "stopped while starting", err: errRemoteStoppedBeforeUp},
+		{name: "success"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldShowRemoteStartError(tt.err); got != tt.want {
+				t.Fatalf("shouldShowRemoteStartError() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRemoteSessionReadinessTimeoutKillsChild(t *testing.T) {
 	originalWindow := remoteReadinessWindow
 	remoteReadinessWindow = 200 * time.Millisecond

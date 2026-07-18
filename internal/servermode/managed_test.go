@@ -194,7 +194,7 @@ func TestManagedChildNoReadinessWithoutInitialSnapshot(t *testing.T) {
 	}
 }
 
-func TestManagedChildNoReadinessOnBindFailure(t *testing.T) {
+func TestManagedChildReportsBindConflict(t *testing.T) {
 	blocker, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -210,10 +210,9 @@ func TestManagedChildNoReadinessOnBindFailure(t *testing.T) {
 	} else if err == nil {
 		t.Fatal("managed run succeeded despite bind conflict")
 	}
-	for line := range h.lines {
-		if _, isFrame, _ := managedsession.DecodeManagedLine([]byte(line)); isFrame {
-			t.Fatalf("readiness emitted despite bind failure: %q", line)
-		}
+	frame, _ := h.awaitManagedFrame(10 * time.Second)
+	if frame.Type != managedsession.TypeStartupError || frame.ErrorCode != managedsession.StartupErrorAddressInUse {
+		t.Fatalf("frame = %+v, want address-in-use startup error", frame)
 	}
 }
 

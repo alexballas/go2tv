@@ -210,11 +210,15 @@ func (s *FyneScreen) startRemoteWebSession(cfg remoteSessionConfig, parent fyne.
 			// could not release the lease; releasing twice is safe.
 			releaseLease()
 			s.recomputeRendererControls()
-			if !errors.Is(err, errRemoteStoppedBeforeUp) {
+			if shouldShowRemoteStartError(err) {
 				checkInWindow(s, err, parent)
 			}
 		}
 	}()
+}
+
+func shouldShowRemoteStartError(err error) bool {
+	return err != nil && !errors.Is(err, errRemoteStoppedBeforeUp) && !errors.Is(err, errRemoteFailureReported)
 }
 
 func (s *FyneScreen) stopRemoteWebSession() {
@@ -261,6 +265,14 @@ func remoteFailureLabel(code string) string {
 		return lang.L("the server had to be stopped forcefully")
 	case remoteFailureProtocol:
 		return lang.L("the server sent an invalid response")
+	case remoteFailureAddressInUse:
+		return lang.L("the selected port is already in use")
+	case remoteFailureAddressUnavailable:
+		return lang.L("the selected network address is unavailable")
+	case remoteFailurePermissionDenied:
+		return lang.L("permission denied while opening the selected port")
+	case remoteFailureListenFailed:
+		return lang.L("the server could not open the selected address and port")
 	default:
 		return lang.L("the server failed to start")
 	}
@@ -411,12 +423,8 @@ func (s *FyneScreen) buildRemoteWebSessionDialog() {
 	statusDotWrap := container.NewCenter(container.NewGridWrap(fyne.NewSize(12, 12), statusDot))
 	statusLabel := widget.NewLabelWithStyle(remoteStateLabel(remoteSessionStopped), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	statusRow := container.NewHBox(statusDotWrap, statusLabel)
-	urlLabel := widget.NewLabel("")
-	urlLabel.Wrapping = fyne.TextWrapBreak
-	failureLabel := widget.NewLabel("")
-	failureLabel.Wrapping = fyne.TextWrapWord
-	failureLabel.Importance = widget.DangerImportance
-	failureLabel.Hide()
+	messageLabel := widget.NewLabel("")
+	messageLabel.Wrapping = fyne.TextWrapWord
 
 	sessionButton := widget.NewButtonWithIcon("", theme.MediaPlayIcon(), func() {
 		snapshot := s.remoteSession.Snapshot()
@@ -461,13 +469,14 @@ func (s *FyneScreen) buildRemoteWebSessionDialog() {
 	configControls := []fyne.Disableable{addRootButton, exposureSelect, addressSelect, portEntry}
 	applySnapshot := func(snapshot remoteSessionSnapshot) {
 		statusLabel.SetText(remoteStateLabel(snapshot.State))
-		urlLabel.SetText(snapshot.URL)
-		failureLabel.SetText(remoteFailureLabel(snapshot.LastError))
-		if snapshot.LastError == "" {
-			failureLabel.Hide()
+		if snapshot.LastError != "" {
+			messageLabel.SetText(remoteFailureLabel(snapshot.LastError))
+			messageLabel.Importance = widget.DangerImportance
 		} else {
-			failureLabel.Show()
+			messageLabel.SetText(snapshot.URL)
+			messageLabel.Importance = widget.MediumImportance
 		}
+		messageLabel.Refresh()
 		switch snapshot.State {
 		case remoteSessionRunning:
 			statusLabel.Importance = widget.SuccessImportance
@@ -499,6 +508,7 @@ func (s *FyneScreen) buildRemoteWebSessionDialog() {
 		}
 		if active {
 			rootsList.UnselectAll()
+			lockedNotice.SetText(lang.L("Stop the session to edit network settings"))
 			lockedNotice.Show()
 			sessionButton.SetText(lang.L("Stop Session"))
 			sessionButton.SetIcon(theme.MediaStopIcon())
@@ -509,7 +519,9 @@ func (s *FyneScreen) buildRemoteWebSessionDialog() {
 				sessionButton.Enable()
 			}
 		} else {
-			lockedNotice.Hide()
+			// Keep this row allocated so state changes do not move the dialog.
+			lockedNotice.SetText("")
+			lockedNotice.Show()
 			sessionButton.SetText(lang.L("Start Session"))
 			sessionButton.SetIcon(theme.MediaPlayIcon())
 			sessionButton.Importance = widget.HighImportance
@@ -548,8 +560,7 @@ func (s *FyneScreen) buildRemoteWebSessionDialog() {
 
 	sessionActions := container.NewVBox(
 		statusRow,
-		urlLabel,
-		failureLabel,
+		messageLabel,
 		openButton,
 		copyButton,
 		sessionButton,
@@ -579,6 +590,7 @@ func (s *FyneScreen) buildRemoteWebSessionDialog() {
 	// Closing the manager dialog never stops an active session.
 	managerDialog.SetOnClosed(func() {
 		cancelUpdates()
+		s.remoteSession.clearError()
 		if s.remoteDialog == managerDialog {
 			s.remoteDialog = nil
 		}

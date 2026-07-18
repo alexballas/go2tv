@@ -88,9 +88,7 @@ jobs:
             `go2tv_${versionTag}_macOS_amd64`,
             `go2tv_${versionTag}_macOS_arm64`,
             `go2tv_${versionTag}_windows_amd64`,
-            `go2tv_server_lite_linux_amd64`,
-            `go2tv_server_lite_macOS_amd64`,
-            `go2tv_server_lite_windows_amd64`,
+            `go2tv_${versionTag}_windows_amd64_lite`,
           ];
 
           const candidates = artifacts.filter((artifact) => {

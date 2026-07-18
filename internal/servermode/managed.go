@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"syscall"
 	"time"
 
 	"go2tv.app/go2tv/v2/internal/managedsession"
@@ -47,6 +48,7 @@ func runManaged(ctx context.Context, validated Config, output io.Writer, control
 
 	listener, err := net.Listen("tcp", validated.Listen)
 	if err != nil {
+		writeManagedStartupError(log, managedListenErrorCode(err))
 		return fmt.Errorf("listen: %w", err)
 	}
 	defer listener.Close()
@@ -99,6 +101,26 @@ func runManaged(ctx context.Context, validated Config, output io.Writer, control
 		return nil
 	}
 	return err
+}
+
+func managedListenErrorCode(err error) string {
+	switch {
+	case errors.Is(err, syscall.EADDRINUSE):
+		return managedsession.StartupErrorAddressInUse
+	case errors.Is(err, syscall.EADDRNOTAVAIL):
+		return managedsession.StartupErrorAddressUnavailable
+	case errors.Is(err, syscall.EACCES):
+		return managedsession.StartupErrorPermissionDenied
+	default:
+		return managedsession.StartupErrorListenFailed
+	}
+}
+
+func writeManagedStartupError(log *serverLogger, code string) {
+	line, err := managedsession.EncodeManagedFrame(managedsession.ManagedFrame{Type: managedsession.TypeStartupError, ErrorCode: code})
+	if err == nil {
+		_ = log.writeRawLine(line)
+	}
 }
 
 func shutdownManagedServer(server *http.Server, result chan error) error {

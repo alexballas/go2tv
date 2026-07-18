@@ -66,6 +66,14 @@ jobs:
         ! grep -Eq "libwinpthread-1.dll|libstdc\+\+-6.dll" /tmp/go2tv-imports.txt
         mv go2tv.exe ../../
 
+    - name: Build lite (Windows)
+      shell: bash
+      run: |
+        version="${GO2TV_VERSION#v}"
+        CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
+          -trimpath -ldflags "-s -w -X main.version=$version" \
+          -o go2tv-lite.exe ./cmd/go2tv-lite
+
     - uses: actions/upload-artifact@v6
       with:
         name: go2tv_${{ steps.version.outputs.go2tv_version }}_windows_amd64
@@ -73,4 +81,13 @@ jobs:
           LICENSE
           README.md
           go2tv.exe
+        retention-days: 2
+
+    - uses: actions/upload-artifact@v6
+      with:
+        name: go2tv_${{ steps.version.outputs.go2tv_version }}_windows_amd64_lite
+        path: |
+          LICENSE
+          README.md
+          go2tv-lite.exe
         retention-days: 2

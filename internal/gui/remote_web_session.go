@@ -31,12 +31,16 @@ const (
 
 // Sanitized failure codes shown to the user; never raw paths/network data.
 const (
-	remoteFailureSpawn      = "spawn_failed"
-	remoteFailureContain    = "containment_failed"
-	remoteFailureReadiness  = "no_readiness"
-	remoteFailureExited     = "exited_unexpectedly"
-	remoteFailureForcedStop = "stopped_forcefully"
-	remoteFailureProtocol   = "protocol_error"
+	remoteFailureSpawn              = "spawn_failed"
+	remoteFailureContain            = "containment_failed"
+	remoteFailureReadiness          = "no_readiness"
+	remoteFailureExited             = "exited_unexpectedly"
+	remoteFailureForcedStop         = "stopped_forcefully"
+	remoteFailureProtocol           = "protocol_error"
+	remoteFailureAddressInUse       = "address_in_use"
+	remoteFailureAddressUnavailable = "address_unavailable"
+	remoteFailurePermissionDenied   = "permission_denied"
+	remoteFailureListenFailed       = "listen_failed"
 )
 
 const (
@@ -56,7 +60,12 @@ var (
 	errRemoteSessionShutdown   = errors.New("remote session manager shut down")
 	errRemoteSessionNotRunning = errors.New("no remote session running")
 	errRemoteStoppedBeforeUp   = errors.New("remote session stopped before readiness")
+	errRemoteFailureReported   = errors.New("remote session failure reported")
 )
+
+func reportedRemoteFailure(code string) error {
+	return fmt.Errorf("%w: %s", errRemoteFailureReported, code)
+}
 
 type remoteSessionConfig struct {
 	MediaRoots     []string
@@ -177,6 +186,20 @@ func (m *remoteSessionManager) Snapshot() remoteSessionSnapshot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.snapshotLocked()
+}
+
+func (m *remoteSessionManager) clearError() {
+	m.mu.Lock()
+	if m.lastError == "" && m.state != remoteSessionFailed {
+		m.mu.Unlock()
+		return
+	}
+	m.lastError = ""
+	if m.state == remoteSessionFailed {
+		m.state = remoteSessionStopped
+	}
+	m.publishLocked()
+	m.mu.Unlock()
 }
 
 func (m *remoteSessionManager) snapshotLocked() remoteSessionSnapshot {
@@ -302,8 +325,9 @@ func (m *remoteSessionManager) Start(ctx context.Context, cfg remoteSessionConfi
 	if err := m.spawnAndBridge(run, binary, cfg); err != nil {
 		m.forceStopRun(run)
 		<-run.exited
-		m.finishRun(run, remoteSessionFailed, sanitizedFailure(err))
-		return err
+		code := sanitizedFailure(err)
+		m.finishRun(run, remoteSessionFailed, code)
+		return reportedRemoteFailure(code)
 	}
 
 	select {
@@ -320,24 +344,30 @@ func (m *remoteSessionManager) Start(ctx context.Context, cfg remoteSessionConfi
 		m.forceStopRun(run)
 		<-run.exited
 		m.finishRun(run, remoteSessionFailed, code)
-		return errors.New(code)
+		return reportedRemoteFailure(code)
 	case <-run.exited:
 		if run.stopRequested {
 			m.finishRun(run, remoteSessionStopped, "")
 			return errRemoteStoppedBeforeUp
 		}
+		select {
+		case code := <-run.fatal:
+			m.finishRun(run, remoteSessionFailed, code)
+			return reportedRemoteFailure(code)
+		default:
+		}
 		m.finishRun(run, remoteSessionFailed, remoteFailureExited)
-		return errors.New(remoteFailureExited)
+		return reportedRemoteFailure(remoteFailureExited)
 	case <-time.After(remoteReadinessWindow):
 		m.forceStopRun(run)
 		<-run.exited
 		m.finishRun(run, remoteSessionFailed, remoteFailureReadiness)
-		return errors.New(remoteFailureReadiness)
+		return reportedRemoteFailure(remoteFailureReadiness)
 	case <-ctx.Done():
 		m.forceStopRun(run)
 		<-run.exited
 		m.finishRun(run, remoteSessionFailed, remoteFailureReadiness)
-		return ctx.Err()
+		return reportedRemoteFailure(remoteFailureReadiness)
 	}
 }
 
@@ -553,9 +583,28 @@ func (m *remoteSessionManager) drainChildStdout(run *remoteSessionRun) {
 			case run.ready <- frame.URL:
 			default:
 			}
+		case managedsession.TypeStartupError:
+			select {
+			case run.fatal <- remoteStartupFailure(frame.ErrorCode):
+			default:
+			}
+			return
 		case managedsession.TypeDiscoveryRefresh:
 			go m.handleRefreshRequest(run, frame.RequestID)
 		}
+	}
+}
+
+func remoteStartupFailure(code string) string {
+	switch code {
+	case managedsession.StartupErrorAddressInUse:
+		return remoteFailureAddressInUse
+	case managedsession.StartupErrorAddressUnavailable:
+		return remoteFailureAddressUnavailable
+	case managedsession.StartupErrorPermissionDenied:
+		return remoteFailurePermissionDenied
+	default:
+		return remoteFailureListenFailed
 	}
 }
 

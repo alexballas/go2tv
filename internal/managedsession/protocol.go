@@ -37,7 +37,17 @@ const (
 // Managed (child) frame types.
 const (
 	TypeReady            = "ready"
+	TypeStartupError     = "startup.error"
 	TypeDiscoveryRefresh = "discovery.refresh"
+)
+
+// Stable managed-child startup error codes. Raw operating-system errors must
+// stay out of protocol frames because they may contain local details.
+const (
+	StartupErrorAddressInUse       = "address_in_use"
+	StartupErrorAddressUnavailable = "address_unavailable"
+	StartupErrorPermissionDenied   = "permission_denied"
+	StartupErrorListenFailed       = "listen_failed"
 )
 
 // Stable refresh error codes; never raw network or device data.
@@ -79,6 +89,7 @@ type ManagedFrame struct {
 	Type            string `json:"type"`
 	RequestID       string `json:"request_id,omitempty"`
 	URL             string `json:"url,omitempty"`
+	ErrorCode       string `json:"error_code,omitempty"`
 }
 
 // ValidateDevices enforces the wire device rules shared by both directions.
@@ -132,17 +143,30 @@ func (f ManagedFrame) validate() error {
 	}
 	switch f.Type {
 	case TypeReady:
-		if f.URL == "" || f.RequestID != "" {
+		if f.URL == "" || f.RequestID != "" || f.ErrorCode != "" {
 			return fmt.Errorf("%w: malformed ready frame", ErrInvalidFrame)
 		}
+	case TypeStartupError:
+		if f.URL != "" || f.RequestID != "" || !validStartupError(f.ErrorCode) {
+			return fmt.Errorf("%w: malformed startup error frame", ErrInvalidFrame)
+		}
 	case TypeDiscoveryRefresh:
-		if f.RequestID == "" || f.URL != "" {
+		if f.RequestID == "" || f.URL != "" || f.ErrorCode != "" {
 			return fmt.Errorf("%w: refresh without request_id", ErrInvalidFrame)
 		}
 	default:
 		return fmt.Errorf("%w: %q", ErrUnexpectedFrame, f.Type)
 	}
 	return nil
+}
+
+func validStartupError(code string) bool {
+	switch code {
+	case StartupErrorAddressInUse, StartupErrorAddressUnavailable, StartupErrorPermissionDenied, StartupErrorListenFailed:
+		return true
+	default:
+		return false
+	}
 }
 
 // EncodeParentFrame renders one marker-prefixed, newline-terminated frame.
