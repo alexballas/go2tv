@@ -22,7 +22,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cabbagekobe/tunetag"
+	"github.com/alexballas/tunetag"
 	"golang.org/x/image/draw"
 )
 

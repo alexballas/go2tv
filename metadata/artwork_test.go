@@ -18,7 +18,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cabbagekobe/tunetag/flac"
+	"github.com/alexballas/tunetag/flac"
 )
 
 func TestLoadArtwork(t *testing.T) {
