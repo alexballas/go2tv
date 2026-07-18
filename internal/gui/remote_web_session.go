@@ -146,17 +146,16 @@ func (r *remoteSessionRun) closeStdin() {
 }
 
 type remoteSessionManager struct {
-	mu           sync.Mutex
-	state        remoteSessionState
-	generation   uint64
-	url          string
-	lastError    string
-	logs         *debugWriter
-	run          *remoteSessionRun
-	subscribers  map[uint64]chan remoteSessionSnapshot
-	nextSub      uint64
-	shutdown     bool
-	shutdownOnce sync.Once
+	mu          sync.Mutex
+	state       remoteSessionState
+	generation  uint64
+	url         string
+	lastError   string
+	logs        *debugWriter
+	run         *remoteSessionRun
+	subscribers map[uint64]chan remoteSessionSnapshot
+	nextSub     uint64
+	shutdown    bool
 
 	factory    managedProcessFactory
 	feed       remoteDiscoveryFeed

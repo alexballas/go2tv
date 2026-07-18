@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -309,9 +310,7 @@ func (c *client) reader() {
 func (c *client) enqueueResult(result controller.Result, extra map[string]any) {
 	if result.OK() {
 		payload := map[string]any{"revision": result.Revision}
-		for key, value := range extra {
-			payload[key] = value
-		}
+		maps.Copy(payload, extra)
 		c.enqueue("ack", mustEnvelope("ack", result.RequestID, payload))
 		return
 	}

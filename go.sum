@@ -8,8 +8,6 @@ github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab h1:IicL/N9O22
 github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab/go.mod h1:bvfmHkfGgEntZVIbSzazSp6zSxD68BJGsLVASpcEHxI=
 github.com/alexballas/refyne/v2 v2.0.0-20260715232008-d8808082ffcd h1:lqe0Jy6nx2/qkLG1tX9Y7stPvPcsfWuDPivc5FCEXVQ=
 github.com/alexballas/refyne/v2 v2.0.0-20260715232008-d8808082ffcd/go.mod h1:A5ylOSbXKGDIq5nyq92kjxq6Z43H4UQBugJPnN5SqPk=
-github.com/alexballas/xfilepicker v0.0.0-20260711081040-6fac737da9a9 h1:DJVlkCUmOMgPoouXY9wwIs0pT18gbOaxTWe875oRvVw=
-github.com/alexballas/xfilepicker v0.0.0-20260711081040-6fac737da9a9/go.mod h1:q5Df/TVbI93ofJqEaifyZtCIDQ5mc6bklBn28Ku9aXM=
 github.com/alexballas/xfilepicker v0.0.0-20260716165902-3782f386eb1a h1:e8TfxnY/FUm5f2VcLEZk9+6f9ROPJseCF6Lx3CudDgI=
 github.com/alexballas/xfilepicker v0.0.0-20260716165902-3782f386eb1a/go.mod h1:q5Df/TVbI93ofJqEaifyZtCIDQ5mc6bklBn28Ku9aXM=
 github.com/anthonynsimon/bild v0.16.1 h1:ECqtLkQ15kqfHdRtzUfNvQniJtHNpzdVU/7feMYAm0o=

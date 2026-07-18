@@ -525,16 +525,8 @@ func (s *FyneScreen) buildRemoteWebSessionDialog() {
 			copyButton.Disable()
 		}
 	}
-	applySnapshot(s.remoteSession.Snapshot())
-
 	updates, cancelUpdates := s.remoteSession.Subscribe()
-	go func() {
-		for snapshot := range updates {
-			fyne.Do(func() {
-				applySnapshot(snapshot)
-			})
-		}
-	}()
+	applySnapshot(<-updates)
 
 	rootsPanel := container.New(&remoteMinimumHeightLayout{height: 112}, rootsList)
 	mediaButtons := container.NewHBox(addRootButton, removeRootButton)
@@ -593,6 +585,13 @@ func (s *FyneScreen) buildRemoteWebSessionDialog() {
 	})
 	s.remoteDialog = managerDialog
 	managerDialog.Show()
+	go func() {
+		for snapshot := range updates {
+			fyne.Do(func() {
+				applySnapshot(snapshot)
+			})
+		}
+	}()
 }
 
 type remoteColumnsLayout struct {
