@@ -7,7 +7,7 @@ require (
 	github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab
 	github.com/alexballas/refyne/v2 v2.0.0-20260715232008-d8808082ffcd
 	github.com/alexballas/tunetag v0.0.0-20260718174341-d95e946c0b0e
-	github.com/alexballas/xfilepicker v0.0.0-20260716165902-3782f386eb1a
+	github.com/alexballas/xfilepicker v0.0.0-20260718174811-30135ef2e5b8
 	github.com/buger/jsonparser v1.2.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
@@ -40,7 +40,6 @@ require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/anthonynsimon/bild v0.16.1 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
-	github.com/cabbagekobe/tunetag v0.1.4 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/x/ansi v0.11.7 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.15 // indirect
