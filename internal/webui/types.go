@@ -16,6 +16,9 @@ type Config struct {
 	Artwork    *controller.ArtworkCache
 	FFmpegPath string
 	Logger     controller.EventLogger
+	// ManagedByGUI marks a GUI-managed remote session so the browser can
+	// disclose that device availability comes from the desktop app.
+	ManagedByGUI bool
 }
 
 type envelope struct {
@@ -43,6 +46,7 @@ type bootstrapDTO struct {
 	ProtocolVersion int             `json:"protocol_version"`
 	AssetsHash      string          `json:"assets_hash"`
 	InstanceID      string          `json:"instance_id"`
+	ManagedByGUI    bool            `json:"managed_by_gui"`
 	Snapshot        snapshotDTO     `json:"snapshot"`
 	Roots           []rootDTO       `json:"roots"`
 	Limits          map[string]int  `json:"limits"`

@@ -41,6 +41,9 @@ type Config struct {
 	AllowedOrigins []string
 	Version        string
 	Debug          bool
+	// ManagedChild marks a GUI-managed child run: discovery arrives over the
+	// parent stdin pipe and managed event frames are emitted on stdout.
+	ManagedChild bool
 }
 
 type CLIOptions struct {
@@ -49,6 +52,9 @@ type CLIOptions struct {
 	Debug          bool
 	MediaRoots     Strings
 	AllowedOrigins Strings
+	// ManagedChild is bound to the hidden -managed-child flag, which only the
+	// desktop go2tv binary registers.
+	ManagedChild bool
 }
 
 func RegisterCLIFlags(flags *flag.FlagSet) *CLIOptions {
@@ -67,7 +73,7 @@ func (o *CLIOptions) Validate(flags *flag.FlagSet) error {
 	flags.Visit(func(visited *flag.Flag) {
 		switch visited.Name {
 		case "server":
-		case "listen", "debug", "media-root", "allowed-origin":
+		case "listen", "debug", "media-root", "allowed-origin", "managed-child":
 			serverOptionSet = true
 		default:
 			legacy = append(legacy, "-"+visited.Name)
@@ -83,6 +89,7 @@ func (o *CLIOptions) Config(version string) Config {
 		AllowedOrigins: o.AllowedOrigins,
 		Version:        version,
 		Debug:          o.Debug,
+		ManagedChild:   o.ManagedChild,
 	}
 }
 

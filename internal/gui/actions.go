@@ -147,15 +147,20 @@ func selectedChromecastControlClient(screen *FyneScreen) (*castprotocol.CastClie
 }
 
 func muteAction(screen *FyneScreen) {
-	// Handle icon toggle (mute -> unmute)
-	if screen.MuteUnmute.Icon == theme.VolumeMuteIcon() {
+	if screen.isMuted() {
 		unmuteAction(screen)
+		return
+	}
+
+	releasePermit, permitted := screen.rendererPermit(true)
+	if !permitted {
 		return
 	}
 
 	// Handle Chromecast mute for selected device.
 	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
 		go func() {
+			defer releasePermit()
 			client, cleanup, err := selectedChromecastControlClient(screen)
 			if err != nil {
 				check(screen, errors.New(lang.L("chromecast not connected")))
@@ -167,18 +172,20 @@ func muteAction(screen *FyneScreen) {
 				check(screen, errors.New(lang.L("could not send mute action")))
 				return
 			}
-			setMuteUnmuteView("Unmute", screen)
+			setMuteUnmuteView(true, screen)
 		}()
 		return
 	}
 
 	// Handle DLNA mute
 	if screen.renderingControlURL == "" {
+		releasePermit()
 		check(screen, errors.New(lang.L("please select a device")))
 		return
 	}
 
 	go func() {
+		defer releasePermit()
 		if screen.tvdata == nil {
 			// If tvdata is nil, we just need to set RenderingControlURL if we want
 			// to control the sound. We should still rely on the play action to properly
@@ -191,14 +198,20 @@ func muteAction(screen *FyneScreen) {
 			return
 		}
 
-		setMuteUnmuteView("Unmute", screen)
+		setMuteUnmuteView(true, screen)
 	}()
 }
 
 func unmuteAction(screen *FyneScreen) {
+	releasePermit, permitted := screen.rendererPermit(true)
+	if !permitted {
+		return
+	}
+
 	// Handle Chromecast unmute for selected device.
 	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
 		go func() {
+			defer releasePermit()
 			client, cleanup, err := selectedChromecastControlClient(screen)
 			if err != nil {
 				check(screen, errors.New(lang.L("chromecast not connected")))
@@ -210,18 +223,20 @@ func unmuteAction(screen *FyneScreen) {
 				check(screen, errors.New(lang.L("could not send mute action")))
 				return
 			}
-			setMuteUnmuteView("Mute", screen)
+			setMuteUnmuteView(false, screen)
 		}()
 		return
 	}
 
 	// Handle DLNA unmute
 	if screen.renderingControlURL == "" {
+		releasePermit()
 		check(screen, errors.New(lang.L("please select a device")))
 		return
 	}
 
 	go func() {
+		defer releasePermit()
 		if screen.tvdata == nil {
 			// If tvdata is nil, we just need to set RenderingControlURL if we want
 			// to control the sound. We should still rely on the play action to properly
@@ -235,7 +250,7 @@ func unmuteAction(screen *FyneScreen) {
 			return
 		}
 
-		setMuteUnmuteView("Mute", screen)
+		setMuteUnmuteView(false, screen)
 	}()
 }
 
@@ -595,6 +610,17 @@ func playAction(screen *FyneScreen) {
 }
 
 func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
+	releasePermit, permitted := screen.rendererPermit(true)
+	if !permitted {
+		return
+	}
+	permitHandedOff := false
+	defer func() {
+		if !permitHandedOff {
+			releasePermit()
+		}
+	}()
+
 	var mediaFile any
 
 	fyne.Do(func() {
@@ -664,7 +690,11 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 	// Chromecast has its own status watcher, doesn't need the DLNA timeout mechanism
 	if target.device.deviceType == devices.DeviceTypeChromecast {
 		actionID := screen.nextChromecastActionID()
-		go chromecastPlayAction(screen, actionID, target.device)
+		permitHandedOff = true
+		go func() {
+			defer releasePermit()
+			chromecastPlayAction(screen, actionID, target.device)
+		}()
 		return
 	}
 
@@ -677,7 +707,9 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 	ctx, cancelEnablePlay := context.WithTimeout(context.Background(), 3*time.Second)
 	screen.cancelEnablePlay = cancelEnablePlay
 
+	permitHandedOff = true
 	go func() {
+		defer releasePermit()
 		// RTMP wait mechanism
 		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
 			if err := waitForRTMPStream(screen); err != nil {
@@ -1537,17 +1569,24 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 // This is much faster than stopAction+playAction which closes/reopens the connection.
 // Runs fully async to prevent UI freeze during buffering.
 func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
+	releasePermit, permitted := screen.rendererPermit(true)
+	if !permitted {
+		return
+	}
+
 	actionID := screen.nextChromecastActionID()
 
 	// Capture client reference before async operation
 	client := screen.activeChromecastPlaybackClient()
 	if client == nil || !client.IsConnected() {
+		releasePermit()
 		return
 	}
 	// Update seek position immediately (used by status watcher)
 	screen.ffmpegSeek = seekPos
 	// Run entire seek operation in background to prevent UI freeze
 	go func() {
+		defer releasePermit()
 		// Stop HTTP server (kills FFmpeg) but keep Chromecast client connected
 		if screen.httpserver != nil {
 			screen.httpserver.StopServer()
@@ -2082,6 +2121,17 @@ func skipToMediaPathAction(screen *FyneScreen, mediaPath string) {
 }
 
 func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target playbackTarget) {
+	releasePermit, permitted := screen.rendererPermit(true)
+	if !permitted {
+		return
+	}
+	permitHandedOff := false
+	defer func() {
+		if !permitHandedOff {
+			releasePermit()
+		}
+	}()
+
 	oldMediaPath := screen.mediafile
 	oldArtwork := screen.getCurrentArtwork()
 	screen.persistDisplayedResumeProgress(true)
@@ -2113,7 +2163,9 @@ func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target 
 
 		actionID := screen.nextChromecastActionID()
 
+		permitHandedOff = true
 		go func() {
+			defer releasePermit()
 			artworkAsset := screen.resolveCurrentGUIArtwork(targetMediaPath, mediaType, true)
 			if !screen.isChromecastActionCurrent(actionID) {
 				return
@@ -2288,7 +2340,9 @@ func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target 
 	screen.updateScreenState("Stopped")
 	screen.SetMediaType("")
 
+	permitHandedOff = true
 	go func() {
+		defer releasePermit()
 		if tvdata != nil && tvdata.ControlURL != "" {
 			_ = tvdata.SendtoTV("Stop")
 		}
@@ -2347,6 +2401,19 @@ func stopActionSync(screen *FyneScreen) {
 }
 
 func stopActionInternal(screen *FyneScreen, wait bool) {
+	// Silent when the remote session holds the renderer: no GUI session can
+	// exist then, so there is nothing to stop.
+	releasePermit, permitted := screen.rendererPermit(false)
+	if !permitted {
+		return
+	}
+	permitHandedOff := false
+	defer func() {
+		if !permitHandedOff {
+			releasePermit()
+		}
+	}()
+
 	screen.persistDisplayedResumeProgress(true)
 	screen.clearResumeSession()
 	chromecastClient := screen.chromecastSessionClient()
@@ -2387,7 +2454,9 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 		screen.mediaDuration = 0
 
 		// Run blocking network operations in background
+		permitHandedOff = true
 		go func() {
+			defer releasePermit()
 			_ = chromecastClient.Stop()
 			chromecastClient.Close(false)
 			if server != nil {
@@ -2427,7 +2496,11 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 	}
 
 	// Run blocking network operations in background
-	go teardown()
+	permitHandedOff = true
+	go func() {
+		defer releasePermit()
+		teardown()
+	}()
 }
 
 func getDevices() ([]devType, error) {
@@ -2450,7 +2523,12 @@ func getDevices() ([]devType, error) {
 }
 
 func volumeAction(screen *FyneScreen, up bool) {
+	releasePermit, permitted := screen.rendererPermit(true)
+	if !permitted {
+		return
+	}
 	go func() {
+		defer releasePermit()
 		// Handle Chromecast volume for selected device.
 		if screen.selectedDeviceType == devices.DeviceTypeChromecast {
 			client, cleanup, err := selectedChromecastControlClient(screen)
@@ -2525,6 +2603,12 @@ func volumeAction(screen *FyneScreen, up bool) {
 }
 
 func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
+	releasePermit, permitted := screen.rendererPermit(false)
+	if !permitted {
+		return nil, errRemoteLeaseHeld
+	}
+	defer releasePermit()
+
 	if screen.tvdata == nil {
 		return nil, errors.New("queueNext, nil tvdata")
 	}
@@ -2617,6 +2701,21 @@ func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 }
 
 func startRTMPServer(screen *FyneScreen) {
+	// RTMP can end in a cast; it is renderer-mutating for exclusivity purposes.
+	releasePermit, permitted := screen.rendererPermit(true)
+	if !permitted {
+		fyne.Do(func() {
+			screen.rtmpServerCheck.SetChecked(false)
+		})
+		return
+	}
+	permitHandedOff := false
+	defer func() {
+		if !permitHandedOff {
+			releasePermit()
+		}
+	}()
+
 	screen.rtmpMu.Lock()
 	defer screen.rtmpMu.Unlock()
 
@@ -2626,7 +2725,9 @@ func startRTMPServer(screen *FyneScreen) {
 
 	screen.rtmpServerCheck.Disable()
 
+	permitHandedOff = true
 	go func() {
+		defer releasePermit()
 		screen.rtmpMu.Lock()
 		screen.rtmpServer = rtmp.NewServer()
 		streamKey := fyne.CurrentApp().Preferences().String("RTMPStreamKey")

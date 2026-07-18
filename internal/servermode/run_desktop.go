@@ -9,12 +9,16 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 )
 
 func Run(ctx context.Context, cfg Config, output io.Writer) error {
 	validated, err := Validate(cfg)
 	if err != nil {
 		return err
+	}
+	if validated.ManagedChild {
+		return runManaged(ctx, validated, output, os.Stdin)
 	}
 	listener, err := net.Listen("tcp", validated.Listen)
 	if err != nil {
@@ -24,7 +28,7 @@ func Run(ctx context.Context, cfg Config, output io.Writer) error {
 	log := newServerLogger(output, validated.Debug)
 	securityConfig := validated
 	securityConfig.Listen = listener.Addr().String()
-	runtime, err := newRuntime(validated, log)
+	runtime, err := newRuntime(validated, log, nil)
 	if err != nil {
 		return err
 	}

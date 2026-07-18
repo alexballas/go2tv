@@ -370,6 +370,7 @@ func startDLNADiscoveryLoop(ctx context.Context) {
 }
 
 func refreshDLNADevices(delay int) {
+	defer feed.notifyDLNAScan()
 	devices, err := LoadSSDPservices(delay)
 	if err != nil {
 		if stderrors.Is(err, ErrNoDeviceAvailable) {
@@ -388,6 +389,7 @@ func setDLNADevices(devices []Device) {
 	dlnaMu.Lock()
 	dlnaDevices = slices.Clone(devices)
 	dlnaMu.Unlock()
+	feed.publish()
 }
 
 func getDLNADevices() []Device {

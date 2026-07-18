@@ -206,6 +206,12 @@ func (t *tappedSlider) DragEnd() {
 	t.screen.sliderActive = true
 
 	if t.screen.State == "Playing" || t.screen.State == "Paused" {
+		releasePermit, permitted := t.screen.rendererPermit(false)
+		if !permitted {
+			return
+		}
+		defer releasePermit()
+
 		// Handle Chromecast seeking
 		if client := t.screen.activeChromecastPlaybackClient(); client != nil {
 			duration, ok := t.chromecastSeekDuration()
@@ -238,6 +244,12 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 	t.Slider.Tapped(p)
 
 	if t.screen.State == "Playing" || t.screen.State == "Paused" {
+		releasePermit, permitted := t.screen.rendererPermit(false)
+		if !permitted {
+			return
+		}
+		defer releasePermit()
+
 		// Handle Chromecast seeking
 		if client := t.screen.activeChromecastPlaybackClient(); client != nil {
 			duration, ok := t.chromecastSeekDuration()
@@ -286,7 +298,13 @@ func (t *tappedSlider) seekDLNAAsync() {
 	}
 	isTranscode := tvdata.Transcode
 
+	releasePermit, permitted := t.screen.rendererPermit(false)
+	if !permitted {
+		return
+	}
+
 	go func() {
+		defer releasePermit()
 		getPos, err := tvdata.GetPositionInfo()
 		if err != nil {
 			return
@@ -623,8 +641,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		queueButton,
 		layout.NewSpacer(),
 		volumedown,
-		muteunmute,
 		volumeup,
+		muteunmute,
 	)
 
 	mrightwidgets := container.NewHBox(previewmedia, clearmedia, mbrowse)
@@ -645,8 +663,10 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	deviceHeader := widget.NewLabelWithStyle(lang.L("(auto refreshing)"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
 	s.ActiveDeviceLabel = widget.NewLabel("")
+	s.ActiveDeviceLabel.Wrapping = fyne.TextWrapWord
+	s.ActiveDeviceIcon = widget.NewIcon(theme.MediaPlayIcon())
 	s.ActiveDeviceCard = widget.NewCard(lang.L("Active Device"), "",
-		container.NewHBox(widget.NewIcon(theme.MediaPlayIcon()), s.ActiveDeviceLabel))
+		container.NewBorder(nil, nil, s.ActiveDeviceIcon, nil, s.ActiveDeviceLabel))
 	s.ActiveDeviceCard.Hide()
 
 	deviceBottom := container.NewVBox(s.ActiveDeviceCard, s.rtmpURLCard)
@@ -1043,9 +1063,9 @@ func checkMutefunc(s *FyneScreen) {
 
 		switch isMuted {
 		case "1":
-			setMuteUnmuteView("Unmute", s)
+			setMuteUnmuteView(true, s)
 		case "0":
-			setMuteUnmuteView("Mute", s)
+			setMuteUnmuteView(false, s)
 		}
 	}
 }

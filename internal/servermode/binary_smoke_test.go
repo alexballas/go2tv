@@ -28,7 +28,129 @@ func TestDesktopBinariesServeEmbeddedWebUIFromEmptyWorkingDirectory(t *testing.T
 		t.Run(name, func(t *testing.T) {
 			binary := buildServerBinary(t, name)
 			smokeServerBinary(t, binary)
+			smokeManagedChildFlag(t, binary, name == "go2tv")
+			if name == "go2tv" {
+				smokeManagedChildPipes(t, binary)
+			}
 		})
+	}
+}
+
+// smokeManagedChildPipes runs the real binary as a managed child over actual
+// anonymous stdin/stdout pipes: initial snapshot in, readiness out, EOF stops.
+func smokeManagedChildPipes(t *testing.T, binary string) {
+	t.Helper()
+	mediaRoot := t.TempDir()
+	stateDirectory := t.TempDir()
+	command := exec.Command(binary, "-server", "-managed-child", "-listen", "127.0.0.1:0", "-media-root", mediaRoot)
+	command.Env = append(os.Environ(), "HOME="+stateDirectory, "XDG_CONFIG_HOME="+stateDirectory)
+	stdin, err := command.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stderr lockedBuffer
+	command.Stderr = &stderr
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = command.Process.Kill()
+		_ = command.Wait()
+	}()
+
+	// CRLF framing must be accepted.
+	initial := "GO2TV_PARENT {\"protocol_version\":1,\"type\":\"discovery.snapshot\",\"revision\":1,\"devices\":[]}\r\n"
+	if _, err := io.WriteString(stdin, initial); err != nil {
+		t.Fatal(err)
+	}
+
+	ready := make(chan string, 1)
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "GO2TV_MANAGED ") {
+				ready <- line
+				break
+			}
+		}
+		// Drain the remainder so the child never blocks on stdout.
+		for scanner.Scan() {
+		}
+		_ = scanner.Err()
+	}()
+
+	select {
+	case line := <-ready:
+		var frame struct {
+			ProtocolVersion int    `json:"protocol_version"`
+			Type            string `json:"type"`
+			URL             string `json:"url"`
+		}
+		if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "GO2TV_MANAGED ")), &frame); err != nil {
+			t.Fatalf("readiness frame %q: %v", line, err)
+		}
+		if frame.Type != "ready" || !strings.HasPrefix(frame.URL, "http://127.0.0.1:") || strings.Contains(frame.URL, ":0/") {
+			t.Fatalf("readiness frame = %+v", frame)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatalf("no readiness frame; stderr=%s", stderr.String())
+	}
+
+	// Parent close produces EOF and a clean child exit.
+	if err := stdin.Close(); err != nil {
+		t.Fatal(err)
+	}
+	exit := make(chan error, 1)
+	go func() { exit <- command.Wait() }()
+	select {
+	case err := <-exit:
+		if err != nil {
+			t.Fatalf("managed child exit after EOF: %v; stderr=%s", err, stderr.String())
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatalf("managed child did not exit on stdin EOF; stderr=%s", stderr.String())
+	}
+}
+
+// smokeManagedChildFlag checks the hidden -managed-child contract: desktop
+// go2tv treats it as a server-only flag and hides it from usage; go2tv-lite
+// rejects it at flag parse because it never registers the flag.
+func smokeManagedChildFlag(t *testing.T, binary string, desktop bool) {
+	t.Helper()
+	run := func(args ...string) (string, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		command := exec.CommandContext(ctx, binary, args...)
+		command.Stdin = strings.NewReader("")
+		output, err := command.CombinedOutput()
+		return string(output), err
+	}
+
+	output, err := run("-managed-child")
+	if err == nil {
+		t.Fatalf("-managed-child alone succeeded: %q", output)
+	}
+	if desktop {
+		if !strings.Contains(output, "requires -server") {
+			t.Fatalf("-managed-child without -server output = %q", output)
+		}
+	} else if !strings.Contains(output, "flag provided but not defined") {
+		t.Fatalf("lite -managed-child output = %q", output)
+	}
+
+	usage, _ := run("-h")
+	if strings.Contains(usage, "managed-child") {
+		t.Fatalf("usage output exposes managed-child: %q", usage)
+	}
+	for _, name := range []string{"-server", "-listen", "-media-root", "-allowed-origin", "-debug", "-v ", "-u ", "-t ", "-tc", "-l\t", "-version"} {
+		if !strings.Contains(usage, strings.TrimSpace(name)) {
+			t.Fatalf("usage output missing %q: %q", name, usage)
+		}
 	}
 }
 

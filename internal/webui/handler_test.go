@@ -149,6 +149,35 @@ func TestBootstrapAndLibrarySanitizedNoStore(t *testing.T) {
 	}
 }
 
+func TestBootstrapManagedByGUIFollowsConfig(t *testing.T) {
+	for _, managed := range []bool{false, true} {
+		root := t.TempDir()
+		lib, err := library.Open(library.Config{Roots: []string{root}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		control := controller.New(controller.Config{})
+		h, err := New(Config{Version: "test", Controller: control, Library: lib, ManagedByGUI: managed})
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := httptest.NewRecorder()
+		h.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/bootstrap", nil))
+		var payload struct {
+			ManagedByGUI bool `json:"managed_by_gui"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.ManagedByGUI != managed {
+			t.Fatalf("managed_by_gui = %v, want %v", payload.ManagedByGUI, managed)
+		}
+		h.Close()
+		control.Close()
+		_ = lib.Close()
+	}
+}
+
 func TestSafeSnapshotDeviceMetadata(t *testing.T) {
 	tt := []struct {
 		name      string

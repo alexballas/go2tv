@@ -28,7 +28,9 @@ type runtime struct {
 	web        *webui.Handler
 }
 
-func newRuntime(cfg Config, log *serverLogger) (*runtime, error) {
+// newRuntime builds the server runtime. A nil discovery keeps the standalone
+// scanner-backed construction; managed children inject a pipe-fed discovery.
+func newRuntime(cfg Config, log *serverLogger, discovery playback.Discovery) (*runtime, error) {
 	lib, err := library.Open(library.Config{Roots: cfg.MediaRoots})
 	if err != nil {
 		return nil, err
@@ -49,8 +51,8 @@ func newRuntime(cfg Config, log *serverLogger) (*runtime, error) {
 			return utils.DurationForMediaReaderSeconds(ctx, ffmpeg, media)
 		}
 	}
-	control := controller.New(controller.NewRuntimeConfig(controller.RuntimeConfig{MediaServer: media, Callbacks: callbacks, LogOutput: log.protocolOutput(), Logger: log, Artwork: artwork, DurationProbe: durationProbe}))
-	web, err := webui.New(webui.Config{Version: cfg.Version, Controller: control, Library: lib, Artwork: artwork, FFmpegPath: ffmpeg, Logger: log})
+	control := controller.New(controller.NewRuntimeConfig(controller.RuntimeConfig{MediaServer: media, Callbacks: callbacks, LogOutput: log.protocolOutput(), Logger: log, Artwork: artwork, DurationProbe: durationProbe, Discovery: discovery}))
+	web, err := webui.New(webui.Config{Version: cfg.Version, Controller: control, Library: lib, Artwork: artwork, FFmpegPath: ffmpeg, Logger: log, ManagedByGUI: cfg.ManagedChild})
 	if err != nil {
 		control.Close()
 		callbacks.Close()

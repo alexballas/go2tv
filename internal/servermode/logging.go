@@ -102,6 +102,18 @@ func singleLine(message string) string {
 	return strings.TrimSpace(message)
 }
 
+// writeRawLine emits one pre-framed managed protocol line under the same
+// mutex as log writes so frames and log lines can never interleave. Every
+// other byte reaching this logger's output goes through write(), which
+// prefixes a timestamp, so no log or device/media text can start a line with
+// the managed frame marker.
+func (l *serverLogger) writeRawLine(line []byte) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	_, err := l.output.Write(line)
+	return err
+}
+
 func (l *serverLogger) protocolOutput() io.Writer {
 	return &protocolLogWriter{logger: l}
 }

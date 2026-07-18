@@ -144,7 +144,7 @@ func (h *Handler) bootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	roots := h.cfg.Library.Roots()
-	result := bootstrapDTO{ServerVersion: h.cfg.Version, ProtocolVersion: ProtocolVersion, AssetsHash: assetsHash, InstanceID: h.instanceID, Snapshot: safeSnapshot(snapshot), Limits: map[string]int{"ws_message_bytes": maxMessageBytes, "ws_clients": maxClients, "ws_clients_per_ip": maxClientsPerIP, "queue_items": controller.MaxQueueItems, "library_page": library.MaxLimit}, Features: map[string]bool{"websocket": true, "artwork": true, "transcode": true, "gapless": true}}
+	result := bootstrapDTO{ServerVersion: h.cfg.Version, ProtocolVersion: ProtocolVersion, AssetsHash: assetsHash, InstanceID: h.instanceID, ManagedByGUI: h.cfg.ManagedByGUI, Snapshot: safeSnapshot(snapshot), Limits: map[string]int{"ws_message_bytes": maxMessageBytes, "ws_clients": maxClients, "ws_clients_per_ip": maxClientsPerIP, "queue_items": controller.MaxQueueItems, "library_page": library.MaxLimit}, Features: map[string]bool{"websocket": true, "artwork": true, "transcode": true, "gapless": true}}
 	for _, root := range roots {
 		result.Roots = append(result.Roots, rootDTO{ID: root.ID, Name: root.Name})
 	}

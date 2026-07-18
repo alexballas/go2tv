@@ -148,7 +148,9 @@ type FyneScreen struct {
 	queueUIStateValid        bool
 	lastQueueTapIndex        int
 	lastQueueTapAt           time.Time
+	muted                    bool
 	ActiveDeviceLabel        *widget.Label
+	ActiveDeviceIcon         *widget.Icon
 	ActiveDeviceCard         *widget.Card
 	rtmpServer               *rtmp.Server
 	rtmpServerCheck          *widget.Check
@@ -169,6 +171,11 @@ type FyneScreen struct {
 	resumeSession            resumePlaybackSession
 	Crash                    *crashlog.Session
 	PendingCrashPath         string
+	renderGate               rendererControlGate
+	remoteSession            *remoteSessionManager
+	remoteDialog             dialog.Dialog
+	shutdownOnce             sync.Once
+	shutdownDone             chan struct{}
 }
 
 type droppedMediaMode uint8
@@ -275,6 +282,11 @@ func Start(ctx context.Context, s *FyneScreen) {
 	tabs.OnSelected = func(t *container.TabItem) {
 		if t.Text == "Go2TV" {
 			s.Hotkeys = true
+			if s.renderGate.remoteLeaseHeld() {
+				// Remote session owns the renderer; availability is recomputed
+				// when the lease is released.
+				return
+			}
 			if s.rtmpServer == nil && !s.Screencast {
 				s.TranscodeCheckBox.Enable()
 				if s.ScreencastCheckBox != nil && !s.Screencast {
@@ -344,6 +356,8 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	if app := fyne.CurrentApp(); app != nil {
 		app.Lifecycle().SetOnStopped(func() {
+			// Non-blocking final safety trigger; never waits on the UI path.
+			s.beginGUIShutdown()
 			if s.Crash != nil {
 				_ = s.Crash.CloseClean()
 			}
@@ -352,25 +366,25 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	go func() {
 		<-ctx.Done()
-		s.rtmpMu.Lock()
-		if s.rtmpServer != nil {
-			s.rtmpServer.Stop()
-		}
-		s.rtmpMu.Unlock()
-		stopScreencastSession(s)
+		<-s.beginGUIShutdown()
 		if s.Crash != nil {
 			_ = s.Crash.CloseClean()
 		}
 		os.Exit(0)
 	}()
 
-	w.SetOnClosed(func() {
-		s.rtmpMu.Lock()
-		if s.rtmpServer != nil {
-			s.rtmpServer.Stop()
-		}
-		s.rtmpMu.Unlock()
-		stopScreencastSession(s)
+	// Main-window close starts cleanup off the UI goroutine and returns
+	// immediately; the window closes once the managed child is reaped and
+	// RTMP/screencast teardown finished.
+	w.SetCloseIntercept(func() {
+		done := s.beginGUIShutdown()
+		go func() {
+			<-done
+			fyne.Do(func() {
+				w.SetCloseIntercept(nil)
+				w.Close()
+			})
+		}()
 	})
 
 	go silentCheckVersion(s)
@@ -457,6 +471,10 @@ func (p *FyneScreen) Fini() {
 }
 
 func check(s *FyneScreen, err error) {
+	checkInWindow(s, err, s.Current)
+}
+
+func checkInWindow(s *FyneScreen, err error, parent fyne.Window) {
 	s.muError.Lock()
 	defer s.muError.Unlock()
 
@@ -464,7 +482,7 @@ func check(s *FyneScreen, err error) {
 		if err != nil && !s.ErrorVisible {
 			s.ErrorVisible = true
 			cleanErr := strings.ReplaceAll(err.Error(), ": ", "\n")
-			e := dialog.NewError(errors.New(cleanErr), s.Current)
+			e := dialog.NewError(errors.New(cleanErr), parent)
 			e.Show()
 			e.SetOnClosed(func() {
 				s.ErrorVisible = false
@@ -546,6 +564,12 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 		screen.cancelEnablePlay()
 	}
 
+	if screen.renderGate.remoteLeaseHeld() {
+		// Renderer controls stay locked while the remote session runs; the
+		// lease release recomputes availability.
+		return
+	}
+
 	fyne.Do(func() {
 		// Check if we are casting an image
 		isImage := false
@@ -588,16 +612,26 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 	})
 }
 
-func setMuteUnmuteView(s string, screen *FyneScreen) {
+func setMuteUnmuteView(muted bool, screen *FyneScreen) {
+	screen.mu.Lock()
+	screen.muted = muted
+	screen.mu.Unlock()
+
 	fyne.Do(func() {
-		switch s {
-		case "Mute":
-			screen.MuteUnmute.Icon = theme.VolumeUpIcon()
-		case "Unmute":
-			screen.MuteUnmute.Icon = theme.VolumeMuteIcon()
+		screen.MuteUnmute.SetIcon(theme.VolumeMuteIcon())
+		if muted {
+			screen.MuteUnmute.Importance = widget.DangerImportance
+		} else {
+			screen.MuteUnmute.Importance = widget.LowImportance
 		}
 		screen.MuteUnmute.Refresh()
 	})
+}
+
+func (p *FyneScreen) isMuted() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.muted
 }
 
 // updateScreenState updates the screen state based on
@@ -643,6 +677,23 @@ func (p *FyneScreen) getActiveDevice() devType {
 func (p *FyneScreen) updateActiveDeviceView() {
 	if p.ActiveDeviceCard == nil || p.ActiveDeviceLabel == nil {
 		return
+	}
+
+	if p.renderGate.remoteLeaseHeld() {
+		p.ActiveDeviceLabel.SetText(lang.L("Remote Web Session active: cast controls disabled"))
+		p.ActiveDeviceLabel.Importance = widget.WarningImportance
+		p.ActiveDeviceLabel.Refresh()
+		if p.ActiveDeviceIcon != nil {
+			p.ActiveDeviceIcon.SetResource(theme.WarningIcon())
+		}
+		p.ActiveDeviceCard.Show()
+		return
+	}
+
+	p.ActiveDeviceLabel.Importance = widget.MediumImportance
+	p.ActiveDeviceLabel.Refresh()
+	if p.ActiveDeviceIcon != nil {
+		p.ActiveDeviceIcon.SetResource(theme.MediaPlayIcon())
 	}
 
 	state := p.getScreenState()
@@ -847,6 +898,8 @@ func NewFyneScreen(version string, crash *crashlog.Session) *FyneScreen {
 		PendingCrashPath:   crashPath(crash),
 		queueSelectedIndex: -1,
 		lastQueueTapIndex:  -1,
+		remoteSession:      newRemoteSessionManager(),
+		shutdownDone:       make(chan struct{}),
 	}
 }
 

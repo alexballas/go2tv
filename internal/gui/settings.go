@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/alexballas/refyne/v2"
+	fyne "github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/container"
 	fynedialog "github.com/alexballas/refyne/v2/dialog"
 	"github.com/alexballas/refyne/v2/lang"
@@ -327,8 +327,10 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	rtmpKeyContainer := container.NewBorder(nil, nil, nil, container.NewHBox(regenKeyBtn), streamKeyEntry)
 
 	generalSettings := container.NewVBox(
-		newSettingsField(lang.L("Theme"), dropdownTheme),
-		newSettingsField(lang.L("Language"), dropdownLanguage),
+		container.NewGridWithColumns(2,
+			newSettingsField(lang.L("Theme"), dropdownTheme),
+			newSettingsField(lang.L("Language"), dropdownLanguage),
+		),
 		newSettingsField("ffmpeg "+lang.L("Path"), ffmpegPathControls),
 		newSettingsCheckboxField(rememberPlaybackPositionControls),
 	)
@@ -348,18 +350,20 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		newSettingsField(lang.L("Diagnostics"), debugExport),
 	)
 
-	leftColumn := container.NewBorder(
+	remoteSessionButton := widget.NewButton(lang.L("Remote Web Session")+"…", func() {
+		s.openRemoteWebSessionDialog()
+	})
+	remoteSessionSettings := container.NewVBox(
+		newSettingsField(lang.L("Remote Web Session"), remoteSessionButton),
+	)
+
+	leftColumn := container.NewVBox(
 		widget.NewCard(lang.L("Common Options"), "", generalSettings),
-		nil,
-		nil,
-		nil,
+		widget.NewCard(lang.L("Remote Web Session"), "", remoteSessionSettings),
 		widget.NewCard(lang.L("Diagnostics"), "", debugSettings),
 	)
-	rightColumn := container.NewBorder(
+	rightColumn := container.NewVBox(
 		widget.NewCard(lang.L("Auto-Play Next File"), "", autoNextSettings),
-		nil,
-		nil,
-		nil,
 		widget.NewCard(lang.L("RTMP Server"), "", rtmpSettings),
 	)
 	settingsCategories := container.NewGridWithColumns(2, leftColumn, rightColumn)

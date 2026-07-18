@@ -410,6 +410,9 @@ func (screen *FyneScreen) canTraverse(delta int) bool {
 func (screen *FyneScreen) refreshTraversalControls() {
 	previousEnabled := screen.canTraverse(-1)
 	nextEnabled := screen.canTraverse(1)
+	if screen.renderGate.remoteLeaseHeld() {
+		previousEnabled, nextEnabled = false, false
+	}
 
 	fyne.Do(func() {
 		if screen.SkipPreviousButton != nil {

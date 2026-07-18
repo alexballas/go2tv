@@ -136,6 +136,21 @@ Go2TV can run headless as a small web server and expose a browser-based UI, so y
 browse your media and control casting from any device on your network including your
 phone or tablet without the desktop GUI.
 
+**Start from the desktop GUI**
+
+1. Open **Settings → Remote Web Session…**.
+2. Click **Add folder** for each media directory to expose.
+3. Under **Exposure**, select **This computer** or **Local network**. For local-network
+   access, also select the LAN address. Change the port if needed (default: `9666`).
+4. Click **Start Session**, then **Open in Browser** or **Copy URL**.
+
+The Web UI is a separate session with its own selected device, queue, and playback state.
+While it runs, casting controls in the desktop GUI are disabled. Closing the session window
+does not stop it; click **Stop Session**, or quit Go2TV, to stop it. Only selected folders
+are exposed. Local-network access uses HTTP without TLS, so only use it on trusted networks.
+
+**Start from the command line**
+
 Server mode is enabled with `-server` and needs at least one `-media-root` (the directory
 that Go2TV is allowed to browse and serve). By default it listens on `127.0.0.1:9666`.
 

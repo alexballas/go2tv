@@ -144,3 +144,47 @@ func TestClearActiveDeviceHidesActiveDeviceCard(t *testing.T) {
 		t.Fatal("expected active device card hidden after clear")
 	}
 }
+
+func TestActiveDeviceViewExplainsRemoteSessionLock(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	label := widget.NewLabel("")
+	icon := widget.NewIcon(theme.MediaPlayIcon())
+	screen := &FyneScreen{
+		State:             "Stopped",
+		ActiveDeviceLabel: label,
+		ActiveDeviceIcon:  icon,
+		ActiveDeviceCard:  widget.NewCard("Active Device", "", container.NewHBox(icon, label)),
+	}
+	screen.ActiveDeviceCard.Hide()
+	releaseLease, err := screen.renderGate.acquireRemoteLease()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fyne.DoAndWait(func() {
+		screen.updateActiveDeviceView()
+	})
+
+	if got := label.Text; got != "Remote Web Session active: cast controls disabled" {
+		t.Fatalf("notice = %q", got)
+	}
+	if label.Importance != widget.WarningImportance {
+		t.Fatalf("notice importance = %v, want warning", label.Importance)
+	}
+	if icon.Resource != theme.WarningIcon() {
+		t.Fatal("expected warning icon")
+	}
+	if !screen.ActiveDeviceCard.Visible() {
+		t.Fatal("expected remote-session notice visible")
+	}
+
+	releaseLease()
+	fyne.DoAndWait(func() {
+		screen.updateActiveDeviceView()
+	})
+	if screen.ActiveDeviceCard.Visible() {
+		t.Fatal("expected notice hidden after remote session stops")
+	}
+}
