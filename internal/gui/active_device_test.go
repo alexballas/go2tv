@@ -151,11 +151,15 @@ func TestActiveDeviceViewExplainsRemoteSessionLock(t *testing.T) {
 
 	label := widget.NewLabel("")
 	icon := widget.NewIcon(theme.MediaPlayIcon())
+	stopSession := widget.NewButtonWithIcon("Stop Session", theme.MediaStopIcon(), func() {})
+	stopSession.Importance = widget.DangerImportance
+	stopSession.Hide()
 	screen := &FyneScreen{
-		State:             "Stopped",
-		ActiveDeviceLabel: label,
-		ActiveDeviceIcon:  icon,
-		ActiveDeviceCard:  widget.NewCard("Active Device", "", container.NewHBox(icon, label)),
+		State:                   "Stopped",
+		ActiveDeviceLabel:       label,
+		ActiveDeviceIcon:        icon,
+		ActiveDeviceStopSession: stopSession,
+		ActiveDeviceCard:        widget.NewCard("Active Device", "", container.NewHBox(icon, label, stopSession)),
 	}
 	screen.ActiveDeviceCard.Hide()
 	releaseLease, err := screen.renderGate.acquireRemoteLease()
@@ -179,6 +183,12 @@ func TestActiveDeviceViewExplainsRemoteSessionLock(t *testing.T) {
 	if !screen.ActiveDeviceCard.Visible() {
 		t.Fatal("expected remote-session notice visible")
 	}
+	if !stopSession.Visible() {
+		t.Fatal("expected stop-session button visible")
+	}
+	if stopSession.Importance != widget.DangerImportance {
+		t.Fatalf("stop-session importance = %v, want danger", stopSession.Importance)
+	}
 
 	releaseLease()
 	fyne.DoAndWait(func() {
@@ -186,5 +196,8 @@ func TestActiveDeviceViewExplainsRemoteSessionLock(t *testing.T) {
 	})
 	if screen.ActiveDeviceCard.Visible() {
 		t.Fatal("expected notice hidden after remote session stops")
+	}
+	if stopSession.Visible() {
+		t.Fatal("expected stop-session button hidden after remote session stops")
 	}
 }

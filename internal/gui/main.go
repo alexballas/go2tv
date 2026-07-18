@@ -665,8 +665,14 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.ActiveDeviceLabel = widget.NewLabel("")
 	s.ActiveDeviceLabel.Wrapping = fyne.TextWrapWord
 	s.ActiveDeviceIcon = widget.NewIcon(theme.MediaPlayIcon())
+	s.ActiveDeviceStopSession = widget.NewButtonWithIcon(lang.L("Stop Session"), theme.MediaStopIcon(), func() {
+		s.ActiveDeviceStopSession.Disable()
+		s.stopRemoteWebSession()
+	})
+	s.ActiveDeviceStopSession.Importance = widget.DangerImportance
+	s.ActiveDeviceStopSession.Hide()
 	s.ActiveDeviceCard = widget.NewCard(lang.L("Active Device"), "",
-		container.NewBorder(nil, nil, s.ActiveDeviceIcon, nil, s.ActiveDeviceLabel))
+		container.NewBorder(nil, nil, s.ActiveDeviceIcon, container.NewCenter(s.ActiveDeviceStopSession), s.ActiveDeviceLabel))
 	s.ActiveDeviceCard.Hide()
 
 	deviceBottom := container.NewVBox(s.ActiveDeviceCard, s.rtmpURLCard)

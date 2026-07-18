@@ -151,6 +151,7 @@ type FyneScreen struct {
 	muted                    bool
 	ActiveDeviceLabel        *widget.Label
 	ActiveDeviceIcon         *widget.Icon
+	ActiveDeviceStopSession  *widget.Button
 	ActiveDeviceCard         *widget.Card
 	rtmpServer               *rtmp.Server
 	rtmpServerCheck          *widget.Check
@@ -686,10 +687,17 @@ func (p *FyneScreen) updateActiveDeviceView() {
 		if p.ActiveDeviceIcon != nil {
 			p.ActiveDeviceIcon.SetResource(theme.WarningIcon())
 		}
+		if p.ActiveDeviceStopSession != nil {
+			p.ActiveDeviceStopSession.Show()
+		}
 		p.ActiveDeviceCard.Show()
 		return
 	}
 
+	if p.ActiveDeviceStopSession != nil {
+		p.ActiveDeviceStopSession.Hide()
+		p.ActiveDeviceStopSession.Enable()
+	}
 	p.ActiveDeviceLabel.Importance = widget.MediumImportance
 	p.ActiveDeviceLabel.Refresh()
 	if p.ActiveDeviceIcon != nil {
