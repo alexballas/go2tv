@@ -54,7 +54,7 @@ ANDROID_BUILD_TOOLS?=$(shell ls -d $$ANDROID_HOME/build-tools/* 2>/dev/null | so
 webui:
 	npm run build:webui
 
-build: clean webui
+build: clean
 	env $(GO_BUILD_ENV) go build -tags "$(TAGS)" -trimpath -ldflags $(LDFLAGS) -o $(BIN) ./cmd/go2tv
 
 build-lite:

@@ -299,6 +299,11 @@ func (s *Server) Remove(_ context.Context, id string) error {
 		return nil
 	}
 	delete(s.byID, id)
+	for _, ownedPath := range s.byID {
+		if ownedPath == path {
+			return nil
+		}
+	}
 	delete(s.routes, path)
 	return nil
 }
@@ -358,25 +363,29 @@ func (s *Server) newSourceRouteLocked(purpose string, open playback.SourceOpener
 }
 
 func (s *Server) newBytesRouteLocked(purpose, mediaType string, contents []byte) (route, error) {
-	token, err := randomToken(s.cfg.Rand)
-	if err != nil {
-		return route{}, fmt.Errorf("%s token: %w", purpose, err)
+	ext := extensionForType(mediaType)
+	path := ""
+	artwork := purpose == "artwork"
+	if artwork {
+		hash := sha256.Sum256(contents)
+		path = "/renderer/" + s.session + "/artwork/" + hex.EncodeToString(hash[:]) + ext
+	} else {
+		token, err := randomToken(s.cfg.Rand)
+		if err != nil {
+			return route{}, fmt.Errorf("%s token: %w", purpose, err)
+		}
+		path = "/renderer/" + s.session + "/" + purpose + "/" + token + ext
 	}
 	id, err := randomToken(s.cfg.Rand)
 	if err != nil {
 		return route{}, fmt.Errorf("route id: %w", err)
 	}
-	ext := extensionForType(mediaType)
-	path := "/renderer/" + s.session + "/" + purpose + "/" + token + ext
-	r := route{id: id, path: path, mediaType: mediaType, contents: append([]byte(nil), contents...), artwork: purpose == "artwork"}
-	if r.artwork {
-		hash := sha256.Sum256(contents)
-		path = "/renderer/" + s.session + "/artwork/" + hex.EncodeToString(hash[:]) + ext
-		r.path = path
-		if existing, ok := s.routes[path]; ok {
-			return existing, nil
-		}
+	if existing, ok := s.routes[path]; artwork && ok {
+		existing.id = id
+		s.byID[id] = path
+		return existing, nil
 	}
+	r := route{id: id, path: path, mediaType: mediaType, contents: append([]byte(nil), contents...), artwork: artwork}
 	s.routes[path] = r
 	s.byID[id] = path
 	return r, nil

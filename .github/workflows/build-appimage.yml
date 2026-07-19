@@ -17,14 +17,6 @@ jobs:
       with:
         go-version-file: go.mod
 
-    - uses: actions/setup-node@v6
-      with:
-        node-version: 24
-        cache: npm
-
-    - name: Install web dependencies
-      run: npm ci
-
     - name: Get dependencies
       run: sudo apt update && sudo apt install -y xorg-dev libwayland-dev libxkbcommon-dev libegl-dev libpipewire-0.3-dev pkg-config curl wget tar xz-utils libfuse2t64
 

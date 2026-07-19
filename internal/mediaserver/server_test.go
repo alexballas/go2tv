@@ -413,6 +413,9 @@ func TestArtworkContentAddressedImmutable(t *testing.T) {
 	if one.URL != two.URL {
 		t.Fatalf("same content routes differ: %q %q", one.URL, two.URL)
 	}
+	if one.ID == two.ID {
+		t.Fatalf("duplicate registrations share ownership ID %q", one.ID)
+	}
 	response, err := http.Get(one.URL)
 	if err != nil {
 		t.Fatal(err)
@@ -420,5 +423,27 @@ func TestArtworkContentAddressedImmutable(t *testing.T) {
 	response.Body.Close()
 	if got := response.Header.Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
 		t.Fatalf("cache control %q", got)
+	}
+	if err := server.Remove(context.Background(), one.ID); err != nil {
+		t.Fatal(err)
+	}
+	response, err = http.Get(two.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("shared route status after first removal = %d, want 200", response.StatusCode)
+	}
+	if err := server.Remove(context.Background(), two.ID); err != nil {
+		t.Fatal(err)
+	}
+	response, err = http.Get(two.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("shared route status after final removal = %d, want 404", response.StatusCode)
 	}
 }

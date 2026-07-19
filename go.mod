@@ -6,7 +6,7 @@ require (
 	github.com/alexballas/fyne-tooltip v0.0.0-20260528093432-da161b5c8cac
 	github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab
 	github.com/alexballas/refyne/v2 v2.0.0-20260715232008-d8808082ffcd
-	github.com/alexballas/tunetag v0.0.0-20260718174341-d95e946c0b0e
+	github.com/alexballas/tunetag v0.0.0-20260719100601-dc1983c44140
 	github.com/alexballas/xfilepicker v0.0.0-20260718174811-30135ef2e5b8
 	github.com/buger/jsonparser v1.2.0
 	github.com/charmbracelet/bubbletea v1.3.10

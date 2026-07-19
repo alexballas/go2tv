@@ -16,10 +16,8 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/alexballas/tunetag"
@@ -357,36 +355,7 @@ func ResolveEmbeddedArtwork(file *os.File, source string) (*ArtworkAsset, error)
 		return nil, err
 	}
 	defer func() { _, _ = file.Seek(0, io.SeekStart) }()
-
-	fdPath := ""
-	switch runtime.GOOS {
-	case "linux", "android":
-		fdPath = "/proc/self/fd/" + strconv.FormatUint(uint64(file.Fd()), 10)
-	case "darwin", "ios", "freebsd":
-		fdPath = "/dev/fd/" + strconv.FormatUint(uint64(file.Fd()), 10)
-	}
-	if fdPath != "" {
-		if tag, err := tunetag.Open(fdPath); err == nil {
-			return loadEmbeddedPictures(tag.Pictures(), source), nil
-		}
-	}
-
-	temp, err := os.CreateTemp("", "go2tv-artwork-*"+filepath.Ext(source))
-	if err != nil {
-		return nil, err
-	}
-	tempPath := temp.Name()
-	defer func() {
-		_ = temp.Close()
-		_ = os.Remove(tempPath)
-	}()
-	if _, err = io.Copy(temp, file); err != nil {
-		return nil, err
-	}
-	if err = temp.Close(); err != nil {
-		return nil, err
-	}
-	tag, err := tunetag.Open(tempPath)
+	tag, err := tunetag.OpenReader(file)
 	if err != nil {
 		return nil, nil
 	}

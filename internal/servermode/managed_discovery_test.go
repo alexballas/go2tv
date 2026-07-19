@@ -219,3 +219,55 @@ func TestManagedDiscoveryCloseUnblocksRefresh(t *testing.T) {
 		t.Fatalf("Refresh after Close = %v, want closed", err)
 	}
 }
+
+func TestManagedDiscoveryCloseDuringRefreshSend(t *testing.T) {
+	t.Parallel()
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	d := newManagedDiscovery(func(string) error {
+		close(entered)
+		<-release
+		return errors.New("pipe write failed")
+	})
+	result := make(chan error, 1)
+	go func() {
+		result <- d.Refresh(context.Background())
+	}()
+	<-entered
+	d.Close()
+	close(release)
+	select {
+	case err := <-result:
+		if !errors.Is(err, errManagedDiscoveryClosed) {
+			t.Fatalf("Refresh error = %v, want closed", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Refresh did not return")
+	}
+}
+
+func TestManagedDiscoveryResultDuringRefreshSend(t *testing.T) {
+	t.Parallel()
+	entered := make(chan string)
+	release := make(chan struct{})
+	d := newManagedDiscovery(func(id string) error {
+		entered <- id
+		<-release
+		return errors.New("pipe write failed")
+	})
+	result := make(chan error, 1)
+	go func() {
+		result <- d.Refresh(context.Background())
+	}()
+	requestID := <-entered
+	d.ApplyRefreshResult(requestID, 1, nil, "")
+	close(release)
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("Refresh error = %v, want successful result", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Refresh did not return")
+	}
+}

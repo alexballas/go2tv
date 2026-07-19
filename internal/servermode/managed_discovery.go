@@ -107,18 +107,17 @@ func (d *managedDiscovery) Refresh(ctx context.Context) error {
 	pending := d.pending
 	if pending == nil {
 		d.nextRequest++
-		pending = &pendingRefresh{id: strconv.FormatUint(d.nextRequest, 10), done: make(chan struct{})}
+		pending = &pendingRefresh{id: strconv.FormatUint(d.nextRequest, 10), done: make(chan struct{}), waiters: 1}
 		d.pending = pending
 		send := d.sendRefresh
 		d.mu.Unlock()
 		if err := send(pending.id); err != nil {
 			d.failPending(pending, errManagedRefreshUnavailable)
-			return errManagedRefreshUnavailable
 		}
-		d.mu.Lock()
+	} else {
+		pending.waiters++
+		d.mu.Unlock()
 	}
-	pending.waiters++
-	d.mu.Unlock()
 
 	select {
 	case <-pending.done:
@@ -233,10 +232,11 @@ func (d *managedDiscovery) Close() {
 
 func (d *managedDiscovery) failPending(pending *pendingRefresh, err error) {
 	d.mu.Lock()
-	if d.pending == pending {
-		d.pending = nil
+	defer d.mu.Unlock()
+	if d.pending != pending {
+		return
 	}
-	d.mu.Unlock()
+	d.pending = nil
 	pending.err = err
 	close(pending.done)
 }

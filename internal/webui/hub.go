@@ -30,22 +30,27 @@ const (
 	writeWait       = 15 * time.Second
 	pongWait        = 60 * time.Second
 	pingEvery       = 25 * time.Second
+	snapshotEvery   = 250 * time.Millisecond
 )
 
 type commandFunc func(context.Context, envelope) (controller.Result, map[string]any)
+type snapshotController interface {
+	Snapshot(context.Context) (controller.Snapshot, error)
+}
 type hubConfig struct {
-	writeWait  time.Duration
-	pongWait   time.Duration
-	pingEvery  time.Duration
-	writerGate <-chan struct{}
+	writeWait     time.Duration
+	pongWait      time.Duration
+	pingEvery     time.Duration
+	snapshotEvery time.Duration
+	writerGate    <-chan struct{}
 }
 
 func defaultHubConfig() hubConfig {
-	return hubConfig{writeWait: writeWait, pongWait: pongWait, pingEvery: pingEvery}
+	return hubConfig{writeWait: writeWait, pongWait: pongWait, pingEvery: pingEvery, snapshotEvery: snapshotEvery}
 }
 
 type hub struct {
-	controller *controller.Controller
+	controller snapshotController
 	command    commandFunc
 	cfg        hubConfig
 	mu         sync.Mutex
@@ -77,7 +82,10 @@ type client struct {
 func newHub(c *controller.Controller, command commandFunc) *hub {
 	return newHubWithConfig(c, command, defaultHubConfig())
 }
-func newHubWithConfig(c *controller.Controller, command commandFunc, cfg hubConfig) *hub {
+func newHubWithConfig(c snapshotController, command commandFunc, cfg hubConfig) *hub {
+	if cfg.snapshotEvery <= 0 {
+		cfg.snapshotEvery = snapshotEvery
+	}
 	h := &hub{controller: c, command: command, cfg: cfg, clients: make(map[*client]struct{}), byIP: make(map[string]int), stop: make(chan struct{}), done: make(chan struct{})}
 	go h.snapshots()
 	return h
@@ -416,18 +424,22 @@ func stateUpdates(previous, current snapshotDTO) []outbound {
 
 func (h *hub) snapshots() {
 	defer close(h.done)
-	ticker := time.NewTicker(250 * time.Millisecond)
+	ticker := time.NewTicker(h.cfg.snapshotEvery)
 	defer ticker.Stop()
 	var previous snapshotDTO
 	havePrevious := false
-	if snapshot, err := h.controller.Snapshot(context.Background()); err == nil {
-		previous, havePrevious = safeSnapshot(snapshot), true
-	}
 	for {
 		select {
 		case <-h.stop:
 			return
 		case <-ticker.C:
+			h.mu.Lock()
+			hasClients := len(h.clients) > 0
+			h.mu.Unlock()
+			if !hasClients {
+				havePrevious = false
+				continue
+			}
 			s, err := h.controller.Snapshot(context.Background())
 			if err != nil || havePrevious && s.Revision == previous.Revision {
 				continue
