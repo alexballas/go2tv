@@ -462,6 +462,20 @@ func TestQueueDropMode(t *testing.T) {
 	}
 }
 
+func TestQueueWindowUnavailableDuringRemoteSession(t *testing.T) {
+	screen := &FyneScreen{}
+	releaseLease, err := screen.renderGate.acquireRemoteLease()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer releaseLease()
+
+	screen.openQueueWindow()
+	if screen.queueWindow != nil {
+		t.Fatal("playlist window created during remote session")
+	}
+}
+
 func TestDroppedMediaBlockedErrorForAppendMode(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()

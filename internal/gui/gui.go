@@ -151,7 +151,6 @@ type FyneScreen struct {
 	muted                    bool
 	ActiveDeviceLabel        *widget.Label
 	ActiveDeviceIcon         *widget.Icon
-	ActiveDeviceStopSession  *widget.Button
 	ActiveDeviceCard         *widget.Card
 	rtmpServer               *rtmp.Server
 	rtmpServerCheck          *widget.Check
@@ -174,6 +173,8 @@ type FyneScreen struct {
 	PendingCrashPath         string
 	renderGate               rendererControlGate
 	remoteSession            *remoteSessionManager
+	remoteSessionStatus      *remoteSessionStatusView
+	remoteSessionUpdatesDone func()
 	remoteDialog             dialog.Dialog
 	shutdownOnce             sync.Once
 	shutdownDone             chan struct{}
@@ -282,12 +283,13 @@ func Start(ctx context.Context, s *FyneScreen) {
 	s.Hotkeys = true
 	tabs.OnSelected = func(t *container.TabItem) {
 		if t.Text == "Go2TV" {
-			s.Hotkeys = true
 			if s.renderGate.remoteLeaseHeld() {
 				// Remote session owns the renderer; availability is recomputed
 				// when the lease is released.
+				s.Hotkeys = false
 				return
 			}
+			s.Hotkeys = true
 			if s.rtmpServer == nil && !s.Screencast {
 				s.TranscodeCheckBox.Enable()
 				if s.ScreencastCheckBox != nil && !s.Screencast {
@@ -681,23 +683,10 @@ func (p *FyneScreen) updateActiveDeviceView() {
 	}
 
 	if p.renderGate.remoteLeaseHeld() {
-		p.ActiveDeviceLabel.SetText(lang.L("Remote Web Session active: cast controls disabled"))
-		p.ActiveDeviceLabel.Importance = widget.WarningImportance
-		p.ActiveDeviceLabel.Refresh()
-		if p.ActiveDeviceIcon != nil {
-			p.ActiveDeviceIcon.SetResource(theme.WarningIcon())
-		}
-		if p.ActiveDeviceStopSession != nil {
-			p.ActiveDeviceStopSession.Show()
-		}
-		p.ActiveDeviceCard.Show()
+		p.ActiveDeviceCard.Hide()
 		return
 	}
 
-	if p.ActiveDeviceStopSession != nil {
-		p.ActiveDeviceStopSession.Hide()
-		p.ActiveDeviceStopSession.Enable()
-	}
 	p.ActiveDeviceLabel.Importance = widget.MediumImportance
 	p.ActiveDeviceLabel.Refresh()
 	if p.ActiveDeviceIcon != nil {
@@ -926,6 +915,10 @@ func onDropFiles(screen *FyneScreen) func(p fyne.Position, u []fyne.URI) {
 }
 
 func handleDroppedFiles(screen *FyneScreen, mode droppedMediaMode, uris []fyne.URI) {
+	if screen.renderGate.remoteLeaseHeld() {
+		return
+	}
+
 	mfiles, sfiles := splitDroppedFiles(screen, uris)
 
 	if mode == droppedMediaModeReplace && len(sfiles) > 0 {

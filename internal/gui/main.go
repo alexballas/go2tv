@@ -665,14 +665,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.ActiveDeviceLabel = widget.NewLabel("")
 	s.ActiveDeviceLabel.Wrapping = fyne.TextWrapWord
 	s.ActiveDeviceIcon = widget.NewIcon(theme.MediaPlayIcon())
-	s.ActiveDeviceStopSession = widget.NewButtonWithIcon(lang.L("Stop Session"), theme.MediaStopIcon(), func() {
-		s.ActiveDeviceStopSession.Disable()
-		s.stopRemoteWebSession()
-	})
-	s.ActiveDeviceStopSession.Importance = widget.DangerImportance
-	s.ActiveDeviceStopSession.Hide()
 	s.ActiveDeviceCard = widget.NewCard(lang.L("Active Device"), "",
-		container.NewBorder(nil, nil, s.ActiveDeviceIcon, container.NewCenter(s.ActiveDeviceStopSession), s.ActiveDeviceLabel))
+		container.NewBorder(nil, nil, s.ActiveDeviceIcon, nil, s.ActiveDeviceLabel))
 	s.ActiveDeviceCard.Hide()
 
 	deviceBottom := container.NewVBox(s.ActiveDeviceCard, s.rtmpURLCard)
@@ -946,7 +940,11 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	// Keep track of the media progress and reflect that to the slide bar.
 	// TODO: Add context to cancel
 	go sliderUpdate(s)
-	return content
+
+	status := newRemoteSessionStatusView(s, content)
+	s.remoteSessionStatus = status
+	s.bindRemoteSessionStatus()
+	return status.root
 }
 
 func refreshDevList(s *FyneScreen, data *[]devType) {

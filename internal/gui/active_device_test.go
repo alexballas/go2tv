@@ -145,23 +145,19 @@ func TestClearActiveDeviceHidesActiveDeviceCard(t *testing.T) {
 	}
 }
 
-func TestActiveDeviceViewExplainsRemoteSessionLock(t *testing.T) {
+func TestActiveDeviceViewHiddenDuringRemoteSession(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
 	label := widget.NewLabel("")
 	icon := widget.NewIcon(theme.MediaPlayIcon())
-	stopSession := widget.NewButtonWithIcon("Stop Session", theme.MediaStopIcon(), func() {})
-	stopSession.Importance = widget.DangerImportance
-	stopSession.Hide()
 	screen := &FyneScreen{
-		State:                   "Stopped",
-		ActiveDeviceLabel:       label,
-		ActiveDeviceIcon:        icon,
-		ActiveDeviceStopSession: stopSession,
-		ActiveDeviceCard:        widget.NewCard("Active Device", "", container.NewHBox(icon, label, stopSession)),
+		State:             "Stopped",
+		ActiveDeviceLabel: label,
+		ActiveDeviceIcon:  icon,
+		ActiveDeviceCard:  widget.NewCard("Active Device", "", container.NewHBox(icon, label)),
 	}
-	screen.ActiveDeviceCard.Hide()
+	screen.ActiveDeviceCard.Show()
 	releaseLease, err := screen.renderGate.acquireRemoteLease()
 	if err != nil {
 		t.Fatal(err)
@@ -171,23 +167,8 @@ func TestActiveDeviceViewExplainsRemoteSessionLock(t *testing.T) {
 		screen.updateActiveDeviceView()
 	})
 
-	if got := label.Text; got != "Remote Web Session active: cast controls disabled" {
-		t.Fatalf("notice = %q", got)
-	}
-	if label.Importance != widget.WarningImportance {
-		t.Fatalf("notice importance = %v, want warning", label.Importance)
-	}
-	if icon.Resource != theme.WarningIcon() {
-		t.Fatal("expected warning icon")
-	}
-	if !screen.ActiveDeviceCard.Visible() {
-		t.Fatal("expected remote-session notice visible")
-	}
-	if !stopSession.Visible() {
-		t.Fatal("expected stop-session button visible")
-	}
-	if stopSession.Importance != widget.DangerImportance {
-		t.Fatalf("stop-session importance = %v, want danger", stopSession.Importance)
+	if screen.ActiveDeviceCard.Visible() {
+		t.Fatal("expected active-device card hidden during remote session")
 	}
 
 	releaseLease()
@@ -196,8 +177,5 @@ func TestActiveDeviceViewExplainsRemoteSessionLock(t *testing.T) {
 	})
 	if screen.ActiveDeviceCard.Visible() {
 		t.Fatal("expected notice hidden after remote session stops")
-	}
-	if stopSession.Visible() {
-		t.Fatal("expected stop-session button hidden after remote session stops")
 	}
 }

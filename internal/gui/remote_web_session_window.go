@@ -42,6 +42,9 @@ const (
 // before RTMP/screencast teardown completes.
 func (s *FyneScreen) beginGUIShutdown() <-chan struct{} {
 	s.shutdownOnce.Do(func() {
+		if s.remoteSessionUpdatesDone != nil {
+			s.remoteSessionUpdatesDone()
+		}
 		go func() {
 			defer close(s.shutdownDone)
 			ctx, cancel := context.WithTimeout(context.Background(), remoteShutdownGrace)
@@ -69,6 +72,15 @@ func (s *FyneScreen) recomputeRendererControls() {
 		ffmpegErr = s.ffmpegStatus()
 	}
 	fyne.Do(func() {
+		s.refreshRemoteSessionStatus()
+		if held {
+			s.Hotkeys = false
+			if s.queueWindow != nil {
+				s.queueWindow.Hide()
+			}
+		} else if s.tabs != nil && s.tabs.Selected() != nil {
+			s.Hotkeys = s.tabs.Selected().Text == "Go2TV"
+		}
 		setEnabled := func(disableable fyne.Disableable, enabled bool) {
 			if disableable == nil {
 				return
@@ -282,7 +294,7 @@ func (s *FyneScreen) buildRemoteWebSessionDialog() {
 	prefs := fyne.CurrentApp().Preferences()
 	parent := s.Current
 
-	isolationNotice := widget.NewLabel(lang.L("Starts a separate WebUI session. It does not control or mirror this desktop app."))
+	isolationNotice := widget.NewLabel(lang.L("Starts a separate Web UI session with its own playlist, device selection, and playback. While it runs, the main Go2TV tab is replaced by a session status view."))
 	isolationNotice.Wrapping = fyne.TextWrapWord
 
 	roots := prefs.StringList(remoteRootsPref)

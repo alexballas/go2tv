@@ -27,6 +27,7 @@ require (
 	github.com/sirupsen/logrus v1.9.4
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	github.com/stretchr/testify v1.11.1
+	github.com/yeqown/go-qrcode/v2 v2.2.5
 	go2tv.app/screencast v0.0.0-20260415182719-6f13c7343d9c
 	golang.org/x/image v0.44.0
 	golang.org/x/mod v0.38.0
@@ -80,6 +81,7 @@ require (
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
+	github.com/yeqown/reedsolomon v1.0.0 // indirect
 	github.com/yuin/goldmark v1.8.4 // indirect
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect

@@ -434,6 +434,9 @@ func (screen *FyneScreen) refreshTraversalControls() {
 }
 
 func (screen *FyneScreen) openQueueWindow() {
+	if screen.renderGate.remoteLeaseHeld() {
+		return
+	}
 	if screen.queueWindow == nil {
 		screen.buildQueueWindow()
 	}

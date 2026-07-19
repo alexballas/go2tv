@@ -192,10 +192,14 @@ Enable **Autoplay next** and **Gapless** to queue the next playlist item with DL
    access, also select the LAN address. Change the port if needed (default: `9666`).
 4. Click **Start Session**, then **Open in Browser** or **Copy URL**.
 
-The Web UI is a separate session with its own selected device, queue, and playback state.
-While it runs, casting controls in the desktop GUI are disabled. Closing the session window
-does not stop it; click **Stop Session**, or quit Go2TV, to stop it. Only selected folders
-are exposed. Local-network access uses HTTP without TLS, so only use it on trusted networks.
+The Web UI is a separate session with its own device selection, playlist, and playback state.
+Its playlist and playback state never sync with the desktop session. While the server runs,
+the main **Go2TV** tab is replaced by a persistent status view with the clickable Web UI URL,
+a QR code, **Open Web UI**, and **Stop Session**. **Settings** and **About** remain available.
+Stopping the session restores the normal Go2TV tab immediately. Closing the session window
+does not stop the server; click **Stop Session**, or quit Go2TV, to stop it. Only selected
+folders are exposed. Local-network access uses HTTP without TLS, so only use it on trusted
+networks.
 
 #### Start from the command line
 
