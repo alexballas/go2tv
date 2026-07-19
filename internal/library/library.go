@@ -178,7 +178,13 @@ func Open(cfg Config) (*Library, error) {
 		state := &rootState{id: id, canonical: canonical, handle: handle}
 		states = append(states, state)
 		l.roots[id] = state
-		l.rootList = append(l.rootList, Root{ID: id, Name: rootDisplayName(canonical)})
+	}
+	paths := make([]string, len(states))
+	for index, state := range states {
+		paths[index] = state.canonical
+	}
+	for index, name := range rootDisplayNames(paths) {
+		l.rootList = append(l.rootList, Root{ID: states[index].id, Name: name})
 	}
 	return l, nil
 }
@@ -606,6 +612,103 @@ func rootDisplayName(canonical string) string {
 		name = canonical
 	}
 	return displayName(name)
+}
+
+// rootDisplayNames adds only enough parent context to distinguish collisions.
+func rootDisplayNames(paths []string) []string {
+	labels := make([]string, len(paths))
+	groups := make(map[string][]int, len(paths))
+	for index, path := range paths {
+		labels[index] = rootDisplayName(path)
+		groups[labels[index]] = append(groups[labels[index]], index)
+	}
+	for name, indexes := range groups {
+		if len(indexes) == 1 {
+			continue
+		}
+		groupPaths := make([]string, len(indexes))
+		for index, pathIndex := range indexes {
+			groupPaths[index] = paths[pathIndex]
+		}
+		for index, context := range uniqueRootContexts(groupPaths) {
+			labels[indexes[index]] = name + " - " + context
+		}
+	}
+	return labels
+}
+
+func uniqueRootContexts(paths []string) []string {
+	components := make([][]string, len(paths))
+	maximumDepth := 0
+	for index, path := range paths {
+		components[index] = rootAncestorComponents(path)
+		maximumDepth = max(maximumDepth, len(components[index]))
+	}
+
+	for depth := 1; depth <= maximumDepth; depth++ {
+		ancestors := make([]string, len(paths))
+		suffixes := make([]string, len(paths))
+		allHaveAncestor := true
+		for index, parts := range components {
+			available := min(depth, len(parts))
+			if available < depth {
+				allHaveAncestor = false
+			} else {
+				ancestors[index] = parts[depth-1]
+			}
+			suffixes[index] = joinRootContext(parts[:available])
+		}
+		if allHaveAncestor && uniqueStrings(ancestors) {
+			return ancestors
+		}
+		if uniqueStrings(suffixes) {
+			return suffixes
+		}
+	}
+	contexts := make([]string, len(paths))
+	for index := range contexts {
+		contexts[index] = fmt.Sprintf("root %d", index+1)
+	}
+	return contexts
+}
+
+func rootAncestorComponents(path string) []string {
+	var result []string
+	for parent := filepath.Dir(path); ; parent = filepath.Dir(parent) {
+		name := filepath.Base(parent)
+		if name == string(filepath.Separator) {
+			if volume := filepath.VolumeName(parent); volume != "" {
+				name = volume
+			}
+		}
+		result = append(result, displayName(name))
+		if filepath.Dir(parent) == parent {
+			return result
+		}
+	}
+}
+
+func uniqueStrings(values []string) bool {
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if _, exists := seen[value]; exists {
+			return false
+		}
+		seen[value] = struct{}{}
+	}
+	return true
+}
+
+func joinRootContext(parts []string) string {
+	separator := string(filepath.Separator)
+	reversed := make([]string, len(parts))
+	for index := range parts {
+		reversed[len(parts)-1-index] = parts[index]
+	}
+	if reversed[0] == separator {
+		return separator + strings.Join(reversed[1:], separator)
+	}
+	return strings.Join(reversed, separator)
 }
 
 func stamp(info os.FileInfo) fileStamp {

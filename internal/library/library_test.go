@@ -50,6 +50,35 @@ func TestRootsRejectDuplicateAndAlias(t *testing.T) {
 	}
 }
 
+func TestRootNamesDisambiguateOnlyCollisions(t *testing.T) {
+	base := t.TempDir()
+	paths := []string{
+		filepath.Join(base, "users", "alex", "Movies"),
+		filepath.Join(base, "srv", "shared", "Movies"),
+		filepath.Join(base, "srv", "shared", "Music"),
+		filepath.Join(base, "a", "common", "Photos"),
+		filepath.Join(base, "b", "common", "Photos"),
+	}
+	for _, path := range paths {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lib, err := Open(Config{Roots: paths})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = lib.Close() })
+	got := make([]string, 0, len(paths))
+	for _, root := range lib.Roots() {
+		got = append(got, root.Name)
+	}
+	want := []string{"Movies - alex", "Movies - shared", "Music", "Photos - a", "Photos - b"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("root names = %q, want %q", got, want)
+	}
+}
+
 func TestBrowseFiltersAndMixedCaseExtensions(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "movie.MP4"), "movie")

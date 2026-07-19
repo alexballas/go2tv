@@ -11,3 +11,13 @@ func TestDriveRootsKeepDistinctDisplayNames(t *testing.T) {
 		}
 	}
 }
+
+func TestDuplicateRootNamesUseDriveContext(t *testing.T) {
+	want := []string{`Movies - C:`, `Movies - X:`}
+	got := rootDisplayNames([]string{`C:\Media\Movies`, `X:\Media\Movies`})
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("rootDisplayNames() = %q, want %q", got, want)
+		}
+	}
+}

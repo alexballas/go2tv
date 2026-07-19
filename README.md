@@ -216,7 +216,8 @@ Then open the printed URL (`http://127.0.0.1:9666/`) in your browser.
 #### Serve multiple media directories
 
 `-media-root` is repeatable. Pass it once per directory you want to expose. Each root
-appears as a separate entry in the Web UI's media-root selector.
+appears as a separate entry in the Web UI's media-root selector. Roots sharing a folder
+name receive a short parent or drive suffix, such as `Movies - C:`.
 
 ``` console
 go2tv -server \
