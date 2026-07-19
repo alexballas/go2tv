@@ -52,6 +52,10 @@ func TestValidateConfig(t *testing.T) {
 	if err := os.Mkdir(child, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(root, alias); err != nil {
+		t.Fatal(err)
+	}
 	tests := []struct {
 		name    string
 		cfg     Config
@@ -67,7 +71,8 @@ func TestValidateConfig(t *testing.T) {
 		{name: "null origin", cfg: Config{Listen: "0.0.0.0:9666", MediaRoots: []string{root}, AllowedOrigins: []string{"null"}}, wantErr: ErrInvalidOrigin},
 		{name: "duplicate origin", cfg: Config{Listen: "0.0.0.0:9666", MediaRoots: []string{root}, AllowedOrigins: []string{"http://TV.local:9666", "http://tv.local:9666"}}, wantErr: ErrInvalidOrigin},
 		{name: "duplicate root", cfg: Config{Listen: DefaultListen, MediaRoots: []string{root, root}}, wantErr: ErrInvalidMediaRoot},
-		{name: "overlapping root", cfg: Config{Listen: DefaultListen, MediaRoots: []string{root, child}}, wantErr: ErrInvalidMediaRoot},
+		{name: "aliased root", cfg: Config{Listen: DefaultListen, MediaRoots: []string{root, alias}}, wantErr: ErrInvalidMediaRoot},
+		{name: "nested roots", cfg: Config{Listen: DefaultListen, MediaRoots: []string{root, child}}},
 		{name: "missing root", cfg: Config{Listen: DefaultListen}, wantErr: ErrInvalidMediaRoot},
 	}
 	for _, tt := range tests {

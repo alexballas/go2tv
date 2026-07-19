@@ -17,18 +17,30 @@ import (
 	"unicode/utf8"
 )
 
-func TestRootsRejectDuplicateAndOverlap(t *testing.T) {
+func TestRootsAllowNested(t *testing.T) {
 	root := t.TempDir()
 	child := filepath.Join(root, "child")
 	if err := os.Mkdir(child, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	lib, err := Open(Config{Roots: []string{root, child}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = lib.Close() })
+	if len(lib.Roots()) != 2 {
+		t.Fatalf("roots = %+v", lib.Roots())
+	}
+}
+
+func TestRootsRejectDuplicateAndAlias(t *testing.T) {
+	root := t.TempDir()
 	alias := filepath.Join(t.TempDir(), "alias")
 	if err := os.Symlink(root, alias); err != nil {
 		t.Fatal(err)
 	}
 
-	for _, roots := range [][]string{{root, root}, {root, child}, {root, alias}} {
+	for _, roots := range [][]string{{root, root}, {root, alias}} {
 		if lib, err := Open(Config{Roots: roots}); !errors.Is(err, ErrInvalidRoot) {
 			if lib != nil {
 				_ = lib.Close()

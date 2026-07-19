@@ -225,7 +225,8 @@ go2tv -server \
   -media-root "/path/to/TV Shows"
 ```
 
-Roots must be existing directories, and they cannot overlap or nest inside one another.
+Roots must be existing directories. Nested roots are allowed; exact duplicates and aliases
+resolving to the same directory are rejected.
 
 #### Expose it on your LAN
 

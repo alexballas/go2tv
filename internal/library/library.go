@@ -17,7 +17,6 @@ import (
 	"unicode/utf8"
 
 	"go2tv.app/go2tv/v2/internal/mediamodel"
-	"go2tv.app/go2tv/v2/internal/pathutil"
 )
 
 const (
@@ -151,12 +150,6 @@ func Open(cfg Config) (*Library, error) {
 			closeStates()
 			return nil, err
 		}
-		for _, existing := range states {
-			if pathutil.Overlap(existing.canonical, canonical) {
-				closeStates()
-				return nil, ErrInvalidRoot
-			}
-		}
 		handle, err := os.OpenRoot(canonical)
 		if err != nil {
 			closeStates()
@@ -185,7 +178,7 @@ func Open(cfg Config) (*Library, error) {
 		state := &rootState{id: id, canonical: canonical, handle: handle}
 		states = append(states, state)
 		l.roots[id] = state
-		l.rootList = append(l.rootList, Root{ID: id, Name: displayName(filepath.Base(canonical))})
+		l.rootList = append(l.rootList, Root{ID: id, Name: rootDisplayName(canonical)})
 	}
 	return l, nil
 }
@@ -605,6 +598,14 @@ func displayName(raw string) string {
 		}
 		return r
 	}, valid)
+}
+
+func rootDisplayName(canonical string) string {
+	name := filepath.Base(canonical)
+	if name == string(filepath.Separator) {
+		name = canonical
+	}
+	return displayName(name)
 }
 
 func stamp(info os.FileInfo) fileStamp {

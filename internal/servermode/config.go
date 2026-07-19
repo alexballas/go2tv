@@ -10,8 +10,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-
-	"go2tv.app/go2tv/v2/internal/pathutil"
 )
 
 const DefaultListen = "127.0.0.1:9666"
@@ -153,6 +151,7 @@ func Validate(cfg Config) (Config, error) {
 	cfg.AllowedOrigins = canonicalOrigins
 
 	roots := make([]string, 0, len(cfg.MediaRoots))
+	rootInfos := make([]os.FileInfo, 0, len(cfg.MediaRoots))
 	for _, root := range cfg.MediaRoots {
 		abs, err := filepath.Abs(root)
 		if err != nil {
@@ -166,12 +165,13 @@ func Validate(cfg Config) (Config, error) {
 		if err != nil || !info.IsDir() {
 			return Config{}, fmt.Errorf("%w: %q is not a directory", ErrInvalidMediaRoot, root)
 		}
-		for _, existing := range roots {
-			if pathutil.Overlap(existing, canonical) {
-				return Config{}, fmt.Errorf("%w: duplicate/overlapping roots %q and %q", ErrInvalidMediaRoot, existing, canonical)
+		for index, existingInfo := range rootInfos {
+			if os.SameFile(existingInfo, info) {
+				return Config{}, fmt.Errorf("%w: duplicate roots %q and %q", ErrInvalidMediaRoot, roots[index], canonical)
 			}
 		}
 		roots = append(roots, canonical)
+		rootInfos = append(rootInfos, info)
 	}
 	cfg.MediaRoots = roots
 	return cfg, nil
