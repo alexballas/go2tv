@@ -114,110 +114,47 @@ Select a media file (or drag and drop it onto the main window), pick a device fr
 
 #### Playlist
 
-Go2TV GUI keeps the current selection in a **Playlist**, even for a single file.
-
-- Selecting or dropping a single local file creates a 1-item playlist
-- Selecting or dropping multiple files creates a multi-item playlist
-- The **Playlist** window lets you add, remove, reorder, and select items
-- Drag and drop on the main window replaces the current playlist
-- Drag and drop on the Playlist window appends files when a playlist already exists
-- **Next**, **Previous**, and **Auto-Play Next File** follow the playlist order
-- **Auto-Play Next File** wraps to the start of the playlist when it reaches the end
-- **Same File Types Only** is still respected for auto-play traversal
+The **Playlist** window lets you add, remove, reorder, and select files. Dragging files onto
+the main window replaces the playlist; dragging them onto the Playlist window appends them.
+**Next**, **Previous**, and **Auto-Play Next File** follow the playlist order.
 
 ### CLI
 
-``` console
-$ go2tv -h
-Usage of go2tv:
-  -l    List available devices (Smart TVs and Chromecasts).
-  -s string
-        Path to subtitles file (.srt or .vtt).
-  -t string
-        Device URL to cast to (from -l output).
-  -tc
-        Force transcoding with ffmpeg.
-  -u string
-        URL to media file (triggers CLI mode).
-  -v string
-        Path to video/audio file (triggers CLI mode).
-  -version
-        Print version.
-```
-
-**Examples**
+Run `go2tv -h` for all options. Common commands:
 
 ``` console
 # List available devices
 go2tv -l
 
-# Play a video on your TV
+# Play a local file
 go2tv -v movie.mp4 -t http://192.168.1.100:8060/
 
-# Play with subtitles
-go2tv -v movie.mp4 -s movie.srt -t http://192.168.1.100:8060/
+# Play with subtitles and transcoding
+go2tv -v movie.mkv -s movie.srt -tc -t http://192.168.1.100:8060/
 
-# Force transcoding for incompatible formats
-go2tv -v video.avi -tc -t http://192.168.1.100:8060/
+# Play a remote file
+go2tv -u https://example.com/movie.mp4 -t http://192.168.1.50:8009
 
-# Cast to Chromecast
-go2tv -v movie.mp4 -t http://192.168.1.50:8009
-
-# Stream from stdin
-cat video.mp4 | go2tv -t http://192.168.1.50:8009
-
-# Stream from command output
+# Stream from another command
 yt-dlp -o - "https://youtu.be/..." | go2tv -t http://192.168.1.50:8009
-
-# Stream from stdin with transcoding
-cat video.mkv | go2tv -tc -t http://192.168.1.50:8009
-
-# Stream from command output with transcoding
-yt-dlp -o - "https://youtu.be/..." | go2tv -tc -t http://192.168.1.50:8009
 ```
 
 ### Web UI (Server Mode)
 
-Go2TV can run headless as a small web server and expose a browser-based UI, so you can
-browse your media and control casting from any device on your network including your
-phone or tablet without the desktop GUI.
+Run Go2TV as a web server to browse selected media folders and control casting from a
+browser. The Web UI has separate device, playlist, and playback state from the desktop GUI.
 
-Enable **Autoplay next** and **Gapless** to queue the next playlist item with DLNA `SetNextAVTransportURI` on compatible renderers. Chromecast keeps ordinary autoplay.
+From the GUI, open **Settings → Remote Web Session…**, add media folders, choose local or
+LAN access, and start the session.
 
-#### Start from the desktop GUI
-
-1. Open **Settings → Remote Web Session…**.
-2. Click **Add folder** for each media directory to expose.
-3. Under **Exposure**, select **This computer** or **Local network**. For local-network
-   access, also select the LAN address. Change the port if needed (default: `9666`).
-4. Click **Start Session**, then **Open in Browser** or **Copy URL**.
-
-The Web UI is a separate session with its own device selection, playlist, and playback state.
-Its playlist and playback state never sync with the desktop session. While the server runs,
-the main **Go2TV** tab is replaced by a persistent status view with the clickable Web UI URL,
-a QR code, **Open Web UI**, and **Stop Session**. **Settings** and **About** remain available.
-Stopping the session restores the normal Go2TV tab immediately. Closing the session window
-does not stop the server; click **Stop Session**, or quit Go2TV, to stop it. Only selected
-folders are exposed. Local-network access uses HTTP without TLS, so only use it on trusted
-networks.
-
-#### Start from the command line
-
-Server mode is enabled with `-server` and needs at least one `-media-root` (the directory
-that Go2TV is allowed to browse and serve). By default it listens on `127.0.0.1:9666`.
+For headless use, pass `-server` and at least one `-media-root`:
 
 ``` console
-# Serve a single media directory on http://127.0.0.1:9666
 go2tv -server -media-root /path/to/Media
 ```
 
-Then open the printed URL (`http://127.0.0.1:9666/`) in your browser.
-
-#### Serve multiple media directories
-
-`-media-root` is repeatable. Pass it once per directory you want to expose. Each root
-appears as a separate entry in the Web UI's media-root selector. Roots sharing a folder
-name receive a short parent or drive suffix, such as `Movies - C:`.
+The default URL is `http://127.0.0.1:9666/`. Repeat `-media-root` to expose multiple
+directories:
 
 ``` console
 go2tv -server \
@@ -226,14 +163,7 @@ go2tv -server \
   -media-root "/path/to/TV Shows"
 ```
 
-Roots must be existing directories. Nested roots are allowed; exact duplicates and aliases
-resolving to the same directory are rejected.
-
-#### Expose it on your LAN
-
-To reach the UI from another device, bind to a LAN address (or all interfaces) with
-`-listen`. Any non-loopback listen address requires you to whitelist the browser origins
-you'll connect from with `-allowed-origin` (repeatable, `scheme://host:port`):
+For LAN access, set a non-loopback `-listen` address and allow each browser origin:
 
 ``` console
 go2tv -server \
@@ -242,45 +172,17 @@ go2tv -server \
   -media-root /path/to/Media
 ```
 
-> Server mode runs in trusted-LAN mode without TLS. Only expose it on networks you trust.
-
-#### Server-mode flags
-
-``` console
-  -server
-        Run Web server mode.
-  -listen string
-        Web server listen address. (default "127.0.0.1:9666")
-  -media-root value
-        Allowed media directory (repeatable; required with -server).
-  -allowed-origin value
-        Allowed Web origin, including scheme/host/port (repeatable).
-  -debug
-        Enable Web server protocol debug logs.
-```
+> LAN mode uses HTTP without TLS. Use it only on trusted networks.
 
 ### RTMP Streaming (Chromecast only)
 
-Go2TV can act as an RTMP server, allowing you to stream from OBS or other software directly to your Chromecast. **This feature requires FFmpeg.**
-
-1. Select a **Chromecast** device.
-2. Check the **RTMP Server** box.
-3. Click **Play** in Go2TV (the app will wait for the stream).
-4. Use the provided URL in your streaming software (e.g., OBS Settings > Stream).
-5. Start streaming in your software.
+Select a Chromecast, enable **RTMP Server**, and click **Play**. Use the displayed URL in
+OBS or other streaming software. Requires FFmpeg.
 
 ### Cast Desktop (Experimental, Chromecast only)
 
-Go2TV can cast your desktop as a live stream to Chromecast devices. **This feature is experimental and requires FFmpeg.**
-
-1. Select a **Chromecast** device.
-2. Check **Cast Desktop (experimental)**.
-3. Click **Cast**.
-
-Notes:
-- Experimental: behavior/performance may vary by system.
-- Chromecast only (not DLNA/UPnP TVs).
-- Not supported on audio-only Chromecast devices.
+Select a Chromecast, enable **Cast Desktop (experimental)**, and click **Cast**. Requires
+FFmpeg and is not supported on audio-only Chromecast devices.
 
 ---
 
@@ -296,15 +198,8 @@ The CLI accepts any file type.
 
 [mcp-beam](https://go2tv.app/mcp-beam/) is a companion MCP server (stdio transport) built on top of Go2TV core packages.
 
-Use it when you want MCP clients/agents to:
-
-- Discover Chromecast and DLNA/UPnP devices on your LAN
-- Cast local media files
-- Cast remote media URLs
-- Stop active playback sessions
-
-If you want direct end-user control, use Go2TV GUI/CLI.  
-If you want tool-driven casting from MCP-compatible workflows, use mcp-beam.
+It lets MCP clients discover Chromecast and DLNA/UPnP devices, cast local files or remote
+URLs, and stop playback. For direct control, use the Go2TV GUI or CLI.
 
 ---
 
@@ -337,25 +232,16 @@ cd go2tv
 make build
 ```
 
-### AppImage build (Linux)
+### AppImage builds (Linux)
 
 ``` console
-make appimage
+make appimage          # Without FFmpeg
+make appimage-ffmpeg   # With FFmpeg
 ```
 
-`v2.1` style build. No bundled `ffmpeg`/`ffprobe`.
-
-### AppImage build (with ffmpeg, Linux)
-
-``` console
-make appimage-ffmpeg
-```
-
-- `APPIMAGE_FFMPEG_MODE=auto` (default): use host `ffmpeg`/`ffprobe` if static; else download prebuilt bundle
-- `APPIMAGE_FFMPEG_MODE=system`: require host `ffmpeg`/`ffprobe`
-- `APPIMAGE_FFMPEG_MODE=download`: always download prebuilt bundle
-- `APPIMAGE_FFMPEG_MODE=none`: build AppImage without ffmpeg binaries
-- Optional explicit paths: `APPIMAGE_FFMPEG_BIN=/path/ffmpeg APPIMAGE_FFPROBE_BIN=/path/ffprobe`
+For the FFmpeg build, `APPIMAGE_FFMPEG_MODE` supports `auto` (default), `system`,
+`download`, or `none`. Override binary paths with `APPIMAGE_FFMPEG_BIN` and
+`APPIMAGE_FFPROBE_BIN`.
 
 ### Android builds
 
