@@ -368,7 +368,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	)
 	settingsCategories := container.NewGridWithColumns(2, leftColumn, rightColumn)
 
-	return container.NewVScroll(settingsCategories)
+	return settingsCategories
 }
 
 func showDiagnosticsSaveDialog(s *FyneScreen) {
