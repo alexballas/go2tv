@@ -20,6 +20,8 @@ import (
 	"github.com/alexballas/refyne/v2/theme"
 	"github.com/alexballas/refyne/v2/widget"
 	xfilepicker "github.com/alexballas/xfilepicker/dialog"
+
+	"go2tv.app/go2tv/v2/internal/mediamodel"
 )
 
 const (
@@ -317,7 +319,9 @@ func (s *FyneScreen) buildRemoteWebSessionDialog() {
 		},
 		func(id widget.ListItemID, object fyne.CanvasObject) {
 			if id < len(roots) {
-				object.(*fyne.Container).Objects[0].(*widget.Label).SetText(roots[id])
+				// Stored roots keep the sandbox-valid document-portal path;
+				// only the visible text uses the resolved host path.
+				object.(*fyne.Container).Objects[0].(*widget.Label).SetText(mediamodel.QueueDisplayPath(roots[id]))
 			}
 		},
 	)
