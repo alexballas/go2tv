@@ -12,6 +12,8 @@ github.com/alexballas/tunetag v0.0.0-20260719100601-dc1983c44140 h1:Lbt0bbEAdfIH
 github.com/alexballas/tunetag v0.0.0-20260719100601-dc1983c44140/go.mod h1:HURLWYLMoZtxUiboPNZ5/en9npmAWfnC23RAOwgFv8Y=
 github.com/alexballas/xfilepicker v0.0.0-20260718174811-30135ef2e5b8 h1:c67sps0ocp/P5OqmMcx/sDlQaeaZUhZD1N/igZz0bsw=
 github.com/alexballas/xfilepicker v0.0.0-20260718174811-30135ef2e5b8/go.mod h1:932d8vCVsKl4gEtUgmAdMHNSO1zeqkGLrFIewc5Jf+M=
+github.com/alexballas/xfilepicker v0.0.0-20260722221937-2760d0132b88 h1:Kq7IYxIOUyVTczLb8GH0p1t6VLXqXaPB1XnulvF7Bb4=
+github.com/alexballas/xfilepicker v0.0.0-20260722221937-2760d0132b88/go.mod h1:932d8vCVsKl4gEtUgmAdMHNSO1zeqkGLrFIewc5Jf+M=
 github.com/anthonynsimon/bild v0.16.1 h1:ECqtLkQ15kqfHdRtzUfNvQniJtHNpzdVU/7feMYAm0o=
 github.com/anthonynsimon/bild v0.16.1/go.mod h1:hYAxurnswTQ9dexoiK922MepdXLC1lBzG35n6ypk//g=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=
