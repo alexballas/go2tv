@@ -26,8 +26,8 @@ import (
 type HTTPserver struct {
 	http *http.Server
 	Mux  *http.ServeMux
-	// We only need to run one ffmpeg
-	// command at a time, per server instance
+	// Chromecast runs one ffmpeg command at a time per server. DLNA commands
+	// are request-owned so a renderer reconnect cannot corrupt another command.
 	ffmpeg      *exec.Cmd
 	handlers    map[string]handler
 	dirHandlers map[string]string // Handlers for serving entire directories (e.g. HLS)
@@ -460,6 +460,10 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 		transcode = tv.Transcode
 		mediaType = tv.MediaType
 		seek = tv.Seekable
+		tv.Log().Debug("", "Method", "DLNAMediaHTTP", "Action", "Request", "HTTP Method", r.Method, "Path", r.URL.Path,
+			"TimeSeekRange", r.Header.Get("TimeSeekRange.dlna.org"), "Range", r.Header.Get("Range"),
+			"GetContentFeatures", r.Header.Get("getcontentFeatures.dlna.org"),
+			"GetAvailableSeekRange", r.Header.Get("getAvailableSeekRange.dlna.org"))
 	}
 
 	// Chromecast transcoding takes precedence
@@ -535,7 +539,6 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 
 		w.Header()["contentFeatures.dlna.org"] = []string{contentFeatures}
 	}
-
 	// In ffmpeg we can emulate seek support for live streams
 	if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "video") {
 		// Route based on which config is provided
@@ -554,7 +557,8 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 			}
 		case tv != nil:
 			// DLNA transcoding (MPEGTS)
-			err := utils.ServeTranscodedStream(r.Context(), w, f, ff, tv.FFmpegPath, tv.FFmpegSubsPath, tv.FFmpegSeek, utils.SubtitleSizeMedium)
+			var command exec.Cmd
+			err := utils.ServeTranscodedStream(r.Context(), w, f, &command, tv.FFmpegPath, tv.FFmpegSubsPath, tv.FFmpegSeek, utils.SubtitleSizeMedium)
 			if err != nil {
 				tv.Log().Error("", "function", "serveContentReadClose", "Action", "Transcode", "error", err)
 			}
@@ -614,7 +618,6 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcall
 
 		w.Header()["contentFeatures.dlna.org"] = []string{contentFeatures}
 	}
-
 	if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "video") {
 		// Since we're dealing with an io.Reader we can't
 		// allow any HEAD requests that some DMRs trigger.
@@ -641,7 +644,8 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcall
 			}
 		case tv != nil:
 			// DLNA transcoding (MPEGTS)
-			err := utils.ServeTranscodedStream(r.Context(), w, input, ff, tv.FFmpegPath, tv.FFmpegSubsPath, tv.FFmpegSeek, utils.SubtitleSizeMedium)
+			var command exec.Cmd
+			err := utils.ServeTranscodedStream(r.Context(), w, input, &command, tv.FFmpegPath, tv.FFmpegSubsPath, tv.FFmpegSeek, utils.SubtitleSizeMedium)
 			if err != nil {
 				tv.Log().Error("", "function", "serveContentCustomType", "Action", "Transcode", "error", err)
 			}

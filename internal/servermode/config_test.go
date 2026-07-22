@@ -2,6 +2,7 @@ package servermode
 
 import (
 	"errors"
+	"flag"
 	"os"
 	"path/filepath"
 	"testing"
@@ -40,6 +41,38 @@ func TestValidateCLIFlagMatrix(t *testing.T) {
 			err := ValidateCLI(tt.server, tt.listenSet, tt.roots, tt.origins, tt.legacy, tt.args)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("ValidateCLI() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestCLIOptionsConfigIncludesFFmpeg(t *testing.T) {
+	options := CLIOptions{FFmpegPath: "/tools/ffmpeg"}
+	if got := options.Config("test").FFmpegPath; got != options.FFmpegPath {
+		t.Fatalf("FFmpeg path = %q", got)
+	}
+}
+
+func TestFFmpegFlagIsSharedByLegacyAndServerModes(t *testing.T) {
+	for _, server := range []bool{false, true} {
+		t.Run(map[bool]string{false: "legacy", true: "server"}[server], func(t *testing.T) {
+			flags := flag.NewFlagSet("test", flag.ContinueOnError)
+			options := RegisterCLIFlags(flags)
+			flags.Bool("tc", false, "")
+			args := []string{"-ffmpeg", "/tools/ffmpeg"}
+			if server {
+				args = append(args, "-server", "-media-root", "root")
+			} else {
+				args = append(args, "-tc")
+			}
+			if err := flags.Parse(args); err != nil {
+				t.Fatal(err)
+			}
+			if err := options.Validate(flags); err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
+			if options.FFmpegPath != "/tools/ffmpeg" {
+				t.Fatalf("FFmpegPath = %q", options.FFmpegPath)
 			}
 		})
 	}

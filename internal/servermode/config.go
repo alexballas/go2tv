@@ -37,6 +37,7 @@ type Config struct {
 	Listen         string
 	MediaRoots     []string
 	AllowedOrigins []string
+	FFmpegPath     string
 	Version        string
 	Debug          bool
 	// ManagedChild marks a GUI-managed child run: discovery arrives over the
@@ -48,6 +49,7 @@ type CLIOptions struct {
 	Server         bool
 	Listen         string
 	Debug          bool
+	FFmpegPath     string
 	MediaRoots     Strings
 	AllowedOrigins Strings
 	// ManagedChild is bound to the hidden -managed-child flag, which only the
@@ -60,6 +62,7 @@ func RegisterCLIFlags(flags *flag.FlagSet) *CLIOptions {
 	flags.BoolVar(&options.Server, "server", false, "Run Web server mode.")
 	flags.StringVar(&options.Listen, "listen", DefaultListen, "Web server listen address.")
 	flags.BoolVar(&options.Debug, "debug", false, "Enable Web server protocol debug logs.")
+	flags.StringVar(&options.FFmpegPath, "ffmpeg", "", "ffmpeg command or path for transcoding.")
 	flags.Var(&options.MediaRoots, "media-root", "Allowed media directory (repeatable; required with -server).")
 	flags.Var(&options.AllowedOrigins, "allowed-origin", "Allowed Web origin, including scheme/host/port (repeatable).")
 	return options
@@ -73,6 +76,7 @@ func (o *CLIOptions) Validate(flags *flag.FlagSet) error {
 		case "server":
 		case "listen", "debug", "media-root", "allowed-origin", "managed-child":
 			serverOptionSet = true
+		case "ffmpeg":
 		default:
 			legacy = append(legacy, "-"+visited.Name)
 		}
@@ -85,6 +89,7 @@ func (o *CLIOptions) Config(version string) Config {
 		Listen:         o.Listen,
 		MediaRoots:     o.MediaRoots,
 		AllowedOrigins: o.AllowedOrigins,
+		FFmpegPath:     o.FFmpegPath,
 		Version:        version,
 		Debug:          o.Debug,
 		ManagedChild:   o.ManagedChild,

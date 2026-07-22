@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -107,6 +108,41 @@ func TestServeMediaHandlerUppercaseSubtitleAddsCORS(t *testing.T) {
 	}
 	if got := w.Result().Header.Get("Access-Control-Allow-Origin"); got != "*" {
 		t.Fatalf("expected CORS header '*', got %q", got)
+	}
+}
+
+func TestTranscodedDLNAHEADKeepsPlayableResourceContract(t *testing.T) {
+	media := []byte("renderer validation payload")
+	tv := &soapcalls.TVPayload{
+		MediaType: "video/mp4", Transcode: true, MediaDuration: 100,
+	}
+	request := httptest.NewRequest(http.MethodHead, "/movie.mp4", nil)
+	request.Header.Set("getcontentFeatures.dlna.org", "1")
+	response := httptest.NewRecorder()
+
+	serveContent(response, request, tv, nil, osFileType{
+		time: time.Unix(1, 0), file: bytes.NewReader(media), path: "movie.mp4",
+	}, new(exec.Cmd))
+
+	result := response.Result()
+	if result.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d", result.StatusCode)
+	}
+	if got := result.Header.Get("Content-Length"); got != strconv.Itoa(len(media)) {
+		t.Fatalf("content length = %q", got)
+	}
+	if got := result.Header.Get("Content-Type"); got != "video/mp4" {
+		t.Fatalf("content type = %q", got)
+	}
+	if got := result.Header.Get("Accept-Ranges"); got != "" {
+		t.Fatalf("accept ranges = %q", got)
+	}
+	features := result.Header["contentFeatures.dlna.org"]
+	if len(features) != 1 || !strings.Contains(features[0], "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5") || !strings.Contains(features[0], "DLNA.ORG_OP=00") || !strings.Contains(features[0], "DLNA.ORG_CI=1") || !strings.Contains(features[0], "DLNA.ORG_FLAGS=01700000") {
+		t.Fatalf("content features = %q", features)
+	}
+	if strings.Contains(features[0], "DLNA.ORG_OP=10") {
+		t.Fatalf("unsupported live time seek advertised: %q", features)
 	}
 }
 

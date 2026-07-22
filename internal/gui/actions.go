@@ -858,7 +858,13 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 				}
 			}
 		}
-
+		mediaDuration := 0.0
+		if transcodeEnabled {
+			if duration, probeErr := utils.DurationForMediaSeconds(screen.ffmpegPath, screen.mediafile); probeErr == nil && duration > 0 {
+				mediaDuration = duration
+			}
+		}
+		screen.mediaDuration = mediaDuration
 		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
 			screen.tvdata = &soapcalls.TVPayload{
 				ControlURL:                  target.controlURL,
@@ -894,13 +900,14 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 				InitialMediaRenderersStates: make(map[string]bool),
 				Transcode:                   transcodeEnabled,
 				Seekable:                    isSeek,
+				MediaDuration:               mediaDuration,
 				LogOutput:                   screen.Debug,
 				FFmpegPath:                  screen.ffmpegPath,
 				FFmpegSeek:                  screen.ffmpegSeek,
 				FFmpegSubsPath:              screen.subsfile,
 			}
 		}
-
+		showDLNATranscodeTimeline(screen, screen.tvdata)
 		if screen.httpserver != nil {
 			screen.httpserver.StopServer()
 		}
@@ -2642,6 +2649,12 @@ func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 	artworkIdentity, artworkAsset := screen.resolveCachedGUIArtwork(fpath, mediaType, true)
 
 	var mediaFile any = fpath
+	mediaDuration := 0.0
+	if screen.Transcode {
+		if duration, probeErr := utils.DurationForMediaSeconds(screen.ffmpegPath, fpath); probeErr == nil && duration > 0 {
+			mediaDuration = duration
+		}
+	}
 	oldMediaURL, err := url.Parse(screen.tvdata.MediaURL)
 	if err != nil {
 		return nil, err
@@ -2667,7 +2680,10 @@ func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 		InitialMediaRenderersStates: make(map[string]bool),
 		Transcode:                   screen.Transcode,
 		Seekable:                    isSeek,
+		MediaDuration:               mediaDuration,
 		LogOutput:                   screen.Debug,
+		FFmpegPath:                  screen.ffmpegPath,
+		FFmpegSubsPath:              spath,
 		Metadata:                    guiMediaMetadata("", oldMediaURL.Host, artworkAsset),
 	}
 

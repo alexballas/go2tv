@@ -165,6 +165,7 @@ func (s *FyneScreen) remoteConfigFromPrefs() (remoteSessionConfig, error) {
 	}
 	cfg := remoteSessionConfig{
 		MediaRoots: slices.Clone(roots),
+		FFmpegPath: s.ffmpegPath,
 		Debug:      prefs.Bool(remoteDebugPref),
 		Version:    s.version,
 	}

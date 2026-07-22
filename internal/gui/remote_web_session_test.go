@@ -266,10 +266,11 @@ func TestManagedChildArgs(t *testing.T) {
 		MediaRoots:     []string{"/media/a", "/media/b"},
 		Listen:         "192.168.1.10:9666",
 		AllowedOrigins: []string{"http://192.168.1.10:9666"},
+		FFmpegPath:     "/tools/ffmpeg",
 		Debug:          true,
 	}
 	got := managedChildArgs(cfg)
-	want := []string{"-server", "-managed-child", "-listen", "192.168.1.10:9666", "-media-root", "/media/a", "-media-root", "/media/b", "-allowed-origin", "http://192.168.1.10:9666", "-debug"}
+	want := []string{"-server", "-managed-child", "-listen", "192.168.1.10:9666", "-media-root", "/media/a", "-media-root", "/media/b", "-allowed-origin", "http://192.168.1.10:9666", "-ffmpeg", "/tools/ffmpeg", "-debug"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("args = %q, want %q", got, want)
 	}
@@ -529,7 +530,9 @@ func TestRemoteSessionLogsBoundedAndFramesExcluded(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		logs := h.manager.Snapshot().Logs
-		if len(logs) == remoteLogCapacity {
+		// The ring reaches capacity before the manager has consumed the final
+		// line, so wait for line-249 rather than for size alone.
+		if len(logs) == remoteLogCapacity && strings.HasSuffix(logs[len(logs)-1], "line-249") {
 			for _, line := range logs {
 				if strings.Contains(line, "GO2TV_") {
 					t.Fatalf("frame leaked into logs: %q", line)

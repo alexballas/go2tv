@@ -175,12 +175,6 @@ func run(crash *crashlog.Session) error {
 		transcode = playback.ChromecastTranscodeEnabled(transcode, *urlArg, mediaType)
 	}
 
-	if transcode {
-		if _, err := utils.ResolveFFmpegPath(""); err != nil {
-			return fmt.Errorf("checkTCflag parse error: %w", err)
-		}
-	}
-
 	if flagRes.gui {
 		scr := gui.NewFyneScreen(version, crash)
 		gui.Start(exitCTX, scr)
@@ -217,7 +211,15 @@ func run(crash *crashlog.Session) error {
 	}
 
 	// Get ffmpeg path for transcoding
-	ffmpegPath, _ := utils.ResolveFFmpegPath("")
+	ffmpegPath, ffmpegErr := utils.ResolveFFmpegPath(serverOptions.FFmpegPath)
+	if transcode {
+		if ffmpegErr != nil {
+			return fmt.Errorf("resolve ffmpeg: %w", ffmpegErr)
+		}
+		if err := utils.CheckFFmpeg(ffmpegPath); err != nil {
+			return fmt.Errorf("check ffmpeg: %w", err)
+		}
+	}
 
 	// Branch based on device type
 	if isChromecastTarget {
@@ -628,7 +630,7 @@ func checkTCflag() error {
 			return nil
 		}
 
-		_, err := utils.ResolveFFmpegPath("")
+		_, err := utils.ResolveFFmpegPath(serverOptions.FFmpegPath)
 		if err != nil {
 			return fmt.Errorf("checkTCflag parse error: %w", err)
 		}

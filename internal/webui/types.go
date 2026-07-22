@@ -10,12 +10,13 @@ import (
 const ProtocolVersion = 1
 
 type Config struct {
-	Version    string
-	Controller *controller.Controller
-	Library    *library.Library
-	Artwork    *controller.ArtworkCache
-	FFmpegPath string
-	Logger     controller.EventLogger
+	Version            string
+	Controller         *controller.Controller
+	Library            *library.Library
+	Artwork            *controller.ArtworkCache
+	FFmpegPath         string
+	TranscodeAvailable bool
+	Logger             controller.EventLogger
 	// ManagedByGUI marks a GUI-managed remote session so the browser can
 	// disclose that device availability comes from the desktop app.
 	ManagedByGUI bool

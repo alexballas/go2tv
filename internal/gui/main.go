@@ -157,16 +157,13 @@ func (t *tappedSlider) Dragged(e *fyne.DragEvent) {
 	t.mu.Unlock()
 
 	if cachedEnd == "" {
-		if t.screen.tvdata == nil {
-			return
-		}
-		getSliderPos, err := t.screen.tvdata.GetPositionInfo()
+		_, end, err := dlnaSeekTimeline(t.screen.tvdata)
 		if err != nil {
 			return
 		}
 
 		t.mu.Lock()
-		t.end = getSliderPos[0]
+		t.end = end
 		cachedEnd = t.end
 		t.mu.Unlock()
 
@@ -205,7 +202,7 @@ func (t *tappedSlider) DragEnd() {
 	// The auto-refresh action will reset this flag to false after the first iteration.
 	t.screen.sliderActive = true
 
-	if t.screen.State == "Playing" || t.screen.State == "Paused" {
+	if t.canSeek() {
 		releasePermit, permitted := t.screen.rendererPermit(false)
 		if !permitted {
 			return
@@ -243,7 +240,7 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 
 	t.Slider.Tapped(p)
 
-	if t.screen.State == "Playing" || t.screen.State == "Paused" {
+	if t.canSeek() {
 		releasePermit, permitted := t.screen.rendererPermit(false)
 		if !permitted {
 			return
@@ -285,6 +282,19 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 	}
 }
 
+func (t *tappedSlider) canSeek() bool {
+	switch t.screen.getScreenState() {
+	case "Playing", "Paused":
+		return true
+	}
+
+	// A renderer may remain TRANSITIONING while it buffers a live transcode,
+	// leaving the GUI state stale even though the media session is active.
+	// Restart-based seeking does not require the renderer's native seek state.
+	tvdata := t.screen.tvdata
+	return tvdata != nil && tvdata.ControlURL != "" && tvdata.Transcode
+}
+
 func (t *tappedSlider) seekDLNAAsync() {
 	if t.screen.tvdata == nil {
 		return
@@ -305,12 +315,7 @@ func (t *tappedSlider) seekDLNAAsync() {
 
 	go func() {
 		defer releasePermit()
-		getPos, err := tvdata.GetPositionInfo()
-		if err != nil {
-			return
-		}
-
-		total, err := utils.ClockTimeToSeconds(getPos[0])
+		total, end, err := dlnaSeekTimeline(tvdata)
 		if err != nil {
 			return
 		}
@@ -319,11 +324,6 @@ func (t *tappedSlider) seekDLNAAsync() {
 		roundedInt := int(math.Round(cur))
 
 		reltime := utils.SecondsToClockTime(roundedInt)
-
-		end, err := utils.FormatClockTime(getPos[0])
-		if err != nil {
-			return
-		}
 
 		fyne.Do(func() {
 			t.screen.CurrentPos.Set(reltime)
@@ -335,12 +335,9 @@ func (t *tappedSlider) seekDLNAAsync() {
 			// here instead of inside the queued fyne.Do above.
 			t.screen.ffmpegSeek = roundedInt
 			t.screen.dlnaSeekRestart = true
+			tvdata.Log().Debug("", "Method", "DLNATranscodeSeek", "Action", "Restart", "Offset", roundedInt)
 
-			// Live-transcoded streams are advertised as non-seekable
-			// (DLNA.ORG_OP=00), so renderers reject Seek with error 701.
-			// Restart the session at the new offset instead, waiting for
-			// the old session's teardown so its Stop cannot race with the
-			// new SetAVTransportURI/Play.
+			// Transcoded DLNA uses a server restart at the selected offset.
 			stopActionSync(t.screen)
 			playAction(t.screen)
 			return
@@ -348,6 +345,84 @@ func (t *tappedSlider) seekDLNAAsync() {
 
 		_ = tvdata.SeekSoapCall(reltime)
 	}()
+}
+
+func dlnaSeekTimeline(tvdata *soapcalls.TVPayload) (int, string, error) {
+	if tvdata == nil {
+		return 0, "", errors.New("DLNA media session unavailable")
+	}
+	if tvdata.Transcode && tvdata.MediaDuration > 0 {
+		total := int(math.Round(tvdata.MediaDuration))
+		return total, utils.SecondsToClockTime(total), nil
+	}
+
+	position, err := tvdata.GetPositionInfo()
+	if err != nil {
+		return 0, "", err
+	}
+	if len(position) == 0 {
+		return 0, "", errors.New("DLNA renderer returned no duration")
+	}
+	total, err := utils.ClockTimeToSeconds(position[0])
+	if err != nil {
+		return 0, "", err
+	}
+	end, err := utils.FormatClockTime(position[0])
+	if err != nil {
+		return 0, "", err
+	}
+	return total, end, nil
+}
+
+func dlnaProgressTimeline(tvdata *soapcalls.TVPayload, position []string) (int, int, string, error) {
+	if tvdata == nil {
+		return 0, 0, "", errors.New("DLNA media session unavailable")
+	}
+	if len(position) < 2 {
+		return 0, 0, "", errors.New("DLNA renderer returned incomplete position")
+	}
+
+	current, err := utils.ClockTimeToSeconds(position[1])
+	if err != nil {
+		return 0, 0, "", err
+	}
+
+	total := 0
+	if tvdata.Transcode && tvdata.MediaDuration > 0 {
+		total = int(math.Round(tvdata.MediaDuration))
+	} else {
+		total, err = utils.ClockTimeToSeconds(position[0])
+		if err != nil {
+			return 0, 0, "", err
+		}
+	}
+	if tvdata.Transcode {
+		current += tvdata.FFmpegSeek
+	}
+	if total <= 0 {
+		return 0, 0, "", errors.New("DLNA media duration unavailable")
+	}
+	current = min(max(current, 0), total)
+
+	return current, total, utils.SecondsToClockTime(total), nil
+}
+
+func showDLNATranscodeTimeline(screen *FyneScreen, tvdata *soapcalls.TVPayload) {
+	if screen == nil || tvdata == nil || !tvdata.Transcode || tvdata.MediaDuration <= 0 {
+		return
+	}
+
+	total := int(math.Round(tvdata.MediaDuration))
+	if total <= 0 {
+		return
+	}
+	current := min(max(tvdata.FFmpegSeek, 0), total)
+	value := float64(current) * screen.SlideBar.Max / float64(total)
+	fyne.Do(func() {
+		screen.SlideBar.SetValue(value)
+		screen.CurrentPos.Set(utils.SecondsToClockTime(current))
+		screen.EndPos.Set(utils.SecondsToClockTime(total))
+	})
 }
 
 func mainWindow(s *FyneScreen) fyne.CanvasObject {
@@ -1083,7 +1158,11 @@ func sliderUpdate(s *FyneScreen) {
 			continue
 		}
 
-		if (s.State == "Stopped" || s.State == "") && s.ffmpegSeek == 0 {
+		state := s.getScreenState()
+		tvdata := s.tvdata
+		activeTranscode := tvdata != nil && tvdata.Transcode && tvdata.ControlURL != ""
+
+		if (state == "Stopped" || state == "") && s.ffmpegSeek == 0 && !activeTranscode {
 			// Don't reset slider for Chromecast - it has its own status watcher
 			if s.chromecastSessionClient() != nil {
 				continue
@@ -1095,57 +1174,38 @@ func sliderUpdate(s *FyneScreen) {
 			})
 		}
 
-		if s.State == "Playing" {
+		if state == "Playing" || state == "Paused" || activeTranscode {
 			// Skip for Chromecast - it has its own status watcher (chromecastStatusWatcher)
 			if s.activeChromecastPlaybackClient() != nil {
 				continue
 			}
 
-			getPos, err := s.tvdata.GetPositionInfo()
+			if tvdata == nil {
+				continue
+			}
+
+			getPos, err := tvdata.GetPositionInfo()
 			if err != nil {
 				continue
 			}
 
-			total, err := utils.ClockTimeToSeconds(getPos[0])
+			current, total, end, err := dlnaProgressTimeline(tvdata, getPos)
 			if err != nil {
 				continue
 			}
-
-			current, err := utils.ClockTimeToSeconds(getPos[1])
-			if err != nil {
-				continue
-			}
-
-			switch {
-			case s.ffmpegSeek > 0:
-				current += s.ffmpegSeek
-			case s.tvdata != nil && s.tvdata.FFmpegSeek > 0:
-				current += s.tvdata.FFmpegSeek
-			}
-
-			fyne.Do(func() {
-				s.ffmpegSeek = 0
-			})
 
 			valueToSet := float64(current) * s.SlideBar.Max / float64(total)
-			if !math.IsNaN(valueToSet) {
-				fyne.Do(func() {
-					s.SlideBar.SetValue(valueToSet)
-				})
-
-				end, err := utils.FormatClockTime(getPos[0])
-				if err != nil {
-					return
+			payloadSeek := tvdata.FFmpegSeek
+			currentClock := utils.SecondsToClockTime(current)
+			fyne.Do(func() {
+				if s.tvdata == tvdata && s.ffmpegSeek == payloadSeek {
+					s.ffmpegSeek = 0
 				}
-
-				currentClock := utils.SecondsToClockTime(current)
-
-				fyne.Do(func() {
-					s.CurrentPos.Set(currentClock)
-					s.EndPos.Set(end)
-				})
-				s.persistResumeProgress(current, float64(total), false)
-			}
+				s.SlideBar.SetValue(valueToSet)
+				s.CurrentPos.Set(currentClock)
+				s.EndPos.Set(end)
+			})
+			s.persistResumeProgress(current, float64(total), false)
 		}
 	}
 }

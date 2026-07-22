@@ -5,6 +5,7 @@ package servermode
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -36,10 +37,26 @@ func newRuntime(cfg Config, log *serverLogger, discovery playback.Discovery) (*r
 		return nil, err
 	}
 	callbacks := playbackadapter.NewCallbackBridge()
-	base := mediaserver.New(mediaserver.Config{Callback: callbacks, Transcode: transcode})
+	ffmpeg, ffmpegErr := verifiedFFmpegPath(cfg.FFmpegPath)
+	if ffmpegErr != nil {
+		// The GUI forwards whatever ffmpeg path the user typed, so a managed
+		// child degrades to transcode-off instead of blocking the session.
+		if !cfg.ManagedChild {
+			callbacks.Close()
+			_ = lib.Close()
+			return nil, fmt.Errorf("verify ffmpeg %q: %w", cfg.FFmpegPath, ffmpegErr)
+		}
+		log.Warning("Configured ffmpeg unusable; transcoding disabled: " + ffmpegErr.Error())
+	}
+	var transcodeFunc mediaserver.TranscodeFunc
+	if ffmpeg != "" {
+		transcodeFunc = func(ctx context.Context, w http.ResponseWriter, input io.ReadCloser, request playback.ServerRequest) error {
+			return transcode(ctx, w, input, request, ffmpeg)
+		}
+	}
+	base := mediaserver.New(mediaserver.Config{Callback: callbacks, Transcode: transcodeFunc})
 	media := &runtimeMediaServer{Server: base}
 	artwork := controller.NewArtworkCache(controller.ArtworkCacheBytes)
-	ffmpeg, _ := utils.ResolveFFmpegPath("")
 	var durationProbe func(context.Context, playback.SourceOpener) (float64, error)
 	if ffmpeg != "" {
 		durationProbe = func(ctx context.Context, open playback.SourceOpener) (float64, error) {
@@ -52,7 +69,7 @@ func newRuntime(cfg Config, log *serverLogger, discovery playback.Discovery) (*r
 		}
 	}
 	control := controller.New(controller.NewRuntimeConfig(controller.RuntimeConfig{MediaServer: media, Callbacks: callbacks, LogOutput: log.protocolOutput(), Logger: log, Artwork: artwork, DurationProbe: durationProbe, Discovery: discovery}))
-	web, err := webui.New(webui.Config{Version: cfg.Version, Controller: control, Library: lib, Artwork: artwork, FFmpegPath: ffmpeg, Logger: log, ManagedByGUI: cfg.ManagedChild})
+	web, err := webui.New(webui.Config{Version: cfg.Version, Controller: control, Library: lib, Artwork: artwork, FFmpegPath: ffmpeg, TranscodeAvailable: ffmpeg != "", Logger: log, ManagedByGUI: cfg.ManagedChild})
 	if err != nil {
 		control.Close()
 		callbacks.Close()
@@ -60,6 +77,23 @@ func newRuntime(cfg Config, log *serverLogger, discovery playback.Discovery) (*r
 		return nil, err
 	}
 	return &runtime{library: lib, controller: control, callbacks: callbacks, web: web}, nil
+}
+
+// verifiedFFmpegPath resolves and verifies ffmpeg. An explicitly configured
+// path that fails verification is an error; auto-discovery failures return ""
+// so the server runs with transcoding disabled.
+func verifiedFFmpegPath(preferred string) (string, error) {
+	ffmpeg, err := utils.ResolveFFmpegPath(preferred)
+	if err == nil {
+		err = utils.CheckFFmpeg(ffmpeg)
+	}
+	if err != nil {
+		if preferred != "" {
+			return "", err
+		}
+		return "", nil
+	}
+	return ffmpeg, nil
 }
 
 func (r *runtime) Close() {
@@ -82,7 +116,6 @@ func (s *runtimeMediaServer) AddMedia(ctx context.Context, request playback.Serv
 }
 
 func (s *runtimeMediaServer) prepareRequest(request playback.ServerRequest) playback.ServerRequest {
-	request = prepareServerRequest(request)
 	if request.Subtitle != nil && request.Transcode {
 		request.BurnSubtitle = true
 	}
@@ -105,14 +138,6 @@ func (s *runtimeMediaServer) prepareRequest(request playback.ServerRequest) play
 	return request
 }
 
-func prepareServerRequest(request playback.ServerRequest) playback.ServerRequest {
-	if request.Transcode && isChromecastRequest(request) {
-		request.MediaExt = ".mp4"
-		request.MediaType = "video/mp4"
-	}
-	return request
-}
-
 func isChromecastRequest(request playback.ServerRequest) bool {
 	return request.Target.Protocol == "Chromecast"
 }
@@ -121,12 +146,9 @@ type memoryFile struct{ bytes.Reader }
 
 func (*memoryFile) Close() error { return nil }
 
-func transcode(ctx context.Context, w http.ResponseWriter, input io.ReadCloser, request playback.ServerRequest) error {
-	ffmpeg, err := utils.ResolveFFmpegPath("")
-	if err != nil {
-		return err
-	}
+func transcode(ctx context.Context, w http.ResponseWriter, input io.ReadCloser, request playback.ServerRequest, ffmpeg string) error {
 	subtitlePath := ""
+	var err error
 	if request.BurnSubtitle && request.Subtitle != nil {
 		subtitle, _, openErr := request.Subtitle(ctx)
 		if openErr != nil {

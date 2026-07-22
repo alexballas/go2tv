@@ -49,7 +49,7 @@ func DurationForMedia(ffmpeg string, f string) (string, error) {
 }
 
 // DurationForMediaSeconds returns the media duration in seconds.
-// Used for Chromecast transcoded streams where we need the raw duration value.
+// Transcoded streams use it to expose the source timeline.
 func DurationForMediaSeconds(ffmpeg string, f string) (float64, error) {
 	_, err := os.Stat(f)
 	if err != nil {

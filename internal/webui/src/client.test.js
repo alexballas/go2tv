@@ -228,6 +228,7 @@ function fixture() {
         ? {
             protocol_version: 1,
             revision: 3,
+            features: { transcode: true },
             snapshot,
             roots: [{ id: "root-1", name: "Media" }],
           }
@@ -285,6 +286,26 @@ function fixture() {
   return { ids, commands, document, window, env, timers, mql };
 }
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+test("disables transcoding when FFmpeg is unavailable", async () => {
+  const { ids, env } = fixture(),
+    bootstrapFetch = env.fetch;
+  env.fetch = async (url) => {
+    const response = await bootstrapFetch(url),
+      body = await response.json();
+    return url === "/api/bootstrap"
+      ? {
+          ok: true,
+          json: async () => ({ ...body, features: { transcode: false } }),
+        }
+      : response;
+  };
+  startClient(env);
+  await settle();
+  FakeSocket.instances[0].emit("open");
+  assert.equal(ids.transcode.disabled, true);
+  assert.equal(ids.transcode.title, "FFmpeg unavailable");
+});
 
 test("renders safe labels and sends playlist/play payloads", async () => {
   const { ids, document, env } = fixture();
@@ -367,8 +388,8 @@ test("renders safe labels and sends playlist/play payloads", async () => {
   });
   assert.equal(ids.library.children[0].dataset.selected, "true");
   assert.equal(ids.library.children[0].ariaCurrent, "true");
-  assert.equal(ids["subtitle-selection"].hidden, false);
-  assert.equal(ids["selection-status"].dataset.hasDetails, "true");
+  assert.equal(ids["subtitle-selection"].hidden, true);
+  assert.equal(ids["selection-status"].dataset.hasDetails, "false");
   ws.message({
     protocol_version: 1,
     type: "ack",
@@ -572,7 +593,11 @@ test("re-resolves stale library and root IDs after a server restart", async () =
               },
             ]
           : [
-              { id: `anime-gen${generation}`, name: "Anime", kind: "directory" },
+              {
+                id: `anime-gen${generation}`,
+                name: "Anime",
+                kind: "directory",
+              },
             ],
       }),
     };
@@ -692,6 +717,64 @@ test("position-only playback update redraws progress only", async () => {
   assert.equal(ids["media-selected"].textContent, "unchanged");
 });
 
+test("shows elapsed position when duration is unavailable", async () => {
+  const { ids, env } = fixture();
+  const client = startClient(env);
+  await settle();
+  client.handle({
+    protocol_version: 1,
+    type: "state.playback",
+    payload: {
+      revision: 4,
+      state: "PLAYING",
+      position: 65,
+      duration: 0,
+      has_session: true,
+    },
+  });
+  assert.equal(ids.time.textContent, "1:05 / 0:00");
+  assert.equal(ids.seek.value, "0");
+  assert.equal(ids.seek.disabled, true);
+});
+
+test("previews seek target while dragging", async () => {
+  const { ids, env } = fixture();
+  const client = startClient(env);
+  await settle();
+  FakeSocket.instances[0].emit("open");
+  client.handle({
+    protocol_version: 1,
+    type: "state.playback",
+    payload: {
+      revision: 4,
+      state: "PLAYING",
+      position: 61,
+      duration: 6176,
+      has_session: true,
+    },
+  });
+
+  ids.seek.value = "3723";
+  ids.seek.emit("input");
+  assert.equal(ids.time.textContent, "1:02:03 / 1:42:56");
+
+  client.handle({
+    protocol_version: 1,
+    type: "state.playback",
+    payload: { revision: 5, position: 62 },
+  });
+  assert.equal(ids.time.textContent, "1:02:03 / 1:42:56");
+  assert.equal(ids.seek.value, "3723");
+
+  ids.seek.emit("change");
+  assert.deepEqual(FakeSocket.instances[0].sent.at(-1), {
+    protocol_version: 1,
+    type: "player.seek",
+    id: "1",
+    payload: { seconds: 3723, expected_revision: 5 },
+  });
+});
+
 test("player pending state preserves device picker DOM", async () => {
   const { ids, env } = fixture();
   const client = startClient(env);
@@ -774,7 +857,12 @@ test("shows selected names and silently retries revision conflicts", async () =>
   ws.message({
     protocol_version: 1,
     type: "state.selection",
-    payload: { revision: 5, subtitle: false, subtitle_name: "" },
+    payload: {
+      revision: 5,
+      subtitle: false,
+      subtitle_name: "",
+      media_type: "video",
+    },
   });
   assert.equal(ids["subtitle-selected"].textContent, "None");
   assert.equal(ids["subtitle-clear"].hidden, true);

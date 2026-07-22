@@ -113,6 +113,7 @@ type LoadRequest struct {
 	Start       int
 	Duration    float64
 	Seekable    bool
+	Transcode   bool
 	Metadata    metadata.Media
 	ArtworkData []byte
 }
@@ -125,6 +126,7 @@ type ServerRequest struct {
 	SubtitleExt  string
 	Transcode    bool
 	SeekOffset   int
+	Duration     float64
 	BurnSubtitle bool
 	Target       Device
 }

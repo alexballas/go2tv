@@ -107,6 +107,23 @@ func TestDLNAMonitorProgressCompletionAndCancellation(t *testing.T) {
 	}
 }
 
+func TestDLNAMonitorUsesExpectedTranscodeDuration(t *testing.T) {
+	clock := newManualClock()
+	events := make(chan MonitorEvent, 1)
+	dlna := &seekDLNA{pos: Position{Current: 3}}
+	go RunDLNAMonitor(t.Context(), MonitorConfig{
+		ExpectedDuration: 100,
+		Clock:            clock,
+		Sink:             monitorCollector{events},
+	}, dlna, nil)
+
+	clock.tick.ch <- time.Time{}
+	event := waitMonitor(t, events)
+	if event.Position != 3 || event.Duration != 100 {
+		t.Fatalf("progress = %#v", event)
+	}
+}
+
 func TestDLNAMonitorObservesConsumedNextURIOnlyWhileGaplessActive(t *testing.T) {
 	clock := newManualClock()
 	events := make(chan MonitorEvent, 2)

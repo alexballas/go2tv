@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
+	"math"
 	"net/url"
 	"strings"
 
@@ -474,7 +475,9 @@ func buildDIDLLite(tvdata *TVPayload, mediaURL string, mediaMetadata metadata.Me
 		ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", tvdata.MediaType, contentFeatures),
 		Value:        mediaURL,
 	}}
-	if duration, _ := utils.DurationForMedia(tvdata.FFmpegPath, tvdata.MediaPath); duration != "" {
+	if tvdata.MediaDuration > 0 {
+		resNodeData[0].Duration = utils.SecondsToClockTime(int(math.Round(tvdata.MediaDuration)))
+	} else if duration, _ := utils.DurationForMedia(tvdata.FFmpegPath, tvdata.MediaPath); duration != "" {
 		resNodeData[0].Duration = duration
 	}
 

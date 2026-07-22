@@ -48,7 +48,7 @@ func TestWebUIActionLogging(t *testing.T) {
 	log := &recordingLogger{}
 	control := controller.New(controller.Config{})
 	defer control.Close()
-	handler, err := New(Config{Controller: control, Library: lib, Logger: log})
+	handler, err := New(Config{Controller: control, Library: lib, TranscodeAvailable: true, Logger: log})
 	if err != nil {
 		t.Fatal(err)
 	}

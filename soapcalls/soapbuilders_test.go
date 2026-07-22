@@ -123,6 +123,26 @@ func TestBuildDIDLLiteMetadataExact(t *testing.T) {
 	}
 }
 
+func TestBuildDIDLLiteTranscodedKeepsPlayableResourceContract(t *testing.T) {
+	tv := &TVPayload{
+		MediaURL: "http://host/movie.mp4", MediaType: "video/mp4",
+		Transcode: true, MediaDuration: 6176.17,
+	}
+	got, err := buildDIDLLite(tv, tv.MediaURL, metadata.Media{Title: "Movie"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := string(got)
+	for _, want := range []string{"http-get:*:video/mp4:", "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5", "DLNA.ORG_OP=00", "DLNA.ORG_CI=1", "DLNA.ORG_FLAGS=01700000", `duration="01:42:56"`, "http://host/movie.mp4"} {
+		if !strings.Contains(metadata, want) {
+			t.Fatalf("DIDL missing %q: %s", want, metadata)
+		}
+	}
+	if strings.Contains(metadata, "DLNA.ORG_OP=10") {
+		t.Fatalf("DIDL advertises unsupported live time seek: %s", metadata)
+	}
+}
+
 func TestSetNextAVTransportArtworkAndClear(t *testing.T) {
 	tv := &TVPayload{
 		MediaURL:  "http://host/track.mp3",

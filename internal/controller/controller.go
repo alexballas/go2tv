@@ -1211,15 +1211,20 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 		}
 	}
 	serverRequest := playback.ServerRequest{Media: opener, MediaExt: media.extension(), MediaType: mediaMIME(media, item.MediaKind()), Transcode: transcode, Target: target}
+	if transcode && target.Protocol == "Chromecast" {
+		serverRequest.MediaExt = ".mp4"
+		serverRequest.MediaType = "video/mp4"
+	}
 	if subtitle.valid() {
 		serverRequest.Subtitle, serverRequest.SubtitleExt = subtitle.Open, subtitle.extension()
 	}
 	duration := 0.0
-	if transcode && target.Protocol == "Chromecast" && c.cfg.DurationProbe != nil {
+	if transcode && c.cfg.DurationProbe != nil {
 		if probed, probeErr := c.cfg.DurationProbe(ioCtx, media.OpenDirect); probeErr == nil && probed > 0 {
 			duration = probed
 		}
 	}
+	serverRequest.Duration = duration
 	var route playback.MediaRoute
 	if routeAdder != nil {
 		route, err = routeAdder.AddMedia(ioCtx, serverRequest)
@@ -1236,11 +1241,15 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 	if route.SubtitleID != "" {
 		routeIDs = append(routeIDs, route.SubtitleID)
 	}
-	loadMediaType := mediaMIME(media, item.MediaKind())
-	if transcode && target.Protocol == "Chromecast" {
-		loadMediaType = "video/mp4"
+	loadRequest := playback.LoadRequest{
+		MediaURL:    route.URL,
+		MediaType:   serverRequest.MediaType,
+		SubtitleURL: route.SubtitleURL,
+		Duration:    duration,
+		Seekable:    !transcode,
+		Transcode:   transcode,
+		Metadata:    metadata.Media{Title: item.BaseName()},
 	}
-	loadRequest := playback.LoadRequest{MediaURL: route.URL, MediaType: loadMediaType, SubtitleURL: route.SubtitleURL, Duration: duration, Seekable: !transcode, Metadata: metadata.Media{Title: item.BaseName()}}
 	c.attachArtwork(ioCtx, item.ID(), &media, &loadRequest, &routeIDs)
 	if err == nil && target.Protocol == "DLNA" {
 		if activator, ok := transport.(callbackActivator); ok {
@@ -1359,6 +1368,11 @@ func (c *Controller) queueGapless(ctx context.Context, active *activeSession, ca
 		Transcode: candidate.transcode,
 		Target:    active.target,
 	}
+	if candidate.transcode && c.cfg.DurationProbe != nil {
+		if duration, probeErr := c.cfg.DurationProbe(ctx, candidate.media.OpenDirect); probeErr == nil && duration > 0 {
+			serverRequest.Duration = duration
+		}
+	}
 	if candidate.subtitle.valid() {
 		serverRequest.Subtitle = candidate.subtitle.Open
 		serverRequest.SubtitleExt = candidate.subtitle.extension()
@@ -1383,7 +1397,9 @@ func (c *Controller) queueGapless(ctx context.Context, active *activeSession, ca
 		MediaURL:    route.URL,
 		MediaType:   serverRequest.MediaType,
 		SubtitleURL: route.SubtitleURL,
+		Duration:    serverRequest.Duration,
 		Seekable:    !candidate.transcode,
+		Transcode:   candidate.transcode,
 		Metadata:    metadata.Media{Title: candidate.item.BaseName()},
 	}
 	media := candidate.media

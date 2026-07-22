@@ -72,8 +72,10 @@ export function startClient(env) {
     queueRenderKey = "",
     queueFocus = null,
     queueDrag = null,
+    seekPreview = null,
     assetsHash = "",
     instanceID = "",
+    transcodeAvailable = false,
     reloaded = sessionStorage.getItem("go2tv-protocol-reload") === "1";
   const pending = new Map();
   const queuePendingTypes = new Set([
@@ -611,10 +613,17 @@ export function startClient(env) {
     }
   }
   function renderProgress() {
-    text("time", `${format(state.position)} / ${format(state.duration)}`);
     const seek = byID("seek");
+    const sliderPosition = Math.min(
+      seekPreview ?? state.position ?? 0,
+      state.duration || 0,
+    );
+    const elapsedPosition = state.duration
+      ? sliderPosition
+      : (state.position ?? 0);
+    text("time", `${format(elapsedPosition)} / ${format(state.duration)}`);
     seek.max = String(Math.max(0, state.duration || 0));
-    seek.value = String(Math.min(state.position || 0, state.duration || 0));
+    seek.value = String(sliderPosition);
     seek.disabled =
       !connected ||
       !state.has_session ||
@@ -643,8 +652,11 @@ export function startClient(env) {
     setButtonIcon(mute, "volume-x", muteLabel);
     mute.ariaPressed = String(!!state.muted);
     mute.disabled = !canControlVolume || hasPending("player.mute");
-    byID("transcode").checked = !!state.transcode;
-    byID("transcode").disabled = !connected || hasPending("player.transcode");
+    const transcode = byID("transcode");
+    transcode.checked = !!state.transcode;
+    transcode.disabled =
+      !connected || !transcodeAvailable || hasPending("player.transcode");
+    transcode.title = transcodeAvailable ? "" : "FFmpeg unavailable";
     const mediaLabel = state.selected_media
         ? state.selected_media_name || "Current media"
         : "No media",
@@ -654,19 +666,16 @@ export function startClient(env) {
       clearSubtitle = byID("subtitle-clear"),
       subtitleSelection = byID("subtitle-selection"),
       selectionStatus = byID("selection-status"),
-      supportsSubtitles =
-        !!state.selected_subtitle ||
-        (!!state.selected_media && state.media_type === "video");
+      hasSubtitle = !!state.selected_subtitle;
     text("media-selected", mediaLabel);
     text("subtitle-selected", subtitleLabel);
     byID("media-selected").title = mediaLabel;
     byID("subtitle-selected").title = subtitleLabel;
     clearSubtitle.hidden = !state.selected_subtitle;
     clearSubtitle.disabled = !connected || hasPending("library.clear_subtitle");
-    subtitleSelection.hidden = !supportsSubtitles;
-    selectionStatus.dataset.hasDetails = String(supportsSubtitles);
-    if (state.selected_subtitle) selectionStatus.open = true;
-    else if (!supportsSubtitles) selectionStatus.open = false;
+    subtitleSelection.hidden = !hasSubtitle;
+    selectionStatus.dataset.hasDetails = String(hasSubtitle);
+    selectionStatus.open = hasSubtitle;
     const play = byID("play-toggle"),
       stop = byID("stop-button");
     let command = "player.play",
@@ -961,6 +970,7 @@ export function startClient(env) {
         location.reload();
         return;
       }
+      transcodeAvailable = !!bootstrap.features?.transcode;
       if (instanceID !== (bootstrap.instance_id || ""))
         await refreshLibrary(bootstrap);
       shuttingDown = false;
@@ -1246,6 +1256,7 @@ export function startClient(env) {
     sessionStorage.removeItem("go2tv-protocol-reload");
     assetsHash = bootstrap.assets_hash || "";
     instanceID = bootstrap.instance_id || "";
+    transcodeAvailable = !!bootstrap.features?.transcode;
     queueLimit = bootstrap.limits?.queue_items || queueLimit;
     mergeSnapshot(bootstrap.snapshot);
     roots.replaceChildren();
@@ -1311,9 +1322,19 @@ export function startClient(env) {
   });
   for (const node of document.querySelectorAll("[data-command]"))
     node.addEventListener("click", () => send(node.dataset.command));
-  byID("seek").addEventListener("change", (event) =>
-    send("player.seek", { seconds: Number(event.target.value) }),
-  );
+  byID("seek").addEventListener("input", (event) => {
+    seekPreview = Math.min(
+      Math.max(0, Number(event.target.value) || 0),
+      state.duration || 0,
+    );
+    renderProgress();
+  });
+  byID("seek").addEventListener("change", (event) => {
+    seekPreview = Number(event.target.value);
+    const requestID = send("player.seek", { seconds: seekPreview });
+    seekPreview = null;
+    if (!requestID) renderProgress();
+  });
   byID("volume-down").addEventListener("click", () =>
     send("player.volume", { delta: -1 }),
   );

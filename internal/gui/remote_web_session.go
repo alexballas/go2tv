@@ -71,6 +71,7 @@ type remoteSessionConfig struct {
 	MediaRoots     []string
 	Listen         string
 	AllowedOrigins []string
+	FFmpegPath     string
 	Debug          bool
 	Version        string
 }
@@ -273,6 +274,9 @@ func managedChildArgs(cfg remoteSessionConfig) []string {
 	}
 	for _, origin := range cfg.AllowedOrigins {
 		args = append(args, "-allowed-origin", origin)
+	}
+	if cfg.FFmpegPath != "" {
+		args = append(args, "-ffmpeg", cfg.FFmpegPath)
 	}
 	if cfg.Debug {
 		args = append(args, "-debug")

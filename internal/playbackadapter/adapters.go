@@ -339,6 +339,8 @@ func (d *DLNA) Load(ctx context.Context, req playback.LoadRequest) error {
 		}
 		p.MediaURL, p.MediaType, p.SubtitlesURL = req.MediaURL, req.MediaType, req.SubtitleURL
 		p.Seekable = req.Seekable
+		p.Transcode = req.Transcode
+		p.MediaDuration = req.Duration
 		p.Metadata = req.Metadata
 		d.mediaType = req.MediaType
 		d.sid = ""
@@ -491,6 +493,8 @@ func (d *DLNA) SetNext(ctx context.Context, req playback.LoadRequest) error {
 	return d.call(ctx, func(p *soapcalls.TVPayload) error {
 		p.MediaURL, p.MediaType, p.SubtitlesURL = req.MediaURL, req.MediaType, req.SubtitleURL
 		p.Seekable = req.Seekable
+		p.Transcode = req.Transcode
+		p.MediaDuration = req.Duration
 		p.Metadata = req.Metadata
 		return p.SetNextAVTransportURI(false)
 	})

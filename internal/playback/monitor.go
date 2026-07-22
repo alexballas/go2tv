@@ -138,6 +138,9 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNATransp
 					gaplessStopped = false
 				}
 				position.Current += cfg.SeekOffset
+				if cfg.ExpectedDuration > 0 {
+					position.Duration = cfg.ExpectedDuration
+				}
 				event.Position = position.Current
 				event.Duration = position.Duration
 			}

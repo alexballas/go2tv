@@ -28,11 +28,41 @@ func TestDesktopBinariesServeEmbeddedWebUIFromEmptyWorkingDirectory(t *testing.T
 		t.Run(name, func(t *testing.T) {
 			binary := buildServerBinary(t, name)
 			smokeServerBinary(t, binary)
+			smokeCLIFFmpegFlag(t, binary)
+			smokeServerFFmpegFlag(t, binary)
 			smokeManagedChildFlag(t, binary, name == "go2tv")
 			if name == "go2tv" {
 				smokeManagedChildPipes(t, binary)
 			}
 		})
+	}
+}
+
+func smokeCLIFFmpegFlag(t *testing.T, binary string) {
+	t.Helper()
+	missingFFmpeg := filepath.Join(t.TempDir(), "custom-ffmpeg")
+	command := exec.Command(binary, "-tc", "-ffmpeg", missingFFmpeg, "-v", filepath.Join(t.TempDir(), "missing.mp4"), "-t", "http://127.0.0.1:1")
+	command.Stdin = strings.NewReader("")
+	output, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatalf("missing custom ffmpeg succeeded: %q", output)
+	}
+	if !strings.Contains(string(output), missingFFmpeg) {
+		t.Fatalf("custom ffmpeg not used: %q", output)
+	}
+}
+
+func smokeServerFFmpegFlag(t *testing.T, binary string) {
+	t.Helper()
+	missingFFmpeg := filepath.Join(t.TempDir(), "custom-ffmpeg")
+	command := exec.Command(binary, "-server", "-listen", "127.0.0.1:0", "-media-root", t.TempDir(), "-ffmpeg", missingFFmpeg)
+	command.Stdin = strings.NewReader("")
+	output, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatalf("server started with missing custom ffmpeg: %q", output)
+	}
+	if !strings.Contains(string(output), missingFFmpeg) {
+		t.Fatalf("server error does not mention custom ffmpeg: %q", output)
 	}
 }
 
@@ -147,7 +177,7 @@ func smokeManagedChildFlag(t *testing.T, binary string, desktop bool) {
 	if strings.Contains(usage, "managed-child") {
 		t.Fatalf("usage output exposes managed-child: %q", usage)
 	}
-	for _, name := range []string{"-server", "-listen", "-media-root", "-allowed-origin", "-debug", "-v ", "-u ", "-t ", "-tc", "-l\t", "-version"} {
+	for _, name := range []string{"-server", "-listen", "-media-root", "-allowed-origin", "-ffmpeg", "-debug", "-v ", "-u ", "-t ", "-tc", "-l\t", "-version"} {
 		if !strings.Contains(usage, strings.TrimSpace(name)) {
 			t.Fatalf("usage output missing %q: %q", name, usage)
 		}

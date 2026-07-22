@@ -137,6 +137,9 @@ go2tv -u https://example.com/movie.mp4 -t http://192.168.1.50:8009
 
 # Stream from another command
 yt-dlp -o - "https://youtu.be/..." | go2tv -t http://192.168.1.50:8009
+
+# Transcode with a custom FFmpeg binary
+go2tv -tc -ffmpeg /path/to/ffmpeg -v movie.mkv -t http://192.168.1.50:8009
 ```
 
 ### Web UI (Server Mode)
@@ -152,6 +155,9 @@ For headless use, pass `-server` and at least one `-media-root`:
 ``` console
 go2tv -server -media-root /path/to/Media
 ```
+
+Use `-ffmpeg /path/to/ffmpeg` when FFmpeg is not available on `PATH`. CLI,
+go2tv-lite, and the Web UI verify and use the supplied binary.
 
 The default URL is `http://127.0.0.1:9666/`. Repeat `-media-root` to expose multiple
 directories:

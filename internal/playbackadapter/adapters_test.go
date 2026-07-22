@@ -414,12 +414,19 @@ func TestDLNAGaplessQueuesAndReadsNextURI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := playback.LoadRequest{MediaURL: "http://127.0.0.1/next.mp3", MediaType: "audio/mpeg", Seekable: true}
+	request := playback.LoadRequest{
+		MediaURL: "http://127.0.0.1/next.mp3", MediaType: "audio/mpeg",
+		Duration: 100, Transcode: true,
+	}
 	request.Metadata.Title = "Next track"
 	if err := dlna.SetNext(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(setNextBody, "<NextURI>http://127.0.0.1/next.mp3</NextURI>") || !strings.Contains(setNextBody, "Next track") {
+	if !strings.Contains(setNextBody, "<NextURI>http://127.0.0.1/next.mp3</NextURI>") ||
+		!strings.Contains(setNextBody, "Next track") ||
+		!strings.Contains(setNextBody, "DLNA.ORG_OP=00") ||
+		!strings.Contains(setNextBody, "DLNA.ORG_CI=1") ||
+		!strings.Contains(setNextBody, "duration=&#34;00:01:40&#34;") {
 		t.Fatalf("SetNextAVTransportURI body = %q", setNextBody)
 	}
 	nextURI, err := dlna.NextURI(context.Background())

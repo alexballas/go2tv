@@ -8,38 +8,18 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"go2tv.app/go2tv/v2/internal/playback"
 )
 
-func TestPrepareServerRequestChromecastTranscode(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name          string
-		protocol      string
-		transcode     bool
-		wantExtension string
-		wantMediaType string
-		wantCast      bool
-	}{
-		{name: "Chromecast transcode", protocol: "Chromecast", transcode: true, wantExtension: ".mp4", wantMediaType: "video/mp4", wantCast: true},
-		{name: "Chromecast direct", protocol: "Chromecast", wantExtension: ".mkv", wantMediaType: "video/x-matroska", wantCast: true},
-		{name: "DLNA transcode", protocol: "DLNA", transcode: true, wantExtension: ".mkv", wantMediaType: "video/x-matroska"},
+func TestVerifiedFFmpegPath(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			request := prepareServerRequest(playback.ServerRequest{
-				MediaExt: ".mkv", MediaType: "video/x-matroska", Transcode: tt.transcode,
-				Target: playback.Device{Protocol: tt.protocol},
-			})
-			if request.MediaExt != tt.wantExtension || request.MediaType != tt.wantMediaType {
-				t.Fatalf("request format = %q %q, want %q %q", request.MediaExt, request.MediaType, tt.wantExtension, tt.wantMediaType)
-			}
-			if got := isChromecastRequest(request); got != tt.wantCast {
-				t.Fatalf("Chromecast request = %v, want %v", got, tt.wantCast)
-			}
-		})
+	if got, err := verifiedFFmpegPath(executable); err != nil || got != executable {
+		t.Fatalf("verified path = %q, %v; want %q", got, err, executable)
+	}
+	if got, err := verifiedFFmpegPath(t.TempDir()); err == nil || got != "" {
+		t.Fatalf("explicit invalid path = %q, %v; want error", got, err)
 	}
 }
 

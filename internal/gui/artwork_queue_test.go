@@ -188,6 +188,27 @@ func TestQueueNextKeepsActiveDLNAEndpoints(t *testing.T) {
 	}
 }
 
+func TestQueueNextCarriesTranscodeConfiguration(t *testing.T) {
+	dir := t.TempDir()
+	trackOne := writeQueueArtworkTrack(t, dir, "one.mp3", color.RGBA{R: 120, A: 255})
+	trackTwo := writeQueueArtworkTrack(t, dir, "two.mp3", color.RGBA{G: 120, A: 255})
+	subtitlePath := strings.TrimSuffix(trackTwo, filepath.Ext(trackTwo)) + ".srt"
+	if err := os.WriteFile(subtitlePath, []byte("1\n00:00:00,000 --> 00:00:01,000\ntext\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	screen, _ := newQueueArtworkTestScreen(t, []string{trackOne, trackTwo})
+	screen.Transcode = true
+	screen.ffmpegPath = "/tools/ffmpeg"
+
+	next, err := queueNext(screen, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.FFmpegPath != screen.ffmpegPath || next.FFmpegSubsPath != subtitlePath {
+		t.Fatalf("queued ffmpeg = %q, subtitles = %q", next.FFmpegPath, next.FFmpegSubsPath)
+	}
+}
+
 type queueSOAPBodies struct {
 	mu              sync.Mutex
 	values          []string

@@ -41,7 +41,7 @@ func testHandler(t *testing.T) (*Handler, *library.Library, *controller.Controll
 		t.Fatal(err)
 	}
 	control := controller.New(controller.Config{})
-	handler, err := New(Config{Version: "test", Controller: control, Library: lib})
+	handler, err := New(Config{Version: "test", Controller: control, Library: lib, TranscodeAvailable: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,6 +138,9 @@ func TestBootstrapAndLibrarySanitizedNoStore(t *testing.T) {
 	if !strings.Contains(response.Body.String(), `"gapless":true`) {
 		t.Fatal("gapless feature missing")
 	}
+	if !strings.Contains(response.Body.String(), `"transcode":true`) {
+		t.Fatal("transcode feature missing")
+	}
 	if !strings.Contains(response.Body.String(), `"artwork_id":""`) {
 		t.Fatal("empty artwork state omitted")
 	}
@@ -146,6 +149,30 @@ func TestBootstrapAndLibrarySanitizedNoStore(t *testing.T) {
 	h.ServeHTTP(response, request)
 	if response.Code != 200 || !strings.Contains(response.Body.String(), "movie.mp4") {
 		t.Fatalf("library = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestTranscodeUnavailableRejected(t *testing.T) {
+	root := t.TempDir()
+	lib, err := library.Open(library.Config{Roots: []string{root}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	control := controller.New(controller.Config{})
+	h, err := New(Config{Version: "test", Controller: control, Library: lib})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { h.Close(); control.Close(); _ = lib.Close() }()
+
+	response := httptest.NewRecorder()
+	h.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/bootstrap", nil))
+	if !strings.Contains(response.Body.String(), `"transcode":false`) {
+		t.Fatalf("bootstrap = %s", response.Body.String())
+	}
+	result, _ := h.command(context.Background(), envelope{Type: "player.transcode", ID: "enable", Payload: []byte(`{"enabled":true}`)})
+	if result.Code != controller.CodeInvalid {
+		t.Fatalf("enable result = %#v", result)
 	}
 }
 

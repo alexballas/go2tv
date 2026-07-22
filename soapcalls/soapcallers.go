@@ -45,6 +45,7 @@ type TVPayload struct {
 	InitialMediaRenderersStates map[string]bool
 	MediaRenderersStates        map[string]*States
 	FFmpegSeek                  int
+	MediaDuration               float64
 	FFmpegPath                  string
 	FFmpegSubsPath              string
 	EventURL                    string

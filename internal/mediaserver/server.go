@@ -462,7 +462,7 @@ func (s *Server) serveHTTP(w http.ResponseWriter, request *http.Request) {
 		s.active[requestID] = active
 	}
 	s.mu.Unlock()
-	if r.request.Transcode {
+	if r.request.Transcode && strings.Contains(r.mediaType, "video") {
 		if s.cfg.Transcode == nil {
 			http.Error(w, "transcoding unavailable", http.StatusServiceUnavailable)
 			return

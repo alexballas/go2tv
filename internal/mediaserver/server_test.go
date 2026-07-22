@@ -287,6 +287,97 @@ func TestGETHEADMethodRangeAndCallbackCoexist(t *testing.T) {
 	}
 }
 
+func TestTranscodedDLNAKeepsPlayableResourceContract(t *testing.T) {
+	requests := make(chan playback.ServerRequest, 1)
+	server := New(Config{
+		ListenAddr: "127.0.0.1:0",
+		Transcode: func(_ context.Context, w http.ResponseWriter, _ io.ReadCloser, request playback.ServerRequest) error {
+			requests <- request
+			_, _ = w.Write([]byte("transcoded"))
+			return nil
+		},
+	})
+	request := mediaRequest([]byte("media"), ".mkv", "video/x-matroska")
+	request.Transcode = true
+	request.Duration = 6176.17
+	request.SeekOffset = 12
+	request.Target.Protocol = "DLNA"
+	route := startTestServer(t, server, request)
+	if !strings.HasSuffix(route.URL, ".mkv") {
+		t.Fatalf("transcoded route = %q", route.URL)
+	}
+
+	httpRequest, _ := http.NewRequest(http.MethodHead, route.URL, nil)
+	httpRequest.Header.Set("getcontentFeatures.dlna.org", "1")
+	httpRequest.Header.Set("getAvailableSeekRange.dlna.org", "1")
+	httpRequest.Header.Set("TimeSeekRange.dlna.org", "npt=01:01:20.500-")
+	response, err := http.DefaultClient.Do(httpRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("HEAD status=%d", response.StatusCode)
+	}
+	if features := response.Header.Get("contentFeatures.dlna.org"); !strings.Contains(features, "DLNA.ORG_OP=00") || !strings.Contains(features, "DLNA.ORG_CI=1") {
+		t.Fatalf("content features = %q", features)
+	}
+	if got := response.Header.Get("Content-Type"); got != "video/x-matroska" {
+		t.Fatalf("content type = %q", got)
+	}
+	if features := response.Header.Get("contentFeatures.dlna.org"); !strings.Contains(features, "DLNA.ORG_PN=MATROSKA") || !strings.Contains(features, "DLNA.ORG_FLAGS=01700000") || strings.Contains(features, "DLNA.ORG_OP=10") {
+		t.Fatalf("transcode profile = %q", features)
+	}
+	if got := response.Header.Get("TimeSeekRange.dlna.org"); got != "" {
+		t.Fatalf("unexpected time seek range = %q", got)
+	}
+	if got := response.Header.Get("availableSeekRange.dlna.org"); got != "" {
+		t.Fatalf("unexpected available seek range = %q", got)
+	}
+
+	httpRequest, _ = http.NewRequest(http.MethodGet, route.URL, nil)
+	response, err = http.DefaultClient.Do(httpRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || string(body) != "transcoded" {
+		t.Fatalf("GET status=%d body=%q", response.StatusCode, body)
+	}
+	if got := <-requests; got.SeekOffset != 12 {
+		t.Fatalf("restart transcode seek offset = %d", got.SeekOffset)
+	}
+}
+
+func TestDLNANonVideoTranscodeMatchesLegacyDirectServing(t *testing.T) {
+	var transcodeCalls atomic.Int32
+	server := New(Config{
+		ListenAddr: "127.0.0.1:0",
+		Transcode: func(context.Context, http.ResponseWriter, io.ReadCloser, playback.ServerRequest) error {
+			transcodeCalls.Add(1)
+			return nil
+		},
+	})
+	request := mediaRequest([]byte("audio"), ".mp3", "audio/mpeg")
+	request.Transcode = true
+	request.Target.Protocol = "DLNA"
+	route := startTestServer(t, server, request)
+
+	response, err := http.Get(route.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusOK || string(body) != "audio" || transcodeCalls.Load() != 0 {
+		t.Fatalf("status=%d body=%q transcode calls=%d", response.StatusCode, body, transcodeCalls.Load())
+	}
+}
+
 func TestStopDuringTranscodeRepeatedCloseAndDone(t *testing.T) {
 	entered := make(chan struct{})
 	exited := make(chan struct{})

@@ -200,11 +200,13 @@ type fakeServer struct {
 	log    *eventLog
 	mu     sync.Mutex
 	routes int
+	last   playback.ServerRequest
 }
 
 func (s *fakeServer) Start(_ context.Context, request playback.ServerRequest) (playback.MediaRoute, error) {
 	s.mu.Lock()
 	s.routes++
+	s.last = request
 	id := "route-" + strconv.Itoa(s.routes)
 	s.mu.Unlock()
 	s.log.add("server:start:" + request.Target.ID)
@@ -905,7 +907,10 @@ func TestChromecastPauseResumeKeepsSession(t *testing.T) {
 }
 
 func TestChromecastTranscodeLoadsMP4(t *testing.T) {
-	c, _, factory := newTestController(playback.Device{ID: "cast", Protocol: "Chromecast"})
+	log := &eventLog{}
+	factory := &fakeFactory{log: log}
+	server := &fakeServer{log: log}
+	c := New(Config{Discovery: newFakeDiscovery(playback.Device{ID: "cast", Protocol: "Chromecast"}), TransportFactory: factory, MediaServer: server, OperationTimeout: time.Second})
 	defer c.Close()
 	awaitDevices(t, c, 1)
 	c.SelectDevice(context.Background(), Mutation{}, "cast")
@@ -916,6 +921,71 @@ func TestChromecastTranscodeLoadsMP4(t *testing.T) {
 	}
 	if got := factory.opened[0].load.MediaType; got != "video/mp4" {
 		t.Fatalf("load media type = %q, want video/mp4", got)
+	}
+	server.mu.Lock()
+	serverRequest := server.last
+	server.mu.Unlock()
+	if serverRequest.MediaExt != ".mp4" || serverRequest.MediaType != "video/mp4" {
+		t.Fatalf("server request format = %q %q, want .mp4 video/mp4", serverRequest.MediaExt, serverRequest.MediaType)
+	}
+}
+
+func TestDLNATranscodeDurationKeepsRestartSeek(t *testing.T) {
+	device := playback.Device{ID: "one", Protocol: "DLNA"}
+	log := &eventLog{}
+	factory := &fakeFactory{log: log}
+	server := &fakeServer{log: log}
+	monitorConfigs := make(chan playback.MonitorConfig, 2)
+	probeCount := 0
+	c := New(Config{
+		Discovery:        newFakeDiscovery(device),
+		TransportFactory: factory,
+		MediaServer:      server,
+		OperationTimeout: time.Second,
+		DurationProbe: func(context.Context, playback.SourceOpener) (float64, error) {
+			probeCount++
+			return 100, nil
+		},
+		RunMonitor: func(_ context.Context, cfg playback.MonitorConfig, _ playback.Device, _ Transport) {
+			monitorConfigs <- cfg
+			cfg.Sink.HandleMonitorEvent(context.Background(), playback.MonitorEvent{
+				Generation: cfg.Generation,
+				Duration:   cfg.ExpectedDuration,
+			})
+		},
+	})
+	defer c.Close()
+	awaitDevices(t, c, 1)
+	c.SelectDevice(context.Background(), Mutation{}, device.ID)
+	c.SelectMedia(context.Background(), Mutation{}, testMedia("movie.mkv", mediamodel.MediaKindVideo))
+	c.SetTranscode(context.Background(), Mutation{}, true)
+	if result := c.Play(context.Background(), PlayRequest{}); !result.OK() {
+		t.Fatal(result)
+	}
+	if cfg := <-monitorConfigs; cfg.ExpectedDuration != 100 {
+		t.Fatalf("initial monitor = %#v", cfg)
+	}
+	server.mu.Lock()
+	serverRequest := server.last
+	server.mu.Unlock()
+	if serverRequest.Duration != 100 || serverRequest.MediaExt != ".mkv" || serverRequest.MediaType != "video/*" {
+		t.Fatalf("server request = %#v", serverRequest)
+	}
+	factory.mu.Lock()
+	loadRequest := factory.opened[0].load
+	factory.mu.Unlock()
+	if loadRequest.Duration != 100 || !loadRequest.Transcode || loadRequest.MediaType != "video/*" {
+		t.Fatalf("load request = %#v", loadRequest)
+	}
+	awaitSnapshotState(t, c, func(snapshot Snapshot) bool { return snapshot.Duration == 100 })
+	if result := c.Seek(context.Background(), SeekRequest{Seconds: 12}); !result.OK() {
+		t.Fatal(result)
+	}
+	if cfg := <-monitorConfigs; cfg.ExpectedDuration != 100 || cfg.SeekOffset != 12 {
+		t.Fatalf("seek monitor = %#v", cfg)
+	}
+	if probeCount != 1 {
+		t.Fatalf("duration probes = %d", probeCount)
 	}
 }
 
