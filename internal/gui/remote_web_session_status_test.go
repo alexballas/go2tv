@@ -19,6 +19,7 @@ func TestRemoteSessionStatusViewTakesOverAndRestoresMainTab(t *testing.T) {
 	var status *remoteSessionStatusView
 	fyne.DoAndWait(func() {
 		status = newRemoteSessionStatusView(screen, desktopView)
+		status.root.Resize(fyne.NewSize(1000, 700))
 		status.apply(remoteSessionSnapshot{
 			State: remoteSessionRunning,
 			URL:   "http://127.0.0.1:9666/",
@@ -38,13 +39,21 @@ func TestRemoteSessionStatusViewTakesOverAndRestoresMainTab(t *testing.T) {
 	if got := status.explanation.Text; got != wantExplanation {
 		t.Fatalf("explanation = %q", got)
 	}
-	if got := status.link.Text; got != "http://127.0.0.1:9666/" {
-		t.Fatalf("link = %q", got)
+	if got := status.copyButton.Text; got != "http://127.0.0.1:9666/" {
+		t.Fatalf("copy button text = %q", got)
 	}
-	if status.link.URL == nil || status.link.URL.String() != "http://127.0.0.1:9666/" {
-		t.Fatalf("link target = %v", status.link.URL)
+
+	fyne.DoAndWait(func() {
+		test.Tap(status.copyButton)
+	})
+	if got := app.Clipboard().Content(); got != "http://127.0.0.1:9666/" {
+		t.Fatalf("clipboard after tapping copy button = %q", got)
 	}
-	if !status.link.Visible() || !status.qrCode.Visible() || status.qrCode.Image == nil {
+	if got := status.copyButton.Text; got != "Copied to clipboard" {
+		t.Fatalf("copy button feedback = %q", got)
+	}
+	status.copyReset.Stop()
+	if !status.copyButton.Visible() || !status.qrCode.Visible() || status.qrCode.Image == nil {
 		t.Fatal("URL or QR code unavailable during remote session")
 	}
 	if got := status.qrCode.Image.Bounds().Size(); got.X != remoteSessionQRCodeSize || got.Y != remoteSessionQRCodeSize {

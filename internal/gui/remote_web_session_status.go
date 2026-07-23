@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"net/url"
+	"time"
 
 	fyne "github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/canvas"
@@ -59,11 +60,12 @@ type remoteSessionStatusView struct {
 	statusView  fyne.CanvasObject
 	headline    *widget.Label
 	explanation *widget.Label
-	link        *widget.Hyperlink
+	copyButton  *widget.Button
 	qrCode      *canvas.Image
 	openButton  *widget.Button
 	stopButton  *widget.Button
 	url         string
+	copyReset   *time.Timer
 }
 
 func newRemoteSessionStatusView(screen *FyneScreen, desktopView fyne.CanvasObject) *remoteSessionStatusView {
@@ -78,10 +80,9 @@ func newRemoteSessionStatusView(screen *FyneScreen, desktopView fyne.CanvasObjec
 	explanation.Alignment = fyne.TextAlignCenter
 	explanation.Wrapping = fyne.TextWrapWord
 
-	link := widget.NewHyperlink("", nil)
-	link.Alignment = fyne.TextAlignCenter
-	link.Wrapping = fyne.TextWrapBreak
-	link.Hide()
+	copyButton := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), nil)
+	copyButton.Importance = widget.LowImportance
+	copyButton.Hide()
 
 	qrCode := canvas.NewImageFromImage(nil)
 	qrCode.FillMode = canvas.ImageFillContain
@@ -110,24 +111,46 @@ func newRemoteSessionStatusView(screen *FyneScreen, desktopView fyne.CanvasObjec
 		headline,
 		explanation,
 		container.NewCenter(qrCode),
-		container.NewCenter(link),
+		container.NewCenter(copyButton),
 		container.NewCenter(container.NewHBox(openButton, stopButton)),
 	)
 	statusCard := widget.NewCard("", "", container.NewPadded(statusContent))
 	statusView := container.NewCenter(statusCard)
 	statusView.Hide()
 
-	return &remoteSessionStatusView{
+	view := &remoteSessionStatusView{
 		root:        container.NewStack(desktopView, statusView),
 		desktopView: desktopView,
 		statusView:  statusView,
 		headline:    headline,
 		explanation: explanation,
-		link:        link,
+		copyButton:  copyButton,
 		qrCode:      qrCode,
 		openButton:  openButton,
 		stopButton:  stopButton,
 	}
+	copyButton.OnTapped = view.copyURLToClipboard
+	return view
+}
+
+func (v *remoteSessionStatusView) copyURLToClipboard() {
+	if v.url == "" {
+		return
+	}
+	fyne.CurrentApp().Clipboard().SetContent(v.url)
+	v.copyButton.SetIcon(theme.ConfirmIcon())
+	v.copyButton.SetText(lang.L("Copied to clipboard"))
+	if v.copyReset != nil {
+		v.copyReset.Stop()
+	}
+	v.copyReset = time.AfterFunc(2*time.Second, func() {
+		fyne.Do(func() {
+			if v.url != "" {
+				v.copyButton.SetIcon(theme.ContentCopyIcon())
+				v.copyButton.SetText(v.url)
+			}
+		})
+	})
 }
 
 func (v *remoteSessionStatusView) apply(snapshot remoteSessionSnapshot, active bool) {
@@ -150,6 +173,8 @@ func (v *remoteSessionStatusView) apply(snapshot remoteSessionSnapshot, active b
 	if snapshot.State == remoteSessionStarting || snapshot.State == remoteSessionRunning {
 		v.stopButton.Enable()
 	}
+
+	v.root.Refresh()
 }
 
 func (v *remoteSessionStatusView) updateURL(target string) {
@@ -157,21 +182,18 @@ func (v *remoteSessionStatusView) updateURL(target string) {
 		return
 	}
 	v.url = target
+	if v.copyReset != nil {
+		v.copyReset.Stop()
+	}
 	if target == "" {
-		v.link.Hide()
+		v.copyButton.Hide()
 		v.qrCode.Hide()
 		return
 	}
 
-	parsed, err := url.Parse(target)
-	if err != nil {
-		v.link.Hide()
-		v.qrCode.Hide()
-		return
-	}
-	v.link.SetText(target)
-	v.link.SetURL(parsed)
-	v.link.Show()
+	v.copyButton.SetIcon(theme.ContentCopyIcon())
+	v.copyButton.SetText(target)
+	v.copyButton.Show()
 
 	code, err := qrcode.NewWith(target, qrcode.WithErrorCorrectionLevel(qrcode.ErrorCorrectionMedium))
 	if err != nil {

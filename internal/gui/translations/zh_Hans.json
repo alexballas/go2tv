@@ -197,6 +197,7 @@
 	"Remote Web Session active": "远程 Web 会话正在运行",
 	"Casting is controlled from the Web UI. This desktop session's playlist and playback are unavailable while the server is running.": "投屏由 Web UI 控制。服务器运行期间，此桌面会话的播放列表和播放功能不可用。",
 	"Open Web UI": "打开 Web UI",
+	"Copied to clipboard": "已复制到剪贴板",
     "the server did not become ready": "服务器未能就绪",
     "the server exited unexpectedly": "服务器意外退出",
     "the server had to be stopped forcefully": "服务器被强制停止",

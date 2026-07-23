@@ -197,6 +197,7 @@
 	"Remote Web Session active": "Remote Web Session active",
 	"Casting is controlled from the Web UI. This desktop session's playlist and playback are unavailable while the server is running.": "Casting is controlled from the Web UI. This desktop session's playlist and playback are unavailable while the server is running.",
 	"Open Web UI": "Open Web UI",
+	"Copied to clipboard": "Copied to clipboard",
     "the server did not become ready": "the server did not become ready",
     "the server exited unexpectedly": "the server exited unexpectedly",
     "the server had to be stopped forcefully": "the server had to be stopped forcefully",
