@@ -20,10 +20,9 @@ import (
 
 	"github.com/pkg/errors"
 
+	"go2tv.app/go2tv/v2/internal/logging"
 	"go2tv.app/go2tv/v2/metadata"
 )
-
-var discardLogger = newJSONLogger(io.Discard)
 
 type States struct {
 	NewState    string
@@ -1553,18 +1552,14 @@ func (p *TVPayload) GetProcessStop(uuid string) (bool, error) {
 func (p *TVPayload) Log() *slog.Logger {
 	if p.LogOutput != nil {
 		p.initLogOnce.Do(func() {
-			p.Logger = newJSONLogger(p.LogOutput)
+			p.Logger = logging.NewJSON(p.LogOutput)
 		})
 	}
 
 	if p.Logger == nil {
-		return discardLogger
+		return logging.Discard
 	}
 	return p.Logger
-}
-
-func newJSONLogger(w io.Writer) *slog.Logger {
-	return slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }
 
 func parseProtocolInfo(b []byte, mt string) error {

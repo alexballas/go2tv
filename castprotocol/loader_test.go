@@ -2,7 +2,6 @@ package castprotocol
 
 import (
 	"encoding/json"
-	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -122,16 +121,5 @@ func TestRequiresCustomLoadArtworkOnly(t *testing.T) {
 		Metadata: metadata.Media{Artwork: &metadata.Artwork{URL: "http://host/artwork/hash.jpg"}},
 	}) {
 		t.Fatal("artwork should require custom LOAD")
-	}
-}
-
-func TestLoadWithSubtitlesCompatibilityWrapperUsesMusicMetadata(t *testing.T) {
-	atomic.StoreInt32(&requestIDCounter, 0)
-	conn := &payloadCaptureConn{}
-	if err := LoadWithSubtitles(conn, "transport-1", "http://host/track.mp3", "audio/mpeg", 0, 0, "", "Track", false, true); err != nil {
-		t.Fatalf("LoadWithSubtitles() error = %v", err)
-	}
-	if want := `"metadata":{"metadataType":3,"title":"Track"}`; !strings.Contains(conn.payload, want) {
-		t.Fatalf("payload %s missing %s", conn.payload, want)
 	}
 }

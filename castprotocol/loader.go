@@ -40,30 +40,9 @@ func (p *CustomLoadPayload) SetRequestId(id int) {
 	p.RequestId = id
 }
 
-// LoadWithSubtitles sends a custom LOAD command with subtitle tracks to the Chromecast.
-// This is called after the Application has connected and launched the default media receiver.
-// conn: the cast connection (get from app's internal connection)
-// transportId: the media receiver's transport ID
-// mediaURL: URL of the media to play
-// contentType: MIME type of the media
-// startTime: start position in seconds
-// duration: total media duration in seconds (0 to let Chromecast detect)
-// subtitleURL: URL of the WebVTT subtitle file (or empty for no subtitles)
-// title: media title shown by the receiver UI
-// live: if true, sets StreamType to "LIVE" to identify as live stream (DMR will show LIVE badge)
-// autoplay: if true, starts playback immediately; if false, waits for PLAY command
-func LoadWithSubtitles(conn cast.Conn, transportId string, mediaURL string, contentType string, startTime int, duration float64, subtitleURL string, title string, live bool, autoplay bool) error {
-	return loadMedia(conn, transportId, LoadRequest{
-		MediaURL:    mediaURL,
-		ContentType: contentType,
-		Metadata:    metadata.Media{Title: title},
-		StartTime:   startTime,
-		Duration:    duration,
-		SubtitleURL: subtitleURL,
-		Live:        live,
-	}, autoplay)
-}
-
+// loadMedia sends a custom LOAD command to the Chromecast media receiver.
+// This is called after the Application has connected and launched the default
+// media receiver.
 func loadMedia(conn cast.Conn, transportId string, req LoadRequest, autoplay bool) error {
 	streamType := "BUFFERED"
 	if req.Live {
@@ -177,7 +156,7 @@ func (p *LaunchRequest) SetRequestId(id int) {
 }
 
 // LaunchDefaultReceiver launches the Default Media Receiver app without loading media.
-// This allows sending a LoadWithSubtitles command afterwards.
+// This allows sending a LOAD command afterwards.
 func LaunchDefaultReceiver(conn cast.Conn) error {
 	payload := &LaunchRequest{
 		Type:  "LAUNCH",

@@ -137,7 +137,7 @@ func TestTranscodedDLNAHEADKeepsPlayableResourceContract(t *testing.T) {
 	if got := result.Header.Get("Accept-Ranges"); got != "" {
 		t.Fatalf("accept ranges = %q", got)
 	}
-	features := result.Header["contentFeatures.dlna.org"]
+	features := result.Header["contentFeatures.dlna.org"] //nolint:staticcheck
 	if len(features) != 1 || !strings.Contains(features[0], "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5") || !strings.Contains(features[0], "DLNA.ORG_OP=00") || !strings.Contains(features[0], "DLNA.ORG_CI=1") || !strings.Contains(features[0], "DLNA.ORG_FLAGS=01700000") {
 		t.Fatalf("content features = %q", features)
 	}

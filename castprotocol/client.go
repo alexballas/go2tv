@@ -16,10 +16,9 @@ import (
 
 	"go2tv.app/go2tv/v2/castprotocol/v2/application"
 	"go2tv.app/go2tv/v2/castprotocol/v2/cast"
+	"go2tv.app/go2tv/v2/internal/logging"
 	"go2tv.app/go2tv/v2/metadata"
 )
-
-var discardLogger = newJSONLogger(io.Discard)
 
 // CastClient wraps go-chromecast Application for simplified API
 type CastClient struct {
@@ -39,17 +38,13 @@ type CastClient struct {
 func (c *CastClient) Log() *slog.Logger {
 	if c.LogOutput != nil {
 		c.initLogOnce.Do(func() {
-			c.Logger = newJSONLogger(c.LogOutput)
+			c.Logger = logging.NewJSON(c.LogOutput)
 		})
 	}
 	if c.Logger == nil {
-		return discardLogger
+		return logging.Discard
 	}
 	return c.Logger
-}
-
-func newJSONLogger(w io.Writer) *slog.Logger {
-	return slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }
 
 func NewCastClient(deviceAddr string) (*CastClient, error) {
