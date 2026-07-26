@@ -17,8 +17,10 @@ jobs:
       with:
         go-version-file: go.mod
 
-    - name: Install fyne
-      run: go install github.com/alexballas/refyne/v2/cmd/fyne@latest
+    # No "install fyne" step: `make android` provisions the packaging CLI itself,
+    # at the refyne version go.mod pins. Installing @latest here resolved to the
+    # newest release tag, which is older than the commit the app compiles against,
+    # so the APK would ship without the Java that backs the share target.
 
     - name: Download Android SDK
       run: |

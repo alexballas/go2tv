@@ -146,17 +146,24 @@ func mediaAction(screen *FyneScreen) {
 
 		defer reader.Close()
 
-		screen.MediaText.Text = reader.URI().Name()
-		screen.mediafile = reader.URI()
-		resolveSelectedMobileArtwork(screen, reader.URI())
-
-		screen.MediaText.Refresh()
+		setMobileMediaURI(screen, reader.URI())
 	}, w)
 
 	fd.SetFilter(storage.NewExtensionFileFilter(screen.mediaFormats))
 
 	resumeHotkeys = suspendHotkeys(screen)
 	fd.Show()
+}
+
+// setMobileMediaURI selects uri as the media file. Both ways of choosing one -
+// the file picker above and a share from another app - go through here so they
+// cannot drift apart. Must be called on the Fyne goroutine.
+func setMobileMediaURI(screen *FyneScreen, uri fyne.URI) {
+	screen.MediaText.Text = uri.Name()
+	screen.mediafile = uri
+	resolveSelectedMobileArtwork(screen, uri)
+
+	screen.MediaText.Refresh()
 }
 
 func resolveSelectedMobileArtwork(screen *FyneScreen, mediaURI fyne.URI) {

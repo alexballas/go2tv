@@ -3,6 +3,7 @@ package soapcalls
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -37,6 +38,25 @@ func TestRendererEndpointValidation(t *testing.T) {
 	defer crossService.Close()
 	if _, err := DMRextractor(context.Background(), crossService.URL); err == nil {
 		t.Fatal("cross-host service accepted")
+	}
+}
+
+// A renderer reached through a router is not on any of our own subnets, and on
+// Android interface enumeration is blocked so nothing looks local at all. Neither
+// case may be rejected: validation pins the address, it does not require the
+// device to share a link with us.
+func TestRendererLocationAcceptsRoutedAddress(t *testing.T) {
+	u, pinned, err := validateRendererLocation(context.Background(), "http://192.0.2.1:8080/desc.xml")
+	if err != nil {
+		t.Fatalf("validateRendererLocation() err = %v, want nil", err)
+	}
+
+	if u.Host != "192.0.2.1:8080" {
+		t.Fatalf("validateRendererLocation() host = %q, want %q", u.Host, "192.0.2.1:8080")
+	}
+
+	if !pinned.Equal(net.ParseIP("192.0.2.1")) {
+		t.Fatalf("validateRendererLocation() pinned = %v, want 192.0.2.1", pinned)
 	}
 }
 

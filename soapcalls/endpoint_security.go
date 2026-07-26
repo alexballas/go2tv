@@ -34,38 +34,16 @@ func validateRendererLocation(ctx context.Context, raw string) (*url.URL, net.IP
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolve renderer: %w", err)
 	}
-	for _, ip := range addresses {
-		if directlyConnected(ip) {
-			return u, ip, nil
-		}
+	if len(addresses) == 0 {
+		return nil, nil, errors.New("renderer did not resolve")
 	}
-	return nil, nil, errors.New("renderer not directly connected")
-}
 
-func directlyConnected(ip net.IP) bool {
-	if ip.IsLoopback() {
-		return true
-	}
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return false
-	}
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 {
-			continue
-		}
-		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
-		for _, addr := range addrs {
-			_, network, err := net.ParseCIDR(addr.String())
-			if err == nil && network.Contains(ip) {
-				return true
-			}
-		}
-	}
-	return false
+	// The pinned address is what every later request dials, so a renderer cannot
+	// answer discovery from one host and point control traffic at another. We do
+	// not additionally require it to sit on one of our own subnets: renderers
+	// reached through a router are legitimate, and Android blocks interface
+	// enumeration outright, which made such a check reject every device.
+	return u, addresses[0], nil
 }
 
 func rendererHTTPClient(location *url.URL, pinned net.IP) *http.Client {

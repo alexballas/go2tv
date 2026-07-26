@@ -25,8 +25,19 @@ FFMPEG_STATIC_ARCHIVE=$(BUILD_DIR)/ffmpeg-static.tar.xz
 FFMPEG_STATIC_DIR=$(BUILD_DIR)/ffmpeg-static
 FFMPEG_APP_LIBDIR=$(APPDIR)/usr/lib/ffmpeg
 APPIMAGE_FFMPEG_MODE?=auto
-FYNE?=fyne
 WINDOWS_FYNE?=$(CURDIR)/$(BUILD_DIR)/tools/fyne
+ANDROID_FYNE=$(CURDIR)/$(BUILD_DIR)/tools/fyne
+# The CLI that packages the APK. Defaults to the one android-fyne provisions;
+# override it to package with a refyne checkout you have not pushed yet.
+FYNE?=$(ANDROID_FYNE)
+# The Android share-target handler lives in Java, which the packaging CLI carries
+# as a pre-compiled dex blob inside its own binary - not in the refyne library the
+# app links against. A CLI from a different revision than go.mod therefore builds a
+# green APK with no handler in it, silently. Resolve both from go.mod so the two
+# cannot drift: a directory replace has no version to install from, so build the
+# CLI out of that checkout instead.
+REFYNE_ANDROID_VERSION?=$(shell go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' github.com/alexballas/refyne/v2 2>/dev/null)
+REFYNE_ANDROID_DIR?=$(shell go list -m -f '{{if .Replace}}{{if not .Replace.Version}}{{.Replace.Dir}}{{end}}{{end}}' github.com/alexballas/refyne/v2 2>/dev/null)
 WINDOWS_SYSROOT=$(BUILD_DIR)/windows-sysroot
 WINDOWS_SYSROOT_ABS=$(CURDIR)/$(WINDOWS_SYSROOT)
 WINDOWS_MINGW_URL?=https://mirror.msys2.org/mingw/mingw64
@@ -48,8 +59,13 @@ ANDROID_FFPROBE_BIN=$(BUILD_DIR)/ffprobe-android
 ANDROID_APK_LIBS=$(BUILD_DIR)/apk-libs
 ANDROID_ABI?=arm64-v8a
 ANDROID_BUILD_TOOLS?=$(shell ls -d $$ANDROID_HOME/build-tools/* 2>/dev/null | sort -V | tail -n1)
+# A native lib with 4 KB ELF LOAD alignment makes Android 15+ devices with 16 KB
+# pages run the app in page size compat mode and nag the user about it. refyne
+# links with -Wl,-z,max-page-size=16384 and the prebuilt ffmpeg binaries ship
+# aligned; the android target verifies both, since neither is ours to control.
+ANDROID_ELF_ALIGN=0x4000
 
-.PHONY: webui build build-lite wayland x11 windows windows-sysroot windows-fyne install uninstall clean run test appimage appimage-ffmpeg android
+.PHONY: webui build build-lite wayland x11 windows windows-sysroot windows-fyne install uninstall clean run test appimage appimage-ffmpeg android android-fyne check-no-replace
 
 webui:
 	npm run build:webui
@@ -139,6 +155,24 @@ windows-fyne:
 	mkdir -p $(BUILD_DIR)/tools
 	GOBIN="$(CURDIR)/$(BUILD_DIR)/tools" go install $(REFYNE_PACKAGE)
 
+# Provisions the CLI that `android` packages with, unless FYNE points elsewhere.
+android-fyne:
+	@if [ "$(FYNE)" != "$(ANDROID_FYNE)" ]; then \
+		echo "using refyne CLI at $(FYNE)"; \
+		command -v "$(FYNE)" >/dev/null || { echo "$(FYNE) is not executable"; exit 1; }; \
+	elif [ -n "$(REFYNE_ANDROID_DIR)" ]; then \
+		echo "building refyne CLI from $(REFYNE_ANDROID_DIR)"; \
+		mkdir -p $(BUILD_DIR)/tools; \
+		go build -C "$(REFYNE_ANDROID_DIR)" -o "$(ANDROID_FYNE)" ./cmd/fyne; \
+	elif [ -z "$(REFYNE_ANDROID_VERSION)" ]; then \
+		echo "cannot resolve the refyne version from go.mod."; \
+		echo "build cmd/fyne from that checkout and pass FYNE=/path/to/fyne"; \
+		exit 1; \
+	else \
+		mkdir -p $(BUILD_DIR)/tools; \
+		GOBIN="$(CURDIR)/$(BUILD_DIR)/tools" go install github.com/alexballas/refyne/v2/cmd/fyne@$(REFYNE_ANDROID_VERSION); \
+	fi
+
 
 install: build
 	mkdir -vp /usr/local/bin/
@@ -157,7 +191,16 @@ run: build
 test:
 	env $(GO_BUILD_ENV) go test -v ./...
 
-android:
+# Run before pushing. A local `replace` pointing at a refyne checkout is how the
+# Android share target is developed, and it makes the module unbuildable from a
+# clean checkout - which every build workflow is.
+check-no-replace:
+	@if grep -q '^replace' go.mod; then \
+		echo "go.mod still has a replace directive; go get the pushed refyne commit instead"; \
+		exit 1; \
+	fi
+
+android: android-fyne
 	set -e; \
 	if [ -z "$$ANDROID_NDK_HOME" ]; then echo "ANDROID_NDK_HOME is required"; exit 1; fi; \
 	if [ -z "$$ANDROID_HOME" ]; then echo "ANDROID_HOME is required"; exit 1; fi; \
@@ -198,7 +241,28 @@ android:
 		echo "AndroidManifest sets extractNativeLibs=false"; \
 		exit 1; \
 	fi; \
-	$(ANDROID_BUILD_TOOLS)/zipalign -f 4 $(APK_OUT) $(APK_ALIGNED); \
+	check_manifest() { \
+		echo "$$MANIFEST_DUMP" | grep -q "$$2" || { echo "manifest check failed: $$1"; exit 1; }; \
+	}; \
+	check_manifest "launchMode singleTask" 'launchMode.*0x2'; \
+	check_manifest "SEND filter" 'android.intent.action.SEND'; \
+	check_manifest "VIEW filter" 'android.intent.action.VIEW'; \
+	check_manifest "not debuggable" 'debuggable.*)0x0$$'; \
+	READELF="$$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"; \
+	if [ ! -x "$$READELF" ]; then READELF="$$(command -v llvm-readelf || command -v readelf || true)"; fi; \
+	if [ -n "$$READELF" ]; then \
+		ELF_TMP="$(BUILD_DIR)/pagesize-check.so"; \
+		for lib in libGo2TV.so libffmpeg.so libffprobe.so; do \
+			unzip -p $(APK_OUT) lib/$(ANDROID_ABI)/$$lib > "$$ELF_TMP"; \
+			if "$$READELF" -lW "$$ELF_TMP" | awk '$$1 == "LOAD" && $$NF != "$(ANDROID_ELF_ALIGN)" { bad = 1 } END { exit !bad }'; then \
+				echo "$$lib has LOAD segments that are not 16 KB aligned"; \
+				rm -f "$$ELF_TMP"; \
+				exit 1; \
+			fi; \
+		done; \
+		rm -f "$$ELF_TMP"; \
+	fi; \
+	$(ANDROID_BUILD_TOOLS)/zipalign -f -P 16 4 $(APK_OUT) $(APK_ALIGNED); \
 	mv $(APK_ALIGNED) $(APK_OUT); \
 	if [ -n "$${GO2TV_ANDROID_KEYSTORE:-}" ] && [ -z "$${GO2TV_ANDROID_KEYSTORE_PASS:-}" ]; then echo "GO2TV_ANDROID_KEYSTORE_PASS is required with GO2TV_ANDROID_KEYSTORE"; exit 1; fi; \
 	KEYSTORE="$${GO2TV_ANDROID_KEYSTORE:-$(BUILD_DIR)/go2tv-debug.keystore}"; \

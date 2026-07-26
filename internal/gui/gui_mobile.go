@@ -108,6 +108,8 @@ func Start(ctx context.Context, s *FyneScreen) {
 	w.SetContent(tabs)
 	w.CenterOnScreen()
 
+	registerShareHandler(s)
+
 	go func() {
 		<-ctx.Done()
 		if s.Crash != nil {
