@@ -114,7 +114,9 @@ func warmupChromecastCacheContext(ctx context.Context, timeout time.Duration) {
 		params.Logger = log.New(io.Discard, "", 0)
 		params.Interface = iface
 		if ctx.Err() == nil {
-			_ = mdns.Query(params)
+			withMulticastGuard(func() {
+				_ = mdns.Query(params)
+			})
 		}
 	}
 
@@ -203,7 +205,9 @@ func discoverChromecastDevices(ctx context.Context) {
 				if iface != nil {
 					params.Interface = iface
 				}
-				_ = mdns.Query(params)
+				withMulticastGuard(func() {
+					_ = mdns.Query(params)
+				})
 				feed.notifyChromecastScan()
 
 				pollTimer.Reset(currentChromecastPollInterval())

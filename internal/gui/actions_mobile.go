@@ -621,12 +621,24 @@ func mobileTranscodeOptions(screen *FyneScreen) (*utils.TranscodeOptions, error)
 }
 
 // startChromecastMediaServer (re)starts the local HTTP server that serves the
-// media to the Chromecast. It returns the served media URL together with a
-// context that is cancelled once the server stops.
-func startChromecastMediaServer(screen *FyneScreen, mediaFilename string, tcOpts *utils.TranscodeOptions, media any, artworkAsset *metadata.ArtworkAsset) (string, context.Context, error) {
+// media to the Chromecast. mediaName is the media's own name, escaped here for
+// the URL. It returns the served media URL together with a context that is
+// cancelled once the server stops.
+func startChromecastMediaServer(screen *FyneScreen, mediaName string, tcOpts *utils.TranscodeOptions, media any, artworkAsset *metadata.ArtworkAsset) (string, context.Context, error) {
 	whereToListen, err := utils.URLtoListenIPandPort(screen.selectedDevice.addr)
 	if err != nil {
 		return "", nil, err
+	}
+
+	// The handler is keyed on the path as the request will present it, which Go
+	// has already unescaped by the time we look it up. Registering the escaped
+	// form instead makes every name containing a space - most music files -
+	// unreachable, and the device gets a 404 instead of the media. Parsing back
+	// what we hand out is what keeps the two in step, as the DLNA path does.
+	mediaURL := "http://" + whereToListen + "/" + utils.ConvertFilename(mediaName)
+	parsedMediaURL, err := url.Parse(mediaURL)
+	if err != nil {
+		return "", nil, fmt.Errorf("chromecast media url: %w", err)
 	}
 
 	if screen.httpserver != nil {
@@ -639,7 +651,7 @@ func startChromecastMediaServer(screen *FyneScreen, mediaFilename string, tcOpts
 	screen.serverStopCTX = serverStoppedCTX
 	screen.cancelServerStop = serverCTXStop
 
-	screen.httpserver.AddHandler(mediaFilename, nil, tcOpts, media)
+	screen.httpserver.AddHandler(parsedMediaURL.Path, nil, tcOpts, media)
 
 	serverStarted := make(chan error)
 	go func() {
@@ -651,7 +663,7 @@ func startChromecastMediaServer(screen *FyneScreen, mediaFilename string, tcOpts
 		return "", nil, err
 	}
 
-	return "http://" + whereToListen + mediaFilename, serverStoppedCTX, nil
+	return mediaURL, serverStoppedCTX, nil
 }
 
 func startChromecastSubtitleServer(screen *FyneScreen) (string, context.Context, error) {
@@ -956,8 +968,10 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 			return
 		}
 
-		// Note: Debug logging disabled on mobile.
-		// client.LogOutput = screen.Debug
+		// Into the same ring the DLNA calls go to, so a failed cast shows up in
+		// the diagnostics report. Without it a Chromecast session leaves no trace
+		// at all and there is nothing to go on but "it did not play".
+		client.LogOutput = screen.Debug
 
 		if err := client.Connect(); err != nil {
 			check(w, fmt.Errorf("chromecast connect: %w", err))
@@ -1023,7 +1037,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 				return
 			}
 
-			servedURL, serverCTX, err := startChromecastMediaServer(screen, "/"+utils.ConvertFilename(mediaURL), tcOpts, stream, artworkAsset)
+			servedURL, serverCTX, err := startChromecastMediaServer(screen, mediaURL, tcOpts, stream, artworkAsset)
 			if err != nil {
 				stream.Close()
 				check(w, err)
@@ -1114,7 +1128,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 			mediaType = "video/mp4"
 		}
 
-		servedURL, serverCTX, err := startChromecastMediaServer(screen, "/"+utils.ConvertFilename(screen.MediaText.Text), tcOpts, media, artworkAsset)
+		servedURL, serverCTX, err := startChromecastMediaServer(screen, screen.MediaText.Text, tcOpts, media, artworkAsset)
 		if err != nil {
 			check(w, err)
 			startAfreshPlayButton(screen)

@@ -1,5 +1,5 @@
 VERSION=$(shell cat version.txt)
-LDFLAGS="-s -w -X main.version=$(VERSION)"
+LDFLAGS="-s -w"
 TAGS?=migrated_fynedo
 GO2TV_CGO_CFLAGS_ALLOW=$(if $(CGO_CFLAGS_ALLOW),($(CGO_CFLAGS_ALLOW))|-fno-strict-overflow,-fno-strict-overflow)
 GO_BUILD_ENV=CGO_CFLAGS_ALLOW="$(GO2TV_CGO_CFLAGS_ALLOW)"
@@ -92,14 +92,10 @@ windows: clean
 	if [ -z "$$CXX_BIN" ]; then echo "x86_64-w64-mingw32-g++ is required"; exit 1; fi; \
 	APP_VERSION="$(WINDOWS_APP_VERSION)"; \
 	if [ -z "$$APP_VERSION" ]; then APP_VERSION="0.0.0"; fi; \
-	MAIN_SRC="$(CURDIR)/cmd/go2tv/go2tv.go"; \
 	FYNEAPP="$(CURDIR)/cmd/go2tv/FyneApp.toml"; \
-	MAIN_BAK="$$(mktemp)"; \
 	FYNEAPP_BAK="$$(mktemp)"; \
-	cp "$$MAIN_SRC" "$$MAIN_BAK"; \
 	cp "$$FYNEAPP" "$$FYNEAPP_BAK"; \
-	trap 'cp "$$MAIN_BAK" "$$MAIN_SRC"; cp "$$FYNEAPP_BAK" "$$FYNEAPP"; rm -f "$$MAIN_BAK" "$$FYNEAPP_BAK" cmd/go2tv/fyne.syso cmd/go2tv/FyneApp.ico cmd/go2tv/go2tv.exe.manifest' EXIT; \
-	sed -i 's/version      = "dev"/version      = "$(VERSION)"/' "$$MAIN_SRC"; \
+	trap 'cp "$$FYNEAPP_BAK" "$$FYNEAPP"; rm -f "$$FYNEAPP_BAK" cmd/go2tv/fyne.syso cmd/go2tv/FyneApp.ico cmd/go2tv/go2tv.exe.manifest' EXIT; \
 	rm -f cmd/go2tv/go2tv.exe cmd/go2tv/fyne.syso cmd/go2tv/FyneApp.ico cmd/go2tv/go2tv.exe.manifest; \
 	cd cmd/go2tv; \
 	CGO_ENABLED=1 \
@@ -210,6 +206,10 @@ android: android-fyne
 	if [ ! -x "$(ANDROID_BUILD_TOOLS)/apksigner" ]; then echo "apksigner missing in $(ANDROID_BUILD_TOOLS)"; exit 1; fi; \
 	if ! command -v zip >/dev/null 2>&1; then echo "zip is required"; exit 1; fi; \
 	if ! command -v keytool >/dev/null 2>&1; then echo "keytool is required"; exit 1; fi; \
+	FYNEAPP="$(CURDIR)/cmd/go2tv/FyneApp.toml"; \
+	FYNEAPP_BAK="$$(mktemp)"; \
+	cp "$$FYNEAPP" "$$FYNEAPP_BAK"; \
+	trap 'cp "$$FYNEAPP_BAK" "$$FYNEAPP"; rm -f "$$FYNEAPP_BAK"' EXIT; \
 	mkdir -p $(BUILD_DIR); \
 	rm -rf $(ANDROID_APK_LIBS) $(ANDROID_FFMPEG_BIN) $(ANDROID_FFPROBE_BIN) $(APK_OUT) $(APK_ALIGNED); \
 	cd cmd/go2tv; \
@@ -248,6 +248,20 @@ android: android-fyne
 	check_manifest "SEND filter" 'android.intent.action.SEND'; \
 	check_manifest "VIEW filter" 'android.intent.action.VIEW'; \
 	check_manifest "not debuggable" 'debuggable.*)0x0$$'; \
+	check_manifest "foreground service declared" 'org.golang.app.FyneForegroundService'; \
+	if echo "$$MANIFEST_DUMP" | grep -q 'foregroundServiceType'; then \
+		check_manifest "foregroundServiceType connectedDevice" 'foregroundServiceType.*0x10'; \
+	fi; \
+	for perm in \
+		android.permission.FOREGROUND_SERVICE \
+		android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE \
+		android.permission.CHANGE_NETWORK_STATE \
+		android.permission.POST_NOTIFICATIONS \
+		android.permission.WAKE_LOCK \
+		android.permission.CHANGE_WIFI_MULTICAST_STATE \
+		android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS; do \
+		check_manifest "$$perm" "$$perm"; \
+	done; \
 	READELF="$$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"; \
 	if [ ! -x "$$READELF" ]; then READELF="$$(command -v llvm-readelf || command -v readelf || true)"; fi; \
 	if [ -n "$$READELF" ]; then \

@@ -29,7 +29,7 @@ jobs:
             rm go1.26.0.linux-armv6l.tar.gz
             export GOROOT=/go
             cd /go2tv_dir
-            /go/bin/go build -tags migrated_fynedo -ldflags "-s -w -X main.version=$(echo ${{ env.GO2TV_VERSION }} | sed 's/^v//')" -o go2tv ./cmd/go2tv
+            /go/bin/go build -tags migrated_fynedo -ldflags "-s -w" -o go2tv ./cmd/go2tv
 
     - uses: actions/upload-artifact@v6
       with:

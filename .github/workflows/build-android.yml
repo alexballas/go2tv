@@ -32,9 +32,6 @@ jobs:
         # Resolve the absolute path for the NDK
         APATH=$(readlink -f android-ndk-r27d)
 
-        # Keep Go code version parity with app-version.
-        sed -i "s/version      = \"dev\"/version      = \"$(echo ${{ env.GO2TV_VERSION }} | sed 's/^v//')\"/" cmd/go2tv/go2tv.go
-
         ANDROID_NDK_HOME=$APATH make android
         cp build/Go2TV.apk Go2TV.apk
 

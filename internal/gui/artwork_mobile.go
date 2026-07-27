@@ -6,8 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
-	"strconv"
 	"strings"
 
 	"github.com/alexballas/refyne/v2"
@@ -20,14 +18,27 @@ func resolveMobileGUIArtwork(uri fyne.URI, mediaType string, servedMedia any) *m
 		return nil
 	}
 
+	// A real path is the only case that can also see sidecar images sitting
+	// next to the track. It is not a given that we may read it - an iOS pick
+	// resolves to a path outside our sandbox - so fall through on failure.
 	if uri.Scheme() == "file" && filepath.IsAbs(uri.Path()) {
-		return resolveGUIArtwork(uri.Path(), mediaType, true)
+		if asset := resolveGUIArtwork(uri.Path(), mediaType, true); asset != nil {
+			return asset
+		}
 	}
 
+	// Media we already copied into our own cache.
 	if mediaPath, ok := servedMedia.(string); ok {
-		return resolveMobileEmbeddedArtwork(mediaPath, uri.Name())
+		if asset := resolveMobileEmbeddedArtwork(mediaPath, uri.Name()); asset != nil {
+			return asset
+		}
 	}
 
+	// content:// documents and sandboxed iOS picks: read the tags off the
+	// descriptor we were handed. Reopening it by path - /proc/self/fd on
+	// Android, /dev/fd on iOS - re-runs the permission check against the
+	// underlying file, which scoped storage and the iOS sandbox deny even
+	// though the descriptor itself is perfectly readable.
 	reader, err := storage.ReaderSeeker(uri)
 	if err != nil {
 		return nil
@@ -39,11 +50,11 @@ func resolveMobileGUIArtwork(uri fyne.URI, mediaType string, servedMedia any) *m
 		return nil
 	}
 
-	fdRoot := "/proc/self/fd"
-	if runtime.GOOS == "ios" {
-		fdRoot = "/dev/fd"
+	asset, err := metadata.ResolveEmbeddedArtwork(file, uri.Name())
+	if err != nil {
+		return nil
 	}
-	return resolveMobileEmbeddedArtwork(filepath.Join(fdRoot, strconv.FormatUint(uint64(file.Fd()), 10)), uri.Name())
+	return asset
 }
 
 func mobileGUIArtworkIdentity(uri fyne.URI) string {
@@ -68,28 +79,17 @@ func (s *FyneScreen) resolveCurrentMobileGUIArtwork(uri fyne.URI, mediaType stri
 	return asset
 }
 
+// resolveMobileEmbeddedArtwork reads embedded artwork out of a file we hold a
+// path to. mediaName, not sourcePath, carries the extension that decides which
+// container to parse: the cache copy is named after a temp pattern.
 func resolveMobileEmbeddedArtwork(sourcePath, mediaName string) *metadata.ArtworkAsset {
-	cacheDir, err := mobileCacheDir()
+	file, err := os.Open(sourcePath)
 	if err != nil {
 		return nil
 	}
+	defer file.Close()
 
-	tempDir, err := os.MkdirTemp(cacheDir, "go2tv-artwork-*")
-	if err != nil {
-		return nil
-	}
-	defer os.RemoveAll(tempDir)
-
-	extension := filepath.Ext(mediaName)
-	if extension == "" {
-		return nil
-	}
-	mediaLink := filepath.Join(tempDir, "media"+extension)
-	if err := os.Symlink(sourcePath, mediaLink); err != nil {
-		return nil
-	}
-
-	asset, err := metadata.ResolveArtwork(mediaLink)
+	asset, err := metadata.ResolveEmbeddedArtwork(file, mediaName)
 	if err != nil {
 		return nil
 	}

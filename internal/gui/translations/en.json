@@ -206,5 +206,9 @@
     "the selected network address is unavailable": "the selected network address is unavailable",
     "permission denied while opening the selected port": "permission denied while opening the selected port",
     "the server could not open the selected address and port": "the server could not open the selected address and port",
-    "the server failed to start": "the server failed to start"
+    "the server failed to start": "the server failed to start",
+    "Casting": "Casting",
+    "Casting in progress": "Casting in progress",
+    "Keep casting in the background": "Keep casting in the background",
+    "Some phones stop background apps to save battery, which interrupts casting. Exempt Go2TV from battery optimisation?": "Some phones stop background apps to save battery, which interrupts casting. Exempt Go2TV from battery optimisation?"
 }

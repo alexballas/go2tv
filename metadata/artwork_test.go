@@ -422,6 +422,41 @@ func TestResolveEmbeddedArtworkFromConfinedHandle(t *testing.T) {
 	}
 }
 
+// A media file whose directory cannot be listed - a sandboxed mobile pick -
+// must still give up its embedded artwork.
+func TestResolveArtworkUnlistableDirectory(t *testing.T) {
+	cover := encodeTestImage(t, "jpeg", 23, 17, color.NRGBA{G: 180, A: 255})
+	want, err := LoadArtwork(cover, "track.mp3")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := filepath.Join(t.TempDir(), "locked")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "track.mp3")
+	writeTestFile(t, path, buildTestMP3([]embeddedPicture{{pictureType: 3, mime: "image/jpeg", data: cover}}))
+
+	// Execute-only: the file stays openable by name, the directory does not
+	// enumerate.
+	if err := os.Chmod(dir, 0o100); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o700) })
+	if _, err := os.ReadDir(dir); err == nil {
+		t.Skip("directory is still listable; test needs an unprivileged user")
+	}
+
+	got, err := ResolveArtwork(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.ID != want.ID {
+		t.Fatalf("asset = %+v, want ID %s", got, want.ID)
+	}
+}
+
 func TestResolveArtworkMissingDirectory(t *testing.T) {
 	asset, err := ResolveArtwork(filepath.Join(t.TempDir(), "missing", "track.mp3"))
 	if err != nil || asset != nil {

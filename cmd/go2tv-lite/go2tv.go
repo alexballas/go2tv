@@ -22,6 +22,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	buildinfo "go2tv.app/go2tv/v2"
 	"go2tv.app/go2tv/v2/castprotocol"
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
@@ -36,7 +38,7 @@ import (
 )
 
 var (
-	version   = "dev"
+	version   = buildinfo.Version()
 	errNoflag = errors.New("no flag used")
 	mediaArg  = flag.String("v", "", "Path to video/audio file (triggers CLI mode).")
 	urlArg    = flag.String("u", "", "URL to media file (triggers CLI mode).")

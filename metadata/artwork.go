@@ -312,10 +312,10 @@ type sidecarCandidate struct {
 
 // ResolveArtwork finds and normalizes artwork for a local media path.
 func ResolveArtwork(mediaPath string) (*ArtworkAsset, error) {
-	candidates, err := scanSidecars(filepath.Dir(mediaPath))
-	if err != nil {
-		return nil, nil
-	}
+	// A directory we cannot list costs us the sidecars only - the media file
+	// itself may still be readable, and with it any embedded artwork. Sandboxed
+	// mobile picks land here.
+	candidates, _ := scanSidecars(filepath.Dir(mediaPath))
 
 	trackStem := strings.TrimSuffix(filepath.Base(mediaPath), filepath.Ext(mediaPath))
 	if asset := bestSidecar(candidates, trackStem); asset != nil {

@@ -90,6 +90,9 @@ func Start(ctx context.Context, s *FyneScreen) {
 	// Clean up orphaned temp files from previous crashes
 	cleanupMobileCacheTempFiles()
 
+	// Install the Android multicast hooks before the discovery goroutines run
+	// their immediate first scans.
+	prepareBackgroundSession(s)
 	devices.StartDiscovery(ctx)
 
 	if app := fyne.CurrentApp(); app != nil {
@@ -168,6 +171,11 @@ func (p *FyneScreen) updateScreenState(a string) {
 	p.mu.Lock()
 	p.State = a
 	p.mu.Unlock()
+
+	// Confirmed playback backs up the eager Play-callback start, while every
+	// terminal path stops the background service here. Called after the unlock:
+	// it reaches into the platform and has no business doing that under a lock.
+	syncBackgroundSession(p, a)
 }
 
 // getScreenState returns the current screen state

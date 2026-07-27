@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/alexballas/fyne-tooltip v0.0.0-20260528093432-da161b5c8cac
 	github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab
-	github.com/alexballas/refyne/v2 v2.0.0-20260715232008-d8808082ffcd
+	github.com/alexballas/refyne/v2 v2.0.0-20260727161103-9a5573de7ca0
 	github.com/alexballas/tunetag v0.0.0-20260719100601-dc1983c44140
 	github.com/alexballas/xfilepicker v0.0.0-20260722221937-2760d0132b88
 	github.com/buger/jsonparser v1.2.0
@@ -19,8 +19,8 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/hashicorp/mdns v1.0.7
 	github.com/mattn/go-colorable v0.1.15
-	github.com/mattn/go-isatty v0.0.23
-	github.com/mattn/go-runewidth v0.0.24
+	github.com/mattn/go-isatty v0.0.24
+	github.com/mattn/go-runewidth v0.0.27
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pkg/errors v0.9.1
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d

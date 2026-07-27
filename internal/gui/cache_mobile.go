@@ -53,6 +53,8 @@ func cleanupMobileCacheTempFiles() {
 	}
 
 	for _, f := range files {
-		os.Remove(f)
+		// RemoveAll, not Remove: older builds left artwork scratch directories
+		// behind here, and a plain Remove cannot clear them.
+		os.RemoveAll(f)
 	}
 }

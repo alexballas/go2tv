@@ -371,7 +371,14 @@ func startDLNADiscoveryLoop(ctx context.Context) {
 
 func refreshDLNADevices(delay int) {
 	defer feed.notifyDLNAScan()
-	devices, err := LoadSSDPservices(delay)
+
+	var (
+		devices []Device
+		err     error
+	)
+	withMulticastGuard(func() {
+		devices, err = LoadSSDPservices(delay)
+	})
 	if err != nil {
 		if stderrors.Is(err, ErrNoDeviceAvailable) {
 			setDLNADevices(nil)

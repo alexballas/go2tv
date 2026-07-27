@@ -96,6 +96,10 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	sfiletext.Disable()
 
 	playpause := widget.NewButtonWithIcon(lang.L("Play"), theme.MediaPlayIcon(), func() {
+		// Android only permits starting a foreground service while the app is
+		// visible. Start it directly from the user action, before casting work
+		// moves to a goroutine and the receiver reports its eventual state.
+		beginBackgroundSession(s)
 		go playAction(s)
 	})
 

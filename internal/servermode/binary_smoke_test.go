@@ -20,6 +20,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	buildinfo "go2tv.app/go2tv/v2"
 )
 
 func TestDesktopBinariesServeEmbeddedWebUIFromEmptyWorkingDirectory(t *testing.T) {
@@ -277,7 +279,7 @@ func smokeServerBinary(t *testing.T, binary string) {
 	if err := json.Unmarshal(bootstrap.Body, &payload); err != nil {
 		t.Fatalf("bootstrap JSON: %v", err)
 	}
-	if payload.ServerVersion != "dev" || payload.ProtocolVersion != 1 || len(payload.Roots) != 1 {
+	if payload.ServerVersion != buildinfo.Version() || payload.ProtocolVersion != 1 || len(payload.Roots) != 1 {
 		t.Fatalf("bootstrap = %#v", payload)
 	}
 	cookies := jar.Cookies(mustParseURL(t, baseURL+"/api/library"))
