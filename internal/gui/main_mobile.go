@@ -354,20 +354,10 @@ func checkMutefunc(s *FyneScreen) {
 
 	var checkMuteCounter int
 	for range checkMute.C {
-		// Handle Chromecast mute status
+		// Chromecast mute state is synced by chromecastStatusWatcher from the
+		// status it already polls; a second concurrent GetStatus loop only
+		// doubles control traffic and races the library's state updates.
 		if s.selectedDeviceType == devices.DeviceTypeChromecast {
-			if s.chromecastClient == nil || !s.chromecastClient.IsConnected() {
-				continue
-			}
-			status, err := s.chromecastClient.GetStatus()
-			if err != nil {
-				continue
-			}
-			if status.Muted {
-				setMuteUnmuteView("Unmute", s)
-			} else {
-				setMuteUnmuteView("Mute", s)
-			}
 			continue
 		}
 

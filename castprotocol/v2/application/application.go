@@ -380,19 +380,32 @@ func (a *Application) writePlayedItems() error {
 }
 
 func (a *Application) Update() error {
+	return a.update(a.connectionRetries)
+}
+
+// UpdateOnce refreshes the status with a single attempt and no retry
+// sleeps. Meant for frequent status polls where the caller has its own
+// failure policy and a slow failure is worse than a fast one.
+func (a *Application) UpdateOnce() error {
+	return a.update(1)
+}
+
+func (a *Application) update(attempts int) error {
 	var recvStatus *cast.ReceiverStatusResponse
 	var err error
 	// Simple retry. We need this for when the device isn't currently
 	// available, but it is likely that it will come up soon. If the device
 	// has switch network addresses the caller is expected to handle that situation.
-	for i := 0; i < a.connectionRetries; i++ {
+	for i := range attempts {
 		recvStatus, err = a.getReceiverStatus()
 		if err == nil {
 			break
 		}
 		a.log("error getting receiver status: %v", err)
-		a.log("unable to get status from device; attempt %d/5, retrying...", i+1)
-		time.Sleep(time.Second * 2)
+		if i+1 < attempts {
+			a.log("unable to get status from device; attempt %d/%d, retrying...", i+1, attempts)
+			time.Sleep(time.Second * 2)
+		}
 	}
 	if err != nil {
 		return err

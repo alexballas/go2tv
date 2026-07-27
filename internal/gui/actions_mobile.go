@@ -249,25 +249,35 @@ func playAction(screen *FyneScreen) {
 	}
 
 	// Active Chromecast session: client connected and playing/paused
-	if screen.chromecastClient != nil && screen.chromecastClient.IsConnected() && isActivePlayback {
-		if currentState == "Paused" {
-			if err := screen.chromecastClient.Play(); err != nil {
-				check(w, err)
-				return
-			}
-			setPlayPauseView("Pause", screen)
-			screen.updateScreenState("Playing")
+	if client := screen.chromecastClient; client != nil && client.IsConnected() && isActivePlayback {
+		// The screen state can be stale (a session that died or finished
+		// while unobserved), so toggle on the device's live state instead
+		// of writing a command into a possibly dead socket.
+		status, err := client.GetStatus()
+		if err != nil {
+			dropDeadChromecastSession(screen, client)
 			return
 		}
-		if currentState == "Playing" {
-			if err := screen.chromecastClient.Pause(); err != nil {
+		switch status.PlayerState {
+		case "PLAYING", "BUFFERING":
+			if err := client.Pause(); err != nil {
 				check(w, err)
 				return
 			}
 			setPlayPauseView("Play", screen)
 			screen.updateScreenState("Paused")
-			return
+		case "PAUSED":
+			if err := client.Play(); err != nil {
+				check(w, err)
+				return
+			}
+			setPlayPauseView("Pause", screen)
+			screen.updateScreenState("Playing")
+		default:
+			// IDLE: playback ended while the UI still showed a session.
+			dropDeadChromecastSession(screen, client)
 		}
+		return
 	}
 
 	// Branch based on device type - MUST be first, before any DLNA-specific logic
@@ -903,6 +913,27 @@ func seekableMediaForCasting(screen *FyneScreen) (any, error) {
 	return screen.tempMediaFile, nil
 }
 
+// dropDeadChromecastSession tears down a Chromecast session whose device is
+// unreachable or idle: same cleanup as the status watcher's dead-connection
+// path, for when the user action discovers it first.
+func dropDeadChromecastSession(screen *FyneScreen, client *castprotocol.CastClient) {
+	if screen.chromecastClient == client {
+		screen.chromecastClient = nil
+	}
+	go client.Close(false)
+
+	if screen.httpserver != nil {
+		server := screen.httpserver
+		screen.httpserver = nil
+		go server.StopServer()
+	}
+	if screen.cancelServerStop != nil {
+		screen.cancelServerStop()
+		screen.cancelServerStop = nil
+	}
+	startAfreshPlayButton(screen)
+}
+
 func startAfreshPlayButton(screen *FyneScreen) {
 	screen.nextChromecastActionID()
 
@@ -1243,6 +1274,9 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 	statusErrs := 0
 	startupIdleTicks := 0
 
+	// Last mute state pushed to the UI, nil until the first sample.
+	var lastMuted *bool
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -1303,6 +1337,17 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 			statusErrs = 0
 			if !screen.isChromecastActionCurrent(actionID) {
 				return
+			}
+
+			// Mute state rides along with the status poll (checkMutefunc
+			// skips Chromecast to avoid a second GetStatus loop).
+			if muted := status.Muted; lastMuted == nil || *lastMuted != muted {
+				lastMuted = &muted
+				if muted {
+					setMuteUnmuteView("Unmute", screen)
+				} else {
+					setMuteUnmuteView("Mute", screen)
+				}
 			}
 
 			switch status.PlayerState {

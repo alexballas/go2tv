@@ -649,24 +649,48 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 
 	// Active Chromecast session: control the session owner, not a warm reusable client.
 	if client := screen.activeChromecastPlaybackClient(); client != nil && isActivePlayback {
-		if currentState == "Paused" {
-			if err := client.Play(); err != nil {
-				check(screen, err)
+		// Network round trips, so off the tap thread; hand the permit over.
+		permitHandedOff = true
+		go func() {
+			defer releasePermit()
+			// The screen state can be stale (a session that died or finished
+			// while unobserved), so toggle on the device's live state instead
+			// of writing a command into a possibly dead socket.
+			status, err := client.GetStatus()
+			if err != nil {
+				// Dead session: drop the client so follow-up actions reconnect.
+				if screen.chromecastClient == client {
+					screen.chromecastClient = nil
+				}
+				go client.Close(false)
+				startAfreshPlayButton(screen)
 				return
 			}
-			setPlayPauseView("Pause", screen)
-			screen.updateScreenState("Playing")
-			return
-		}
-		if currentState == "Playing" {
-			if err := client.Pause(); err != nil {
-				check(screen, err)
-				return
+			switch status.PlayerState {
+			case "PLAYING", "BUFFERING":
+				if err := client.Pause(); err != nil {
+					check(screen, err)
+					return
+				}
+				setPlayPauseView("Play", screen)
+				screen.updateScreenState("Paused")
+			case "PAUSED":
+				if err := client.Play(); err != nil {
+					check(screen, err)
+					return
+				}
+				setPlayPauseView("Pause", screen)
+				screen.updateScreenState("Playing")
+			default:
+				// IDLE: playback ended while the UI still showed a session.
+				if screen.chromecastClient == client {
+					screen.chromecastClient = nil
+				}
+				go client.Close(false)
+				startAfreshPlayButton(screen)
 			}
-			setPlayPauseView("Play", screen)
-			screen.updateScreenState("Paused")
-			return
-		}
+		}()
+		return
 	}
 	if !screen.Screencast && screen.mediafile == "" && screen.MediaText.Text == "" {
 		check(screen, errors.New(lang.L("please select a media file or enter a media URL")))

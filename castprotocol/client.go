@@ -516,8 +516,10 @@ func (c *CastClient) SetMuted(muted bool) error {
 // GetStatus returns current playback status.
 // No mutex needed - only reads from underlying library which has its own sync.
 func (c *CastClient) GetStatus() (*CastStatus, error) {
-	// Request fresh status from device (Update refreshes the cached status)
-	if err := c.app.Update(); err != nil {
+	// Single attempt on purpose: status callers poll frequently and tolerate
+	// misses, so a fast error beats blocking ~35s in the wake-up retry loop
+	// (that loop stays on the Load/Connect paths via app.Update).
+	if err := c.app.UpdateOnce(); err != nil {
 		c.Log().Error("app.Update failed", "Method", "GetStatus", "error", err)
 		return nil, err
 	}
