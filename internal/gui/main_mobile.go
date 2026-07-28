@@ -96,6 +96,22 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	sfiletext.Disable()
 
 	playpause := widget.NewButtonWithIcon(lang.L("Play"), theme.MediaPlayIcon(), func() {
+		hasMedia := s.mediafile != nil || (s.MediaText != nil && s.MediaText.Text != "")
+		switch playbackPreflight(
+			s.getScreenState(),
+			hasMedia,
+			s.selectedDeviceType,
+			s.selectedDevice.addr,
+			s.controlURL,
+		) {
+		case playbackPreflightMissingMedia:
+			check(w, errors.New(lang.L("please select a media file or enter a media URL")))
+			return
+		case playbackPreflightMissingDevice:
+			check(w, errors.New(lang.L("please select a device")))
+			return
+		}
+
 		// Android only permits starting a foreground service while the app is
 		// visible. Start it directly from the user action, before casting work
 		// moves to a goroutine and the receiver reports its eventual state.
