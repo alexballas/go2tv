@@ -1,4 +1,13 @@
 VERSION=$(shell cat version.txt)
+# APP_VERSION_CLEAN drops any pre-release suffix, for packagers that only accept
+# x.y.z. APP_BUILD is the integer version/build code, derived from version.txt so
+# it rises with every release without a manual bump: x.y.z becomes xxyyzz with two
+# trailing digits reserved, 99 for a release and 0 for a -dev build. That keeps a
+# -dev build below the release it leads to, and below the next version's -dev,
+# which matters because Android refuses to install a code lower than the one on
+# the device. Override APP_BUILD to number individual dev builds (slots 0-98).
+APP_VERSION_CLEAN?=$(shell sed -n 's/^\([0-9][0-9.]*\).*/\1/p' version.txt)
+APP_BUILD?=$(shell echo "$(APP_VERSION_CLEAN)" | awk -F. -v dev="$(if $(findstring -dev,$(VERSION)),1,0)" '{ code = ($$1*10000 + $$2*100 + $$3) * 100; if (dev != "1") code += 99; if (code < 1) code = 1; print code }')
 LDFLAGS="-s -w"
 TAGS?=migrated_fynedo
 GO2TV_CGO_CFLAGS_ALLOW=$(if $(CGO_CFLAGS_ALLOW),($(CGO_CFLAGS_ALLOW))|-fno-strict-overflow,-fno-strict-overflow)
@@ -47,8 +56,8 @@ WINDOWS_HEADERS_PKG=mingw-w64-x86_64-headers-$(WINDOWS_HEADERS_VERSION)-any.pkg.
 WINDOWS_CPPWINRT_PKG=mingw-w64-x86_64-cppwinrt-$(WINDOWS_CPPWINRT_VERSION)-any.pkg.tar.zst
 WINDOWS_CGO_INCLUDE=-I$(WINDOWS_SYSROOT_ABS)/mingw64/include
 WINDOWS_CGO_LDFLAGS=-static -static-libgcc -static-libstdc++ -Wl,-Bstatic -l:libstdc++.a -l:libwinpthread.a
-WINDOWS_APP_VERSION?=$(shell sed -n 's/^\([0-9][0-9.]*\).*/\1/p' version.txt)
-WINDOWS_APP_BUILD?=1
+WINDOWS_APP_VERSION?=$(APP_VERSION_CLEAN)
+WINDOWS_APP_BUILD?=$(APP_BUILD)
 APK_OUT=$(BUILD_DIR)/Go2TV.apk
 APK_ALIGNED=$(BUILD_DIR)/Go2TV-aligned.apk
 ANDROID_FFMPEG_BASE_URL?=https://raw.githubusercontent.com/hzw1199/Android-FFmpeg-Prebuilt/main/ffmpeg-8.1.1/bin
@@ -58,6 +67,10 @@ ANDROID_FFMPEG_BIN=$(BUILD_DIR)/ffmpeg-android
 ANDROID_FFPROBE_BIN=$(BUILD_DIR)/ffprobe-android
 ANDROID_APK_LIBS=$(BUILD_DIR)/apk-libs
 ANDROID_ABI?=arm64-v8a
+# Kept out of BUILD_DIR so `make clean` cannot delete it: a regenerated key does
+# not match what is already installed, and Android then rejects the update until
+# the app (and its data) is removed.
+ANDROID_DEBUG_KEYSTORE?=$(HOME)/.config/go2tv/go2tv-debug.keystore
 ANDROID_BUILD_TOOLS?=$(shell ls -d $$ANDROID_HOME/build-tools/* 2>/dev/null | sort -V | tail -n1)
 # A native lib with 4 KB ELF LOAD alignment makes Android 15+ devices with 16 KB
 # pages run the app in page size compat mode and nag the user about it. refyne
@@ -65,7 +78,15 @@ ANDROID_BUILD_TOOLS?=$(shell ls -d $$ANDROID_HOME/build-tools/* 2>/dev/null | so
 # aligned; the android target verifies both, since neither is ours to control.
 ANDROID_ELF_ALIGN=0x4000
 
-.PHONY: webui build build-lite wayland x11 windows windows-sysroot windows-fyne install uninstall clean run test appimage appimage-ffmpeg android android-fyne check-no-replace
+.PHONY: webui build build-lite wayland x11 windows windows-sysroot windows-fyne install uninstall clean run test appimage appimage-ffmpeg android android-fyne check-no-replace print-app-version print-app-build
+
+# Packagers driven outside this Makefile (the macOS workflows) read the version
+# metadata from here so the arithmetic lives in one place.
+print-app-version:
+	@echo $(APP_VERSION_CLEAN)
+
+print-app-build:
+	@echo $(APP_BUILD)
 
 webui:
 	npm run build:webui
@@ -220,7 +241,7 @@ android: android-fyne
 		--app-id app.go2tv.go2tv \
 		--icon ../../assets/go2tv-icon-android.png \
 		--app-version "$(VERSION)" \
-		--app-build 1 \
+		--app-build "$(APP_BUILD)" \
 		--release; \
 	APK_BUILT="$$(find . -maxdepth 1 -type f -name '*.apk' | head -n 1)"; \
 	if [ -z "$$APK_BUILT" ]; then echo "fyne did not create an APK"; exit 1; fi; \
@@ -279,11 +300,12 @@ android: android-fyne
 	$(ANDROID_BUILD_TOOLS)/zipalign -f -P 16 4 $(APK_OUT) $(APK_ALIGNED); \
 	mv $(APK_ALIGNED) $(APK_OUT); \
 	if [ -n "$${GO2TV_ANDROID_KEYSTORE:-}" ] && [ -z "$${GO2TV_ANDROID_KEYSTORE_PASS:-}" ]; then echo "GO2TV_ANDROID_KEYSTORE_PASS is required with GO2TV_ANDROID_KEYSTORE"; exit 1; fi; \
-	KEYSTORE="$${GO2TV_ANDROID_KEYSTORE:-$(BUILD_DIR)/go2tv-debug.keystore}"; \
+	KEYSTORE="$${GO2TV_ANDROID_KEYSTORE:-$(ANDROID_DEBUG_KEYSTORE)}"; \
 	KEY_ALIAS="$${GO2TV_ANDROID_KEY_ALIAS:-go2tv}"; \
 	STOREPASS="$${GO2TV_ANDROID_KEYSTORE_PASS:-android}"; \
 	KEYPASS="$${GO2TV_ANDROID_KEY_PASS:-$$STOREPASS}"; \
 	if [ -z "$${GO2TV_ANDROID_KEYSTORE:-}" ] && [ ! -f "$$KEYSTORE" ]; then \
+		mkdir -p "$$(dirname "$$KEYSTORE")"; \
 		keytool -genkeypair -v -keystore "$$KEYSTORE" -storepass "$$STOREPASS" -keypass "$$KEYPASS" -alias "$$KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Go2TV,O=Go2TV,C=US"; \
 	fi; \
 	$(ANDROID_BUILD_TOOLS)/apksigner sign --ks "$$KEYSTORE" --ks-key-alias "$$KEY_ALIAS" --ks-pass pass:"$$STOREPASS" --key-pass pass:"$$KEYPASS" $(APK_OUT); \

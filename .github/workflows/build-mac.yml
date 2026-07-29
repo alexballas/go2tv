@@ -22,8 +22,9 @@ jobs:
 
     - name: Package (macOS)
       run: |
+        APP_BUILD="$(make print-app-build)"
         cd cmd/go2tv
-        CGO_CFLAGS="-mmacosx-version-min=12.3" CGO_LDFLAGS="-mmacosx-version-min=12.3" MACOSX_DEPLOYMENT_TARGET=12.3 GOARCH=arm64 fyne package --release --os darwin --app-version "${GO2TV_VERSION#v}" --icon ../../assets/go2tv-icon.png
+        CGO_CFLAGS="-mmacosx-version-min=12.3" CGO_LDFLAGS="-mmacosx-version-min=12.3" MACOSX_DEPLOYMENT_TARGET=12.3 GOARCH=arm64 fyne package --release --os darwin --app-version "${GO2TV_VERSION#v}" --app-build "$APP_BUILD" --icon ../../assets/go2tv-icon.png
         mv go2tv.app ../../
 
     - uses: actions/upload-artifact@v6
