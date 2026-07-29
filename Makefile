@@ -309,7 +309,7 @@ android: android-fyne
 		keytool -genkeypair -v -keystore "$$KEYSTORE" -storepass "$$STOREPASS" -keypass "$$KEYPASS" -alias "$$KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Go2TV,O=Go2TV,C=US"; \
 	fi; \
 	$(ANDROID_BUILD_TOOLS)/apksigner sign --ks "$$KEYSTORE" --ks-key-alias "$$KEY_ALIAS" --ks-pass pass:"$$STOREPASS" --key-pass pass:"$$KEYPASS" $(APK_OUT); \
-	$(ANDROID_BUILD_TOOLS)/apksigner verify $(APK_OUT); \
+	$(ANDROID_BUILD_TOOLS)/apksigner verify --print-certs $(APK_OUT); \
 	rm -rf $(ANDROID_APK_LIBS) $(ANDROID_FFMPEG_BIN) $(ANDROID_FFPROBE_BIN); \
 	echo "APK created at $(APK_OUT)"
 
