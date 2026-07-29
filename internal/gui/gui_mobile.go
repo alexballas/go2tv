@@ -11,6 +11,7 @@ import (
 	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/app"
 	"github.com/alexballas/refyne/v2/container"
+	"github.com/alexballas/refyne/v2/data/binding"
 	"github.com/alexballas/refyne/v2/dialog"
 	"github.com/alexballas/refyne/v2/lang"
 	"github.com/alexballas/refyne/v2/theme"
@@ -32,6 +33,8 @@ type FyneScreen struct {
 	Debug                  *debugWriter
 	DiscoveryDebug         *debugWriter
 	Current                fyne.Window
+	CurrentPos             binding.String
+	EndPos                 binding.String
 	tvdata                 *soapcalls.TVPayload
 	chromecastClient       *castprotocol.CastClient
 	chromecastActionID     uint64
@@ -48,10 +51,12 @@ type FyneScreen struct {
 	DeviceList             *deviceList
 	httpserver             *httphandlers.HTTPserver
 	PlayPause              *widget.Button
+	SlideBar               *tappedSlider
 	TranscodeCheckBox      *widget.Check
 	mediafile              fyne.URI
 	subsfile               fyne.URI
 	selectedDevice         devType
+	activeDevice           devType
 	selectedDeviceType     string
 	NextMediaCheck         *widget.Check
 	State                  string
@@ -64,12 +69,15 @@ type FyneScreen struct {
 	tempMediaFile          string // Temp file path for mobile media serving (cleanup on stop)
 	tempSubsFile           string // Temp subtitle path for ffmpeg burn-in (cleanup on stop)
 	ffmpegPath             string
+	ffmpegSeek             int
 	mediaDuration          float64
 	currentArtwork         *metadata.ArtworkAsset
 	currentArtworkIdentity string
 	artworkCache           map[string]artworkCacheEntry
 	Transcode              bool
 	Medialoop              bool
+	sliderActive           bool
+	dlnaSeekRestart        bool
 	castingMediaType       string // MIME type of currently casting media
 	hotkeysSuspendCount    int32
 	Crash                  *crashlog.Session
@@ -176,6 +184,22 @@ func (p *FyneScreen) updateScreenState(a string) {
 	// terminal path stops the background service here. Called after the unlock:
 	// it reaches into the platform and has no business doing that under a lock.
 	syncBackgroundSession(p, a)
+}
+
+func (p *FyneScreen) setActiveDevice(device devType) {
+	p.mu.Lock()
+	p.activeDevice = device
+	p.mu.Unlock()
+}
+
+func (p *FyneScreen) clearActiveDevice() {
+	p.setActiveDevice(devType{})
+}
+
+func (p *FyneScreen) getActiveDevice() devType {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.activeDevice
 }
 
 // getScreenState returns the current screen state

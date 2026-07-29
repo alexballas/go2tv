@@ -1896,32 +1896,33 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 				}
 			}
 
-			// For transcoded streams, use stored duration from ffprobe (Chromecast only knows buffered duration)
-			duration := float64(status.Duration)
-			currentTime := float64(status.CurrentTime)
-			// If we have a stored duration (from ffprobe for transcoded streams), always use it
-			// This is more reliable than checking screen.Transcode which might get out of sync
-			if screen.mediaDuration > 0 {
-				duration = screen.mediaDuration
-				// Add seek offset to show correct position in original file
-				currentTime = float64(status.CurrentTime) + float64(screen.ffmpegSeek)
-			}
+			// For transcoded streams, use stored duration from ffprobe (Chromecast only knows buffered duration).
+			currentTime, duration := chromecastProgressTimeline(
+				screen.mediaDuration,
+				screen.ffmpegSeek,
+				status.Duration,
+				status.CurrentTime,
+			)
 
 			// Chromecast reports 0 duration/time during buffering, so only
 			// non-buffering reports with a duration carry a usable position.
 			sampleValid := status.PlayerState != "BUFFERING" && duration > 0
 
 			if sampleValid && mediaStarted && !screen.sliderActive {
-				progress := (currentTime / duration) * screen.SlideBar.Max
+				// Display only: ffprobe durations can undershoot, letting the
+				// position pass the reported end. The stall net keeps the raw
+				// values so real progress past the end never reads as a wedge.
+				shownTime := min(currentTime, duration)
+				progress := (shownTime / duration) * screen.SlideBar.Max
 				fyne.Do(func() {
 					screen.SlideBar.SetValue(progress)
 					// Update time labels
-					current := utils.SecondsToClockTime(int(currentTime))
+					current := utils.SecondsToClockTime(int(shownTime))
 					total := utils.SecondsToClockTime(int(duration))
 					screen.CurrentPos.Set(current)
 					screen.EndPos.Set(total)
 				})
-				screen.persistResumeProgress(int(currentTime), duration, false)
+				screen.persistResumeProgress(int(shownTime), duration, false)
 			}
 
 			// Near-end stall safety net: natural completion is detected via

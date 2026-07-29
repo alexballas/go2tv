@@ -11,6 +11,7 @@ import (
 
 	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/container"
+	"github.com/alexballas/refyne/v2/data/binding"
 	"github.com/alexballas/refyne/v2/lang"
 	"github.com/alexballas/refyne/v2/layout"
 	"github.com/alexballas/refyne/v2/theme"
@@ -143,6 +144,10 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		clearsubsAction(s)
 	})
 
+	sliderBar := newTappableSlider(s)
+	curPos := binding.NewString()
+	endPos := binding.NewString()
+
 	externalmedia := widget.NewCheck(lang.L("Media from URL"), func(b bool) {})
 	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
 	transcode := widget.NewCheck(lang.L("Transcode"), func(b bool) {
@@ -161,7 +166,13 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.MediaText = mfiletext
 	s.SubsText = sfiletext
 	s.DeviceList = list
+	s.SlideBar = sliderBar
+	s.CurrentPos = curPos
+	s.EndPos = endPos
 
+	curPos.Set("00:00:00")
+	endPos.Set("00:00:00")
+	sliderArea := container.NewBorder(nil, nil, widget.NewLabelWithData(curPos), widget.NewLabelWithData(endPos), sliderBar)
 	actionbuttons := container.New(&mainButtonsLayout{buttonHeight: 1.5, buttonPadding: theme.Padding()},
 		playpause,
 		volumedown,
@@ -180,7 +191,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
 	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearmedia), clearmedia, mfiletext)
 	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
-	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, actionbuttons, container.NewPadded(devicelabel))
+	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, sliderArea, actionbuttons, container.NewPadded(devicelabel))
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
 
 	// Widgets actions
@@ -269,6 +280,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	// Check mute status for selected device
 	go checkMutefunc(s)
+
+	// Keep track of the media progress and reflect that to the slide bar.
+	go sliderUpdate(s)
 
 	return content
 }
