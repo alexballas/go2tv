@@ -56,6 +56,7 @@ type hub struct {
 	mu         sync.Mutex
 	clients    map[*client]struct{}
 	byIP       map[string]int
+	admitted   int // slots taken: reserved before the upgrade plus registered clients
 	closed     bool
 	stop       chan struct{}
 	done       chan struct{}
@@ -129,26 +130,32 @@ func (h *hub) serve(w http.ResponseWriter, r *http.Request) {
 		apiError(w, 403, "request_not_allowed")
 		return
 	}
+	// Take the slot before upgrading. The upgrade completes the handshake, so a
+	// client whose Dial returned is already counted and the next one over the
+	// limit gets a 503 rather than an upgrade followed by a silent close.
 	h.mu.Lock()
-	if h.closed || len(h.clients) >= maxClients || h.byIP[ip] >= maxClientsPerIP {
+	if h.closed || h.admitted >= maxClients || h.byIP[ip] >= maxClientsPerIP {
 		h.mu.Unlock()
 		apiError(w, http.StatusServiceUnavailable, "client_limit")
 		return
 	}
+	h.admitted++
+	h.byIP[ip]++
 	h.mu.Unlock()
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		h.releaseSlot(ip)
 		return
 	}
 	c := &client{hub: h, conn: conn, ip: ip, send: make(chan outbound, outboundSize), done: make(chan struct{}), ids: make(map[string]struct{})}
 	h.mu.Lock()
-	if h.closed || len(h.clients) >= maxClients || h.byIP[ip] >= maxClientsPerIP {
+	if h.closed {
 		h.mu.Unlock()
+		h.releaseSlot(ip)
 		_ = conn.Close()
 		return
 	}
 	h.clients[c] = struct{}{}
-	h.byIP[ip]++
 	h.wg.Add(2)
 	h.mu.Unlock()
 	if snapshot, err := h.controller.Snapshot(r.Context()); err == nil {
@@ -157,6 +164,23 @@ func (h *hub) serve(w http.ResponseWriter, r *http.Request) {
 	go func() { defer h.wg.Done(); c.writer() }()
 	go func() { defer h.wg.Done(); c.reader() }()
 }
+
+// releaseSlot gives back a slot taken by serve for a connection that never made
+// it into h.clients.
+func (h *hub) releaseSlot(ip string) {
+	h.mu.Lock()
+	h.releaseSlotLocked(ip)
+	h.mu.Unlock()
+}
+
+func (h *hub) releaseSlotLocked(ip string) {
+	h.admitted--
+	h.byIP[ip]--
+	if h.byIP[ip] <= 0 {
+		delete(h.byIP, ip)
+	}
+}
+
 func (h *hub) remove(c *client) {
 	c.once.Do(func() {
 		close(c.done)
@@ -164,10 +188,7 @@ func (h *hub) remove(c *client) {
 		h.mu.Lock()
 		if _, ok := h.clients[c]; ok {
 			delete(h.clients, c)
-			h.byIP[c.ip]--
-			if h.byIP[c.ip] == 0 {
-				delete(h.byIP, c.ip)
-			}
+			h.releaseSlotLocked(c.ip)
 		}
 		h.mu.Unlock()
 	})

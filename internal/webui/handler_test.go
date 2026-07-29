@@ -812,6 +812,35 @@ func TestWebSocketGlobalLimit(t *testing.T) {
 	}
 }
 
+func TestWebSocketSlotsFreedOnDisconnect(t *testing.T) {
+	h, _, _, _ := testHandler(t)
+	server := httptest.NewServer(h)
+	defer server.Close()
+	url := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/ws"
+	// Churn past the global limit one connection at a time. A slot that is
+	// counted but never released would start rejecting partway through.
+	for i := range maxClients * 2 {
+		conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+		if err != nil {
+			t.Fatalf("connection %d rejected, slots leaked: %v", i, err)
+		}
+		_ = conn.Close()
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			h.hub.mu.Lock()
+			admitted, clients := h.hub.admitted, len(h.hub.clients)
+			h.hub.mu.Unlock()
+			if admitted == 0 && clients == 0 {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("connection %d left admitted=%d clients=%d", i, admitted, clients)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+}
+
 func TestWebSocketSlowClientDisconnected(t *testing.T) {
 	h, _, _, _ := testHandler(t)
 	h.hub.close()
