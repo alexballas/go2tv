@@ -248,6 +248,21 @@ func (h *managerHarness) startRunning(t *testing.T) *fakeManagedProcess {
 	return process
 }
 
+// awaitLeaseReleases waits for the lease callback count to reach want. The
+// manager publishes its terminal state before releasing the lease, so a release
+// is not yet visible the moment the state turns terminal.
+func awaitLeaseReleases(t *testing.T, h *managerHarness, want int32) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if h.leaseCount.Load() == want {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("lease releases = %d, want %d", h.leaseCount.Load(), want)
+}
+
 func awaitState(t *testing.T, m *remoteSessionManager, want remoteSessionState) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -289,9 +304,7 @@ func TestRemoteSessionStartSendsInitialEmptySnapshotBeforeReady(t *testing.T) {
 		t.Fatal(err)
 	}
 	awaitState(t, h.manager, remoteSessionStopped)
-	if h.leaseCount.Load() != 1 {
-		t.Fatalf("lease releases = %d, want 1", h.leaseCount.Load())
-	}
+	awaitLeaseReleases(t, h, 1)
 	if process.killed.Load() != 0 {
 		t.Fatalf("graceful stop killed tree %d times", process.killed.Load())
 	}
@@ -354,9 +367,7 @@ func TestRemoteSessionUnexpectedExitFailsAndReleasesLease(t *testing.T) {
 	if snapshot.LastError != remoteFailureExited {
 		t.Fatalf("last error = %q", snapshot.LastError)
 	}
-	if h.leaseCount.Load() != 1 {
-		t.Fatalf("lease releases = %d, want 1", h.leaseCount.Load())
-	}
+	awaitLeaseReleases(t, h, 1)
 }
 
 func TestRemoteSessionReportsAddressInUse(t *testing.T) {
@@ -374,9 +385,7 @@ func TestRemoteSessionReportsAddressInUse(t *testing.T) {
 	if got := h.manager.Snapshot().LastError; got != remoteFailureAddressInUse {
 		t.Fatalf("last error = %q, want %q", got, remoteFailureAddressInUse)
 	}
-	if h.leaseCount.Load() != 1 {
-		t.Fatalf("lease releases = %d, want 1", h.leaseCount.Load())
-	}
+	awaitLeaseReleases(t, h, 1)
 }
 
 func TestRemoteStartErrorDialogPolicy(t *testing.T) {
@@ -422,9 +431,7 @@ func TestRemoteSessionReadinessTimeoutKillsChild(t *testing.T) {
 		t.Fatal("stuck child not killed")
 	}
 	awaitState(t, h.manager, remoteSessionFailed)
-	if h.leaseCount.Load() != 1 {
-		t.Fatalf("lease releases = %d, want 1", h.leaseCount.Load())
-	}
+	awaitLeaseReleases(t, h, 1)
 }
 
 func TestRemoteSessionMalformedReadinessFails(t *testing.T) {
@@ -469,9 +476,7 @@ func TestRemoteSessionForcedStopAfterGrace(t *testing.T) {
 	if got := h.manager.Snapshot().LastError; got != remoteFailureForcedStop {
 		t.Fatalf("last error = %q", got)
 	}
-	if h.leaseCount.Load() != 1 {
-		t.Fatalf("lease releases = %d, want 1", h.leaseCount.Load())
-	}
+	awaitLeaseReleases(t, h, 1)
 }
 
 func TestRemoteSessionStartStopStartAndShutdown(t *testing.T) {
@@ -496,9 +501,7 @@ func TestRemoteSessionStartStopStartAndShutdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	awaitState(t, h.manager, remoteSessionStopped)
-	if h.leaseCount.Load() != 2 {
-		t.Fatalf("lease releases = %d, want 2", h.leaseCount.Load())
-	}
+	awaitLeaseReleases(t, h, 2)
 
 	if err := h.manager.Shutdown(context.Background()); err != nil {
 		t.Fatal(err)
