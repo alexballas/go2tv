@@ -3,6 +3,7 @@ package application_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -39,6 +40,12 @@ type startHarness struct {
 	status cast.ReceiverStatusResponse
 	media  cast.MediaStatusResponse
 
+	// mediaUnreadable makes the media namespace answer with a body that cannot
+	// be decoded, standing in for a receiver whose media session can't be read.
+	// A garbled reply fails the same way a dropped one does, without making the
+	// test wait out the 5s sendAndWait timeout.
+	mediaUnreadable bool
+
 	mu   sync.Mutex
 	sent []sentFrame
 }
@@ -62,22 +69,24 @@ func newStartHarness(t *testing.T, startErr error) *startHarness {
 			h.mu.Unlock()
 
 			var (
-				response any
-				err      error
+				payloadBytes []byte
+				err          error
 			)
-			switch frame.namespace {
-			case namespaceRecv:
+			switch {
+			case frame.namespace == namespaceRecv:
 				status := h.status
 				status.PayloadHeader = cast.PayloadHeader{Type: "RECEIVER_STATUS", RequestId: args.Int(0)}
-				response = &status
-			case namespaceMedia:
+				payloadBytes, err = json.Marshal(&status)
+			case frame.namespace == namespaceMedia && h.mediaUnreadable:
+				// Routable (requestId parses) but not decodable as a status.
+				payloadBytes = fmt.Appendf(nil, `{"requestId":%d,"type":"MEDIA_STATUS","status":"garbled"}`, args.Int(0))
+			case frame.namespace == namespaceMedia:
 				status := h.media
 				status.PayloadHeader = cast.PayloadHeader{Type: "MEDIA_STATUS", RequestId: args.Int(0)}
-				response = &status
+				payloadBytes, err = json.Marshal(&status)
 			default:
 				return
 			}
-			payloadBytes, err := json.Marshal(response)
 			if err != nil {
 				t.Errorf("marshal %s status: %v", frame.namespace, err)
 				return
@@ -194,6 +203,76 @@ func TestApplicationStartPropagatesConnectionFailure(t *testing.T) {
 	}
 	if frames := h.frames(); len(frames) != 0 {
 		t.Fatalf("Start() sent %d frames over a failed connection: %+v", len(frames), frames)
+	}
+}
+
+// A media session that cannot be read must surface as an error, not as a
+// successful update that silently republishes the previous snapshot. The
+// snapshot itself must survive: callers map a nil snapshot to IDLE, and the
+// playback monitor ends playback on the first IDLE poll, so clearing here would
+// turn one dropped response into a spurious "finished".
+func TestUpdateReportsUnreadableMediaSessionWithoutClearingSnapshot(t *testing.T) {
+	h := newStartHarness(t, nil)
+	h.status.Status.Applications = []cast.Application{
+		{AppId: "CC1AD845", DisplayName: "Default Media Receiver", TransportId: "transport-1"},
+	}
+	h.media.Status = []cast.Media{{MediaSessionId: 7, PlayerState: "PLAYING", CurrentTime: 30}}
+
+	app := h.app()
+	if err := app.Start(mockAddr, mockPort); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	h.mediaUnreadable = true
+	if err := app.Update(); err == nil {
+		t.Fatal("Update() = nil, want an error when the media session is unreadable")
+	}
+	media := app.Media()
+	if media == nil || media.MediaSessionId != 7 || media.PlayerState != "PLAYING" {
+		t.Fatalf("Media() = %+v, want the previous snapshot retained, not cleared to IDLE", media)
+	}
+	// The receiver-level read succeeded, so that part of the snapshot stands.
+	if app.App() == nil {
+		t.Fatal("App() = nil, want the receiver status that was read successfully")
+	}
+}
+
+// updateMediaStatus clears the snapshot when the receiver reports no session.
+// The seek paths refresh and then dereference it, so a cleared snapshot must be
+// rejected rather than panicking.
+func TestSeekPathsRejectClearedMediaSession(t *testing.T) {
+	tests := []struct {
+		name string
+		call func(*application.Application) error
+		want error
+	}{
+		{name: "Skip", call: (*application.Application).Skip, want: application.ErrNoMediaSkip},
+		{
+			name: "SeekFromStart",
+			call: func(a *application.Application) error { return a.SeekFromStart(5) },
+			want: application.ErrMediaNotYetInitialised,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newStartHarness(t, nil)
+			h.status.Status.Applications = []cast.Application{
+				{AppId: "CC1AD845", DisplayName: "Default Media Receiver", TransportId: "transport-1"},
+			}
+			h.media.Status = []cast.Media{{MediaSessionId: 7, PlayerState: "PLAYING", CurrentTime: 30}}
+
+			app := h.app()
+			if err := app.Start(mockAddr, mockPort); err != nil {
+				t.Fatalf("Start() error = %v", err)
+			}
+
+			// The receiver tears the session down before the seek lands.
+			h.media.Status = nil
+			if err := tt.call(app); !errors.Is(err, tt.want) {
+				t.Fatalf("%s() error = %v, want %v", tt.name, err, tt.want)
+			}
+		})
 	}
 }
 
