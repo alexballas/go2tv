@@ -144,7 +144,7 @@
     "FFmpeg Path": "FFmpeg Path",
     "ffmpeg is required for screencast": "ffmpeg is required for screencast",
     "ffmpeg is required. install it or update ffmpeg path in Settings": "ffmpeg is required. install it or update ffmpeg path in Settings",
-    "screencast currently supports Chromecast only": "screencast currently supports Chromecast only",
+    "screencast currently supports Chromecast and DLNA only": "screencast currently supports Chromecast and DLNA only",
     "screencast is not supported by audio-only device": "screencast is not supported by audio-only device",
     "screencast stream stopped unexpectedly": "screencast stream stopped unexpectedly",
     "Previous": "Previous",
