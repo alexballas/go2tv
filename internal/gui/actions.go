@@ -589,8 +589,9 @@ func playAction(screen *FyneScreen) {
 		return
 	}
 
-	if screen.Screencast && screen.selectedDeviceType != devices.DeviceTypeChromecast {
-		check(screen, errors.New(lang.L("screencast currently supports Chromecast only")))
+	if screen.Screencast && screen.selectedDeviceType != devices.DeviceTypeChromecast &&
+		screen.selectedDeviceType != devices.DeviceTypeDLNA {
+		check(screen, errors.New(lang.L("screencast currently supports Chromecast and DLNA only")))
 		startAfreshPlayButton(screen)
 		return
 	}
@@ -613,6 +614,12 @@ func playAction(screen *FyneScreen) {
 	screen.cancelEnablePlay = cancelEnablePlay
 
 	go func() {
+		// DLNA desktop mirroring (Cast Desktop) uses its own pipeline.
+		if screen.Screencast {
+			dlnaScreencastPlayAction(screen)
+			return
+		}
+
 		// RTMP wait mechanism
 		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
 			if err := waitForRTMPStream(screen); err != nil {
@@ -874,6 +881,10 @@ func playAction(screen *FyneScreen) {
 			return
 		}
 
+		if screen.tvdata == nil {
+			return
+		}
+
 		out, err := screen.tvdata.GetTransportInfo()
 		if err != nil {
 			return
@@ -953,7 +964,112 @@ func startChromecastScreencast(screen *FyneScreen) (string, string, context.Cont
 	return "http://" + whereToListen + "/live/playlist.m3u8", "application/vnd.apple.mpegurl", serverStoppedCTX, nil
 }
 
-func monitorScreencastFFmpeg(screen *FyneScreen, session *hls.Session) {
+// dlnaScreencastPlayAction starts desktop mirroring on DLNA devices. It
+// captures the screen, transcodes it to a live MPEG-TS stream with ffmpeg and
+// streams it to the renderer through the DLNA SetAVTransportURI/Play flow.
+func dlnaScreencastPlayAction(screen *FyneScreen) {
+	if err := screen.validateFFmpeg(); err != nil {
+		check(screen, errors.New(lang.L("ffmpeg is required for screencast")))
+		startAfreshPlayButton(screen)
+		return
+	}
+
+	if screen.selectedDevice.isAudioOnly {
+		check(screen, errors.New(lang.L("screencast is not supported by audio-only device")))
+		startAfreshPlayButton(screen)
+		return
+	}
+
+	stopScreencastSession(screen)
+
+	whereToListen, err := utils.URLtoListenIPandPort(screen.selectedDevice.addr)
+	if err != nil {
+		check(screen, err)
+		startAfreshPlayButton(screen)
+		return
+	}
+
+	session, err := startDLNAScreencast(screen.ffmpegPath, screen.Debug)
+	if err != nil {
+		check(screen, fmt.Errorf("failed to start dlna screencast: %w", err))
+		startAfreshPlayButton(screen)
+		return
+	}
+
+	screen.screencastMu.Lock()
+	screen.screencastSession = session
+	screen.screencastMu.Unlock()
+
+	go monitorScreencastFFmpeg(screen, session)
+
+	if screen.httpserver != nil {
+		screen.httpserver.StopServer()
+	}
+
+	callbackPath, err := utils.RandomString()
+	if err != nil {
+		stopScreencastSession(screen)
+		check(screen, err)
+		startAfreshPlayButton(screen)
+		return
+	}
+
+	sessionDevice := screen.selectedDevice
+	tvdata := &soapcalls.TVPayload{
+		ControlURL:                  screen.controlURL,
+		EventURL:                    screen.eventURL,
+		RenderingControlURL:         screen.renderingControlURL,
+		ConnectionManagerURL:        screen.connectionManagerURL,
+		MediaURL:                    "http://" + whereToListen + "/screencast",
+		SubtitlesURL:                "http://" + whereToListen + "/.",
+		CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
+		MediaType:                   dlnaScreencastMediaType,
+		MediaPath:                   "screencast",
+		CurrentTimers:               make(map[string]*time.Timer),
+		MediaRenderersStates:        make(map[string]*soapcalls.States),
+		InitialMediaRenderersStates: make(map[string]bool),
+		Transcode:                   false,
+		Seekable:                    false,
+		LogOutput:                   screen.Debug,
+		FFmpegPath:                  screen.ffmpegPath,
+	}
+	screen.tvdata = tvdata
+
+	screen.httpserver = httphandlers.NewServer(whereToListen)
+	serverStarted := make(chan error)
+	go func() {
+		screen.httpserver.StartServer(serverStarted, session.Stream(), nil, tvdata, screen)
+	}()
+
+	if err := <-serverStarted; err != nil {
+		stopScreencastSession(screen)
+		check(screen, err)
+		startAfreshPlayButton(screen)
+		return
+	}
+
+	if err := tvdata.SendtoTV("Play1"); err != nil {
+		check(screen, err)
+		fyne.Do(func() {
+			lsize := screen.DeviceList.Length()
+			for i := 0; i <= lsize; i++ {
+				screen.DeviceList.Unselect(lsize - 1)
+			}
+			screen.controlURL = ""
+		})
+		stopAction(screen)
+		return
+	}
+
+	screen.setActiveDevice(sessionDevice)
+	screen.ffmpegSeek = 0
+	screen.mediaDuration = 0
+	screen.SetMediaType(dlnaScreencastMediaType)
+	screen.updateScreenState("Playing")
+	setPlayPauseView("Pause", screen)
+}
+
+func monitorScreencastFFmpeg(screen *FyneScreen, session screencastSession) {
 	err, ok := <-session.Done()
 	if !ok {
 		return
