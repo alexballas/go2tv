@@ -32,8 +32,16 @@ import (
 	"go2tv.app/go2tv/v2/rtmp"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
-	"go2tv.app/screencast/hls"
 )
+
+// screencastSession abstracts a live screencast capture session.
+// Both the Chromecast HLS pipeline (go2tv.app/screencast/hls.Session)
+// and the DLNA MPEG-TS pipeline (*dlnaScreencastSession) implement it.
+type screencastSession interface {
+	Close() error
+	Done() <-chan error
+	StderrTail(n int) string
+}
 
 // FyneScreen .
 type FyneScreen struct {
@@ -115,7 +123,7 @@ type FyneScreen struct {
 	screencastPrevNext       bool
 	screencastPrevMediaText  string
 	screencastPrevMediaFile  string
-	screencastSession        *hls.Session
+	screencastSession        screencastSession
 	screencastMu             sync.Mutex
 	ErrorVisible             bool
 	Hotkeys                  bool
