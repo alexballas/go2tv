@@ -24,12 +24,12 @@ jobs:
             sudo apt install -y xorg-dev libwayland-dev libxkbcommon-dev libegl-dev libpipewire-0.3-dev pkg-config
             sudo apt clean
             sudo rm -rf /var/lib/apt/lists/*
-            wget -nv https://go.dev/dl/go1.25.1.linux-armv6l.tar.gz
-            tar -xzf go1.25.1.linux-armv6l.tar.gz
-            rm go1.25.1.linux-armv6l.tar.gz
+            wget -nv https://go.dev/dl/go1.26.0.linux-armv6l.tar.gz
+            tar -xzf go1.26.0.linux-armv6l.tar.gz
+            rm go1.26.0.linux-armv6l.tar.gz
             export GOROOT=/go
             cd /go2tv_dir
-            /go/bin/go build -tags migrated_fynedo -ldflags "-s -w -X main.version=$(echo ${{ env.GO2TV_VERSION }} | sed 's/^v//')" -o go2tv cmd/go2tv/go2tv.go
+            /go/bin/go build -tags migrated_fynedo -ldflags "-s -w" -o go2tv ./cmd/go2tv
 
     - uses: actions/upload-artifact@v6
       with:

@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="theme-color"
+      media="(prefers-color-scheme: light)"
+      content="#e9e5f1"
+    />
+    <meta
+      name="theme-color"
+      media="(prefers-color-scheme: dark)"
+      content="#0b0a0f"
+    />
+    <title>Go2TV</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg viewBox=%221580 -40 1880 2040%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cdefs%3E%3ClinearGradient id=%22g2tv-frame%22 gradientUnits=%22userSpaceOnUse%22 x1=%221616%22 y1=%22975%22 x2=%223384%22 y2=%22975%22%3E%3Cstop offset=%220%22 stop-color=%22%23ff00ff%22/%3E%3Cstop offset=%221%22 stop-color=%22%2300e2e2%22/%3E%3C/linearGradient%3E%3ClinearGradient id=%22g2tv-dot1%22 gradientUnits=%22userSpaceOnUse%22 x1=%222229%22 y1=%22811%22 x2=%222567%22 y2=%22811%22%3E%3Cstop offset=%220%22 stop-color=%22%23ff00ff%22/%3E%3Cstop offset=%221%22 stop-color=%22%2300c0c0%22/%3E%3C/linearGradient%3E%3ClinearGradient id=%22g2tv-dot2%22 gradientUnits=%22userSpaceOnUse%22 x1=%222405%22 y1=%221144%22 x2=%222658%22 y2=%221144%22%3E%3Cstop offset=%220%22 stop-color=%22%23ff00ff%22/%3E%3Cstop offset=%221%22 stop-color=%22%2300c0c0%22/%3E%3C/linearGradient%3E%3ClinearGradient id=%22g2tv-dot3%22 gradientUnits=%22userSpaceOnUse%22 x1=%222549%22 y1=%221399%22 x2=%222718%22 y2=%221399%22%3E%3Cstop offset=%220%22 stop-color=%22%23ff00ff%22/%3E%3Cstop offset=%221%22 stop-color=%22%2300c0c0%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath fill=%22url(%23g2tv-dot1)%22 opacity=%22.7%22 d=%22m 2335.5,653.5 c -86.7,34.6 -128.9,132.9 -94.3,219.6 34.6,86.7 132.9,128.9 219.6,94.3 86.7,-34.6 128.9,-132.9 94.3,-219.6 -34.6,-86.6 -132.9,-128.9 -219.6,-94.3 z%22/%3E%3Cpath fill=%22url(%23g2tv-dot2)%22 opacity=%22.7%22 d=%22m 2484.3,1026.4 c -65,26 -96.7,99.7 -70.7,164.7 26,65 99.7,96.7 164.7,70.7 65,-26 96.7,-99.7 70.7,-164.7 -25.9,-65 -99.6,-96.7 -164.7,-70.7 z%22/%3E%3Cpath fill=%22url(%23g2tv-dot3)%22 opacity=%22.7%22 d=%22m 2601.8,1320.7 c -43.3,17.3 -64.5,66.5 -47.2,109.8 17.3,43.3 66.5,64.5 109.8,47.2 43.3,-17.3 64.5,-66.5 47.2,-109.8 -17.3,-43.3 -66.4,-64.5 -109.8,-47.2 z%22/%3E%3Cpath fill=%22url(%23g2tv-frame)%22 d=%22m 2564,209.8 -258.1,103 91.8,-213.7 c 15.5,-36 -1.2,-77.8 -37.2,-93.3 -36.1,-15.5 -77.8,1.2 -93.3,37.2 l -92.8,216 -216,-92.8 c -36.1,-15.5 -77.8,1.2 -93.3,37.2 -15.5,36 1.2,77.8 37.2,93.3 L 2116,388.5 1864.3,489 c -202,80.6 -300.7,310.6 -220.1,512.6 l 279.3,699.7 c 80.6,202 310.6,300.7 512.6,220.1 l 699.7,-279.3 c 202,-80.6 300.7,-310.6 220.1,-512.6 L 3076.6,429.8 C 2995.9,227.9 2766,129.2 2564,209.8 Z m 659.9,972.5 c 51.6,129.2 -11.6,276.4 -140.8,327.9 l -699.7,279.3 c -129.2,51.6 -276.4,-11.6 -327.9,-140.8 L 1776.1,949 c -51.6,-129.2 11.6,-276.4 140.8,-327.9 l 699.7,-279.3 c 129.2,-51.6 276.4,11.6 327.9,140.8 z%22/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/assets/__CSS__" />
+  </head>
+  <body>
+    <svg
+      class="icon-sprite"
+      aria-hidden="true"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <symbol id="icon-play" viewBox="0 0 24 24">
+        <path
+          class="icon-fill"
+          d="M7 4.8v14.4a1 1 0 0 0 1.55.83l10.8-7.2a1 1 0 0 0 0-1.66l-10.8-7.2A1 1 0 0 0 7 4.8Z"
+        />
+      </symbol>
+      <symbol id="icon-pause" viewBox="0 0 24 24">
+        <rect class="icon-fill" x="6" y="4" width="4" height="16" rx="1" />
+        <rect class="icon-fill" x="14" y="4" width="4" height="16" rx="1" />
+      </symbol>
+      <symbol id="icon-square" viewBox="0 0 24 24">
+        <rect class="icon-fill" x="6" y="6" width="12" height="12" rx="1.5" />
+      </symbol>
+      <symbol id="icon-loader-circle" viewBox="0 0 24 24">
+        <path d="M21 12a9 9 0 1 1-6.22-8.56" />
+      </symbol>
+      <symbol id="icon-volume-1" viewBox="0 0 24 24">
+        <path d="M11 5 6 9H2v6h4l5 4Z" />
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+      </symbol>
+      <symbol id="icon-volume-2" viewBox="0 0 24 24">
+        <path d="M11 5 6 9H2v6h4l5 4Z" />
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+      </symbol>
+      <symbol id="icon-volume-x" viewBox="0 0 24 24">
+        <path d="M11 5 6 9H2v6h4l5 4Z" />
+        <path d="m22 9-6 6" />
+        <path d="m16 9 6 6" />
+      </symbol>
+      <symbol id="icon-list-plus" viewBox="0 0 24 24">
+        <path d="M11 12H3" />
+        <path d="M16 19H3" />
+        <path d="M16 5H3" />
+        <path d="M18 9v6" />
+        <path d="M21 12h-6" />
+      </symbol>
+      <symbol id="icon-list-x" viewBox="0 0 24 24">
+        <path d="M16 5H3" />
+        <path d="M11 12H3" />
+        <path d="M16 19H3" />
+        <path d="m15 9 6 6" />
+        <path d="m21 9-6 6" />
+      </symbol>
+      <symbol id="icon-refresh-cw" viewBox="0 0 24 24">
+        <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+        <path d="M21 3v6h-6" />
+      </symbol>
+      <symbol id="icon-arrow-up" viewBox="0 0 24 24">
+        <path d="m18 15-6-6-6 6" />
+      </symbol>
+      <symbol id="icon-arrow-left" viewBox="0 0 24 24">
+        <path d="m15 18-6-6 6-6" />
+      </symbol>
+      <symbol id="icon-grip-vertical" viewBox="0 0 24 24">
+        <circle class="icon-fill" cx="9" cy="5" r="1.5" />
+        <circle class="icon-fill" cx="15" cy="5" r="1.5" />
+        <circle class="icon-fill" cx="9" cy="12" r="1.5" />
+        <circle class="icon-fill" cx="15" cy="12" r="1.5" />
+        <circle class="icon-fill" cx="9" cy="19" r="1.5" />
+        <circle class="icon-fill" cx="15" cy="19" r="1.5" />
+      </symbol>
+      <symbol id="icon-trash-2" viewBox="0 0 24 24">
+        <path d="M3 6h18" />
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+        <path d="M10 11v6" />
+        <path d="M14 11v6" />
+      </symbol>
+    </svg>
+    <main>
+      <header class="app-header">
+        <div class="brand">
+          <svg
+            class="brand-mark"
+            viewBox="1580 -40 1880 2040"
+            aria-hidden="true"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <defs>
+              <linearGradient
+                id="g2tv-frame"
+                gradientUnits="userSpaceOnUse"
+                x1="1616"
+                y1="975"
+                x2="3384"
+                y2="975"
+              >
+                <stop offset="0" stop-color="#ff00ff" />
+                <stop offset="1" stop-color="#00e2e2" />
+              </linearGradient>
+              <linearGradient
+                id="g2tv-dot1"
+                gradientUnits="userSpaceOnUse"
+                x1="2229"
+                y1="811"
+                x2="2567"
+                y2="811"
+              >
+                <stop offset="0" stop-color="#ff00ff" />
+                <stop offset="1" stop-color="#00c0c0" />
+              </linearGradient>
+              <linearGradient
+                id="g2tv-dot2"
+                gradientUnits="userSpaceOnUse"
+                x1="2405"
+                y1="1144"
+                x2="2658"
+                y2="1144"
+              >
+                <stop offset="0" stop-color="#ff00ff" />
+                <stop offset="1" stop-color="#00c0c0" />
+              </linearGradient>
+              <linearGradient
+                id="g2tv-dot3"
+                gradientUnits="userSpaceOnUse"
+                x1="2549"
+                y1="1399"
+                x2="2718"
+                y2="1399"
+              >
+                <stop offset="0" stop-color="#ff00ff" />
+                <stop offset="1" stop-color="#00c0c0" />
+              </linearGradient>
+            </defs>
+            <path
+              fill="url(#g2tv-dot1)"
+              opacity=".7"
+              d="m 2335.5,653.5 c -86.7,34.6 -128.9,132.9 -94.3,219.6 34.6,86.7 132.9,128.9 219.6,94.3 86.7,-34.6 128.9,-132.9 94.3,-219.6 -34.6,-86.6 -132.9,-128.9 -219.6,-94.3 z"
+            />
+            <path
+              fill="url(#g2tv-dot2)"
+              opacity=".7"
+              d="m 2484.3,1026.4 c -65,26 -96.7,99.7 -70.7,164.7 26,65 99.7,96.7 164.7,70.7 65,-26 96.7,-99.7 70.7,-164.7 -25.9,-65 -99.6,-96.7 -164.7,-70.7 z"
+            />
+            <path
+              fill="url(#g2tv-dot3)"
+              opacity=".7"
+              d="m 2601.8,1320.7 c -43.3,17.3 -64.5,66.5 -47.2,109.8 17.3,43.3 66.5,64.5 109.8,47.2 43.3,-17.3 64.5,-66.5 47.2,-109.8 -17.3,-43.3 -66.4,-64.5 -109.8,-47.2 z"
+            />
+            <path
+              fill="url(#g2tv-frame)"
+              d="m 2564,209.8 -258.1,103 91.8,-213.7 c 15.5,-36 -1.2,-77.8 -37.2,-93.3 -36.1,-15.5 -77.8,1.2 -93.3,37.2 l -92.8,216 -216,-92.8 c -36.1,-15.5 -77.8,1.2 -93.3,37.2 -15.5,36 1.2,77.8 37.2,93.3 L 2116,388.5 1864.3,489 c -202,80.6 -300.7,310.6 -220.1,512.6 l 279.3,699.7 c 80.6,202 310.6,300.7 512.6,220.1 l 699.7,-279.3 c 202,-80.6 300.7,-310.6 220.1,-512.6 L 3076.6,429.8 C 2995.9,227.9 2766,129.2 2564,209.8 Z m 659.9,972.5 c 51.6,129.2 -11.6,276.4 -140.8,327.9 l -699.7,279.3 c -129.2,51.6 -276.4,-11.6 -327.9,-140.8 L 1776.1,949 c -51.6,-129.2 11.6,-276.4 140.8,-327.9 l 699.7,-279.3 c 129.2,-51.6 276.4,11.6 327.9,140.8 z"
+            />
+          </svg>
+          <div>
+            <h1>Go2TV</h1>
+            <p>Media Casting Made Easy</p>
+          </div>
+        </div>
+        <div class="header-tools">
+          <div class="connection" aria-live="polite">
+            <i id="connection-dot" aria-hidden="true"></i
+            ><span id="status">Connecting…</span><span id="pending"></span>
+          </div>
+          <button
+            id="theme-toggle"
+            type="button"
+            class="theme-toggle"
+            data-mode="auto"
+            title="Theme: Auto"
+            aria-label="Theme: Auto"
+          ></button>
+        </div>
+      </header>
+
+      <div class="workspace-grid">
+        <div class="primary-column">
+          <section class="player-card">
+            <div class="artwork-shell">
+              <img id="artwork" alt="Current media artwork" hidden />
+              <div id="artwork-placeholder" aria-hidden="true">♪</div>
+            </div>
+            <div class="player-body">
+              <div class="player-heading">
+                <div class="now-playing">
+                  <span>Now playing</span>
+                  <h2 id="now-playing-title">Nothing playing</h2>
+                </div>
+                <strong id="playback-state">Stopped</strong>
+              </div>
+              <div class="timeline">
+                <p id="time">0:00 / 0:00</p>
+                <input
+                  id="seek"
+                  type="range"
+                  min="0"
+                  max="0"
+                  value="0"
+                  aria-label="Seek"
+                  disabled
+                />
+              </div>
+              <div class="transport-row">
+                <div class="controls">
+                  <button
+                    id="play-toggle"
+                    type="button"
+                    data-command="player.play"
+                    class="primary-control"
+                    aria-label="Play"
+                    title="Play"
+                  >
+                    <svg class="action-icon" aria-hidden="true">
+                      <use href="#icon-play"></use>
+                    </svg></button
+                  ><button
+                    id="stop-button"
+                    type="button"
+                    data-command="player.stop"
+                    aria-label="Stop"
+                    title="Stop"
+                  >
+                    <svg class="action-icon" aria-hidden="true">
+                      <use href="#icon-square"></use>
+                    </svg>
+                  </button>
+                </div>
+                <div class="player-options">
+                  <label
+                    ><input id="transcode" type="checkbox" /> Transcode next
+                    load</label
+                  >
+                </div>
+                <div
+                  class="volume-control"
+                  role="group"
+                  aria-label="Volume controls"
+                >
+                  <span>Volume</span
+                  ><button
+                    id="volume-down"
+                    type="button"
+                    aria-label="Volume down"
+                    title="Volume down"
+                  >
+                    <svg class="action-icon" aria-hidden="true">
+                      <use href="#icon-volume-1"></use>
+                    </svg></button
+                  ><button
+                    id="volume-up"
+                    type="button"
+                    aria-label="Volume up"
+                    title="Volume up"
+                  >
+                    <svg class="action-icon" aria-hidden="true">
+                      <use href="#icon-volume-2"></use>
+                    </svg></button
+                  ><button
+                    id="mute"
+                    type="button"
+                    aria-label="Mute"
+                    title="Mute"
+                    aria-pressed="false"
+                  >
+                    <svg class="action-icon" aria-hidden="true">
+                      <use href="#icon-volume-x"></use>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="library-card">
+            <div class="section-heading library-heading">
+              <div>
+                <span>Media browser</span>
+                <h2>Library</h2>
+              </div>
+              <div class="library-tools">
+                <input
+                  id="library-filter"
+                  type="search"
+                  placeholder="Filter this folder"
+                  aria-label="Filter this folder"
+                /><select id="roots" aria-label="Media root"></select>
+              </div>
+            </div>
+            <details
+              id="selection-status"
+              class="selection-status"
+              data-has-details="false"
+            >
+              <summary>
+                <span class="status-label">Selected media</span
+                ><strong id="media-selected">No media</strong>
+              </summary>
+              <div id="subtitle-selection" class="selection-details" hidden>
+                <span class="status-label">Subtitles</span>
+                <div class="selection-value">
+                  <span id="subtitle-selected">None</span
+                  ><button id="subtitle-clear" type="button" hidden>
+                    Clear
+                  </button>
+                </div>
+              </div>
+            </details>
+            <div class="browser-toolbar">
+              <button
+                id="folder-up"
+                type="button"
+                class="icon-action"
+                aria-label="Up one folder"
+                title="Up one folder"
+                hidden
+              >
+                <svg class="action-icon" aria-hidden="true">
+                  <use href="#icon-arrow-left"></use>
+                </svg>
+              </button>
+              <div
+                id="breadcrumbs"
+                class="breadcrumbs"
+                aria-label="Current folder"
+              ></div>
+              <button
+                id="add-visible"
+                type="button"
+                class="icon-action"
+                aria-label="Add listed files to playlist"
+                title="Add listed files to playlist"
+                disabled
+              >
+                <svg class="action-icon" aria-hidden="true">
+                  <use href="#icon-list-plus"></use>
+                </svg>
+                <span id="add-visible-count" class="count-badge" hidden></span>
+              </button>
+            </div>
+            <ul id="library" class="library-list"></ul>
+          </section>
+        </div>
+
+        <aside class="side-column">
+          <section class="devices-card">
+            <div class="section-heading device-heading">
+              <div>
+                <span>Device</span>
+                <h2>Renderer</h2>
+              </div>
+              <button
+                id="refresh"
+                type="button"
+                class="icon-action"
+                aria-label="Refresh devices"
+                title="Refresh devices"
+              >
+                <svg class="action-icon" aria-hidden="true">
+                  <use href="#icon-refresh-cw"></use>
+                </svg>
+              </button>
+            </div>
+            <div class="device-controls">
+              <div id="device-picker" class="device-picker">
+                <button
+                  id="device-trigger"
+                  class="device-trigger"
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-controls="devices"
+                  aria-expanded="false"
+                ></button>
+                <div
+                  id="devices"
+                  class="device-list"
+                  role="listbox"
+                  aria-label="Renderer"
+                  hidden
+                ></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="queue-card">
+            <div class="section-heading">
+              <div>
+                <span>Up next</span>
+                <h2>Playlist <small id="queue-count">0</small></h2>
+              </div>
+              <button
+                id="queue-clear"
+                type="button"
+                class="icon-action"
+                aria-label="Clear playlist"
+                title="Clear playlist"
+                disabled
+              >
+                <svg class="action-icon" aria-hidden="true">
+                  <use href="#icon-list-x"></use>
+                </svg>
+              </button>
+            </div>
+            <ul id="queue"></ul>
+          </section>
+
+          <section class="policy-card">
+            <div class="section-heading">
+              <div>
+                <span>Behavior</span>
+                <h2>Playback</h2>
+              </div>
+            </div>
+            <div class="policies">
+              <label
+                ><input id="loop" type="checkbox" /><span
+                  ><strong>Loop current</strong
+                  ><small>Replay the current item</small></span
+                ></label
+              >
+              <label
+                ><input id="autoplay" type="checkbox" /><span
+                  ><strong>Autoplay next</strong
+                  ><small>Continue through the playlist</small></span
+                ></label
+              >
+              <label
+                ><input id="same-type" type="checkbox" /><span
+                  ><strong>Same type only</strong
+                  ><small>Skip unlike media</small></span
+                ></label
+              >
+              <label
+                ><input id="gapless" type="checkbox" /><span
+                  ><strong>Gapless</strong
+                  ><small>Queue next URI on DLNA renderers</small></span
+                ></label
+              >
+              <label class="image-duration"
+                ><span
+                  ><strong>Image duration</strong
+                  ><small>0 disables; otherwise 5–300 seconds</small></span
+                ><input
+                  id="image-duration"
+                  type="number"
+                  min="0"
+                  max="300"
+                  step="1"
+                  value="10"
+              /></label>
+            </div>
+          </section>
+        </aside>
+      </div>
+      <aside id="toast" aria-live="polite" aria-label="Notifications"></aside>
+    </main>
+    <button
+      id="back-to-top"
+      type="button"
+      aria-label="Back to top"
+      aria-hidden="true"
+      title="Back to top"
+      tabindex="-1"
+      data-visible="false"
+    >
+      <svg class="action-icon" aria-hidden="true">
+        <use href="#icon-arrow-up"></use>
+      </svg>
+    </button>
+    <dialog id="artwork-modal" aria-labelledby="artwork-modal-title">
+      <div class="artwork-modal-card">
+        <button
+          id="artwork-modal-close"
+          type="button"
+          aria-label="Close artwork"
+        >
+          ×
+        </button>
+        <img id="artwork-modal-image" alt="" hidden />
+        <p id="artwork-modal-title"></p>
+      </div>
+    </dialog>
+    <script type="module" src="/assets/__JS__"></script>
+  </body>
+</html>

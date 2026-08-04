@@ -380,19 +380,32 @@ func (a *Application) writePlayedItems() error {
 }
 
 func (a *Application) Update() error {
+	return a.update(a.connectionRetries)
+}
+
+// UpdateOnce refreshes the status with a single attempt and no retry
+// sleeps. Meant for frequent status polls where the caller has its own
+// failure policy and a slow failure is worse than a fast one.
+func (a *Application) UpdateOnce() error {
+	return a.update(1)
+}
+
+func (a *Application) update(attempts int) error {
 	var recvStatus *cast.ReceiverStatusResponse
 	var err error
 	// Simple retry. We need this for when the device isn't currently
 	// available, but it is likely that it will come up soon. If the device
 	// has switch network addresses the caller is expected to handle that situation.
-	for i := 0; i < a.connectionRetries; i++ {
+	for i := range attempts {
 		recvStatus, err = a.getReceiverStatus()
 		if err == nil {
 			break
 		}
 		a.log("error getting receiver status: %v", err)
-		a.log("unable to get status from device; attempt %d/5, retrying...", i+1)
-		time.Sleep(time.Second * 2)
+		if i+1 < attempts {
+			a.log("unable to get status from device; attempt %d/%d, retrying...", i+1, attempts)
+			time.Sleep(time.Second * 2)
+		}
 	}
 	if err != nil {
 		return err
@@ -417,7 +430,15 @@ func (a *Application) Update() error {
 		return nil
 	}
 
-	a.updateMediaStatus()
+	// Report a media-session failure rather than leaving the previous snapshot
+	// in place and letting callers read it as fresh. Deliberately not clearing
+	// a.media here: callers translate a nil snapshot to IDLE, and the playback
+	// monitor treats a single IDLE poll as "finished", so clearing would end
+	// playback on one dropped response. An error instead goes through the
+	// monitor's lost-poll tolerance.
+	if err := a.updateMediaStatus(); err != nil {
+		return errors.Wrap(err, "unable to update media status")
+	}
 
 	return nil
 }
@@ -524,14 +545,18 @@ func (a *Application) Skipad() error {
 
 	var result error
 	MAX_LOOP := a.skipadRetries
-	for a.media.CustomData.PlayerState == 1081 {
+	// updateMediaStatus can clear a.media when the receiver reports no session,
+	// so the loop condition must tolerate a nil snapshot.
+	for a.media != nil && a.media.CustomData.PlayerState == 1081 {
 		result = a.sendMediaRecv(&cast.MediaHeader{
 			PayloadHeader:  cast.SkipHeader,
 			MediaSessionId: a.media.MediaSessionId,
 		})
 		// fmt.Printf("Looping because %d\n", a.media.CustomData.PlayerState)
 		time.Sleep(a.skipadSleep)
-		a.updateMediaStatus()
+		if err := a.updateMediaStatus(); err != nil {
+			return err
+		}
 		MAX_LOOP--
 		if MAX_LOOP == 0 {
 			return ErrAdMaxLoop
@@ -589,7 +614,13 @@ func (a *Application) Skip() error {
 	// TODO(vishen): can we unroll this, so it doesn't update the current state?
 	// but just returns it?
 	// that might also make a.media == nil checks pointless?
-	a.updateMediaStatus()
+	if err := a.updateMediaStatus(); err != nil {
+		return err
+	}
+	// The refresh can clear the snapshot, so re-check before dereferencing it.
+	if a.media == nil {
+		return ErrNoMediaSkip
+	}
 
 	v := a.media.CurrentTime - 10
 	if a.media.Media.Duration > 0 {
@@ -633,7 +664,13 @@ func (a *Application) SeekFromStart(value int) error {
 	// TODO(vishen): can we unroll this, so it doesn't update the current state?
 	// but just returns it?
 	// that might also make a.media == nil checks pointless?
-	a.updateMediaStatus()
+	if err := a.updateMediaStatus(); err != nil {
+		return err
+	}
+	// The refresh can clear the snapshot, so re-check before dereferencing it.
+	if a.media == nil {
+		return ErrMediaNotYetInitialised
+	}
 
 	// TODO(vishen): maybe there is another ResumeState that lets us
 	// seek from the end? Although not sure how this works for live media?

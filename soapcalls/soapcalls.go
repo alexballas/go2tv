@@ -4,8 +4,10 @@ import (
 	"context"
 	"io"
 	"net/url"
+	"slices"
 	"time"
 
+	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/utils"
 )
 
@@ -22,6 +24,7 @@ type Options struct {
 	Transcode      bool
 	Seek           bool
 	FFmpegSeek     int
+	Metadata       metadata.Media
 }
 
 // NewTVPayload creates a new TVPayload based on the provided options.
@@ -55,6 +58,7 @@ func NewTVPayload(o *Options) (*TVPayload, error) {
 		EventURL:                    upnpServicesURLs.AvtransportEventSubURL,
 		RenderingControlURL:         upnpServicesURLs.RenderingControlURL,
 		ConnectionManagerURL:        upnpServicesURLs.ConnectionManagerURL,
+		PinnedIP:                    upnpServicesURLs.PinnedIP,
 		CallbackURL:                 "http://" + listenAddress + "/" + callbackPath,
 		MediaURL:                    "http://" + listenAddress + "/" + utils.ConvertFilename(o.Media),
 		SubtitlesURL:                "http://" + listenAddress + "/" + utils.ConvertFilename(o.Subs),
@@ -69,6 +73,7 @@ func NewTVPayload(o *Options) (*TVPayload, error) {
 		FFmpegSeek:                  o.FFmpegSeek,
 		Seekable:                    o.Seek,
 		LogOutput:                   o.LogOutput,
+		Metadata:                    o.Metadata,
 	}, nil
 }
 
@@ -84,4 +89,24 @@ func (p *TVPayload) SetContext(ctx context.Context) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.ctx = ctx
+}
+
+// SetAVTransportURI invokes the fallback-preserving URI load path.
+func (p *TVPayload) SetAVTransportURI() error { return p.setAVTransportSoapCall() }
+
+// SetNextAVTransportURI invokes the existing next-URI compatibility path.
+func (p *TVPayload) SetNextAVTransportURI(clear bool) error {
+	return p.setNextAVTransportSoapCall(clear)
+}
+
+// SubscriptionIDs returns a snapshot of active renderer subscription IDs.
+func (p *TVPayload) SubscriptionIDs() []string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	ids := make([]string, 0, len(p.MediaRenderersStates))
+	for id := range p.MediaRenderersStates {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	return ids
 }

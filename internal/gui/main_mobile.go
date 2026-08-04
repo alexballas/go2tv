@@ -11,6 +11,7 @@ import (
 
 	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/container"
+	"github.com/alexballas/refyne/v2/data/binding"
 	"github.com/alexballas/refyne/v2/lang"
 	"github.com/alexballas/refyne/v2/layout"
 	"github.com/alexballas/refyne/v2/theme"
@@ -96,7 +97,27 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	sfiletext.Disable()
 
 	playpause := widget.NewButtonWithIcon(lang.L("Play"), theme.MediaPlayIcon(), func() {
-		playAction(s)
+		hasMedia := s.mediafile != nil || (s.MediaText != nil && s.MediaText.Text != "")
+		switch playbackPreflight(
+			s.getScreenState(),
+			hasMedia,
+			s.selectedDeviceType,
+			s.selectedDevice.addr,
+			s.controlURL,
+		) {
+		case playbackPreflightMissingMedia:
+			check(w, errors.New(lang.L("please select a media file or enter a media URL")))
+			return
+		case playbackPreflightMissingDevice:
+			check(w, errors.New(lang.L("please select a device")))
+			return
+		}
+
+		// Android only permits starting a foreground service while the app is
+		// visible. Start it directly from the user action, before casting work
+		// moves to a goroutine and the receiver reports its eventual state.
+		beginBackgroundSession(s)
+		go playAction(s)
 	})
 
 	stop := widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
@@ -123,6 +144,10 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		clearsubsAction(s)
 	})
 
+	sliderBar := newTappableSlider(s)
+	curPos := binding.NewString()
+	endPos := binding.NewString()
+
 	externalmedia := widget.NewCheck(lang.L("Media from URL"), func(b bool) {})
 	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
 	transcode := widget.NewCheck(lang.L("Transcode"), func(b bool) {
@@ -141,7 +166,13 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.MediaText = mfiletext
 	s.SubsText = sfiletext
 	s.DeviceList = list
+	s.SlideBar = sliderBar
+	s.CurrentPos = curPos
+	s.EndPos = endPos
 
+	curPos.Set("00:00:00")
+	endPos.Set("00:00:00")
+	sliderArea := container.NewBorder(nil, nil, widget.NewLabelWithData(curPos), widget.NewLabelWithData(endPos), sliderBar)
 	actionbuttons := container.New(&mainButtonsLayout{buttonHeight: 1.5, buttonPadding: theme.Padding()},
 		playpause,
 		volumedown,
@@ -160,7 +191,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
 	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearmedia), clearmedia, mfiletext)
 	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
-	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, actionbuttons, container.NewPadded(devicelabel))
+	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, sliderArea, actionbuttons, container.NewPadded(devicelabel))
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
 
 	// Widgets actions
@@ -232,6 +263,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		mfiletext.SetPlaceHolder("")
 		s.MediaText.Text = mediafileOldText
 		s.mediafile = mediafileOld
+		resolveSelectedMobileArtwork(s, mediafileOld)
 		mediafilelabel.Refresh()
 		mfiletext.Disable()
 	}
@@ -248,6 +280,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	// Check mute status for selected device
 	go checkMutefunc(s)
+
+	// Keep track of the media progress and reflect that to the slide bar.
+	go sliderUpdate(s)
 
 	return content
 }
@@ -349,20 +384,10 @@ func checkMutefunc(s *FyneScreen) {
 
 	var checkMuteCounter int
 	for range checkMute.C {
-		// Handle Chromecast mute status
+		// Chromecast mute state is synced by chromecastStatusWatcher from the
+		// status it already polls; a second concurrent GetStatus loop only
+		// doubles control traffic and races the library's state updates.
 		if s.selectedDeviceType == devices.DeviceTypeChromecast {
-			if s.chromecastClient == nil || !s.chromecastClient.IsConnected() {
-				continue
-			}
-			status, err := s.chromecastClient.GetStatus()
-			if err != nil {
-				continue
-			}
-			if status.Muted {
-				setMuteUnmuteView("Unmute", s)
-			} else {
-				setMuteUnmuteView("Mute", s)
-			}
 			continue
 		}
 

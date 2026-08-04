@@ -1,13 +1,11 @@
 <br/>
 <p align="center">
 <img src="assets/go2tv-logo-color.svg" width="225" alt="Go2TV logo">
-</a>
 </p>
 <br/>
 <div align="center">
 <p>
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/alexballas/Go2TV)](https://goreportcard.com/report/github.com/alexballas/Go2TV)
 [![Release Version](https://img.shields.io/github/v/release/alexballas/Go2TV?label=Release)](https://github.com/alexballas/Go2TV/releases/latest)
 [![Tests](https://github.com/alexballas/go2tv/actions/workflows/go.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/go.yml)
 
@@ -34,6 +32,41 @@ Go2TV lets you play video, audio, and image files on your Smart TV or Chromecast
 
 No need to copy files to a USB drive or set up a media server. Just select your file, pick your device, and play.
 
+## Features
+
+- **Auto-discovery** - Automatically finds Smart TVs and Chromecast devices on your network
+- **Transcoding** - Converts incompatible video formats on-the-fly (requires FFmpeg)
+- **Subtitles** - Supports external SRT/VTT files and embedded MKV subtitles
+- **Seek support** - Jump to any position in the video
+- **Playlist playback** - Single-file and multi-file playlists with add/remove/reorder/select support
+- **Loop and auto-play** - Loop the current file or auto-play through the playlist
+- **Gapless playback** - Supported for DLNA devices
+- **RTMP Server** - Cast live streams from OBS directly to Chromecast (requires FFmpeg)
+- **Cast Desktop (experimental)** - Cast desktop as live stream to Chromecast (requires FFmpeg)
+- **Web UI (server mode)** - Browse media roots and control casting from any browser on your network
+- **GUI and CLI** - Use the graphical interface or command line
+
+---
+
+## Screenshots
+
+**GUI Mode**
+
+![](https://i.imgur.com/6hwB4DC.png)
+![](https://i.imgur.com/dQ40FWb.png)
+
+**CLI Mode**
+
+![](https://i.imgur.com/BsMevHi.gif)
+
+**Web UI (Server Mode)**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/webui-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="assets/webui-light.png">
+  <img alt="Go2TV Web UI" src="assets/webui-dark.png">
+</picture>
+
 ---
 
 ## Installation
@@ -44,9 +77,16 @@ No need to copy files to a USB drive or set up a media server. Just select your 
 brew install --cask go2tv
 ```
 
+**Linux**: Install from [Flathub](https://flathub.org/en/apps/app.go2tv.go2tv):
+
+```bash
+flatpak install flathub app.go2tv.go2tv
+```
+
 Or **download the latest release** from the [releases page](https://github.com/alexballas/Go2TV/releases/latest).
 
-- **Windows**: Download `go2tv_vX.Y.Z_windows_amd64.zip`, extract, and run `go2tv.exe`
+- **Windows GUI**: Download `go2tv_vX.Y.Z_windows_amd64.zip`, extract, and run `go2tv.exe`
+- **Windows CLI**: Download `go2tv_vX.Y.Z_windows_amd64_lite.zip`, extract, and run `go2tv-lite.exe`
 - **macOS**: Download `go2tv_vX.Y.Z_macOS_amd64.zip` (Intel) or `go2tv_vX.Y.Z_macOS_arm64.zip` (Apple Silicon), extract, and run the app
 - **Linux**: Download `go2tv_vX.Y.Z_linux_amd64.zip` (or appropriate arch), extract, and run `go2tv`
 - **Android**: Download `go2tv_vX.Y.Z.apk` for the arm64 build with bundled FFmpeg transcoding
@@ -66,128 +106,93 @@ When transcoding is enabled, Go2TV probes available GPU H.264 encoders first and
 
 ---
 
-## Screenshots
+## Usage
 
-**GUI Mode**
+### GUI
 
-![](https://i.imgur.com/6hwB4DC.png)
-![](https://i.imgur.com/dQ40FWb.png)
+Select a media file (or drag and drop it onto the main window), pick a device from the list, and click **Play**.
 
-**CLI Mode**
+#### Playlist
 
-![](https://i.imgur.com/BsMevHi.gif)
+The **Playlist** window lets you add, remove, reorder, and select files. Dragging files onto
+the main window replaces the playlist; dragging them onto the Playlist window appends them.
+**Next**, **Previous**, and **Auto-Play Next File** follow the playlist order.
 
----
+### CLI
 
-## Playlist (GUI)
-
-Go2TV GUI keeps the current selection in a **Playlist**, even for a single file.
-
-- Selecting or dropping a single local file creates a 1-item playlist
-- Selecting or dropping multiple files creates a multi-item playlist
-- The **Playlist** window lets you add, remove, reorder, and select items
-- Drag and drop on the main window replaces the current playlist
-- Drag and drop on the Playlist window appends files when a playlist already exists
-- **Next**, **Previous**, and **Auto-Play Next File** follow the playlist order
-- **Auto-Play Next File** wraps to the start of the playlist when it reaches the end
-- **Same File Types Only** is still respected for auto-play traversal
-
----
-
-## RTMP Streaming (Chromecast only)
-
-Go2TV can act as an RTMP server, allowing you to stream from OBS or other software directly to your Chromecast. **This feature requires FFmpeg.**
-
-1. Select a **Chromecast** device.
-2. Check the **RTMP Server** box.
-3. Click **Play** in Go2TV (the app will wait for the stream).
-4. Use the provided URL in your streaming software (e.g., OBS Settings > Stream).
-5. Start streaming in your software.
-
----
-
-## Cast Desktop (Experimental, Chromecast only)
-
-Go2TV can cast your desktop as a live stream to Chromecast devices. **This feature is experimental and requires FFmpeg.**
-
-1. Select a **Chromecast** device.
-2. Check **Cast Desktop (experimental)**.
-3. Click **Cast**.
-
-Notes:
-- Experimental: behavior/performance may vary by system.
-- Chromecast only (not DLNA/UPnP TVs).
-- Not supported on audio-only Chromecast devices.
-
----
-
-## CLI Usage
-
-``` console
-$ go2tv -h
-Usage of go2tv:
-  -l    List available devices (Smart TVs and Chromecasts).
-  -s string
-        Path to subtitles file (.srt or .vtt).
-  -t string
-        Device URL to cast to (from -l output).
-  -tc
-        Force transcoding with ffmpeg.
-  -u string
-        URL to media file (triggers CLI mode).
-  -v string
-        Path to video/audio file (triggers CLI mode).
-  -version
-        Print version.
-```
-
-**Examples**
+Run `go2tv -h` for all options. Common commands:
 
 ``` console
 # List available devices
 go2tv -l
 
-# Play a video on your TV
+# Play a local file
 go2tv -v movie.mp4 -t http://192.168.1.100:8060/
 
-# Play with subtitles
-go2tv -v movie.mp4 -s movie.srt -t http://192.168.1.100:8060/
+# Play with subtitles and transcoding
+go2tv -v movie.mkv -s movie.srt -tc -t http://192.168.1.100:8060/
 
-# Force transcoding for incompatible formats
-go2tv -v video.avi -tc -t http://192.168.1.100:8060/
+# Play a remote file
+go2tv -u https://example.com/movie.mp4 -t http://192.168.1.50:8009
 
-# Cast to Chromecast
-go2tv -v movie.mp4 -t http://192.168.1.50:8009
-
-# Stream from stdin
-cat video.mp4 | go2tv -t http://192.168.1.50:8009
-
-# Stream from command output
+# Stream from another command
 yt-dlp -o - "https://youtu.be/..." | go2tv -t http://192.168.1.50:8009
 
-# Stream from stdin with transcoding
-cat video.mkv | go2tv -tc -t http://192.168.1.50:8009
-
-# Stream from command output with transcoding
-yt-dlp -o - "https://youtu.be/..." | go2tv -tc -t http://192.168.1.50:8009
+# Transcode with a custom FFmpeg binary
+go2tv -tc -ffmpeg /path/to/ffmpeg -v movie.mkv -t http://192.168.1.50:8009
 ```
+
+### Web UI (Server Mode)
+
+Run Go2TV as a web server to browse selected media folders and control casting from a
+browser. The Web UI has separate device, playlist, and playback state from the desktop GUI.
+
+From the GUI, open **Settings → Remote Web Session…**, add media folders, choose local or
+LAN access, and start the session.
+
+For headless use, pass `-server` and at least one `-media-root`:
+
+``` console
+go2tv -server -media-root /path/to/Media
+```
+
+Use `-ffmpeg /path/to/ffmpeg` when FFmpeg is not available on `PATH`. CLI,
+go2tv-lite, and the Web UI verify and use the supplied binary.
+
+The default URL is `http://127.0.0.1:9666/`. Repeat `-media-root` to expose multiple
+directories:
+
+``` console
+go2tv -server \
+  -media-root /path/to/Movies \
+  -media-root /path/to/Music \
+  -media-root "/path/to/TV Shows"
+```
+
+For LAN access, set a non-loopback `-listen` address and allow each browser origin:
+
+``` console
+go2tv -server \
+  -listen 0.0.0.0:9666 \
+  -allowed-origin http://192.168.1.20:9666 \
+  -media-root /path/to/Media
+```
+
+> LAN mode uses HTTP without TLS. Use it only on trusted networks.
+
+### RTMP Streaming (Chromecast only)
+
+Select a Chromecast, enable **RTMP Server**, and click **Play**. Use the displayed URL in
+OBS or other streaming software. Requires FFmpeg.
+
+### Cast Desktop (Experimental, Chromecast only)
+
+Select a Chromecast, enable **Cast Desktop (experimental)**, and click **Cast**. Requires
+FFmpeg and is not supported on audio-only Chromecast devices.
 
 ---
 
-## Features
-
-- **Auto-discovery** - Automatically finds Smart TVs and Chromecast devices on your network
-- **Transcoding** - Converts incompatible video formats on-the-fly (requires FFmpeg)
-- **Subtitles** - Supports external SRT/VTT files and embedded MKV subtitles
-- **Seek support** - Jump to any position in the video
-- **Playlist playback** - Single-file and multi-file playlists with add/remove/reorder/select support
-- **Loop and auto-play** - Loop the current file or auto-play through the playlist
-- **Gapless playback** - Supported for DLNA devices
-- **RTMP Server** - Cast live streams from OBS directly to Chromecast (requires FFmpeg)
-- **Cast Desktop (experimental)** - Cast desktop as live stream to Chromecast (requires FFmpeg)
-- **GUI and CLI** - Use the graphical interface or command line
-
-### Supported File Types (GUI)
+## Supported File Types (GUI)
 
 mp4, avi, mkv, mpeg, mov, webm, m4v, mpv, mp3, flac, wav, jpg, jpeg, png
 
@@ -199,15 +204,19 @@ The CLI accepts any file type.
 
 [mcp-beam](https://go2tv.app/mcp-beam/) is a companion MCP server (stdio transport) built on top of Go2TV core packages.
 
-Use it when you want MCP clients/agents to:
+It lets MCP clients discover Chromecast and DLNA/UPnP devices, cast local files or remote
+URLs, and stop playback. For direct control, use the Go2TV GUI or CLI.
 
-- Discover Chromecast and DLNA/UPnP devices on your LAN
-- Cast local media files
-- Cast remote media URLs
-- Stop active playback sessions
+---
 
-If you want direct end-user control, use Go2TV GUI/CLI.  
-If you want tool-driven casting from MCP-compatible workflows, use mcp-beam.
+## Troubleshooting
+
+### Firewall Configuration
+
+If you're behind a firewall, allow inbound traffic from devices on your local network:
+
+- `3339-3438/udp` for DLNA/UPnP device discovery
+- `3500-4499/tcp` for the local HTTP media server used by DLNA and Chromecast playback
 
 ---
 
@@ -217,18 +226,11 @@ If you want tool-driven casting from MCP-compatible workflows, use mcp-beam.
 
 Go2TV uses a custom Chromecast receiver hosted at https://cast-receiver.go2tv.app/. It is not part of this open-source repository and is not currently published. Functionality matches the default receiver, with minor branding differences.
 
-**Firewall Configuration**
-
-If you're behind a firewall, allow inbound traffic from devices on your local network:
-
-- `3339-3438/udp` for DLNA/UPnP device discovery
-- `3500-4499/tcp` for the local HTTP media server used by DLNA and Chromecast playback
-
 ---
 
 ## Building from Source
 
-**Requirements**: Go 1.25
+**Requirements**: Go 1.26
 
 ``` console
 git clone https://github.com/alexballas/go2tv
@@ -236,27 +238,18 @@ cd go2tv
 make build
 ```
 
-**AppImage build (Linux)**
+### AppImage builds (Linux)
 
 ``` console
-make appimage
+make appimage          # Without FFmpeg
+make appimage-ffmpeg   # With FFmpeg
 ```
 
-`v2.1` style build. No bundled `ffmpeg`/`ffprobe`.
+For the FFmpeg build, `APPIMAGE_FFMPEG_MODE` supports `auto` (default), `system`,
+`download`, or `none`. Override binary paths with `APPIMAGE_FFMPEG_BIN` and
+`APPIMAGE_FFPROBE_BIN`.
 
-**AppImage build (with ffmpeg, Linux)**
-
-``` console
-make appimage-ffmpeg
-```
-
-- `APPIMAGE_FFMPEG_MODE=auto` (default): use host `ffmpeg`/`ffprobe` if static; else download prebuilt bundle
-- `APPIMAGE_FFMPEG_MODE=system`: require host `ffmpeg`/`ffprobe`
-- `APPIMAGE_FFMPEG_MODE=download`: always download prebuilt bundle
-- `APPIMAGE_FFMPEG_MODE=none`: build AppImage without ffmpeg binaries
-- Optional explicit paths: `APPIMAGE_FFMPEG_BIN=/path/ffmpeg APPIMAGE_FFPROBE_BIN=/path/ffprobe`
-
-**Android builds**
+### Android builds
 
 ``` console
 make android
@@ -264,7 +257,7 @@ make android
 
 `make android` builds the arm64 APK and bundles Android `ffmpeg`/`ffprobe` executables as native libraries. Set `ANDROID_NDK_HOME` and `ANDROID_HOME`.
 
-**Using Docker**
+### Using Docker
 
 Build the image:
 ``` console

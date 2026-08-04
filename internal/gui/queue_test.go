@@ -25,6 +25,47 @@ func newTraversalTestScreen(t *testing.T, currentPath string) *FyneScreen {
 	}
 }
 
+func newQueueMediaSelectionTestScreen() *FyneScreen {
+	return &FyneScreen{
+		mediaFormats:       []string{".mp4"},
+		videoFormats:       []string{".mp4"},
+		MediaText:          widget.NewEntry(),
+		SubsText:           widget.NewEntry(),
+		SelectInternalSubs: widget.NewSelect(nil, nil),
+		CustomSubsCheck:    widget.NewCheck("", nil),
+		PlayPause:          widget.NewButton("", nil),
+	}
+}
+
+func testQueueItems(paths ...string) []QueueItem {
+	items := make([]QueueItem, 0, len(paths))
+	for _, path := range paths {
+		item, ok := (&FyneScreen{}).newQueueItem(path)
+		if !ok {
+			panic("invalid test media path: " + path)
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
+func assertQueuePaths(t *testing.T, screen *FyneScreen, want []string) {
+	t.Helper()
+
+	if screen.SessionQueue == nil {
+		t.Fatalf("expected queue")
+	}
+	if screen.SessionQueue.Len() != len(want) {
+		t.Fatalf("expected %d queue items, got %d", len(want), screen.SessionQueue.Len())
+	}
+	items := screen.SessionQueue.Items()
+	for i, wantPath := range want {
+		if got := items[i].Path(); got != wantPath {
+			t.Fatalf("queue item %d: got %q want %q", i, got, wantPath)
+		}
+	}
+}
+
 func TestGetAdjacentQueuedMediaSameTypeOnly(t *testing.T) {
 	dir := t.TempDir()
 	videoOne := filepath.Join(dir, "01.mp4")
@@ -33,11 +74,7 @@ func TestGetAdjacentQueuedMediaSameTypeOnly(t *testing.T) {
 
 	screen := newTraversalTestScreen(t, videoOne)
 	screen.SkinNextOnlySameTypes = true
-	screen.SessionQueue = newSessionQueue([]QueueItem{
-		{Path: videoOne, BaseName: filepath.Base(videoOne), ParentFolder: dir, MediaType: "video"},
-		{Path: audioOne, BaseName: filepath.Base(audioOne), ParentFolder: dir, MediaType: "audio"},
-		{Path: videoTwo, BaseName: filepath.Base(videoTwo), ParentFolder: dir, MediaType: "video"},
-	}, 0)
+	screen.SessionQueue = newSessionQueue(testQueueItems(videoOne, audioOne, videoTwo), 0)
 
 	name, path, err := getAdjacentMedia(screen, 1)
 	if err != nil {
@@ -57,10 +94,7 @@ func TestGetAdjacentQueuedMediaStopsAtEnd(t *testing.T) {
 	videoTwo := filepath.Join(dir, "02.mp4")
 
 	screen := newTraversalTestScreen(t, videoTwo)
-	screen.SessionQueue = newSessionQueue([]QueueItem{
-		{Path: videoOne, BaseName: filepath.Base(videoOne), ParentFolder: dir, MediaType: "video"},
-		{Path: videoTwo, BaseName: filepath.Base(videoTwo), ParentFolder: dir, MediaType: "video"},
-	}, 1)
+	screen.SessionQueue = newSessionQueue(testQueueItems(videoOne, videoTwo), 1)
 
 	_, _, err := getAdjacentMedia(screen, 1)
 	if !errors.Is(err, errNoNextQueueMedia) {
@@ -74,10 +108,7 @@ func TestGetNextAutoPlayMediaWrapsAtEnd(t *testing.T) {
 	videoTwo := filepath.Join(dir, "02.mp4")
 
 	screen := newTraversalTestScreen(t, videoTwo)
-	screen.SessionQueue = newSessionQueue([]QueueItem{
-		{Path: videoOne, BaseName: filepath.Base(videoOne), ParentFolder: dir, MediaType: "video"},
-		{Path: videoTwo, BaseName: filepath.Base(videoTwo), ParentFolder: dir, MediaType: "video"},
-	}, 1)
+	screen.SessionQueue = newSessionQueue(testQueueItems(videoOne, videoTwo), 1)
 
 	name, path, err := getNextAutoPlayMediaOrError(screen)
 	if err != nil {
@@ -99,11 +130,7 @@ func TestGetNextAutoPlayMediaWrapsSameTypeOnly(t *testing.T) {
 
 	screen := newTraversalTestScreen(t, audioTwo)
 	screen.SkinNextOnlySameTypes = true
-	screen.SessionQueue = newSessionQueue([]QueueItem{
-		{Path: audioOne, BaseName: filepath.Base(audioOne), ParentFolder: dir, MediaType: "audio"},
-		{Path: videoOne, BaseName: filepath.Base(videoOne), ParentFolder: dir, MediaType: "video"},
-		{Path: audioTwo, BaseName: filepath.Base(audioTwo), ParentFolder: dir, MediaType: "audio"},
-	}, 2)
+	screen.SessionQueue = newSessionQueue(testQueueItems(audioOne, videoOne, audioTwo), 2)
 
 	name, path, err := getNextAutoPlayMediaOrError(screen)
 	if err != nil {
@@ -124,10 +151,7 @@ func TestGetNextAutoPlayMediaStopsWithoutWrapCandidate(t *testing.T) {
 
 	screen := newTraversalTestScreen(t, videoOne)
 	screen.SkinNextOnlySameTypes = true
-	screen.SessionQueue = newSessionQueue([]QueueItem{
-		{Path: videoOne, BaseName: filepath.Base(videoOne), ParentFolder: dir, MediaType: "video"},
-		{Path: audioOne, BaseName: filepath.Base(audioOne), ParentFolder: dir, MediaType: "audio"},
-	}, 0)
+	screen.SessionQueue = newSessionQueue(testQueueItems(videoOne, audioOne), 0)
 
 	_, _, err := getNextAutoPlayMediaOrError(screen)
 	if !errors.Is(err, errNoNextQueueMedia) {
@@ -152,11 +176,7 @@ func TestGetPreviousQueuedMediaSameTypeOnly(t *testing.T) {
 
 	screen := newTraversalTestScreen(t, videoTwo)
 	screen.SkinNextOnlySameTypes = true
-	screen.SessionQueue = newSessionQueue([]QueueItem{
-		{Path: videoOne, BaseName: filepath.Base(videoOne), ParentFolder: dir, MediaType: "video"},
-		{Path: audioOne, BaseName: filepath.Base(audioOne), ParentFolder: dir, MediaType: "audio"},
-		{Path: videoTwo, BaseName: filepath.Base(videoTwo), ParentFolder: dir, MediaType: "video"},
-	}, 2)
+	screen.SessionQueue = newSessionQueue(testQueueItems(videoOne, audioOne, videoTwo), 2)
 
 	name, path, err := getAdjacentMedia(screen, -1)
 	if err != nil {
@@ -184,11 +204,7 @@ func TestSetAutoPlaySameTypesRefreshesTraversalControls(t *testing.T) {
 	screen.SkipPreviousButton = widget.NewButton("", nil)
 	screen.SkipNextButton = widget.NewButton("", nil)
 	screen.SkinNextOnlySameTypes = true
-	screen.SessionQueue = newSessionQueue([]QueueItem{
-		{Path: videoOne, BaseName: filepath.Base(videoOne), ParentFolder: dir, MediaType: "video"},
-		{Path: audioOne, BaseName: filepath.Base(audioOne), ParentFolder: dir, MediaType: "audio"},
-		{Path: imageOne, BaseName: filepath.Base(imageOne), ParentFolder: dir, MediaType: "image"},
-	}, 0)
+	screen.SessionQueue = newSessionQueue(testQueueItems(videoOne, audioOne, imageOne), 0)
 
 	screen.refreshTraversalControls()
 	fyne.DoAndWait(func() {})
@@ -225,11 +241,7 @@ func TestSetAutoPlaySameTypesKeepsNextDisabledAtEnd(t *testing.T) {
 	screen.SkipPreviousButton = widget.NewButton("", nil)
 	screen.SkipNextButton = widget.NewButton("", nil)
 	screen.SkinNextOnlySameTypes = true
-	screen.SessionQueue = newSessionQueue([]QueueItem{
-		{Path: videoOne, BaseName: filepath.Base(videoOne), ParentFolder: dir, MediaType: "video"},
-		{Path: imageOne, BaseName: filepath.Base(imageOne), ParentFolder: dir, MediaType: "image"},
-		{Path: audioOne, BaseName: filepath.Base(audioOne), ParentFolder: dir, MediaType: "audio"},
-	}, 0)
+	screen.SessionQueue = newSessionQueue(testQueueItems(videoOne, imageOne, audioOne), 0)
 
 	screen.setAutoPlaySameTypes(false)
 	fyne.DoAndWait(func() {})
@@ -252,9 +264,7 @@ func TestClearCurrentMediaSelectionPreservesQueue(t *testing.T) {
 		MediaText:          widget.NewEntry(),
 		SelectInternalSubs: widget.NewSelect(nil, nil),
 		PlayPause:          widget.NewButton("", nil),
-		SessionQueue: newSessionQueue([]QueueItem{
-			{Path: "/tmp/test.mp4", BaseName: "test.mp4", ParentFolder: "/tmp", MediaType: "video"},
-		}, 0),
+		SessionQueue:       newSessionQueue(testQueueItems("/tmp/test.mp4"), 0),
 	}
 
 	screen.MediaText.SetText("test.mp4")
@@ -263,8 +273,8 @@ func TestClearCurrentMediaSelectionPreservesQueue(t *testing.T) {
 	if screen.SessionQueue == nil {
 		t.Fatalf("expected queue to remain after media clear")
 	}
-	if screen.SessionQueue.CurrentIndex != -1 {
-		t.Fatalf("expected queue current index to be cleared, got %d", screen.SessionQueue.CurrentIndex)
+	if screen.SessionQueue.CurrentIndex() != -1 {
+		t.Fatalf("expected queue current index to be cleared, got %d", screen.SessionQueue.CurrentIndex())
 	}
 	if screen.mediafile != "" {
 		t.Fatalf("expected mediafile to be cleared, got %q", screen.mediafile)
@@ -295,11 +305,11 @@ func TestSelectMediaPathsSingleFileCreatesQueue(t *testing.T) {
 	if screen.SessionQueue == nil {
 		t.Fatalf("expected single media selection to create queue")
 	}
-	if len(screen.SessionQueue.Items) != 1 {
-		t.Fatalf("expected single queue item, got %d", len(screen.SessionQueue.Items))
+	if screen.SessionQueue.Len() != 1 {
+		t.Fatalf("expected single queue item, got %d", screen.SessionQueue.Len())
 	}
-	if screen.SessionQueue.CurrentIndex != 0 {
-		t.Fatalf("expected current queue index 0, got %d", screen.SessionQueue.CurrentIndex)
+	if screen.SessionQueue.CurrentIndex() != 0 {
+		t.Fatalf("expected current queue index 0, got %d", screen.SessionQueue.CurrentIndex())
 	}
 	if screen.mediafile != mediaPath {
 		t.Fatalf("expected mediafile %q, got %q", mediaPath, screen.mediafile)
@@ -330,11 +340,12 @@ func TestSelectMediaPathsUppercaseExtensionCreatesQueue(t *testing.T) {
 	if screen.SessionQueue == nil {
 		t.Fatalf("expected mixed-case media selection to create queue")
 	}
-	if len(screen.SessionQueue.Items) != 1 {
-		t.Fatalf("expected single queue item, got %d", len(screen.SessionQueue.Items))
+	if screen.SessionQueue.Len() != 1 {
+		t.Fatalf("expected single queue item, got %d", screen.SessionQueue.Len())
 	}
-	if screen.SessionQueue.Items[0].MediaType != "video" {
-		t.Fatalf("expected video queue item, got %q", screen.SessionQueue.Items[0].MediaType)
+	item, _ := screen.SessionQueue.Item(0)
+	if item.MediaKind() != "video" {
+		t.Fatalf("expected video queue item, got %q", item.MediaKind())
 	}
 	if screen.mediafile != mediaPath {
 		t.Fatalf("expected mediafile %q, got %q", mediaPath, screen.mediafile)
@@ -342,8 +353,53 @@ func TestSelectMediaPathsUppercaseExtensionCreatesQueue(t *testing.T) {
 	if screen.MediaText.Text != filepath.Base(mediaPath) {
 		t.Fatalf("expected media text %q, got %q", filepath.Base(mediaPath), screen.MediaText.Text)
 	}
-	if screen.SessionQueue.CurrentIndex != 0 {
-		t.Fatalf("expected current queue index 0, got %d", screen.SessionQueue.CurrentIndex)
+	if screen.SessionQueue.CurrentIndex() != 0 {
+		t.Fatalf("expected current queue index 0, got %d", screen.SessionQueue.CurrentIndex())
+	}
+}
+
+func TestSelectMediaPathsSortsQueueByName(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	dir := t.TempDir()
+	first := filepath.Join(dir, "01-first.mp4")
+	second := filepath.Join(dir, "02-second.mp4")
+	third := filepath.Join(dir, "03-third.mp4")
+	screen := newQueueMediaSelectionTestScreen()
+
+	if err := selectMediaPaths(screen, []string{third, first, second}); err != nil {
+		t.Fatalf("selectMediaPaths failed: %v", err)
+	}
+	fyne.DoAndWait(func() {})
+
+	assertQueuePaths(t, screen, []string{first, second, third})
+	if screen.mediafile != first {
+		t.Fatalf("expected current media %q, got %q", first, screen.mediafile)
+	}
+}
+
+func TestAppendMediaPathsSortsAddedItems(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	dir := t.TempDir()
+	existing := filepath.Join(dir, "00-existing.mp4")
+	first := filepath.Join(dir, "01-first.mp4")
+	second := filepath.Join(dir, "02-second.mp4")
+	third := filepath.Join(dir, "03-third.mp4")
+	screen := newQueueMediaSelectionTestScreen()
+	screen.mediafile = existing
+	screen.SessionQueue = newSessionQueue(testQueueItems(existing), 0)
+
+	if err := appendMediaPaths(screen, []string{third, first, second}); err != nil {
+		t.Fatalf("appendMediaPaths failed: %v", err)
+	}
+	fyne.DoAndWait(func() {})
+
+	assertQueuePaths(t, screen, []string{existing, first, second, third})
+	if screen.SessionQueue.CurrentIndex() != 0 {
+		t.Fatalf("expected current queue index 0, got %d", screen.SessionQueue.CurrentIndex())
 	}
 }
 
@@ -380,10 +436,7 @@ func TestQueueInteractionsLocked(t *testing.T) {
 
 func TestActiveQueueIndexRequiresCurrentMedia(t *testing.T) {
 	screen := &FyneScreen{}
-	queue := newSessionQueue([]QueueItem{
-		{Path: "/tmp/one.mp4", BaseName: "one.mp4", ParentFolder: "/tmp", MediaType: "video"},
-		{Path: "/tmp/two.mp4", BaseName: "two.mp4", ParentFolder: "/tmp", MediaType: "video"},
-	}, 1)
+	queue := newSessionQueue(testQueueItems("/tmp/one.mp4", "/tmp/two.mp4"), 1)
 
 	if got := screen.activeQueueIndex(queue); got != -1 {
 		t.Fatalf("expected no active queue item without media selection, got %d", got)
@@ -402,12 +455,24 @@ func TestQueueDropMode(t *testing.T) {
 		t.Fatalf("expected replace mode for empty queue, got %d", got)
 	}
 
-	screen.SessionQueue = newSessionQueue([]QueueItem{
-		{Path: "/tmp/one.mp4", BaseName: "one.mp4", ParentFolder: "/tmp", MediaType: "video"},
-	}, 0)
+	screen.SessionQueue = newSessionQueue(testQueueItems("/tmp/one.mp4"), 0)
 
 	if got := screen.queueDropMode(); got != droppedMediaModeAppend {
 		t.Fatalf("expected append mode for existing queue, got %d", got)
+	}
+}
+
+func TestQueueWindowUnavailableDuringRemoteSession(t *testing.T) {
+	screen := &FyneScreen{}
+	releaseLease, err := screen.renderGate.acquireRemoteLease()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer releaseLease()
+
+	screen.openQueueWindow()
+	if screen.queueWindow != nil {
+		t.Fatal("playlist window created during remote session")
 	}
 }
 
@@ -446,9 +511,7 @@ func TestRemoveSelectedQueueItemClearsCurrentOnLastRemove(t *testing.T) {
 		SelectInternalSubs: widget.NewSelect(nil, nil),
 		CustomSubsCheck:    widget.NewCheck("", nil),
 		PlayPause:          widget.NewButton("", nil),
-		SessionQueue: newSessionQueue([]QueueItem{
-			{Path: mediaPath, BaseName: "test.mp4", ParentFolder: "/tmp", MediaType: "video"},
-		}, 0),
+		SessionQueue:       newSessionQueue(testQueueItems(mediaPath), 0),
 	}
 
 	screen.removeSelectedQueueItem()
@@ -472,9 +535,7 @@ func TestClearSessionQueueActionClearsCurrentMedia(t *testing.T) {
 		SelectInternalSubs: widget.NewSelect(nil, nil),
 		CustomSubsCheck:    widget.NewCheck("", nil),
 		PlayPause:          widget.NewButton("", nil),
-		SessionQueue: newSessionQueue([]QueueItem{
-			{Path: mediaPath, BaseName: "test.mp4", ParentFolder: "/tmp", MediaType: "video"},
-		}, 0),
+		SessionQueue:       newSessionQueue(testQueueItems(mediaPath), 0),
 	}
 
 	screen.clearSessionQueueAction()
@@ -493,11 +554,9 @@ func TestSingleItemPlaylistButtonStaysNeutral(t *testing.T) {
 
 	mediaPath := "/tmp/test.mp4"
 	screen := &FyneScreen{
-		mediafile:   mediaPath,
-		QueueButton: widget.NewButton("", nil),
-		SessionQueue: newSessionQueue([]QueueItem{
-			{Path: mediaPath, BaseName: "test.mp4", ParentFolder: "/tmp", MediaType: "video"},
-		}, 0),
+		mediafile:    mediaPath,
+		QueueButton:  widget.NewButton("", nil),
+		SessionQueue: newSessionQueue(testQueueItems(mediaPath), 0),
 	}
 
 	screen.refreshQueueStateUI()
@@ -517,9 +576,7 @@ func TestSingleActiveQueueItemRemoveButtonEnabled(t *testing.T) {
 		mediafile:          mediaPath,
 		queueSelectedIndex: 0,
 		queueRemoveButton:  widget.NewButton("", nil),
-		SessionQueue: newSessionQueue([]QueueItem{
-			{Path: mediaPath, BaseName: "test.mp4", ParentFolder: "/tmp", MediaType: "video"},
-		}, 0),
+		SessionQueue:       newSessionQueue(testQueueItems(mediaPath), 0),
 	}
 
 	screen.refreshQueueStateUI()
@@ -536,12 +593,9 @@ func TestMultiItemPlaylistButtonTurnsProminent(t *testing.T) {
 
 	mediaPath := "/tmp/one.mp4"
 	screen := &FyneScreen{
-		mediafile:   mediaPath,
-		QueueButton: widget.NewButton("", nil),
-		SessionQueue: newSessionQueue([]QueueItem{
-			{Path: mediaPath, BaseName: "one.mp4", ParentFolder: "/tmp", MediaType: "video"},
-			{Path: "/tmp/two.mp4", BaseName: "two.mp4", ParentFolder: "/tmp", MediaType: "video"},
-		}, 0),
+		mediafile:    mediaPath,
+		QueueButton:  widget.NewButton("", nil),
+		SessionQueue: newSessionQueue(testQueueItems(mediaPath, "/tmp/two.mp4"), 0),
 	}
 
 	screen.refreshQueueStateUI()
@@ -595,6 +649,25 @@ func TestRecordQueueUIStateSkipsDuplicateRefreshes(t *testing.T) {
 	}
 }
 
+func TestQueueSelectionDetailsShowsFullPath(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	item := testQueueItems(filepath.Join(t.TempDir(), "movie.mp4"))[0]
+	screen := &FyneScreen{
+		queueDetails:       widget.NewLabel(""),
+		queueSelectedIndex: 0,
+		SessionQueue:       newSessionQueue([]QueueItem{item}, 0),
+	}
+
+	screen.refreshQueueStateUI()
+	fyne.DoAndWait(func() {})
+
+	if screen.queueDetails.Text != item.DisplayPath() {
+		t.Fatalf("selection details = %q, want %q", screen.queueDetails.Text, item.DisplayPath())
+	}
+}
+
 func TestQueueRowDedupesThumbnailRequests(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
@@ -607,23 +680,13 @@ func TestQueueRowDedupesThumbnailRequests(t *testing.T) {
 		Debug: newDebugWriter(8),
 	})
 
-	first := QueueItem{
-		Path:         firstPath,
-		BaseName:     filepath.Base(firstPath),
-		ParentFolder: dir,
-		MediaType:    "video",
-	}
-	second := QueueItem{
-		Path:         secondPath,
-		BaseName:     filepath.Base(secondPath),
-		ParentFolder: dir,
-		MediaType:    "video",
-	}
+	first := testQueueItems(firstPath)[0]
+	second := testQueueItems(secondPath)[0]
 
 	row.setRow(0, first, false)
 	firstRequestID := row.thumbnailRequestID
-	if row.pendingThumbPath != first.Path {
-		t.Fatalf("expected pending thumbnail path %q, got %q", first.Path, row.pendingThumbPath)
+	if row.pendingThumbPath != first.Path() {
+		t.Fatalf("expected pending thumbnail path %q, got %q", first.Path(), row.pendingThumbPath)
 	}
 
 	row.setRow(0, first, false)
@@ -635,7 +698,7 @@ func TestQueueRowDedupesThumbnailRequests(t *testing.T) {
 	if row.thumbnailRequestID == firstRequestID {
 		t.Fatal("expected path change to invalidate and replace pending thumbnail request")
 	}
-	if row.pendingThumbPath != second.Path {
-		t.Fatalf("expected pending thumbnail path %q after path change, got %q", second.Path, row.pendingThumbPath)
+	if row.pendingThumbPath != second.Path() {
+		t.Fatalf("expected pending thumbnail path %q after path change, got %q", second.Path(), row.pendingThumbPath)
 	}
 }

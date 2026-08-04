@@ -4,6 +4,8 @@ import (
 	"io"
 	"log/slog"
 	"sync"
+
+	"go2tv.app/go2tv/v2/internal/logging"
 )
 
 // TranscodeOptions holds FFmpeg transcoding configuration for Chromecast.
@@ -60,11 +62,7 @@ func (t *TranscodeOptions) LogError(function, action string, err error) {
 		return
 	}
 	t.initLogOnce.Do(func() {
-		t.logger = newJSONLogger(t.LogOutput)
+		t.logger = logging.NewJSON(t.LogOutput)
 	})
 	t.logger.Error("", "function", function, "Action", action, "error", err)
-}
-
-func newJSONLogger(w io.Writer) *slog.Logger {
-	return slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }

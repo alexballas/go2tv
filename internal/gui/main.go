@@ -5,10 +5,8 @@ package gui
 import (
 	"context"
 	"errors"
-	"math"
 	"net/url"
 	"sort"
-	"sync"
 	"time"
 
 	ttwidget "github.com/alexballas/fyne-tooltip/widget"
@@ -24,14 +22,6 @@ import (
 	"go2tv.app/go2tv/v2/utils"
 	"golang.org/x/time/rate"
 )
-
-type tappedSlider struct {
-	*widget.Slider
-	screen *FyneScreen
-	end    string
-	ccDur  float64
-	mu     sync.Mutex
-}
 
 type deviceList struct {
 	widget.List
@@ -86,250 +76,6 @@ func newDeviceList(s *FyneScreen, dd *[]devType) *deviceList {
 
 	list.ExtendBaseWidget(list)
 	return list
-}
-
-func newTappableSlider(s *FyneScreen) *tappedSlider {
-	slider := &tappedSlider{
-		Slider: &widget.Slider{
-			Max: 100,
-		},
-		screen: s,
-	}
-	slider.ExtendBaseWidget(slider)
-	return slider
-}
-
-func (t *tappedSlider) chromecastSeekDuration() (float64, bool) {
-	if t.screen.mediaDuration > 0 {
-		return t.screen.mediaDuration, true
-	}
-
-	t.mu.Lock()
-	cached := t.ccDur
-	t.mu.Unlock()
-	if cached > 0 {
-		return cached, true
-	}
-
-	client := t.screen.activeChromecastPlaybackClient()
-	if client == nil {
-		return 0, false
-	}
-
-	status, err := client.GetStatus()
-	if err != nil || status.Duration <= 0 {
-		return 0, false
-	}
-
-	duration := float64(status.Duration)
-
-	t.mu.Lock()
-	t.ccDur = duration
-	t.mu.Unlock()
-
-	// Cache briefly while dragging to avoid hammering GetStatus.
-	go func() {
-		time.Sleep(time.Second)
-		t.mu.Lock()
-		t.ccDur = 0
-		t.mu.Unlock()
-	}()
-
-	return duration, true
-}
-
-func (t *tappedSlider) Dragged(e *fyne.DragEvent) {
-	t.Slider.Dragged(e)
-	t.screen.sliderActive = true
-
-	if duration, ok := t.chromecastSeekDuration(); ok {
-		cur := (duration * t.Slider.Value) / t.Slider.Max
-		reltime := utils.SecondsToClockTime(int(cur))
-		total := utils.SecondsToClockTime(int(duration))
-		t.screen.CurrentPos.Set(reltime)
-		t.screen.EndPos.Set(total)
-		return
-	}
-
-	// DLNA: Get position from device
-	t.mu.Lock()
-	cachedEnd := t.end
-	t.mu.Unlock()
-
-	if cachedEnd == "" {
-		if t.screen.tvdata == nil {
-			return
-		}
-		getSliderPos, err := t.screen.tvdata.GetPositionInfo()
-		if err != nil {
-			return
-		}
-
-		t.mu.Lock()
-		t.end = getSliderPos[0]
-		cachedEnd = t.end
-		t.mu.Unlock()
-
-		// poor man's caching to reduce the amount of
-		// GetPositionInfo calls.
-		go func() {
-			time.Sleep(time.Second)
-			t.mu.Lock()
-			t.end = ""
-			t.mu.Unlock()
-		}()
-	}
-
-	total, err := utils.ClockTimeToSeconds(cachedEnd)
-	if err != nil {
-		return
-	}
-
-	cur := (float64(total) * t.Slider.Value) / t.Slider.Max
-	roundedInt := int(math.Round(cur))
-
-	reltime := utils.SecondsToClockTime(roundedInt)
-
-	end, err := utils.FormatClockTime(cachedEnd)
-	if err != nil {
-		return
-	}
-
-	t.screen.EndPos.Set(end)
-	t.screen.CurrentPos.Set(reltime)
-}
-
-func (t *tappedSlider) DragEnd() {
-	// This ensures the slider functions correctly by addressing the race condition
-	// between the DragEnd action and the auto-refresh action.
-	// The auto-refresh action will reset this flag to false after the first iteration.
-	t.screen.sliderActive = true
-
-	if t.screen.State == "Playing" || t.screen.State == "Paused" {
-		// Handle Chromecast seeking
-		if client := t.screen.activeChromecastPlaybackClient(); client != nil {
-			duration, ok := t.chromecastSeekDuration()
-			if !ok {
-				return
-			}
-			seekPos := int((t.screen.SlideBar.Value / t.screen.SlideBar.Max) * duration)
-			// Transcoded seek: use optimized helper that keeps connection open
-			// (Chromecast's native Seek() doesn't work on transcoded streams)
-			if t.screen.mediaDuration > 0 {
-				chromecastTranscodedSeek(t.screen, seekPos)
-				return
-			}
-			// Non-transcoded seek: use Chromecast's native seek
-			if err := client.Seek(seekPos); err != nil {
-				return
-			}
-			return
-		}
-
-		t.seekDLNAAsync()
-	}
-}
-
-func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
-	// The auto-refresh action should reset this back to false
-	// after the first iterration.
-	t.screen.sliderActive = true
-
-	t.Slider.Tapped(p)
-
-	if t.screen.State == "Playing" || t.screen.State == "Paused" {
-		// Handle Chromecast seeking
-		if client := t.screen.activeChromecastPlaybackClient(); client != nil {
-			duration, ok := t.chromecastSeekDuration()
-			if !ok {
-				return
-			}
-
-			seekPos := int((t.screen.SlideBar.Value / t.screen.SlideBar.Max) * duration)
-
-			// Update time labels immediately for visual feedback (like DLNA)
-			current := utils.SecondsToClockTime(seekPos)
-			total := utils.SecondsToClockTime(int(duration))
-			fyne.Do(func() {
-				t.screen.CurrentPos.Set(current)
-				t.screen.EndPos.Set(total)
-			})
-
-			// Transcoded seek: use optimized helper that keeps connection open
-			if t.screen.mediaDuration > 0 {
-				chromecastTranscodedSeek(t.screen, seekPos)
-				return
-			}
-
-			// Non-transcoded seek: use Chromecast's native seek
-			if err := client.Seek(seekPos); err != nil {
-				return
-			}
-
-			return
-		}
-
-		t.seekDLNAAsync()
-	}
-}
-
-func (t *tappedSlider) seekDLNAAsync() {
-	if t.screen.tvdata == nil {
-		return
-	}
-
-	tvdata := t.screen.tvdata
-	sliderValue := t.screen.SlideBar.Value
-	sliderMax := t.screen.SlideBar.Max
-	if sliderMax == 0 {
-		return
-	}
-	isTranscode := tvdata.Transcode
-
-	go func() {
-		getPos, err := tvdata.GetPositionInfo()
-		if err != nil {
-			return
-		}
-
-		total, err := utils.ClockTimeToSeconds(getPos[0])
-		if err != nil {
-			return
-		}
-
-		cur := (float64(total) * sliderValue) / sliderMax
-		roundedInt := int(math.Round(cur))
-
-		reltime := utils.SecondsToClockTime(roundedInt)
-
-		end, err := utils.FormatClockTime(getPos[0])
-		if err != nil {
-			return
-		}
-
-		fyne.Do(func() {
-			t.screen.CurrentPos.Set(reltime)
-			t.screen.EndPos.Set(end)
-		})
-
-		if isTranscode {
-			// playAction reads these from its own goroutine, so set them
-			// here instead of inside the queued fyne.Do above.
-			t.screen.ffmpegSeek = roundedInt
-			t.screen.dlnaSeekRestart = true
-
-			// Live-transcoded streams are advertised as non-seekable
-			// (DLNA.ORG_OP=00), so renderers reject Seek with error 701.
-			// Restart the session at the new offset instead, waiting for
-			// the old session's teardown so its Stop cannot race with the
-			// new SetAVTransportURI/Play.
-			stopActionSync(t.screen)
-			playAction(t.screen)
-			return
-		}
-
-		_ = tvdata.SeekSoapCall(reltime)
-	}()
 }
 
 func mainWindow(s *FyneScreen) fyne.CanvasObject {
@@ -623,8 +369,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		queueButton,
 		layout.NewSpacer(),
 		volumedown,
-		muteunmute,
 		volumeup,
+		muteunmute,
 	)
 
 	mrightwidgets := container.NewHBox(previewmedia, clearmedia, mbrowse)
@@ -645,8 +391,10 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	deviceHeader := widget.NewLabelWithStyle(lang.L("(auto refreshing)"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
 	s.ActiveDeviceLabel = widget.NewLabel("")
+	s.ActiveDeviceLabel.Wrapping = fyne.TextWrapWord
+	s.ActiveDeviceIcon = widget.NewIcon(theme.MediaPlayIcon())
 	s.ActiveDeviceCard = widget.NewCard(lang.L("Active Device"), "",
-		container.NewHBox(widget.NewIcon(theme.MediaPlayIcon()), s.ActiveDeviceLabel))
+		container.NewBorder(nil, nil, s.ActiveDeviceIcon, nil, s.ActiveDeviceLabel))
 	s.ActiveDeviceCard.Hide()
 
 	deviceBottom := container.NewVBox(s.ActiveDeviceCard, s.rtmpURLCard)
@@ -698,7 +446,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 				s.eventURL = t.AvtransportEventSubURL
 				s.renderingControlURL = t.RenderingControlURL
 				s.connectionManagerURL = t.ConnectionManagerURL
-				if s.tvdata != nil {
+				if s.tvdata != nil && !isActivePlayback {
 					s.tvdata.RenderingControlURL = s.renderingControlURL
 				}
 			}
@@ -881,10 +629,11 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 		go func() {
 			gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
+			target := traversalPlaybackTarget(s)
 
 			if b {
-				if gaplessOption == "Enabled" {
-					switch s.State {
+				if gaplessOption == "Enabled" && target.device.deviceType == devices.DeviceTypeDLNA {
+					switch s.getScreenState() {
 					case "Playing", "Paused":
 						newTVPayload, err := queueNext(s, false)
 						if err == nil && s.GaplessMediaWatcher == nil {
@@ -896,7 +645,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 				return
 			}
 
-			if s.tvdata != nil && s.tvdata.CallbackURL != "" {
+			if target.device.deviceType == devices.DeviceTypeDLNA && s.tvdata != nil && s.tvdata.CallbackURL != "" {
 				_, err := queueNext(s, true)
 				if err != nil {
 					stopAction(s)
@@ -919,7 +668,11 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	// Keep track of the media progress and reflect that to the slide bar.
 	// TODO: Add context to cancel
 	go sliderUpdate(s)
-	return content
+
+	status := newRemoteSessionStatusView(s, content)
+	s.remoteSessionStatus = status
+	s.bindRemoteSessionStatus()
+	return status.root
 }
 
 func refreshDevList(s *FyneScreen, data *[]devType) {
@@ -1042,85 +795,9 @@ func checkMutefunc(s *FyneScreen) {
 
 		switch isMuted {
 		case "1":
-			setMuteUnmuteView("Unmute", s)
+			setMuteUnmuteView(true, s)
 		case "0":
-			setMuteUnmuteView("Mute", s)
-		}
-	}
-}
-
-func sliderUpdate(s *FyneScreen) {
-	t := time.NewTicker(time.Second)
-	defer t.Stop()
-	for range t.C {
-		if s.sliderActive {
-			s.sliderActive = false
-			continue
-		}
-
-		if (s.State == "Stopped" || s.State == "") && s.ffmpegSeek == 0 {
-			// Don't reset slider for Chromecast - it has its own status watcher
-			if s.chromecastSessionClient() != nil {
-				continue
-			}
-			fyne.Do(func() {
-				s.SlideBar.Slider.SetValue(0)
-				s.CurrentPos.Set("00:00:00")
-				s.EndPos.Set("00:00:00")
-			})
-		}
-
-		if s.State == "Playing" {
-			// Skip for Chromecast - it has its own status watcher (chromecastStatusWatcher)
-			if s.activeChromecastPlaybackClient() != nil {
-				continue
-			}
-
-			getPos, err := s.tvdata.GetPositionInfo()
-			if err != nil {
-				continue
-			}
-
-			total, err := utils.ClockTimeToSeconds(getPos[0])
-			if err != nil {
-				continue
-			}
-
-			current, err := utils.ClockTimeToSeconds(getPos[1])
-			if err != nil {
-				continue
-			}
-
-			switch {
-			case s.ffmpegSeek > 0:
-				current += s.ffmpegSeek
-			case s.tvdata != nil && s.tvdata.FFmpegSeek > 0:
-				current += s.tvdata.FFmpegSeek
-			}
-
-			fyne.Do(func() {
-				s.ffmpegSeek = 0
-			})
-
-			valueToSet := float64(current) * s.SlideBar.Max / float64(total)
-			if !math.IsNaN(valueToSet) {
-				fyne.Do(func() {
-					s.SlideBar.SetValue(valueToSet)
-				})
-
-				end, err := utils.FormatClockTime(getPos[0])
-				if err != nil {
-					return
-				}
-
-				currentClock := utils.SecondsToClockTime(current)
-
-				fyne.Do(func() {
-					s.CurrentPos.Set(currentClock)
-					s.EndPos.Set(end)
-				})
-				s.persistResumeProgress(current, float64(total), false)
-			}
+			setMuteUnmuteView(false, s)
 		}
 	}
 }

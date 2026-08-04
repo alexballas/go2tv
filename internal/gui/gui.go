@@ -29,6 +29,8 @@ import (
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
 	"go2tv.app/go2tv/v2/internal/crashlog"
+	"go2tv.app/go2tv/v2/internal/mediamodel"
+	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/rtmp"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
@@ -89,7 +91,12 @@ type FyneScreen struct {
 	ffmpegSeek               int
 	castingMediaType         string  // MIME type of currently casting media (e.g., "image/jpeg", "video/mp4")
 	mediaDuration            float64 // Actual media duration in seconds (from ffprobe, for transcoded streams)
-	chromecastCheckedFile    string  // Tracks which file was already auto-checked for Chromecast compatibility
+	currentArtwork           *metadata.ArtworkAsset
+	currentArtworkIdentity   string
+	queuedArtwork            *metadata.ArtworkAsset
+	queuedArtworkIdentity    string
+	artworkCache             map[string]artworkCacheEntry
+	chromecastCheckedFile    string // Tracks which file was already auto-checked for Chromecast compatibility
 	systemTheme              fyne.ThemeVariant
 	mediaFormats             []string
 	audioFormats             []string
@@ -141,7 +148,9 @@ type FyneScreen struct {
 	queueUIStateValid        bool
 	lastQueueTapIndex        int
 	lastQueueTapAt           time.Time
+	muted                    bool
 	ActiveDeviceLabel        *widget.Label
+	ActiveDeviceIcon         *widget.Icon
 	ActiveDeviceCard         *widget.Card
 	rtmpServer               *rtmp.Server
 	rtmpServerCheck          *widget.Check
@@ -162,6 +171,13 @@ type FyneScreen struct {
 	resumeSession            resumePlaybackSession
 	Crash                    *crashlog.Session
 	PendingCrashPath         string
+	renderGate               rendererControlGate
+	remoteSession            *remoteSessionManager
+	remoteSessionStatus      *remoteSessionStatusView
+	remoteSessionUpdatesDone func()
+	remoteDialog             dialog.Dialog
+	shutdownOnce             sync.Once
+	shutdownDone             chan struct{}
 }
 
 type droppedMediaMode uint8
@@ -267,6 +283,12 @@ func Start(ctx context.Context, s *FyneScreen) {
 	s.Hotkeys = true
 	tabs.OnSelected = func(t *container.TabItem) {
 		if t.Text == "Go2TV" {
+			if s.renderGate.remoteLeaseHeld() {
+				// Remote session owns the renderer; availability is recomputed
+				// when the lease is released.
+				s.Hotkeys = false
+				return
+			}
 			s.Hotkeys = true
 			if s.rtmpServer == nil && !s.Screencast {
 				s.TranscodeCheckBox.Enable()
@@ -337,6 +359,8 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	if app := fyne.CurrentApp(); app != nil {
 		app.Lifecycle().SetOnStopped(func() {
+			// Non-blocking final safety trigger; never waits on the UI path.
+			s.beginGUIShutdown()
 			if s.Crash != nil {
 				_ = s.Crash.CloseClean()
 			}
@@ -345,25 +369,25 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	go func() {
 		<-ctx.Done()
-		s.rtmpMu.Lock()
-		if s.rtmpServer != nil {
-			s.rtmpServer.Stop()
-		}
-		s.rtmpMu.Unlock()
-		stopScreencastSession(s)
+		<-s.beginGUIShutdown()
 		if s.Crash != nil {
 			_ = s.Crash.CloseClean()
 		}
 		os.Exit(0)
 	}()
 
-	w.SetOnClosed(func() {
-		s.rtmpMu.Lock()
-		if s.rtmpServer != nil {
-			s.rtmpServer.Stop()
-		}
-		s.rtmpMu.Unlock()
-		stopScreencastSession(s)
+	// Main-window close starts cleanup off the UI goroutine and returns
+	// immediately; the window closes once the managed child is reaped and
+	// RTMP/screencast teardown finished.
+	w.SetCloseIntercept(func() {
+		done := s.beginGUIShutdown()
+		go func() {
+			<-done
+			fyne.Do(func() {
+				w.SetCloseIntercept(nil)
+				w.Close()
+			})
+		}()
 	})
 
 	go silentCheckVersion(s)
@@ -407,13 +431,14 @@ func (p *FyneScreen) Fini() {
 		}
 
 		gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
+		target := autoPlayPlaybackTarget(p)
 
 		// Finished-media transitions should always restart from a stopped state.
 		// Otherwise playAction may interpret the follow-up as pause/resume.
 		p.updateScreenState("Stopped")
 
 		// For Chromecast, ignore gapless setting (it's DLNA-specific)
-		isChromecast := p.selectedDeviceType == devices.DeviceTypeChromecast
+		isChromecast := target.device.deviceType == devices.DeviceTypeChromecast
 
 		if p.NextMediaCheck.Checked && (isChromecast || gaplessOption == "Disabled") {
 			_, nextMediaPath, err := getNextAutoPlayMediaOrError(p)
@@ -427,8 +452,8 @@ func (p *FyneScreen) Fini() {
 				return
 			}
 
-			if isChromecast && p.reusableChromecastClientForSelectedDevice() != nil {
-				go skipToMediaPathAction(p, nextMediaPath)
+			if isChromecast && p.reusableChromecastClientForDevice(target.device) != nil {
+				go skipToMediaPathOnTargetAction(p, nextMediaPath, target)
 				return
 			}
 
@@ -438,17 +463,21 @@ func (p *FyneScreen) Fini() {
 				return
 			}
 
-			go playAction(p)
+			go playActionOnTarget(p, target)
 			return
 		}
 		// Main media loop logic
 		if p.Medialoop {
-			go playAction(p)
+			go playActionOnTarget(p, target)
 		}
 	})
 }
 
 func check(s *FyneScreen, err error) {
+	checkInWindow(s, err, s.Current)
+}
+
+func checkInWindow(s *FyneScreen, err error, parent fyne.Window) {
 	s.muError.Lock()
 	defer s.muError.Unlock()
 
@@ -456,7 +485,7 @@ func check(s *FyneScreen, err error) {
 		if err != nil && !s.ErrorVisible {
 			s.ErrorVisible = true
 			cleanErr := strings.ReplaceAll(err.Error(), ": ", "\n")
-			e := dialog.NewError(errors.New(cleanErr), s.Current)
+			e := dialog.NewError(errors.New(cleanErr), parent)
 			e.Show()
 			e.SetOnClosed(func() {
 				s.ErrorVisible = false
@@ -478,17 +507,17 @@ func getAdjacentMedia(screen *FyneScreen, delta int) (string, string, error) {
 
 func getAdjacentQueuedMedia(screen *FyneScreen, delta int, wrap bool) (string, string, error) {
 	queue, _ := screen.queueSnapshot()
-	if queue == nil || len(queue.Items) == 0 {
+	if queue == nil || queue.Len() == 0 {
 		return "", "", errors.New(lang.L("queue is empty"))
 	}
 
-	currentIndex := queue.indexByPath(screen.mediafile)
+	currentIndex := queue.IndexByPath(screen.mediafile)
 	if currentIndex == -1 {
 		return "", "", errors.New(lang.L("current media file is not in the queue"))
 	}
-	queue.CurrentIndex = currentIndex
+	queue.SetCurrentIndex(currentIndex)
 
-	nextIndex := queue.adjacentIndex(delta, screen.SkinNextOnlySameTypes, wrap)
+	nextIndex := queue.AdjacentIndex(delta, screen.SkinNextOnlySameTypes, wrap)
 	if nextIndex == -1 {
 		if delta < 0 {
 			return "", "", errNoPreviousQueueMedia
@@ -497,8 +526,8 @@ func getAdjacentQueuedMedia(screen *FyneScreen, delta int, wrap bool) (string, s
 		return "", "", errNoNextQueueMedia
 	}
 
-	item := queue.Items[nextIndex]
-	return item.BaseName, item.Path, nil
+	item, _ := queue.Item(nextIndex)
+	return item.BaseName(), item.Path(), nil
 }
 
 func isTraversalBoundaryError(err error) bool {
@@ -536,6 +565,12 @@ func getNextPossibleSubs(v string) (string, string) {
 func setPlayPauseView(s string, screen *FyneScreen) {
 	if screen.cancelEnablePlay != nil {
 		screen.cancelEnablePlay()
+	}
+
+	if screen.renderGate.remoteLeaseHeld() {
+		// Renderer controls stay locked while the remote session runs; the
+		// lease release recomputes availability.
+		return
 	}
 
 	fyne.Do(func() {
@@ -580,16 +615,26 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 	})
 }
 
-func setMuteUnmuteView(s string, screen *FyneScreen) {
+func setMuteUnmuteView(muted bool, screen *FyneScreen) {
+	screen.mu.Lock()
+	screen.muted = muted
+	screen.mu.Unlock()
+
 	fyne.Do(func() {
-		switch s {
-		case "Mute":
-			screen.MuteUnmute.Icon = theme.VolumeUpIcon()
-		case "Unmute":
-			screen.MuteUnmute.Icon = theme.VolumeMuteIcon()
+		screen.MuteUnmute.SetIcon(theme.VolumeMuteIcon())
+		if muted {
+			screen.MuteUnmute.Importance = widget.DangerImportance
+		} else {
+			screen.MuteUnmute.Importance = widget.LowImportance
 		}
 		screen.MuteUnmute.Refresh()
 	})
+}
+
+func (p *FyneScreen) isMuted() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.muted
 }
 
 // updateScreenState updates the screen state based on
@@ -635,6 +680,17 @@ func (p *FyneScreen) getActiveDevice() devType {
 func (p *FyneScreen) updateActiveDeviceView() {
 	if p.ActiveDeviceCard == nil || p.ActiveDeviceLabel == nil {
 		return
+	}
+
+	if p.renderGate.remoteLeaseHeld() {
+		p.ActiveDeviceCard.Hide()
+		return
+	}
+
+	p.ActiveDeviceLabel.Importance = widget.MediumImportance
+	p.ActiveDeviceLabel.Refresh()
+	if p.ActiveDeviceIcon != nil {
+		p.ActiveDeviceIcon.SetResource(theme.MediaPlayIcon())
 	}
 
 	state := p.getScreenState()
@@ -723,12 +779,16 @@ func (p *FyneScreen) activeChromecastPlaybackClient() *castprotocol.CastClient {
 }
 
 func (p *FyneScreen) reusableChromecastClientForSelectedDevice() *castprotocol.CastClient {
+	return p.reusableChromecastClientForDevice(p.selectedDevice)
+}
+
+func (p *FyneScreen) reusableChromecastClientForDevice(device devType) *castprotocol.CastClient {
 	client := p.chromecastClient
 	if client == nil || !client.IsConnected() {
 		return nil
 	}
 
-	if !chromecastClientOwnsDevice(client, p.selectedDevice) {
+	if !chromecastClientOwnsDevice(client, device) {
 		return nil
 	}
 
@@ -824,10 +884,10 @@ func NewFyneScreen(version string, crash *crashlog.Session) *FyneScreen {
 		Current:            w,
 		currentmfolder:     currentDir,
 		ffmpegPath:         ffmpegPath,
-		mediaFormats:       []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".m4a", ".jpg", ".jpeg", ".png"},
-		imageFormats:       []string{".jpg", ".jpeg", ".png"},
-		videoFormats:       []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv"},
-		audioFormats:       []string{".mp3", ".flac", ".wav", ".m4a"},
+		mediaFormats:       mediamodel.AllMediaExtensions(),
+		imageFormats:       mediamodel.ImageExtensions(),
+		videoFormats:       mediamodel.VideoExtensions(),
+		audioFormats:       mediamodel.AudioExtensions(),
 		version:            version,
 		Debug:              dw,
 		DiscoveryDebug:     discoveryDebug,
@@ -835,6 +895,8 @@ func NewFyneScreen(version string, crash *crashlog.Session) *FyneScreen {
 		PendingCrashPath:   crashPath(crash),
 		queueSelectedIndex: -1,
 		lastQueueTapIndex:  -1,
+		remoteSession:      newRemoteSessionManager(),
+		shutdownDone:       make(chan struct{}),
 	}
 }
 
@@ -853,6 +915,10 @@ func onDropFiles(screen *FyneScreen) func(p fyne.Position, u []fyne.URI) {
 }
 
 func handleDroppedFiles(screen *FyneScreen, mode droppedMediaMode, uris []fyne.URI) {
+	if screen.renderGate.remoteLeaseHeld() {
+		return
+	}
+
 	mfiles, sfiles := splitDroppedFiles(screen, uris)
 
 	if mode == droppedMediaModeReplace && len(sfiles) > 0 {

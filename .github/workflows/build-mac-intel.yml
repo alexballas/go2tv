@@ -15,19 +15,16 @@ jobs:
 
     - uses: actions/setup-go@v6
       with:
-        go-version: 'stable'
+        go-version-file: go.mod
 
     - name: Install refyne
       run: go install github.com/alexballas/refyne/v2/cmd/fyne@latest
 
-    - name: Update FyneApp.toml version
-      run: sed -i '' "s/^Version.*/Version = \"$(echo ${{ env.GO2TV_VERSION }} | sed 's/^v//')\"/" cmd/go2tv/FyneApp.toml
-
     - name: Package (macOS)
       run: |
+        APP_BUILD="$(make print-app-build)"
         cd cmd/go2tv
-        sed -i '' "s/version      = \"dev\"/version      = \"$(echo ${{ env.GO2TV_VERSION }} | sed 's/^v//')\"/" go2tv.go
-        CGO_CFLAGS="-mmacosx-version-min=12.3" CGO_LDFLAGS="-mmacosx-version-min=12.3" MACOSX_DEPLOYMENT_TARGET=12.3 GOARCH=amd64 fyne package --release --os darwin --icon ../../assets/go2tv-icon.png
+        CGO_CFLAGS="-mmacosx-version-min=12.3" CGO_LDFLAGS="-mmacosx-version-min=12.3" MACOSX_DEPLOYMENT_TARGET=12.3 GOARCH=amd64 fyne package --release --os darwin --app-version "${GO2TV_VERSION#v}" --app-build "$APP_BUILD" --icon ../../assets/go2tv-icon.png
         mv go2tv.app ../../
 
     - uses: actions/upload-artifact@v6

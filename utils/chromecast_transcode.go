@@ -93,12 +93,10 @@ func ServeChromecastTranscodedStream(
 	buildArgs := func(plan videoEncoderPlan) []string {
 		vf := joinVideoFilters(subFilter, scaleFilter, plan.filterTail)
 
-		// For piped input, skip -ss parameter entirely (even -ss 0) as it can cause issues
-		// Also skip -re for piped input as it interacts badly with streams
+		// For piped input, skip -ss parameter entirely (even -ss 0) as it can cause issues.
+		// File transcoding is deliberately unpaced so the renderer can build a
+		// startup buffer instead of waiting on exactly real-time FFmpeg output.
 		args := []string{opts.FFmpegPath}
-		if realtimePacedInput(in) {
-			args = append(args, "-re")
-		}
 
 		if in != "pipe:0" && opts.SeekSeconds > 0 {
 			args = append(args, "-ss", strconv.Itoa(opts.SeekSeconds), "-copyts")
