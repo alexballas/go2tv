@@ -51,6 +51,24 @@
   </branding>
 
   <releases>
+      <release version="2.5.0" date="2026-08-04" type="stable">
+        <description>
+          <ul>
+            <li>Added an optional web interface with real-time playback controls and a media library browser.</li>
+            <li>Improved Chromecast autoplay stability.</li>
+            <li>Improved transcoding performance and seeking speed.</li>
+            <li>Desktop App: Fixed playlist ordering when adding multiple items. Previously, items could be added in a random order.</li>
+            <li>Desktop App: Added support for external media in the file picker, along with other UX improvements.</li>
+            <li>Desktop App: Fixed audio/video synchronization issues during screencasting.</li>
+            <li>Android: Kept active casts running in the background using a foreground service and wake/Wi-Fi locks.</li>
+            <li>Android: Added an optional battery optimization exemption.</li>
+            <li>Android: Added support for opening media files through the system share menu.</li>
+            <li>Android: APKs are now signed with a stable key, allowing future updates to install over the existing version. Users must uninstall version 2.4.0 before installing this release.</li>
+            <li>Android: Fixed a crash affecting certain devices.</li>
+          </ul>
+        </description>
+        <url type="details">https://github.com/alexballas/go2tv/releases/tag/v2.5.0</url>
+      </release>
       <release version="2.4.0" date="2026-07-06" type="stable">
         <description>
           <ul>
