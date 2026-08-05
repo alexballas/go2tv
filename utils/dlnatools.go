@@ -33,7 +33,7 @@ var (
 		"video/x-matroska":        "DLNA.ORG_PN=MATROSKA",
 		"video/x-msvideo":         "DLNA.ORG_PN=AVI",
 		"video/mpeg":              "DLNA.ORG_PN=MPEG1",
-		"video/vnd.dlna.mpeg-tts": "DLNA.ORG_PN=MPEG1",
+		"video/vnd.dlna.mpeg-tts": "DLNA.ORG_PN=AVC_TS_MP_HD_AAC_MULT5",
 		"video/mp4":               "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
 		"video/quicktime":         "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
 		"video/x-m4v":             "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
@@ -64,7 +64,8 @@ func BuildContentFeatures(mediaType string, seek string, transcode bool) (string
 	if mediaType != "" {
 		dlnaProf, profExists := dlnaprofiles[mediaType]
 		if profExists {
-			cf.WriteString(dlnaProf + ";")
+			cf.WriteString(dlnaProf)
+			cf.WriteByte(';')
 		}
 	}
 

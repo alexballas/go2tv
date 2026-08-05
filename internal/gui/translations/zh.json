@@ -144,7 +144,7 @@
     "FFmpeg Path": "FFmpeg 路径",
     "ffmpeg is required for screencast": "屏幕录制需要 ffmpeg",
     "ffmpeg is required. install it or update ffmpeg path in Settings": "需要 ffmpeg。请安装它或在设置中更新 ffmpeg 路径",
-    "screencast currently supports Chromecast only": "屏幕录制仅支持 Chromecast",
+    "screencast currently supports Chromecast and DLNA only": "屏幕录制仅支持 Chromecast 和 DLNA",
     "screencast is not supported by audio-only device": "屏幕录制不支持纯音频设备",
     "screencast stream stopped unexpectedly": "屏幕录制流意外中断",
     "Previous": "上一个",
