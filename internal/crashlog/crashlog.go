@@ -28,7 +28,12 @@ type Session struct {
 func Init(appName string) (*Session, error) {
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
-		return nil, fmt.Errorf("user cache dir: %w", err)
+		// Android sets TMPDIR (app cache dir) but not HOME/XDG_CACHE_HOME,
+		// so fall back to the temp dir instead of disabling crash logging.
+		cacheDir = os.TempDir()
+		if cacheDir == "" {
+			return nil, fmt.Errorf("user cache dir: %w", err)
+		}
 	}
 
 	return initInDir(filepath.Join(cacheDir, appName, "crashes"))

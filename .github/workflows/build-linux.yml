@@ -15,13 +15,13 @@ jobs:
 
     - uses: actions/setup-go@v6
       with:
-        go-version: '1.26'
+        go-version-file: go.mod
 
     - name: Get dependencies
       run: sudo apt update && sudo apt install -y xorg-dev libwayland-dev libxkbcommon-dev libegl-dev libpipewire-0.3-dev pkg-config
 
     - name: Package (Linux)
-      run: GOOS=linux GOARCH=amd64 go build -tags migrated_fynedo -ldflags "-s -w -X main.version=$(echo ${{ env.GO2TV_VERSION }} | sed 's/^v//')" -o go2tv cmd/go2tv/go2tv.go
+      run: GOOS=linux GOARCH=amd64 go build -tags migrated_fynedo -ldflags "-s -w" -o go2tv ./cmd/go2tv
 
     - uses: actions/upload-artifact@v6
       with:

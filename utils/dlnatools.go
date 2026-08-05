@@ -41,8 +41,8 @@ var (
 		"video/x-flv":             "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
 		"video/x-ms-wmv":          "DLNA.ORG_PN=WMVHIGH_FULL",
 		"audio/mpeg":              "DLNA.ORG_PN=MP3",
-		"image/jpeg":              "JPEG_LRG",
-		"image/png":               "PNG_LRG",
+		"image/jpeg":              "DLNA.ORG_PN=JPEG_LRG",
+		"image/png":               "DLNA.ORG_PN=PNG_LRG",
 	}
 
 	ErrInvalidSeekFlag    = errors.New("invalid seek flag")
@@ -108,12 +108,12 @@ func GetMimeDetailsFromPath(path string) (string, error) {
 	defer f.Close()
 
 	head := make([]byte, 261)
-	_, err = f.Read(head)
-	if err != nil {
+	read, err := io.ReadFull(f, head)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return "", fmt.Errorf("getMimeDetailsFromPath error #2: %w", err)
 	}
 
-	kind, err := filetype.Match(head)
+	kind, err := filetype.Match(head[:read])
 	if err != nil {
 		return "", fmt.Errorf("getMimeDetailsFromPath error #3: %w", err)
 	}
@@ -134,13 +134,20 @@ func GetMimeDetailsFromBytes(data []byte) (string, error) {
 // GetMimeDetailsFromStream returns the media URL mime details.
 func GetMimeDetailsFromStream(s io.ReadCloser) (string, error) {
 	defer s.Close()
+
+	// The whole header has to be collected before matching. A single Read is free
+	// to return less than it was asked for, and the streams behind an Android
+	// content:// URI do exactly that when the provider serves them over a pipe -
+	// which is what an app sharing a file to us typically does. A short header
+	// matches nothing, and the unknown type that comes out is worse than useless:
+	// it is passed on to the renderer as the media's own type.
 	head := make([]byte, 261)
-	_, err := s.Read(head)
-	if err != nil {
+	read, err := io.ReadFull(s, head)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return "", fmt.Errorf("getMimeDetailsFromStream error: %w", err)
 	}
 
-	kind, err := filetype.Match(head)
+	kind, err := filetype.Match(head[:read])
 	if err != nil {
 		return "", fmt.Errorf("getMimeDetailsFromStream error  #2: %w", err)
 	}

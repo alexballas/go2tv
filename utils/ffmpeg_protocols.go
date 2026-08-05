@@ -45,14 +45,6 @@ func underlyingOSFile(r io.Reader) (*os.File, bool) {
 	return nil, false
 }
 
-// realtimePacedInput reports whether ffmpeg should read this input with -re.
-// Only path inputs are paced: pipes can't be paced, and fd: input (mobile)
-// must run unpaced so gstreamer-based renderers build a buffer cushion
-// instead of constantly rebuffering on an exactly-realtime stream.
-func realtimePacedInput(in string) bool {
-	return in != "pipe:0" && in != "fd:"
-}
-
 func ffmpegInputProtocolAvailable(ffmpegPath, name string) bool {
 	key := ffmpegPath + "|" + name
 	if cached, ok := ffmpegProtocolCache.Load(key); ok {

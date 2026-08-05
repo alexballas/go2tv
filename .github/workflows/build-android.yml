@@ -15,10 +15,12 @@ jobs:
 
     - uses: actions/setup-go@v6
       with:
-        go-version: '1.26'
+        go-version-file: go.mod
 
-    - name: Install fyne
-      run: go install github.com/alexballas/refyne/v2/cmd/fyne@latest
+    # No "install fyne" step: `make android` provisions the packaging CLI itself,
+    # at the refyne version go.mod pins. Installing @latest here resolved to the
+    # newest release tag, which is older than the commit the app compiles against,
+    # so the APK would ship without the Java that backs the share target.
 
     - name: Download Android SDK
       run: |
@@ -26,12 +28,33 @@ jobs:
         unzip android-ndk-r27d-linux.zip
 
     - name: Package (Android)
+      env:
+        # Without a persistent key `make android` mints a throwaway one per run,
+        # and Android refuses to install a build over one signed by a different
+        # key. Unset on forks, where secrets are unavailable; those builds are
+        # still useful for testing, they just cannot upgrade an install.
+        ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       run: |
         # Resolve the absolute path for the NDK
         APATH=$(readlink -f android-ndk-r27d)
 
-        # Keep Go code version parity with app-version.
-        sed -i "s/version      = \"dev\"/version      = \"$(echo ${{ env.GO2TV_VERSION }} | sed 's/^v//')\"/" cmd/go2tv/go2tv.go
+        if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+          if [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
+            echo "ANDROID_KEYSTORE_BASE64 is set but ANDROID_KEYSTORE_PASSWORD is not"
+            exit 1
+          fi
+          # RUNNER_TEMP is outside the workspace, so the key cannot reach an artifact.
+          export GO2TV_ANDROID_KEYSTORE="$RUNNER_TEMP/release.keystore"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '\n\r' | base64 -d > "$GO2TV_ANDROID_KEYSTORE"
+          export GO2TV_ANDROID_KEYSTORE_PASS="$ANDROID_KEYSTORE_PASSWORD"
+          export GO2TV_ANDROID_KEY_ALIAS="${ANDROID_KEY_ALIAS:-go2tv}"
+          export GO2TV_ANDROID_KEY_PASS="${ANDROID_KEY_PASSWORD:-$ANDROID_KEYSTORE_PASSWORD}"
+        else
+          echo "::warning::No release keystore secret is configured, so this APK is signed with a throwaway key and cannot be installed over an existing go2tv."
+        fi
 
         ANDROID_NDK_HOME=$APATH make android
         cp build/Go2TV.apk Go2TV.apk

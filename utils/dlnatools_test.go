@@ -19,6 +19,39 @@ func TestGetMimeDetailsFromStream(t *testing.T) {
 	}
 }
 
+// A content:// provider that serves a shared file over a pipe hands out a few
+// bytes at a time, which is all an io.Reader ever promises. A header matched
+// before it is complete detects nothing, and the type that comes out of that is
+// handed to the renderer as the media's own.
+func TestGetMimeDetailsFromStreamShortReads(t *testing.T) {
+	got, err := GetMimeDetailsFromStream(&dripReader{data: videoBytes, perRead: 1})
+	if err != nil {
+		t.Fatalf("GetMimeDetailsFromStream: %s", err)
+	}
+	if got != "video/mp4" {
+		t.Fatalf("media type = %q, want video/mp4", got)
+	}
+}
+
+// dripReader returns at most perRead bytes per Read.
+type dripReader struct {
+	data    []byte
+	perRead int
+	pos     int
+}
+
+func (d *dripReader) Read(p []byte) (int, error) {
+	if d.pos >= len(d.data) {
+		return 0, io.EOF
+	}
+	read := min(min(d.perRead, len(p)), len(d.data)-d.pos)
+	copy(p[:read], d.data[d.pos:d.pos+read])
+	d.pos += read
+	return read, nil
+}
+
+func (d *dripReader) Close() error { return nil }
+
 func TestGetMimeDetailsFromBytes(t *testing.T) {
 	_, err := GetMimeDetailsFromBytes(videoBytes)
 	if err != nil {
@@ -66,6 +99,20 @@ func TestBuildContentFeatures(t *testing.T) {
 			`bad-text`,
 			`11`,
 			"DLNA.ORG_OP=11;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000",
+			false,
+		},
+		{
+			`JPEG profile`,
+			`image/jpeg`,
+			`00`,
+			"DLNA.ORG_PN=JPEG_LRG;DLNA.ORG_OP=00;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000",
+			false,
+		},
+		{
+			`PNG profile`,
+			`image/png`,
+			`00`,
+			"DLNA.ORG_PN=PNG_LRG;DLNA.ORG_OP=00;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000",
 			false,
 		},
 	}

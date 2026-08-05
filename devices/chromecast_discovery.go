@@ -77,6 +77,7 @@ func upsertChromecastFromMDNSEntry(entry *mdns.ServiceEntry) {
 		IsAudioOnly: isAudioOnly,
 	}
 	ccMu.Unlock()
+	feed.publish()
 
 	if !existed {
 		discoveryDebugf("Chromecast discovery added name=%q addr=%q audio_only=%t", friendlyName, address, isAudioOnly)
@@ -89,6 +90,10 @@ func upsertChromecastFromMDNSEntry(entry *mdns.ServiceEntry) {
 }
 
 func warmupChromecastCache(timeout time.Duration) {
+	warmupChromecastCacheContext(context.Background(), timeout)
+}
+
+func warmupChromecastCacheContext(ctx context.Context, timeout time.Duration) {
 	interfaces := getActiveNetworkInterfaces()
 
 	entriesCh := make(chan *mdns.ServiceEntry, 256)
@@ -108,7 +113,11 @@ func warmupChromecastCache(timeout time.Duration) {
 		params.WantUnicastResponse = true
 		params.Logger = log.New(io.Discard, "", 0)
 		params.Interface = iface
-		_ = mdns.Query(params)
+		if ctx.Err() == nil {
+			withMulticastGuard(func() {
+				_ = mdns.Query(params)
+			})
+		}
 	}
 
 	if len(interfaces) > 0 {
@@ -127,6 +136,7 @@ func warmupChromecastCache(timeout time.Duration) {
 
 	close(entriesCh)
 	<-doneCh
+	feed.notifyChromecastScan()
 
 	ccMu.Lock()
 	deviceCount := len(chromeCastDevices)
@@ -195,7 +205,10 @@ func discoverChromecastDevices(ctx context.Context) {
 				if iface != nil {
 					params.Interface = iface
 				}
-				_ = mdns.Query(params)
+				withMulticastGuard(func() {
+					_ = mdns.Query(params)
+				})
+				feed.notifyChromecastScan()
 
 				pollTimer.Reset(currentChromecastPollInterval())
 			}
@@ -332,15 +345,36 @@ func healthCheckChromecastDevices(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			ccMu.Lock()
-			for address := range chromeCastDevices {
-				if !HostPortIsAlive(address) {
-					discoveryDebugf("Chromecast discovery removed addr=%q", address)
-					delete(chromeCastDevices, address)
-				}
-			}
-			ccMu.Unlock()
+			evictDeadChromecastDevices(HostPortIsAlive)
 		}
+	}
+}
+
+// evictDeadChromecastDevices removes unreachable cached devices and publishes
+// the removal to discovery-feed subscribers.
+func evictDeadChromecastDevices(alive func(string) bool) {
+	ccMu.Lock()
+	addresses := make([]string, 0, len(chromeCastDevices))
+	for address := range chromeCastDevices {
+		addresses = append(addresses, address)
+	}
+	ccMu.Unlock()
+
+	evicted := false
+	for _, address := range addresses {
+		if alive(address) {
+			continue
+		}
+		ccMu.Lock()
+		if _, ok := chromeCastDevices[address]; ok {
+			discoveryDebugf("Chromecast discovery removed addr=%q", address)
+			delete(chromeCastDevices, address)
+			evicted = true
+		}
+		ccMu.Unlock()
+	}
+	if evicted {
+		feed.publish()
 	}
 }
 

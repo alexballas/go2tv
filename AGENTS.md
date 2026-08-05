@@ -32,10 +32,10 @@ go run cmd/fynedo-check/main.go internal/gui/   # Standard fyne.Do violation che
 ### Mobile Build Verification
 For all phases, verify mobile builds pass:
 ```bash
-ANDROID_HOME=/home/alex/Android/Sdk ANDROID_NDK_HOME=/home/alex/Downloads/android-ndk-r27d FYNE='go run github.com/alexballas/refyne/v2/cmd/fyne@latest' make android
+ANDROID_HOME=/home/alex/Android/Sdk ANDROID_NDK_HOME=/home/alex/Downloads/android-ndk-r27d make android
 ```
 Android builds bundle FFmpeg by default.
-**Note**: go2tv targets the refyne fork (`github.com/alexballas/refyne/v2`), so it must be packaged with refyne's own `cmd/fyne` (invoked above via `go run`). The stock `fyne` CLI fails with `does not import "fyne.io/fyne/v2/internal/driver/mobile/app"` because it checks for the upstream import path, not the refyne one.
+**Note**: go2tv targets the refyne fork (`github.com/alexballas/refyne/v2`), so it must be packaged with refyne's own `cmd/fyne`. The `android-fyne` target provisions that CLI at the version go.mod pins, so do not pass `FYNE=` unless you want a specific binary — it must be an executable path, not a `go run` command line. The stock `fyne` CLI fails with `does not import "fyne.io/fyne/v2/internal/driver/mobile/app"` because it checks for the upstream import path, not the refyne one.
 
 ## Architecture
 
@@ -115,6 +115,7 @@ utils/                 - Shared utilities (transcode, ffprobe, subtitle conversi
 - Define package-level error variables for common error cases
 
 ### Testing Patterns
+- **NO STUPID TESTS:** Every test must protect real user-visible behavior or a credible regression. Assert the relevant contract; avoid implementation trivia, tautologies, and redundant coverage.
 - Use `t.Run()` for subtests with descriptive names
 - Table-driven tests with `tt := []struct{...}` pattern
 - Use `t.Fatalf()` for fatal test failures

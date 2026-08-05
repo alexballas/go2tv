@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/alexballas/refyne/v2"
+	fyne "github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/container"
 	fynedialog "github.com/alexballas/refyne/v2/dialog"
 	"github.com/alexballas/refyne/v2/lang"
@@ -19,6 +19,7 @@ import (
 	"github.com/alexballas/refyne/v2/theme"
 	"github.com/alexballas/refyne/v2/widget"
 	xfilepicker "github.com/alexballas/xfilepicker/dialog"
+	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/rtmp"
 	"go2tv.app/go2tv/v2/utils"
 )
@@ -218,14 +219,17 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 
 		fyne.CurrentApp().Preferences().SetString("Gapless", selection)
 		if s.NextMediaCheck.Checked {
+			target := traversalPlaybackTarget(s)
 			switch selection {
 			case "Enabled":
-				switch s.State {
+				switch s.getScreenState() {
 				case "Playing", "Paused":
-					newTVPayload, err := queueNext(s, false)
-					if err == nil && s.GaplessMediaWatcher == nil {
-						s.GaplessMediaWatcher = gaplessMediaWatcher
-						go s.GaplessMediaWatcher(s.serverStopCTX, s, newTVPayload)
+					if target.device.deviceType == devices.DeviceTypeDLNA {
+						newTVPayload, err := queueNext(s, false)
+						if err == nil && s.GaplessMediaWatcher == nil {
+							s.GaplessMediaWatcher = gaplessMediaWatcher
+							go s.GaplessMediaWatcher(s.serverStopCTX, s, newTVPayload)
+						}
 					}
 				}
 			case "Disabled":
@@ -233,9 +237,11 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 				// we fail to clear the NextURI it would be best to stop and
 				// avoid inconsistencies where gapless playback appears disabled
 				// but in reality it's not.
-				_, err := queueNext(s, true)
-				if err != nil {
-					stopAction(s)
+				if target.device.deviceType == devices.DeviceTypeDLNA && s.tvdata != nil {
+					_, err := queueNext(s, true)
+					if err != nil {
+						stopAction(s)
+					}
 				}
 			}
 		}
@@ -321,8 +327,10 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	rtmpKeyContainer := container.NewBorder(nil, nil, nil, container.NewHBox(regenKeyBtn), streamKeyEntry)
 
 	generalSettings := container.NewVBox(
-		newSettingsField(lang.L("Theme"), dropdownTheme),
-		newSettingsField(lang.L("Language"), dropdownLanguage),
+		container.NewGridWithColumns(2,
+			newSettingsField(lang.L("Theme"), dropdownTheme),
+			newSettingsField(lang.L("Language"), dropdownLanguage),
+		),
 		newSettingsField("ffmpeg "+lang.L("Path"), ffmpegPathControls),
 		newSettingsCheckboxField(rememberPlaybackPositionControls),
 	)
@@ -342,23 +350,25 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		newSettingsField(lang.L("Diagnostics"), debugExport),
 	)
 
-	leftColumn := container.NewBorder(
+	remoteSessionButton := widget.NewButton(lang.L("Remote Web Session")+"…", func() {
+		s.openRemoteWebSessionDialog()
+	})
+	remoteSessionSettings := container.NewVBox(
+		newSettingsField(lang.L("Remote Web Session"), remoteSessionButton),
+	)
+
+	leftColumn := container.NewVBox(
 		widget.NewCard(lang.L("Common Options"), "", generalSettings),
-		nil,
-		nil,
-		nil,
+		widget.NewCard(lang.L("Remote Web Session"), "", remoteSessionSettings),
 		widget.NewCard(lang.L("Diagnostics"), "", debugSettings),
 	)
-	rightColumn := container.NewBorder(
+	rightColumn := container.NewVBox(
 		widget.NewCard(lang.L("Auto-Play Next File"), "", autoNextSettings),
-		nil,
-		nil,
-		nil,
 		widget.NewCard(lang.L("RTMP Server"), "", rtmpSettings),
 	)
 	settingsCategories := container.NewGridWithColumns(2, leftColumn, rightColumn)
 
-	return container.NewVScroll(settingsCategories)
+	return settingsCategories
 }
 
 func showDiagnosticsSaveDialog(s *FyneScreen) {

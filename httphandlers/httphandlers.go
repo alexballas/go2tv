@@ -2,6 +2,7 @@ package httphandlers
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"html"
@@ -25,8 +26,8 @@ import (
 type HTTPserver struct {
 	http *http.Server
 	Mux  *http.ServeMux
-	// We only need to run one ffmpeg
-	// command at a time, per server instance
+	// Chromecast runs one ffmpeg command at a time per server. DLNA commands
+	// are request-owned so a renderer reconnect cannot corrupt another command.
 	ffmpeg      *exec.Cmd
 	handlers    map[string]handler
 	dirHandlers map[string]string // Handlers for serving entire directories (e.g. HLS)
@@ -41,6 +42,8 @@ type handler struct {
 	payload   *soapcalls.TVPayload    // For DLNA (may be nil for Chromecast)
 	transcode *utils.TranscodeOptions // For Chromecast transcoding (may be nil)
 	media     any
+	mediaType string
+	static    bool
 }
 
 // Screen interface is used to push message back to the user
@@ -68,6 +71,14 @@ type osFileType struct {
 func (s *HTTPserver) AddHandler(path string, payload *soapcalls.TVPayload, transcode *utils.TranscodeOptions, media any) {
 	s.mu.Lock()
 	s.handlers[path] = handler{payload: payload, transcode: transcode, media: media}
+	s.mu.Unlock()
+}
+
+// AddStaticHandler adds GET/HEAD static content with explicit MIME and CORS.
+// media may be a file path, []byte, or MediaReaderSeeker.
+func (s *HTTPserver) AddStaticHandler(path, mediaType string, media any) {
+	s.mu.Lock()
+	s.handlers[path] = handler{media: media, mediaType: mediaType, static: true}
 	s.mu.Unlock()
 }
 
@@ -242,13 +253,35 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 			return
 		}
 
-		// Explicitly set Content-Type for HLS files
-		if strings.HasSuffix(requestPathLower, ".m3u8") {
-			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-		} else if strings.HasSuffix(requestPathLower, ".ts") {
-			w.Header().Set("Content-Type", "video/mp2t")
-		} else if strings.HasSuffix(requestPathLower, ".mp4") || strings.HasSuffix(requestPathLower, ".m4s") {
-			w.Header().Set("Content-Type", "video/mp4")
+		if out.static {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.Header().Set("Content-Type", out.mediaType)
+			if etag := artworkETag(r.URL.Path); etag != "" {
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				w.Header().Set("ETag", etag)
+			}
+			switch r.Method {
+			case http.MethodOptions:
+				w.WriteHeader(http.StatusOK)
+				return
+			case http.MethodGet, http.MethodHead:
+			default:
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+		}
+
+		// Explicitly set Content-Type for HLS files.
+		if !out.static {
+			if strings.HasSuffix(requestPathLower, ".m3u8") {
+				w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+			} else if strings.HasSuffix(requestPathLower, ".ts") {
+				w.Header().Set("Content-Type", "video/mp2t")
+			} else if strings.HasSuffix(requestPathLower, ".mp4") || strings.HasSuffix(requestPathLower, ".m4s") {
+				w.Header().Set("Content-Type", "video/mp4")
+			}
 		}
 
 		switch f := out.media.(type) {
@@ -277,7 +310,29 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 	}
 }
 
+func artworkETag(requestPath string) string {
+	const (
+		artworkPrefix = "/artwork/"
+		sha256Length  = 64
+	)
+
+	if !strings.HasPrefix(requestPath, artworkPrefix) || !strings.HasSuffix(requestPath, ".jpg") {
+		return ""
+	}
+	id := strings.TrimSuffix(strings.TrimPrefix(requestPath, artworkPrefix), ".jpg")
+	if len(id) != sha256Length {
+		return ""
+	}
+	for _, char := range id {
+		if !('0' <= char && char <= '9' || 'a' <= char && char <= 'f') {
+			return ""
+		}
+	}
+	return `"` + id + `"`
+}
+
 func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) http.HandlerFunc {
+	sink := &legacyScreenSink{tv: tv, screen: screen}
 	return func(w http.ResponseWriter, req *http.Request) {
 		reqParsed, _ := io.ReadAll(req.Body)
 		sidVal, sidExists := req.Header["Sid"]
@@ -296,43 +351,41 @@ func (s *HTTPserver) callbackHandler(tv *soapcalls.TVPayload, screen Screen) htt
 			return
 		}
 
-		newstate := event.TransportState
+		sink.HandleCallbackEvent(req.Context(), CallbackEvent{SID: uuid, Source: req.RemoteAddr, TransportState: event.TransportState, MediaType: tv.MediaType})
+	}
+}
 
-		// Apparently we should ignore the first message
-		// On some media renderers we receive a STOPPED message
-		// even before we start streaming.
-		processStop, err := tv.GetProcessStop(uuid)
-		if err != nil {
-			http.NotFound(w, req)
-			return
-		}
+// legacyScreenSink keeps existing GUI/CLI behavior outside HTTP parsing.
+type legacyScreenSink struct {
+	tv     *soapcalls.TVPayload
+	screen Screen
+}
 
-		if !processStop && newstate == "STOPPED" {
-			tv.SetProcessStopTrue(uuid)
-			fmt.Fprintf(w, "OK\n")
-			return
+func (s *legacyScreenSink) HandleCallbackEvent(_ context.Context, event CallbackEvent) {
+	processStop, err := s.tv.GetProcessStop(event.SID)
+	if err != nil {
+		return
+	}
+	if !processStop && event.TransportState == "STOPPED" {
+		s.tv.SetProcessStopTrue(event.SID)
+		return
+	}
+	if !s.tv.UpdateMRstate(event.TransportState, event.SID) {
+		return
+	}
+	switch event.TransportState {
+	case "PLAYING":
+		if event.MediaType != "" {
+			s.screen.SetMediaType(event.MediaType)
 		}
-
-		if !tv.UpdateMRstate(newstate, uuid) {
-			http.NotFound(w, req)
-			return
-		}
-
-		switch newstate {
-		case "PLAYING":
-			// Handle gapless transition: update media type if changed
-			if tv != nil && tv.MediaType != "" {
-				screen.SetMediaType(tv.MediaType)
-			}
-			screen.EmitMsg("Playing")
-			tv.SetProcessStopTrue(uuid)
-		case "PAUSED_PLAYBACK":
-			screen.EmitMsg("Paused")
-		case "STOPPED":
-			screen.EmitMsg("Stopped")
-			_ = tv.UnsubscribeSoapCall(uuid)
-			screen.Fini()
-		}
+		s.screen.EmitMsg("Playing")
+		s.tv.SetProcessStopTrue(event.SID)
+	case "PAUSED_PLAYBACK":
+		s.screen.EmitMsg("Paused")
+	case "STOPPED":
+		s.screen.EmitMsg("Stopped")
+		_ = s.tv.UnsubscribeSoapCall(event.SID)
+		s.screen.Fini()
 	}
 }
 
@@ -407,6 +460,10 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 		transcode = tv.Transcode
 		mediaType = tv.MediaType
 		seek = tv.Seekable
+		tv.Log().Debug("", "Method", "DLNAMediaHTTP", "Action", "Request", "HTTP Method", r.Method, "Path", r.URL.Path,
+			"TimeSeekRange", r.Header.Get("TimeSeekRange.dlna.org"), "Range", r.Header.Get("Range"),
+			"GetContentFeatures", r.Header.Get("getcontentFeatures.dlna.org"),
+			"GetAvailableSeekRange", r.Header.Get("getAvailableSeekRange.dlna.org"))
 	}
 
 	// Chromecast transcoding takes precedence
@@ -482,7 +539,6 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 
 		w.Header()["contentFeatures.dlna.org"] = []string{contentFeatures}
 	}
-
 	// In ffmpeg we can emulate seek support for live streams
 	if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "video") {
 		// Route based on which config is provided
@@ -501,7 +557,8 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 			}
 		case tv != nil:
 			// DLNA transcoding (MPEGTS)
-			err := utils.ServeTranscodedStream(r.Context(), w, f, ff, tv.FFmpegPath, tv.FFmpegSubsPath, tv.FFmpegSeek, utils.SubtitleSizeMedium)
+			var command exec.Cmd
+			err := utils.ServeTranscodedStream(r.Context(), w, f, &command, tv.FFmpegPath, tv.FFmpegSubsPath, tv.FFmpegSeek, utils.SubtitleSizeMedium)
 			if err != nil {
 				tv.Log().Error("", "function", "serveContentReadClose", "Action", "Transcode", "error", err)
 			}
@@ -561,7 +618,6 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcall
 
 		w.Header()["contentFeatures.dlna.org"] = []string{contentFeatures}
 	}
-
 	if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "video") {
 		// Since we're dealing with an io.Reader we can't
 		// allow any HEAD requests that some DMRs trigger.
@@ -588,7 +644,8 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcall
 			}
 		case tv != nil:
 			// DLNA transcoding (MPEGTS)
-			err := utils.ServeTranscodedStream(r.Context(), w, input, ff, tv.FFmpegPath, tv.FFmpegSubsPath, tv.FFmpegSeek, utils.SubtitleSizeMedium)
+			var command exec.Cmd
+			err := utils.ServeTranscodedStream(r.Context(), w, input, &command, tv.FFmpegPath, tv.FFmpegSubsPath, tv.FFmpegSeek, utils.SubtitleSizeMedium)
 			if err != nil {
 				tv.Log().Error("", "function", "serveContentCustomType", "Action", "Transcode", "error", err)
 			}

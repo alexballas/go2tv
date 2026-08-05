@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -60,6 +59,7 @@ type EventNotify struct {
 
 // DMRextracted stores the services urls and device identification
 type DMRextracted struct {
+	PinnedIP               string
 	AvtransportControlURL  string
 	AvtransportEventSubURL string
 	RenderingControlURL    string
@@ -70,12 +70,12 @@ type DMRextracted struct {
 
 // DMRextractor extracts the services URLs from the main DMR xml.
 func DMRextractor(ctx context.Context, dmrurl string) (*DMRextracted, error) {
-	parsedURL, err := url.Parse(dmrurl)
-	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
+	parsedURL, pinned, err := validateRendererLocation(ctx, dmrurl)
+	if err != nil {
 		return nil, fmt.Errorf("DMRextractor parse error: %w", err)
 	}
 
-	client := newHTTPClient()
+	client := rendererHTTPClient(parsedURL, pinned)
 	req, err := http.NewRequestWithContext(ctx, "GET", dmrurl, nil)
 	if err != nil {
 		return nil, fmt.Errorf("DMRextractor GET error: %w", err)
@@ -89,22 +89,30 @@ func DMRextractor(ctx context.Context, dmrurl string) (*DMRextracted, error) {
 	}
 	defer xmlresp.Body.Close()
 
-	xmlbody, err := io.ReadAll(xmlresp.Body)
+	xmlbody, err := readCapped(xmlresp.Body, maxRendererDescriptionBody)
 	if err != nil {
 		return nil, fmt.Errorf("DMRextractor read error: %w", err)
 	}
-	return ParseDMRFromXML(xmlbody, parsedURL)
+	extracted, err := ParseDMRFromXML(xmlbody, parsedURL)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateServiceEndpoints(ctx, pinned, extracted); err != nil {
+		return nil, err
+	}
+	extracted.PinnedIP = pinned.String()
+	return extracted, nil
 }
 
 // LoadDevicesFromLocation fetches XML from a UPnP location URL and returns
 // all devices that have AVTransport service (for multi-device setups).
 func LoadDevicesFromLocation(ctx context.Context, dmrurl string) ([]*DMRextracted, error) {
-	parsedURL, err := url.Parse(dmrurl)
-	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
+	parsedURL, pinned, err := validateRendererLocation(ctx, dmrurl)
+	if err != nil {
 		return nil, fmt.Errorf("LoadDevicesFromLocation parse error: %w", err)
 	}
 
-	client := newHTTPClient()
+	client := rendererHTTPClient(parsedURL, pinned)
 	req, err := http.NewRequestWithContext(ctx, "GET", dmrurl, nil)
 	if err != nil {
 		return nil, fmt.Errorf("LoadDevicesFromLocation GET error: %w", err)
@@ -118,12 +126,26 @@ func LoadDevicesFromLocation(ctx context.Context, dmrurl string) ([]*DMRextracte
 	}
 	defer xmlresp.Body.Close()
 
-	xmlbody, err := io.ReadAll(xmlresp.Body)
+	xmlbody, err := readCapped(xmlresp.Body, maxRendererDescriptionBody)
 	if err != nil {
 		return nil, fmt.Errorf("LoadDevicesFromLocation read error: %w", err)
 	}
 
-	return ParseAllDMRFromXML(xmlbody, parsedURL)
+	devices, err := ParseAllDMRFromXML(xmlbody, parsedURL)
+	if err != nil {
+		return nil, err
+	}
+	valid := devices[:0]
+	for _, device := range devices {
+		if validateServiceEndpoints(ctx, pinned, device) == nil {
+			device.PinnedIP = pinned.String()
+			valid = append(valid, device)
+		}
+	}
+	if len(valid) == 0 {
+		return nil, ErrWrongDMR
+	}
+	return valid, nil
 }
 
 // ParseDMRFromXML parses DMR XML data and extracts service URLs.

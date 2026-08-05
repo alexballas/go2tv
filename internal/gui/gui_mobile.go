@@ -11,6 +11,7 @@ import (
 	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/app"
 	"github.com/alexballas/refyne/v2/container"
+	"github.com/alexballas/refyne/v2/data/binding"
 	"github.com/alexballas/refyne/v2/dialog"
 	"github.com/alexballas/refyne/v2/lang"
 	"github.com/alexballas/refyne/v2/theme"
@@ -20,55 +21,67 @@ import (
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
 	"go2tv.app/go2tv/v2/internal/crashlog"
+	"go2tv.app/go2tv/v2/internal/mediamodel"
+	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
 )
 
 // FyneScreen .
 type FyneScreen struct {
-	mu                   sync.RWMutex
-	Debug                *debugWriter
-	DiscoveryDebug       *debugWriter
-	Current              fyne.Window
-	tvdata               *soapcalls.TVPayload
-	chromecastClient     *castprotocol.CastClient
-	chromecastActionID   uint64
-	Stop                 *widget.Button
-	MuteUnmute           *widget.Button
-	CheckVersion         *widget.Button
-	CustomSubsCheck      *widget.Check
-	ExternalMediaURL     *widget.Check
-	cancelEnablePlay     context.CancelFunc
-	serverStopCTX        context.Context
-	cancelServerStop     context.CancelFunc
-	MediaText            *widget.Entry
-	SubsText             *widget.Entry
-	DeviceList           *deviceList
-	httpserver           *httphandlers.HTTPserver
-	PlayPause            *widget.Button
-	TranscodeCheckBox    *widget.Check
-	mediafile            fyne.URI
-	subsfile             fyne.URI
-	selectedDevice       devType
-	selectedDeviceType   string
-	NextMediaCheck       *widget.Check
-	State                string
-	controlURL           string
-	eventlURL            string
-	renderingControlURL  string
-	connectionManagerURL string
-	version              string
-	mediaFormats         []string
-	tempMediaFile        string // Temp file path for mobile media serving (cleanup on stop)
-	tempSubsFile         string // Temp subtitle path for ffmpeg burn-in (cleanup on stop)
-	ffmpegPath           string
-	mediaDuration        float64
-	Transcode            bool
-	Medialoop            bool
-	castingMediaType     string // MIME type of currently casting media
-	hotkeysSuspendCount  int32
-	Crash                *crashlog.Session
-	PendingCrashPath     string
+	mu                     sync.RWMutex
+	Debug                  *debugWriter
+	DiscoveryDebug         *debugWriter
+	Current                fyne.Window
+	CurrentPos             binding.String
+	EndPos                 binding.String
+	tvdata                 *soapcalls.TVPayload
+	chromecastClient       *castprotocol.CastClient
+	chromecastActionID     uint64
+	Stop                   *widget.Button
+	MuteUnmute             *widget.Button
+	CheckVersion           *widget.Button
+	CustomSubsCheck        *widget.Check
+	ExternalMediaURL       *widget.Check
+	cancelEnablePlay       context.CancelFunc
+	serverStopCTX          context.Context
+	cancelServerStop       context.CancelFunc
+	MediaText              *widget.Entry
+	SubsText               *widget.Entry
+	DeviceList             *deviceList
+	httpserver             *httphandlers.HTTPserver
+	PlayPause              *widget.Button
+	SlideBar               *tappedSlider
+	TranscodeCheckBox      *widget.Check
+	mediafile              fyne.URI
+	subsfile               fyne.URI
+	selectedDevice         devType
+	activeDevice           devType
+	selectedDeviceType     string
+	NextMediaCheck         *widget.Check
+	State                  string
+	controlURL             string
+	eventlURL              string
+	renderingControlURL    string
+	connectionManagerURL   string
+	version                string
+	mediaFormats           []string
+	tempMediaFile          string // Temp file path for mobile media serving (cleanup on stop)
+	tempSubsFile           string // Temp subtitle path for ffmpeg burn-in (cleanup on stop)
+	ffmpegPath             string
+	ffmpegSeek             int
+	mediaDuration          float64
+	currentArtwork         *metadata.ArtworkAsset
+	currentArtworkIdentity string
+	artworkCache           map[string]artworkCacheEntry
+	Transcode              bool
+	Medialoop              bool
+	sliderActive           bool
+	dlnaSeekRestart        bool
+	castingMediaType       string // MIME type of currently casting media
+	hotkeysSuspendCount    int32
+	Crash                  *crashlog.Session
+	PendingCrashPath       string
 }
 
 type devType struct {
@@ -85,6 +98,9 @@ func Start(ctx context.Context, s *FyneScreen) {
 	// Clean up orphaned temp files from previous crashes
 	cleanupMobileCacheTempFiles()
 
+	// Install the Android multicast hooks before the discovery goroutines run
+	// their immediate first scans.
+	prepareBackgroundSession(s)
 	devices.StartDiscovery(ctx)
 
 	if app := fyne.CurrentApp(); app != nil {
@@ -102,6 +118,8 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	w.SetContent(tabs)
 	w.CenterOnScreen()
+
+	registerShareHandler(s)
 
 	go func() {
 		<-ctx.Done()
@@ -150,7 +168,7 @@ func (p *FyneScreen) SetMediaType(mediaType string) {
 func (p *FyneScreen) Fini() {
 	// Main media loop logic
 	if p.Medialoop {
-		playAction(p)
+		go playAction(p)
 	}
 }
 
@@ -161,6 +179,27 @@ func (p *FyneScreen) updateScreenState(a string) {
 	p.mu.Lock()
 	p.State = a
 	p.mu.Unlock()
+
+	// Confirmed playback backs up the eager Play-callback start, while every
+	// terminal path stops the background service here. Called after the unlock:
+	// it reaches into the platform and has no business doing that under a lock.
+	syncBackgroundSession(p, a)
+}
+
+func (p *FyneScreen) setActiveDevice(device devType) {
+	p.mu.Lock()
+	p.activeDevice = device
+	p.mu.Unlock()
+}
+
+func (p *FyneScreen) clearActiveDevice() {
+	p.setActiveDevice(devType{})
+}
+
+func (p *FyneScreen) getActiveDevice() devType {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.activeDevice
 }
 
 // getScreenState returns the current screen state
@@ -245,7 +284,7 @@ func NewFyneScreen(version string, crash *crashlog.Session) *FyneScreen {
 		Debug:            dw,
 		DiscoveryDebug:   discoveryDebug,
 		ffmpegPath:       ffmpegPath,
-		mediaFormats:     []string{".mp4", ".avi", ".mkv", ".mpeg", ".mov", ".webm", ".m4v", ".mpv", ".dv", ".mp3", ".flac", ".wav", ".m4a", ".jpg", ".jpeg", ".png"},
+		mediaFormats:     mediamodel.AllMediaExtensions(),
 		version:          version,
 		Crash:            crash,
 		PendingCrashPath: crashPath(crash),

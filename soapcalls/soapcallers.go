@@ -19,9 +19,10 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-)
 
-var discardLogger = newJSONLogger(io.Discard)
+	"go2tv.app/go2tv/v2/internal/logging"
+	"go2tv.app/go2tv/v2/metadata"
+)
 
 type States struct {
 	NewState    string
@@ -43,6 +44,7 @@ type TVPayload struct {
 	InitialMediaRenderersStates map[string]bool
 	MediaRenderersStates        map[string]*States
 	FFmpegSeek                  int
+	MediaDuration               float64
 	FFmpegPath                  string
 	FFmpegSubsPath              string
 	EventURL                    string
@@ -54,6 +56,8 @@ type TVPayload struct {
 	CallbackURL                 string
 	ConnectionManagerURL        string
 	RenderingControlURL         string
+	PinnedIP                    string
+	Metadata                    metadata.Media
 	mu                          sync.RWMutex
 	initLogOnce                 sync.Once
 	Transcode                   bool
@@ -284,7 +288,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 		return fmt.Errorf("setAVTransportSoapCall soap build error: %w", err)
 	}
 
-	client := newHTTPClient()
+	client := p.httpClient(parsedURLtransport)
 
 	send := func(payload []byte, action string) (int, []byte, error) {
 		req, reqErr := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(payload))
@@ -314,7 +318,7 @@ func (p *TVPayload) setAVTransportSoapCall() error {
 		}
 		defer res.Body.Close()
 
-		resBytes, reqErr := io.ReadAll(res.Body)
+		resBytes, reqErr := readCapped(res.Body, maxSOAPResponseBody)
 		if reqErr != nil {
 			p.Log().Error("", "Method", "setAVTransportSoapCall", "Action", action+" Readall", "error", reqErr)
 			return 0, nil, fmt.Errorf("setAVTransportSoapCall Failed to read response: %w", reqErr)
@@ -431,7 +435,7 @@ func (p *TVPayload) setNextAVTransportSoapCall(clear bool) error {
 		return fmt.Errorf("setNextAVTransportSoapCall soap build error: %w", err)
 	}
 
-	client := newHTTPClient()
+	client := p.httpClient(parsedURLtransport)
 
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlData))
 	if err != nil {
@@ -460,7 +464,7 @@ func (p *TVPayload) setNextAVTransportSoapCall(clear bool) error {
 	}
 	defer res.Body.Close()
 
-	resBytes, err := io.ReadAll(res.Body)
+	resBytes, err := readCapped(res.Body, maxSOAPResponseBody)
 	if err != nil {
 		p.Log().Error("", "Method", "setNextAVTransportSoapCall", "Action", "Readall", "error", err)
 		return fmt.Errorf("setNextAVTransportSoapCall Failed to read response: %w", err)
@@ -506,10 +510,10 @@ func (p *TVPayload) PlayPauseStopSoapCall(action string) error {
 		return fmt.Errorf("AVTransportActionSoapCall action error: %w", err)
 	}
 
-	client := newHTTPClient()
+	client := p.httpClient(parsedURLtransport)
 
 	if retry {
-		client = newRetryableHTTPClient(3)
+		client = p.retryableHTTPClient(parsedURLtransport, 3)
 	}
 
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlData))
@@ -539,7 +543,7 @@ func (p *TVPayload) PlayPauseStopSoapCall(action string) error {
 	}
 	defer res.Body.Close()
 
-	resBytes, err := io.ReadAll(res.Body)
+	resBytes, err := readCapped(res.Body, maxSOAPResponseBody)
 	if err != nil {
 		p.Log().Error("", "Method", "AVTransportActionSoapCall", "Action", "Readall", "error", err)
 		return fmt.Errorf("AVTransportActionSoapCall Failed to read response: %w", err)
@@ -576,7 +580,7 @@ func (p *TVPayload) SeekSoapCall(reltime string) error {
 		return fmt.Errorf("SeekSoapCall action error: %w", err)
 	}
 
-	client := newHTTPClient()
+	client := p.httpClient(parsedURLtransport)
 
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlData))
 	if err != nil {
@@ -605,7 +609,7 @@ func (p *TVPayload) SeekSoapCall(reltime string) error {
 	}
 	defer res.Body.Close()
 
-	resBytes, err := io.ReadAll(res.Body)
+	resBytes, err := readCapped(res.Body, maxSOAPResponseBody)
 	if err != nil {
 		p.Log().Error("", "Method", "SeekSoapCall", "Action", "Readall", "error", err)
 		return fmt.Errorf("SeekSoapCall Failed to read response: %w", err)
@@ -647,7 +651,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 		return fmt.Errorf("SubscribeSoapCall #2 parse error: %w", err)
 	}
 
-	client := newRetryableHTTPClient(3)
+	client := p.retryableHTTPClient(parsedURLcontrol, 3)
 
 	req, err := http.NewRequestWithContext(p.ctx, "SUBSCRIBE", parsedURLcontrol.String(), nil)
 	if err != nil {
@@ -689,7 +693,7 @@ func (p *TVPayload) SubscribeSoapCall(uuidInput string) error {
 	}
 	defer res.Body.Close()
 
-	resBytes, err := io.ReadAll(res.Body)
+	resBytes, err := readCapped(res.Body, maxSOAPResponseBody)
 	if err != nil {
 		p.Log().Error("", "Method", "SubscribeSoapCall", "Action", "Readall", "error", err)
 		return fmt.Errorf("SubscribeSoapCall Failed to read response: %w", err)
@@ -756,7 +760,7 @@ func (p *TVPayload) UnsubscribeSoapCall(uuid string) error {
 		return fmt.Errorf("UnsubscribeSoapCall parse error: %w", err)
 	}
 
-	client := newHTTPClient()
+	client := p.httpClient(parsedURLcontrol)
 
 	req, err := http.NewRequestWithContext(p.ctx, "UNSUBSCRIBE", parsedURLcontrol.String(), nil)
 	if err != nil {
@@ -848,7 +852,7 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 		return "", fmt.Errorf("GetMuteSoapCall build error: %w", err)
 	}
 
-	client := newHTTPClient()
+	client := p.httpClient(parsedRenderingControlURL)
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error("", "Method", "GetMuteSoapCall", "Action", "Prepare POST", "error", err)
@@ -875,12 +879,12 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 	}
 	defer res.Body.Close()
 
-	var buf bytes.Buffer
-
-	tresp := io.TeeReader(res.Body, &buf)
-
+	resBytes, err := readCapped(res.Body, maxSOAPResponseBody)
+	if err != nil {
+		return "", fmt.Errorf("GetMuteSoapCall Failed to read response: %w", err)
+	}
 	var respGetMute getMuteRespBody
-	if err = xml.NewDecoder(tresp).Decode(&respGetMute); err != nil {
+	if err = xml.Unmarshal(resBytes, &respGetMute); err != nil {
 		p.Log().Error("", "Method", "GetMuteSoapCall", "Action", "XML Decode", "error", err)
 		return "", fmt.Errorf("GetMuteSoapCall XML Decode error: %w", err)
 	}
@@ -889,12 +893,6 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 	if err != nil {
 		p.Log().Error("", "Method", "GetMuteSoapCall", "Action", "Header Marshaling #2", "error", err)
 		return "", fmt.Errorf("GetMuteSoapCall Response Marshaling error: %w", err)
-	}
-
-	resBytes, err := io.ReadAll(&buf)
-	if err != nil {
-		p.Log().Error("", "Method", "GetMuteSoapCall", "Action", "Readall", "error", err)
-		return "", fmt.Errorf("GetMuteSoapCall Failed to read response: %w", err)
 	}
 
 	p.Log().Debug(string(resBytes), "Method", "GetMuteSoapCall", "Action", "Response", "Status Code", strconv.Itoa(res.StatusCode), "Headers", json.RawMessage(headerBytesRes))
@@ -924,7 +922,7 @@ func (p *TVPayload) SetMuteSoapCall(number string) error {
 		return fmt.Errorf("SetMuteSoapCall build error: %w", err)
 	}
 
-	client := newHTTPClient()
+	client := p.httpClient(parsedRenderingControlURL)
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error("", "Method", "SetMuteSoapCall", "Action", "Prepare POST", "error", err)
@@ -957,7 +955,7 @@ func (p *TVPayload) SetMuteSoapCall(number string) error {
 		return fmt.Errorf("SetMuteSoapCall Response Marshaling error: %w", err)
 	}
 
-	resBytes, err := io.ReadAll(res.Body)
+	resBytes, err := readCapped(res.Body, maxSOAPResponseBody)
 	if err != nil {
 		p.Log().Error("", "Method", "SetMuteSoapCall", "Action", "Readall", "error", err)
 		return fmt.Errorf("SetMuteSoapCall Failed to read response: %w", err)
@@ -988,7 +986,7 @@ func (p *TVPayload) GetVolumeSoapCall() (int, error) {
 		return 0, fmt.Errorf("GetVolumeSoapCall build error: %w", err)
 	}
 
-	client := newHTTPClient()
+	client := p.httpClient(parsedRenderingControlURL)
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error("", "Method", "GetVolumeSoapCall", "Action", "Prepare POST", "error", err)
@@ -1016,12 +1014,12 @@ func (p *TVPayload) GetVolumeSoapCall() (int, error) {
 	}
 	defer res.Body.Close()
 
-	var buf bytes.Buffer
-
-	tresp := io.TeeReader(res.Body, &buf)
-
+	resBytes, err := readCapped(res.Body, maxSOAPResponseBody)
+	if err != nil {
+		return 0, fmt.Errorf("GetVolumeSoapCall Failed to read response: %w", err)
+	}
 	var respGetVolume getVolumeRespBody
-	if err = xml.NewDecoder(tresp).Decode(&respGetVolume); err != nil {
+	if err = xml.Unmarshal(resBytes, &respGetVolume); err != nil {
 		p.Log().Error("", "Method", "GetVolumeSoapCall", "Action", "XML Decode", "error", err)
 		return 0, fmt.Errorf("GetVolumeSoapCall XML Decode error: %w", err)
 	}
@@ -1040,12 +1038,6 @@ func (p *TVPayload) GetVolumeSoapCall() (int, error) {
 	if err != nil {
 		p.Log().Error("", "Method", "GetVolumeSoapCall", "Action", "Header Marshaling #2", "error", err)
 		return 0, fmt.Errorf("GetVolumeSoapCall Response Marshaling error: %w", err)
-	}
-
-	resBytes, err := io.ReadAll(&buf)
-	if err != nil {
-		p.Log().Error("", "Method", "GetVolumeSoapCall", "Action", "Readall", "error", err)
-		return 0, fmt.Errorf("GetVolumeSoapCall Failed to read response: %w", err)
 	}
 
 	p.Log().Debug(string(resBytes), "Method", "GetVolumeSoapCall", "Action", "Response", "Status Code", strconv.Itoa(res.StatusCode), "Headers", json.RawMessage(headerBytesRes))
@@ -1073,7 +1065,7 @@ func (p *TVPayload) SetVolumeSoapCall(v string) error {
 		return fmt.Errorf("SetVolumeSoapCall build error: %w", err)
 	}
 
-	client := newHTTPClient()
+	client := p.httpClient(parsedRenderingControlURL)
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedRenderingControlURL.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error("", "Method", "SetVolumeSoapCall", "Action", "Prepare POST", "error", err)
@@ -1106,7 +1098,7 @@ func (p *TVPayload) SetVolumeSoapCall(v string) error {
 		return fmt.Errorf("SetVolumeSoapCall Response Marshaling error: %w", err)
 	}
 
-	resBytes, err := io.ReadAll(res.Body)
+	resBytes, err := readCapped(res.Body, maxSOAPResponseBody)
 	if err != nil {
 		p.Log().Error("", "Method", "SetVolumeSoapCall", "Action", "Readall", "error", err)
 		return fmt.Errorf("SetVolumeSoapCall Failed to read response: %w", err)
@@ -1135,7 +1127,11 @@ func (p *TVPayload) GetProtocolInfo() error {
 		return fmt.Errorf("GetProtocolInfo build error: %w", err)
 	}
 
-	client := newHTTPClient()
+	parsedConnectionManagerURL, parseErr := url.Parse(p.ConnectionManagerURL)
+	if parseErr != nil {
+		return fmt.Errorf("GetProtocolInfo parse error: %w", parseErr)
+	}
+	client := p.httpClient(parsedConnectionManagerURL)
 	req, err := http.NewRequestWithContext(p.ctx, "POST", p.ConnectionManagerURL, bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error("", "Method", "GetProtocolInfo", "Action", "Prepare POST", "error", err)
@@ -1169,7 +1165,7 @@ func (p *TVPayload) GetProtocolInfo() error {
 		return nil
 	}
 
-	resBytes, err := io.ReadAll(res.Body)
+	resBytes, err := readCapped(res.Body, maxSOAPResponseBody)
 	if err != nil {
 		p.Log().Error("", "Method", "GetProtocolInfo", "Action", "Readall failed <ignoring>", "error", err)
 		return nil
@@ -1208,7 +1204,7 @@ func (p *TVPayload) Gapless() (string, error) {
 		return "", fmt.Errorf("Gapless build error: %w", err)
 	}
 
-	client := newHTTPClient()
+	client := p.httpClient(parsedURLtransport)
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error("", "Method", "Gapless", "Action", "Prepare POST", "error", err)
@@ -1240,7 +1236,7 @@ func (p *TVPayload) Gapless() (string, error) {
 		return "", fmt.Errorf("Gapless Response Marshaling error: %w", err)
 	}
 
-	resBytes, err := io.ReadAll(res.Body)
+	resBytes, err := readCapped(res.Body, maxSOAPResponseBody)
 	if err != nil {
 		p.Log().Error("", "Method", "Gapless", "Action", "Readall", "error", err)
 		return "", fmt.Errorf("Gapless Failed to read response: %w", err)
@@ -1285,7 +1281,7 @@ func (p *TVPayload) GetTransportInfo() ([]string, error) {
 		return nil, fmt.Errorf("GetTransportInfo build error: %w", err)
 	}
 
-	client := newHTTPClient()
+	client := p.httpClient(parsedURLtransport)
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error("", "Method", "GetTransportInfo", "Action", "Prepare POST", "error", err)
@@ -1317,7 +1313,7 @@ func (p *TVPayload) GetTransportInfo() ([]string, error) {
 		return nil, fmt.Errorf("GetTransportInfo Response Marshaling error: %w", err)
 	}
 
-	resBytes, err := io.ReadAll(res.Body)
+	resBytes, err := readCapped(res.Body, maxSOAPResponseBody)
 	if err != nil {
 		p.Log().Error("", "Method", "GetTransportInfo", "Action", "Readall", "error", err)
 		return nil, fmt.Errorf("GetTransportInfo Failed to read response: %w", err)
@@ -1365,7 +1361,7 @@ func (p *TVPayload) GetPositionInfo() ([]string, error) {
 		return nil, fmt.Errorf("GetPositionInfo build error: %w", err)
 	}
 
-	client := newHTTPClient()
+	client := p.httpClient(parsedURLtransport)
 	req, err := http.NewRequestWithContext(p.ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlbuilder))
 	if err != nil {
 		p.Log().Error("", "Method", "GetPositionInfo", "Action", "Prepare POST", "error", err)
@@ -1397,7 +1393,7 @@ func (p *TVPayload) GetPositionInfo() ([]string, error) {
 		return nil, fmt.Errorf("GetPositionInfo Response Marshaling error: %w", err)
 	}
 
-	resBytes, err := io.ReadAll(res.Body)
+	resBytes, err := readCapped(res.Body, maxSOAPResponseBody)
 	if err != nil {
 		p.Log().Error("", "Method", "GetPositionInfo", "Action", "Readall", "error", err)
 		return nil, fmt.Errorf("GetPositionInfo Failed to read response: %w", err)
@@ -1556,18 +1552,14 @@ func (p *TVPayload) GetProcessStop(uuid string) (bool, error) {
 func (p *TVPayload) Log() *slog.Logger {
 	if p.LogOutput != nil {
 		p.initLogOnce.Do(func() {
-			p.Logger = newJSONLogger(p.LogOutput)
+			p.Logger = logging.NewJSON(p.LogOutput)
 		})
 	}
 
 	if p.Logger == nil {
-		return discardLogger
+		return logging.Discard
 	}
 	return p.Logger
-}
-
-func newJSONLogger(w io.Writer) *slog.Logger {
-	return slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }
 
 func parseProtocolInfo(b []byte, mt string) error {

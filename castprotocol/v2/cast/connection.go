@@ -176,8 +176,19 @@ func (c *Connection) receiveLoop(ctx context.Context) {
 			continue
 		}
 		if err := binary.Read(c.conn, binary.BigEndian, &length); err != nil {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
 			c.log("failed to binary read payload: %v", err)
-			break
+			// This loop is also the PING responder: once reads fail the
+			// receiver will drop the session anyway. Close the socket so
+			// later writes fail immediately instead of feeding a half-open
+			// connection until a write finally hits a broken pipe.
+			c.connected = false
+			c.conn.Close()
+			return
 		}
 		if length == 0 {
 			c.log("empty payload received")

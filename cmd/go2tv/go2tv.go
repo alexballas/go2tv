@@ -21,20 +21,25 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	buildinfo "go2tv.app/go2tv/v2"
 	"go2tv.app/go2tv/v2/castprotocol"
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
+	"go2tv.app/go2tv/v2/internal/cliartwork"
 	"go2tv.app/go2tv/v2/internal/crashlog"
 	"go2tv.app/go2tv/v2/internal/devicecolors"
 	"go2tv.app/go2tv/v2/internal/gui"
 	"go2tv.app/go2tv/v2/internal/interactive"
 	"go2tv.app/go2tv/v2/internal/playback"
+	"go2tv.app/go2tv/v2/internal/servermode"
+	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
 )
 
 var (
-	version      = "dev"
+	version      = buildinfo.Version()
 	mediaArg     = flag.String("v", "", "Path to video/audio file (triggers CLI mode).")
 	urlArg       = flag.String("u", "", "URL to media file (triggers CLI mode).")
 	subsArg      = flag.String("s", "", "Path to subtitles file (.srt or .vtt).")
@@ -42,7 +47,8 @@ var (
 	transcodePtr = flag.Bool("tc", false, "Force transcoding with ffmpeg.")
 	listPtr      = flag.Bool("l", false, "List available devices (Smart TVs and Chromecasts).")
 
-	versionPtr = flag.Bool("version", false, "Print version.")
+	versionPtr    = flag.Bool("version", false, "Print version.")
+	serverOptions = servermode.RegisterCLIFlags(flag.CommandLine)
 
 	errNoCombi = errors.New("can't combine -l with other flags")
 )
@@ -77,6 +83,7 @@ func run(crash *crashlog.Session) error {
 		absMediaFile, mediaType string
 		mediaFile               any
 		isSeek                  bool
+		localMedia              bool
 		transcode               bool
 	)
 
@@ -84,6 +91,12 @@ func run(crash *crashlog.Session) error {
 	defer cancel()
 
 	flag.Parse()
+	if err := serverOptions.Validate(flag.CommandLine); err != nil {
+		return err
+	}
+	if serverOptions.Server {
+		return servermode.Run(exitCTX, serverOptions.Config(version), os.Stdout)
+	}
 	flagRes, err := processflags()
 	if err != nil {
 		return err
@@ -164,12 +177,6 @@ func run(crash *crashlog.Session) error {
 		transcode = playback.ChromecastTranscodeEnabled(transcode, *urlArg, mediaType)
 	}
 
-	if transcode {
-		if _, err := utils.ResolveFFmpegPath(""); err != nil {
-			return fmt.Errorf("checkTCflag parse error: %w", err)
-		}
-	}
-
 	if flagRes.gui {
 		scr := gui.NewFyneScreen(version, crash)
 		gui.Start(exitCTX, scr)
@@ -178,6 +185,7 @@ func run(crash *crashlog.Session) error {
 
 	switch t := mediaFile.(type) {
 	case string:
+		localMedia = true
 		absMediaFile, err = filepath.Abs(t)
 		if err != nil {
 			return err
@@ -205,7 +213,15 @@ func run(crash *crashlog.Session) error {
 	}
 
 	// Get ffmpeg path for transcoding
-	ffmpegPath, _ := utils.ResolveFFmpegPath("")
+	ffmpegPath, ffmpegErr := utils.ResolveFFmpegPath(serverOptions.FFmpegPath)
+	if transcode {
+		if ffmpegErr != nil {
+			return fmt.Errorf("resolve ffmpeg: %w", ffmpegErr)
+		}
+		if err := utils.CheckFFmpeg(ffmpegPath); err != nil {
+			return fmt.Errorf("check ffmpeg: %w", err)
+		}
+	}
 
 	// Branch based on device type
 	if isChromecastTarget {
@@ -234,6 +250,7 @@ func run(crash *crashlog.Session) error {
 	}
 
 	s := httphandlers.NewServer(tvdata.ListenAddress())
+	tvdata.Metadata.Artwork = cliartwork.Prepare(s, absMediaFile, tvdata.ListenAddress(), localMedia)
 	serverStarted := make(chan error)
 
 	// We pass the tvdata here as we need the callback handlers to be able to react
@@ -311,6 +328,7 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 	needsMediaServer := !externalURL || transcode
 	needsLocalServer := needsMediaServer || (hasSubtitles && !transcode)
 	var httpServer *httphandlers.HTTPserver
+	mediaMetadata := metadata.Media{Title: mediaPath}
 
 	if needsLocalServer {
 		whereToListen, err := utils.URLtoListenIPandPort(deviceURL)
@@ -320,6 +338,8 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 
 		httpServer = httphandlers.NewServer(whereToListen)
 		defer httpServer.StopServer()
+		_, localMedia := mediaFile.(string)
+		mediaMetadata.Artwork = cliartwork.Prepare(httpServer, mediaPath, whereToListen, localMedia)
 
 		if hasSubtitles && !transcode {
 			switch strings.ToLower(filepath.Ext(subtitlesPath)) {
@@ -383,7 +403,15 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 	go func() {
 		// Use LIVE stream type for URL/stdin streams to avoid ~30s buffering delay
 		_, isStream := mediaFile.(io.ReadCloser)
-		if err := client.Load(mediaURL, mediaType, mediaPath, 0, mediaDuration, subtitleURL, externalURL || isStream); err != nil {
+		if err := client.LoadMedia(castprotocol.LoadRequest{
+			MediaURL:    mediaURL,
+			ContentType: mediaType,
+			Metadata:    mediaMetadata,
+			StartTime:   0,
+			Duration:    mediaDuration,
+			SubtitleURL: subtitleURL,
+			Live:        externalURL || isStream,
+		}); err != nil {
 			fmt.Fprintf(os.Stderr, "chromecast load: %v\n", err)
 		}
 	}()
@@ -604,7 +632,7 @@ func checkTCflag() error {
 			return nil
 		}
 
-		_, err := utils.ResolveFFmpegPath("")
+		_, err := utils.ResolveFFmpegPath(serverOptions.FFmpegPath)
 		if err != nil {
 			return fmt.Errorf("checkTCflag parse error: %w", err)
 		}

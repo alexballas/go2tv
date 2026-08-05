@@ -16,9 +16,9 @@ import (
 
 	"go2tv.app/go2tv/v2/castprotocol/v2/application"
 	"go2tv.app/go2tv/v2/castprotocol/v2/cast"
+	"go2tv.app/go2tv/v2/internal/logging"
+	"go2tv.app/go2tv/v2/metadata"
 )
-
-var discardLogger = newJSONLogger(io.Discard)
 
 // CastClient wraps go-chromecast Application for simplified API
 type CastClient struct {
@@ -38,17 +38,13 @@ type CastClient struct {
 func (c *CastClient) Log() *slog.Logger {
 	if c.LogOutput != nil {
 		c.initLogOnce.Do(func() {
-			c.Logger = newJSONLogger(c.LogOutput)
+			c.Logger = logging.NewJSON(c.LogOutput)
 		})
 	}
 	if c.Logger == nil {
-		return discardLogger
+		return logging.Discard
 	}
 	return c.Logger
-}
-
-func newJSONLogger(w io.Writer) *slog.Logger {
-	return slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }
 
 func NewCastClient(deviceAddr string) (*CastClient, error) {
@@ -235,8 +231,21 @@ func (c *CastClient) ensureDefaultReceiverReady() error {
 // If subtitleURL is provided, uses custom load command with subtitle tracks.
 // If live is true, uses StreamType "LIVE" to identify as live stream.
 func (c *CastClient) Load(mediaURL string, contentType string, title string, startTime int, duration float64, subtitleURL string, live bool) error {
-	mediaTitle := normalizeMediaTitle(title, mediaURL)
-	c.Log().Debug("loading media", "Method", "Load", "URL", mediaURL, "ContentType", contentType, "Title", mediaTitle, "StartTime", startTime, "Duration", duration, "HasSubs", subtitleURL != "", "Live", live)
+	return c.LoadMedia(LoadRequest{
+		MediaURL:    mediaURL,
+		ContentType: contentType,
+		Metadata:    metadata.Media{Title: title},
+		StartTime:   startTime,
+		Duration:    duration,
+		SubtitleURL: subtitleURL,
+		Live:        live,
+	})
+}
+
+// LoadMedia loads media and protocol-neutral metadata onto the Chromecast.
+func (c *CastClient) LoadMedia(req LoadRequest) error {
+	req.Metadata.Title = normalizeMediaTitle(req.Metadata.Title, req.MediaURL)
+	c.Log().Debug("loading media", "Method", "LoadMedia", "URL", req.MediaURL, "ContentType", req.ContentType, "Title", req.Metadata.Title, "StartTime", req.StartTime, "Duration", req.Duration, "HasSubs", req.SubtitleURL != "", "HasArtwork", req.Metadata.Artwork != nil, "Live", req.Live)
 
 	// Check if connection is still active, reconnect if needed
 	// This handles cases where Close() was called but the client is being reused
@@ -247,10 +256,9 @@ func (c *CastClient) Load(mediaURL string, contentType string, title string, sta
 		}
 	}
 
-	// If no subtitles, no custom duration, no title, and NOT a live stream: use standard app.Load()
-	// For live streams, we MUST use custom LoadWithSubtitles to set StreamType "LIVE"
+	// Metadata, subtitles, duration, and live streams require a custom LOAD.
 	// (go-chromecast library hardcodes StreamType "BUFFERED" so we need custom path for LIVE)
-	if subtitleURL == "" && duration == 0 && mediaTitle == "" && !live {
+	if !requiresCustomLoad(req) {
 		// Retry loop for TV wake-up scenarios (timeout errors)
 		var lastErr error
 		for attempt := range 5 {
@@ -258,7 +266,7 @@ func (c *CastClient) Load(mediaURL string, contentType string, title string, sta
 				c.Log().Debug("connection closed during load, aborting silently", "Method", "Load")
 				return nil
 			}
-			if err := c.app.Load(mediaURL, startTime, contentType, false, false, false); err != nil {
+			if err := c.app.Load(req.MediaURL, req.StartTime, req.ContentType, false, false, false); err != nil {
 				lastErr = err
 				if isTimeoutError(err) && attempt < 5 {
 					c.Log().Debug("timeout, TV may be waking up, retrying...", "Method", "Load", "Attempt", attempt, "error", err)
@@ -315,8 +323,8 @@ func (c *CastClient) Load(mediaURL string, contentType string, title string, sta
 
 		// For live streams: load PAUSED then immediately send PLAY command
 		// This simulates a "fast click" which avoids the 20-30s buffer that autoplay=true triggers
-		autoplay := !live // Only autoplay if NOT a live stream
-		err := LoadWithSubtitles(c.conn, transportId, mediaURL, contentType, startTime, duration, subtitleURL, mediaTitle, live, autoplay)
+		autoplay := !req.Live // Only autoplay if NOT a live stream
+		err := loadMedia(c.conn, transportId, req, autoplay)
 		if err != nil {
 			lastErr = err
 			if isTimeoutError(err) && attempt < 5 {
@@ -328,13 +336,13 @@ func (c *CastClient) Load(mediaURL string, contentType string, title string, sta
 				time.Sleep(4 * time.Second)
 				continue
 			}
-			c.Log().Error("LoadWithSubtitles failed", "Method", "Load", "error", err)
+			c.Log().Error("custom LOAD failed", "Method", "LoadMedia", "error", err)
 			return err
 		}
 
 		// For live streams: immediately send PLAY command after loading paused
 		// This "fast play" behavior avoids the aggressive buffering that autoplay=true causes
-		if live {
+		if req.Live {
 			c.Log().Debug("live stream loaded paused, sending immediate PLAY to simulate fast click", "Method", "Load")
 			var playErr error
 			for i := range 3 {
@@ -361,10 +369,14 @@ func (c *CastClient) Load(mediaURL string, contentType string, title string, sta
 			}
 		}
 
-		c.Log().Debug("load with subtitles/duration success", "Method", "Load")
+		c.Log().Debug("custom LOAD success", "Method", "LoadMedia")
 		return nil
 	}
 	return lastErr
+}
+
+func requiresCustomLoad(req LoadRequest) bool {
+	return req.SubtitleURL != "" || req.Duration != 0 || hasMediaMetadata(req.Metadata) || req.Live
 }
 
 // LoadOnExisting loads media on an already-running receiver (for seek operations).
@@ -372,8 +384,21 @@ func (c *CastClient) Load(mediaURL string, contentType string, title string, sta
 // Use this when the receiver is already playing media and you want to load new content.
 // If live is true, uses StreamType "LIVE" to identify as live stream.
 func (c *CastClient) LoadOnExisting(mediaURL string, contentType string, title string, startTime int, duration float64, subtitleURL string, live bool) error {
-	mediaTitle := normalizeMediaTitle(title, mediaURL)
-	c.Log().Debug("loading media on existing receiver", "Method", "LoadOnExisting", "URL", mediaURL, "ContentType", contentType, "Title", mediaTitle, "StartTime", startTime, "Duration", duration, "HasSubs", subtitleURL != "", "Live", live)
+	return c.LoadMediaOnExisting(LoadRequest{
+		MediaURL:    mediaURL,
+		ContentType: contentType,
+		Metadata:    metadata.Media{Title: title},
+		StartTime:   startTime,
+		Duration:    duration,
+		SubtitleURL: subtitleURL,
+		Live:        live,
+	})
+}
+
+// LoadMediaOnExisting loads media and metadata on an already-running receiver.
+func (c *CastClient) LoadMediaOnExisting(req LoadRequest) error {
+	req.Metadata.Title = normalizeMediaTitle(req.Metadata.Title, req.MediaURL)
+	c.Log().Debug("loading media on existing receiver", "Method", "LoadMediaOnExisting", "URL", req.MediaURL, "ContentType", req.ContentType, "Title", req.Metadata.Title, "StartTime", req.StartTime, "Duration", req.Duration, "HasSubs", req.SubtitleURL != "", "HasArtwork", req.Metadata.Artwork != nil, "Live", req.Live)
 
 	// LoadOnExisting requires an active connection (it's designed for already-running receivers)
 	// Unlike Load(), we don't auto-reconnect because that would defeat the optimization purpose
@@ -402,9 +427,12 @@ func (c *CastClient) LoadOnExisting(mediaURL string, contentType string, title s
 		}
 		time.Sleep(time.Duration(i+1) * 500 * time.Millisecond)
 	}
+	if transportId == "" {
+		return fmt.Errorf("media receiver unavailable: missing transport ID")
+	}
 
 	// For LoadOnExisting, always autoplay since it's for seek operations on active content
-	err := LoadWithSubtitles(c.conn, transportId, mediaURL, contentType, startTime, duration, subtitleURL, mediaTitle, live, true)
+	err := loadMedia(c.conn, transportId, req, true)
 	if err != nil {
 		c.Log().Error("failed", "Method", "LoadOnExisting", "error", err)
 	} else {
@@ -488,8 +516,10 @@ func (c *CastClient) SetMuted(muted bool) error {
 // GetStatus returns current playback status.
 // No mutex needed - only reads from underlying library which has its own sync.
 func (c *CastClient) GetStatus() (*CastStatus, error) {
-	// Request fresh status from device (Update refreshes the cached status)
-	if err := c.app.Update(); err != nil {
+	// Single attempt on purpose: status callers poll frequently and tolerate
+	// misses, so a fast error beats blocking ~35s in the wake-up retry loop
+	// (that loop stays on the Load/Connect paths via app.Update).
+	if err := c.app.UpdateOnce(); err != nil {
 		c.Log().Error("app.Update failed", "Method", "GetStatus", "error", err)
 		return nil, err
 	}

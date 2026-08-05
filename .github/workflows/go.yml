@@ -10,13 +10,44 @@ jobs:
 
     - uses: actions/setup-go@v6
       with:
-        go-version: '1.26'
+        go-version-file: go.mod
 
     - name: Install Linux deps
       run: sudo apt update && sudo apt install -y xorg-dev libwayland-dev libxkbcommon-dev libegl-dev libpipewire-0.3-dev pkg-config
 
     - name: Build
       run: go build -v ./...
-    
+
     - name: Test
-      run: go test -v ./...
+      # The pipewire pkg-config exposes -fno-strict-overflow, which cgo rejects
+      # unless it is explicitly allowed. Required to link the GUI package under -race.
+      env:
+        CGO_CFLAGS_ALLOW: -fno-strict-overflow
+      run: go test -race -v ./...
+
+  webui:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+
+    - uses: actions/setup-node@v5
+      with:
+        node-version: 22
+        cache: npm
+
+    - name: Install web deps
+      run: npm ci
+
+    - name: Test
+      run: npm test
+
+    - name: Verify dist matches src
+      # internal/webui/dist is committed and embedded into the Go binary, so a
+      # rebuild must be a no-op. Otherwise the shipped UI silently lags its source.
+      run: |
+        npm run build:webui
+        if [ -n "$(git status --porcelain internal/webui/dist)" ]; then
+          echo "internal/webui/dist is stale. Run 'npm run build:webui' and commit the result."
+          git status --porcelain internal/webui/dist
+          exit 1
+        fi

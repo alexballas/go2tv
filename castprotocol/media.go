@@ -1,5 +1,18 @@
 package castprotocol
 
+import "go2tv.app/go2tv/v2/metadata"
+
+// LoadRequest describes one media load, including protocol-neutral metadata.
+type LoadRequest struct {
+	MediaURL    string
+	ContentType string
+	Metadata    metadata.Media
+	StartTime   int
+	Duration    float64
+	SubtitleURL string
+	Live        bool
+}
+
 // MediaTrack represents a media track (audio, video, or text/subtitles).
 // For subtitles, use Type="TEXT" and SubType="SUBTITLES".
 type MediaTrack struct {
@@ -25,8 +38,19 @@ type MediaItemWithTracks struct {
 
 // MediaMeta contains metadata about the media.
 type MediaMeta struct {
-	MetadataType int    `json:"metadataType"`
-	Title        string `json:"title,omitempty"`
+	MetadataType int          `json:"metadataType"`
+	Title        string       `json:"title,omitempty"`
+	Artist       string       `json:"artist,omitempty"`
+	AlbumName    string       `json:"albumName,omitempty"`
+	AlbumArtist  string       `json:"albumArtist,omitempty"`
+	Images       []MediaImage `json:"images,omitempty"`
+}
+
+// MediaImage is a Chromecast metadata image.
+type MediaImage struct {
+	URL    string `json:"url"`
+	Width  int    `json:"width,omitempty"`
+	Height int    `json:"height,omitempty"`
 }
 
 // NewSubtitleTrack creates a MediaTrack configured for WebVTT subtitles.

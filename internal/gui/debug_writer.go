@@ -3,6 +3,7 @@ package gui
 import (
 	"container/ring"
 	"io"
+	"slices"
 	"sync"
 )
 
@@ -42,12 +43,15 @@ func newDebugWriter(size int) *debugWriter {
 }
 
 func hasDebugLogs(dw *debugWriter) bool {
-	if dw == nil || dw.ring == nil {
+	if dw == nil {
 		return false
 	}
 
 	dw.mu.Lock()
 	defer dw.mu.Unlock()
+	if dw.ring == nil {
+		return false
+	}
 
 	var itemInRing bool
 	dw.ring.Do(func(p any) {
@@ -59,13 +63,37 @@ func hasDebugLogs(dw *debugWriter) bool {
 	return itemInRing
 }
 
-func writeDebugLogs(w io.Writer, dw *debugWriter) error {
-	if dw == nil || dw.ring == nil {
+func debugLogEntries(dw *debugWriter) []string {
+	if dw == nil {
 		return nil
 	}
 
 	dw.mu.Lock()
 	defer dw.mu.Unlock()
+	if dw.ring == nil {
+		return nil
+	}
+
+	entries := make([]string, 0, dw.ring.Len())
+	dw.ring.Do(func(p any) {
+		if p != nil {
+			entries = append(entries, p.(string))
+		}
+	})
+
+	return slices.Clip(entries)
+}
+
+func writeDebugLogs(w io.Writer, dw *debugWriter) error {
+	if dw == nil {
+		return nil
+	}
+
+	dw.mu.Lock()
+	defer dw.mu.Unlock()
+	if dw.ring == nil {
+		return nil
+	}
 
 	var writeErr error
 	dw.ring.Do(func(p any) {
