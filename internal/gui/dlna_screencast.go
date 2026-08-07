@@ -8,21 +8,24 @@ import (
 	"strconv"
 	"strings"
 
-	"go2tv.app/screencast/dlna"
 	"go2tv.app/screencast/hls"
+	"go2tv.app/screencast/ts"
 )
 
 // dlnaScreencastMediaType is the DLNA media type used for the live MPEG-TS
 // stream. The first path segment ("video") matches the Sink protocol list
 // advertised by most renderers (see parseProtocolInfo). The pipeline itself is
-// the shared go2tv.app/screencast/dlna package: it muxes to 192-byte m2ts
+// the shared go2tv.app/screencast/ts package: it muxes to 192-byte m2ts
 // packets, which is what this media type requires.
 const dlnaScreencastMediaType = "video/vnd.dlna.mpeg-tts"
 
+// screencastAudioEnv opts the DLNA screencast out of audio capture.
+const screencastAudioEnv = "GO2TV_DLNA_SCREENCAST_AUDIO"
+
 // dlnaScreencastSession is the screencastSession implementation backed by the
-// shared go2tv.app/screencast/dlna MPEG-TS pipeline.
+// shared go2tv.app/screencast/ts MPEG-TS pipeline.
 type dlnaScreencastSession struct {
-	session *dlna.Session
+	session *ts.Session
 }
 
 // Stream returns the live MPEG-TS output.
@@ -54,23 +57,35 @@ func (s *dlnaScreencastSession) Close() error {
 	return s.session.Close()
 }
 
-func startDLNAScreencast(ffmpegPath string, logOutput io.Writer) (*dlnaScreencastSession, error) {
-	includeAudio := true
-	if v := strings.TrimSpace(os.Getenv("GO2TV_DLNA_SCREENCAST_AUDIO")); v != "" {
-		b, err := strconv.ParseBool(v)
-		if err == nil {
-			includeAudio = b
-		}
+// screencastAudioEnabled reports whether the DLNA screencast captures audio.
+// Audio is on by default: the media type advertises the
+// AVC_TS_MP_HD_AAC_MULT5 profile, which promises an AAC track. A value that
+// does not parse leaves the default alone rather than silently muting the
+// stream.
+func screencastAudioEnabled(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return true
 	}
 
-	session, err := dlna.Start(&dlna.Options{
+	enabled, err := strconv.ParseBool(value)
+	if err != nil {
+		return true
+	}
+
+	return enabled
+}
+
+func startDLNAScreencast(ffmpegPath string, logOutput io.Writer) (*dlnaScreencastSession, error) {
+	session, err := ts.Start(&ts.Options{
 		FFmpegPath:   ffmpegPath,
-		IncludeAudio: includeAudio,
+		IncludeAudio: screencastAudioEnabled(os.Getenv(screencastAudioEnv)),
 		LogOutput:    logOutput,
 		DebugCommand: hls.BoolEnv("GO2TV_FFMPEG_DEBUG", false),
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	return &dlnaScreencastSession{session: session}, nil
 }
