@@ -38,7 +38,7 @@ import (
 
 // screencastSession abstracts a live screencast capture session.
 // Both the Chromecast HLS pipeline (go2tv.app/screencast/hls.Session)
-// and the DLNA MPEG-TS pipeline (*dlnaScreencastSession) implement it.
+// and the DLNA MPEG-TS pipeline (go2tv.app/screencast/ts.Session) implement it.
 type screencastSession interface {
 	Close() error
 	Done() <-chan error

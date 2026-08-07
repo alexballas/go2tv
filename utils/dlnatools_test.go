@@ -118,10 +118,12 @@ func TestBuildContentFeatures(t *testing.T) {
 		{
 			// The live DLNA screencast advertises this type. The profile has to
 			// be an MPEG-TS one: MPEG1 here made renderers reject the stream.
+			// _ISO is the 188-byte packet variant, which is what the screencast
+			// muxes - the suffixless profile would promise 192-byte m2ts.
 			`MPEG-TS screencast profile`,
-			`video/vnd.dlna.mpeg-tts`,
+			`video/mp2t`,
 			`00`,
-			"DLNA.ORG_PN=AVC_TS_MP_HD_AAC_MULT5;DLNA.ORG_OP=00;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000",
+			"DLNA.ORG_PN=AVC_TS_MP_HD_AAC_MULT5_ISO;DLNA.ORG_OP=00;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000",
 			false,
 		},
 	}
