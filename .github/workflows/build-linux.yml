@@ -7,6 +7,12 @@ jobs:
     strategy:
       fail-fast: false
 
+    # The pipewire pkg-config exposes -fno-strict-overflow as of PipeWire 1.6.0,
+    # which cgo rejects unless it is explicitly allowed. Inert on 24.04, which
+    # predates that; here so bumping the runner pin does not break the build.
+    env:
+      CGO_CFLAGS_ALLOW: -fno-strict-overflow
+
     steps:
     - uses: actions/checkout@v6
 

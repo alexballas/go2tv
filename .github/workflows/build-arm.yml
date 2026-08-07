@@ -28,6 +28,11 @@ jobs:
             tar -xzf go1.26.0.linux-armv6l.tar.gz
             rm go1.26.0.linux-armv6l.tar.gz
             export GOROOT=/go
+            # The pipewire pkg-config exposes -fno-strict-overflow as of
+            # PipeWire 1.6.0, which cgo rejects unless it is explicitly allowed.
+            # Exported here rather than in a job-level env block because these
+            # commands run inside the emulated image, which that would not reach.
+            export CGO_CFLAGS_ALLOW=-fno-strict-overflow
             cd /go2tv_dir
             /go/bin/go build -tags migrated_fynedo -ldflags "-s -w" -o go2tv ./cmd/go2tv
 
