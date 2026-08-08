@@ -1154,7 +1154,6 @@ func dlnaScreencastPlayAction(screen *FyneScreen, target playbackTarget) {
 		return
 	}
 
-	sessionDevice := target.device
 	tvdata := &soapcalls.TVPayload{
 		ControlURL:                  target.controlURL,
 		EventURL:                    target.eventURL,
@@ -1207,7 +1206,7 @@ func dlnaScreencastPlayAction(screen *FyneScreen, target playbackTarget) {
 		return
 	}
 
-	screen.setActiveDevice(sessionDevice)
+	screen.setActiveDevice(target.device)
 	screen.ffmpegSeek = 0
 	screen.mediaDuration = 0
 	screen.SetMediaType(dlnaScreencastMediaType)

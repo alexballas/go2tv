@@ -56,15 +56,15 @@ func startDLNAScreencast(ffmpegPath string, logOutput io.Writer) (*ts.Session, e
 // mid-stream.
 type screencastStream struct {
 	stream io.ReadCloser
-	inUse  sync.Mutex
+	mu     sync.Mutex
 	held   bool
 }
 
 // acquire hands out the reader, or errScreencastStreamBusy if a request
 // already holds it.
 func (s *screencastStream) acquire() (io.ReadCloser, error) {
-	s.inUse.Lock()
-	defer s.inUse.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if s.held {
 		return nil, errScreencastStreamBusy
@@ -75,9 +75,9 @@ func (s *screencastStream) acquire() (io.ReadCloser, error) {
 }
 
 func (s *screencastStream) release() {
-	s.inUse.Lock()
+	s.mu.Lock()
 	s.held = false
-	s.inUse.Unlock()
+	s.mu.Unlock()
 }
 
 // screencastLease is one request's borrow of the live stream. Closing it

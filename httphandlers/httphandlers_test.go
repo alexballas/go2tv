@@ -355,7 +355,6 @@ func TestLiveStreamServesOneReaderAtATime(t *testing.T) {
 	// A probe arriving mid-stream still has to be answered: it wants headers,
 	// not the reader, and 503-ing it can stop a renderer from ever starting.
 	head := httptest.NewRecorder()
-	head.Body = nil
 	headReq := httptest.NewRequest(http.MethodHead, "/screencast", nil)
 	headReq.Header.Set("getcontentFeatures.dlna.org", "1")
 	srv.ServeMediaHandler()(head, headReq)
@@ -364,6 +363,11 @@ func TestLiveStreamServesOneReaderAtATime(t *testing.T) {
 	}
 	if got := head.Result().Header["contentFeatures.dlna.org"]; len(got) != 1 { //nolint:staticcheck
 		t.Fatalf("HEAD during playback contentFeatures = %v, want one entry", got)
+	}
+	// The probe must not consume the stream either: any body here is a packet
+	// the renderer that owns the lease will never see.
+	if head.Body.Len() != 0 {
+		t.Fatalf("HEAD during playback body = %q, want empty", head.Body.String())
 	}
 
 	// Releasing lets the next renderer in: reconnects have to keep working.
