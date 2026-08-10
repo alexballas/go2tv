@@ -2,6 +2,7 @@ package httphandlers
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -292,3 +294,94 @@ type testReadSeekCloser struct {
 func (t *testReadSeekCloser) Close() error {
 	return nil
 }
+
+// TestLiveStreamServesOneReaderAtATime pins the contract that keeps a live
+// screencast watchable. The stream has a single reader behind it, so a second
+// concurrent GET must be refused outright rather than served a body made of
+// whichever packets it managed to steal from the renderer already playing.
+func TestLiveStreamServesOneReaderAtATime(t *testing.T) {
+	tv := &soapcalls.TVPayload{MediaType: "video/mp2t"}
+
+	var (
+		mu   sync.Mutex
+		held bool
+	)
+	stream := LiveStream(func() (io.ReadCloser, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if held {
+			return nil, errors.New("busy")
+		}
+		held = true
+		return readCloserFunc{
+			Reader: strings.NewReader("packets"),
+			closer: func() error {
+				mu.Lock()
+				held = false
+				mu.Unlock()
+				return nil
+			},
+		}, nil
+	})
+
+	srv := NewServer("127.0.0.1:0")
+	srv.AddHandler("/screencast", tv, nil, stream)
+
+	// First GET gets the stream.
+	first := httptest.NewRecorder()
+	srv.ServeMediaHandler()(first, httptest.NewRequest(http.MethodGet, "/screencast", nil))
+	if first.Result().StatusCode != http.StatusOK {
+		t.Fatalf("first GET status = %d, want %d", first.Result().StatusCode, http.StatusOK)
+	}
+	if got := first.Body.String(); got != "packets" {
+		t.Fatalf("first GET body = %q, want %q", got, "packets")
+	}
+
+	// Hold the lease and confirm a concurrent GET is refused rather than
+	// handed a torn stream.
+	rc, err := stream()
+	if err != nil {
+		t.Fatalf("acquire for the concurrency check failed: %v", err)
+	}
+	busy := httptest.NewRecorder()
+	srv.ServeMediaHandler()(busy, httptest.NewRequest(http.MethodGet, "/screencast", nil))
+	if busy.Result().StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("concurrent GET status = %d, want %d", busy.Result().StatusCode, http.StatusServiceUnavailable)
+	}
+	if busy.Body.String() == "packets" {
+		t.Fatal("concurrent GET was served the stream; it must be refused")
+	}
+
+	// A probe arriving mid-stream still has to be answered: it wants headers,
+	// not the reader, and 503-ing it can stop a renderer from ever starting.
+	head := httptest.NewRecorder()
+	headReq := httptest.NewRequest(http.MethodHead, "/screencast", nil)
+	headReq.Header.Set("getcontentFeatures.dlna.org", "1")
+	srv.ServeMediaHandler()(head, headReq)
+	if head.Result().StatusCode != http.StatusOK {
+		t.Fatalf("HEAD during playback status = %d, want %d", head.Result().StatusCode, http.StatusOK)
+	}
+	if got := head.Result().Header["contentFeatures.dlna.org"]; len(got) != 1 { //nolint:staticcheck
+		t.Fatalf("HEAD during playback contentFeatures = %v, want one entry", got)
+	}
+	// The probe must not consume the stream either: any body here is a packet
+	// the renderer that owns the lease will never see.
+	if head.Body.Len() != 0 {
+		t.Fatalf("HEAD during playback body = %q, want empty", head.Body.String())
+	}
+
+	// Releasing lets the next renderer in: reconnects have to keep working.
+	_ = rc.Close()
+	again := httptest.NewRecorder()
+	srv.ServeMediaHandler()(again, httptest.NewRequest(http.MethodGet, "/screencast", nil))
+	if again.Result().StatusCode != http.StatusOK {
+		t.Fatalf("reconnect status = %d, want %d", again.Result().StatusCode, http.StatusOK)
+	}
+}
+
+type readCloserFunc struct {
+	io.Reader
+	closer func() error
+}
+
+func (r readCloserFunc) Close() error { return r.closer() }

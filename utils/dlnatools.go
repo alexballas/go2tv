@@ -29,20 +29,20 @@ const (
 
 var (
 	dlnaprofiles = map[string]string{
-		"video/x-mkv":             "DLNA.ORG_PN=MATROSKA",
-		"video/x-matroska":        "DLNA.ORG_PN=MATROSKA",
-		"video/x-msvideo":         "DLNA.ORG_PN=AVI",
-		"video/mpeg":              "DLNA.ORG_PN=MPEG1",
-		"video/vnd.dlna.mpeg-tts": "DLNA.ORG_PN=MPEG1",
-		"video/mp4":               "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
-		"video/quicktime":         "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
-		"video/x-m4v":             "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
-		"video/3gpp":              "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
-		"video/x-flv":             "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
-		"video/x-ms-wmv":          "DLNA.ORG_PN=WMVHIGH_FULL",
-		"audio/mpeg":              "DLNA.ORG_PN=MP3",
-		"image/jpeg":              "DLNA.ORG_PN=JPEG_LRG",
-		"image/png":               "DLNA.ORG_PN=PNG_LRG",
+		"video/x-mkv":      "DLNA.ORG_PN=MATROSKA",
+		"video/x-matroska": "DLNA.ORG_PN=MATROSKA",
+		"video/x-msvideo":  "DLNA.ORG_PN=AVI",
+		"video/mpeg":       "DLNA.ORG_PN=MPEG1",
+		"video/mp2t":       "DLNA.ORG_PN=AVC_TS_MP_HD_AAC_MULT5_ISO",
+		"video/mp4":        "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
+		"video/quicktime":  "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
+		"video/x-m4v":      "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
+		"video/3gpp":       "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
+		"video/x-flv":      "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
+		"video/x-ms-wmv":   "DLNA.ORG_PN=WMVHIGH_FULL",
+		"audio/mpeg":       "DLNA.ORG_PN=MP3",
+		"image/jpeg":       "DLNA.ORG_PN=JPEG_LRG",
+		"image/png":        "DLNA.ORG_PN=PNG_LRG",
 	}
 
 	ErrInvalidSeekFlag    = errors.New("invalid seek flag")

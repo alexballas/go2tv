@@ -5,6 +5,11 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    # The pipewire pkg-config exposes -fno-strict-overflow, which cgo rejects
+    # unless it is explicitly allowed. Every step that compiles cgo needs it,
+    # not just the -race test.
+    env:
+      CGO_CFLAGS_ALLOW: -fno-strict-overflow
     steps:
     - uses: actions/checkout@v6
 
@@ -19,10 +24,6 @@ jobs:
       run: go build -v ./...
 
     - name: Test
-      # The pipewire pkg-config exposes -fno-strict-overflow, which cgo rejects
-      # unless it is explicitly allowed. Required to link the GUI package under -race.
-      env:
-        CGO_CFLAGS_ALLOW: -fno-strict-overflow
       run: go test -race -v ./...
 
   webui:
