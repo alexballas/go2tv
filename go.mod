@@ -27,16 +27,14 @@ require (
 	github.com/sirupsen/logrus v1.9.4
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	github.com/stretchr/testify v1.11.1
-	github.com/yeqown/go-qrcode/v2 v2.2.5
-	go2tv.app/screencast v0.0.0-20260803165437-13b34d812adc
+	github.com/yeqown/go-qrcode/v2 v2.3.0
+	go2tv.app/screencast v0.0.0-20260807191623-4cba6136251a
 	golang.org/x/image v0.44.0
 	golang.org/x/mod v0.38.0
 	golang.org/x/sys v0.47.0
 	golang.org/x/time v0.15.0
 	gopkg.in/ini.v1 v1.67.3
 )
-
-replace go2tv.app/screencast => github.com/FreyreCorona/screencast v0.0.0-20260803234936-723f41217be4
 
 require (
 	fyne.io/systray v1.12.2 // indirect

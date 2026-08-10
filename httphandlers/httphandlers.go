@@ -497,6 +497,20 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 		serveContentSeekCloser(w, r, mediaType, seek, rsc)
 	case []byte:
 		serveContentBytes(w, r, mediaType, f)
+	case LiveStream:
+		// A probe must not take the reader, or the GET that follows it finds
+		// the stream busy and the renderer never starts playing.
+		if r.Method != http.MethodGet {
+			serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, http.NoBody, ff)
+			return
+		}
+
+		rc, err := f()
+		if err != nil {
+			http.Error(w, "stream busy", http.StatusServiceUnavailable)
+			return
+		}
+		serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, rc, ff)
 	case io.ReadCloser:
 		serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, f, ff)
 	default:
@@ -571,6 +585,15 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 		_, _ = io.Copy(w, f)
 	}
 }
+
+// LiveStream borrows the reader of a live, non-seekable stream for the
+// duration of one request. Unlike MediaReaderSeeker it cannot hand out a fresh
+// reader per request, because there is only one stream: concurrent readers
+// would split the packets between them and corrupt both. Implementations
+// return an error while the stream is lent out, and the request is answered
+// with 503 rather than a garbled body. Closing the returned reader returns the
+// borrow; whether that also stops the producer is the implementation's call.
+type LiveStream func() (io.ReadCloser, error)
 
 // MediaReaderSeeker returns a fresh seekable reader for the media on each call.
 // It is used on mobile, where a content:// URI can provide a seekable file
