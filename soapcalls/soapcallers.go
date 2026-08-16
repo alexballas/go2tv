@@ -22,6 +22,7 @@ import (
 
 	"go2tv.app/go2tv/v2/internal/logging"
 	"go2tv.app/go2tv/v2/metadata"
+	"go2tv.app/go2tv/v2/utils"
 )
 
 type States struct {
@@ -1173,7 +1174,7 @@ func (p *TVPayload) GetProtocolInfo() error {
 
 	p.Log().Debug(string(resBytes), "Method", "GetProtocolInfo", "Action", "Response", "Status Code", strconv.Itoa(res.StatusCode), "Headers", json.RawMessage(headerBytesRes))
 
-	if err := parseProtocolInfo(resBytes, p.MediaType); err != nil {
+	if err := parseProtocolInfo(resBytes, utils.DLNAResourceMediaType(p.MediaType, p.Transcode)); err != nil {
 		return fmt.Errorf("GetProtocolInfo Selected device does not support the media type: %w", err)
 	}
 
@@ -1572,33 +1573,77 @@ func parseProtocolInfo(b []byte, mt string) error {
 		return nil
 	}
 
-	if strings.Contains(mt, "/") {
-		mt = strings.Split(mt, "/")[0]
-	}
+	mt = normalizeProtocolMediaType(mt)
 
 	if err := xml.Unmarshal(b, &respProtocolInfo); err != nil {
 		return err
 	}
 
-	protocols := strings.Split(respProtocolInfo.Body.GetProtocolInfoResponse.Sink, ",")
+	sink := strings.TrimSpace(respProtocolInfo.Body.GetProtocolInfoResponse.Sink)
 
 	// We got no response from the device. Instead of just straight failing, we should
 	// just let the device play our media file and hope it works.
-	if len(protocols) == 0 {
+	if sink == "" {
 		return nil
 	}
 
-	for _, i := range protocols {
-		items := strings.Split(i, ":")
+	for _, i := range splitProtocolInfo(sink) {
+		items := strings.SplitN(strings.TrimSpace(i), ":", 4)
 		// Here we hardcode check the http-get protocol. We would need to change that
 		// if we were to support rtp/rtsp/udp.
-		if len(items) == 4 && items[0] == "http-get" && strings.Contains(items[2], "/") {
-			ftype := strings.Split(items[2], "/")[0]
-			if ftype == mt {
-				return nil
-			}
+		if len(items) == 4 && protocolInfoFieldMatches(items[0], "http-get") && protocolInfoFieldMatches(items[1], "*") && protocolInfoMediaTypeMatches(items[2], mt) {
+			return nil
 		}
 	}
 
 	return ErrNoMatchingFileType
+}
+
+func normalizeProtocolMediaType(mediaType string) string {
+	return strings.ToLower(strings.TrimSpace(strings.SplitN(mediaType, ";", 2)[0]))
+}
+
+func protocolInfoFieldMatches(advertised, requested string) bool {
+	advertised = strings.ToLower(strings.TrimSpace(advertised))
+	requested = strings.ToLower(strings.TrimSpace(requested))
+	return advertised == "*" || requested == "*" || advertised == requested
+}
+
+func protocolInfoMediaTypeMatches(advertised, requested string) bool {
+	advertised = normalizeProtocolMediaType(advertised)
+	requested = normalizeProtocolMediaType(requested)
+	if advertised == "*" || requested == "*" || advertised == requested {
+		return true
+	}
+	if strings.HasSuffix(advertised, "/*") {
+		return strings.HasPrefix(requested, strings.TrimSuffix(advertised, "*"))
+	}
+	if strings.HasSuffix(requested, "/*") {
+		return strings.HasPrefix(advertised, strings.TrimSuffix(requested, "*"))
+	}
+	return false
+}
+
+func splitProtocolInfo(value string) []string {
+	parts := make([]string, 0, 1)
+	var part strings.Builder
+	escaped := false
+	for _, r := range value {
+		switch {
+		case escaped:
+			part.WriteRune(r)
+			escaped = false
+		case r == '\\':
+			escaped = true
+		case r == ',':
+			parts = append(parts, part.String())
+			part.Reset()
+		default:
+			part.WriteRune(r)
+		}
+	}
+	if escaped {
+		part.WriteByte('\\')
+	}
+	return append(parts, part.String())
 }

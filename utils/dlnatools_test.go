@@ -72,7 +72,28 @@ func TestGetMimeDetailsFromPath(t *testing.T) {
 	}
 }
 
-func TestBuildContentFeatures(t *testing.T) {
+func TestBuildDLNAContentFeatures(t *testing.T) {
+	tests := []struct {
+		name string
+		opts DLNAContentFeaturesOptions
+		want string
+	}{
+		{name: "no seek", want: "DLNA.ORG_CI=0"},
+		{name: "byte seek", opts: DLNAContentFeaturesOptions{ByteSeek: true}, want: "DLNA.ORG_OP=01;DLNA.ORG_CI=0"},
+		{name: "time seek", opts: DLNAContentFeaturesOptions{TimeSeek: true}, want: "DLNA.ORG_OP=10;DLNA.ORG_CI=0"},
+		{name: "both seek modes", opts: DLNAContentFeaturesOptions{TimeSeek: true, ByteSeek: true}, want: "DLNA.ORG_OP=11;DLNA.ORG_CI=0"},
+		{name: "converted", opts: DLNAContentFeaturesOptions{Converted: true}, want: "DLNA.ORG_CI=1"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := BuildDLNAContentFeatures(test.opts); got != test.want {
+				t.Fatalf("BuildDLNAContentFeatures() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestBuildContentFeaturesLegacyWrapper(t *testing.T) {
 	tt := []struct {
 		name      string
 		mediaType string
@@ -84,46 +105,28 @@ func TestBuildContentFeatures(t *testing.T) {
 			`Test #1`,
 			`video/x-mkv`,
 			`00`,
-			"DLNA.ORG_PN=MATROSKA;DLNA.ORG_OP=00;DLNA.ORG_CI=1;DLNA.ORG_FLAGS=01700000000000000000000000000000",
+			"DLNA.ORG_CI=1",
 			true,
 		},
 		{
 			`Test #2`,
 			``,
 			`01`,
-			"DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000",
+			"DLNA.ORG_OP=01;DLNA.ORG_CI=0",
 			false,
 		},
 		{
 			`Test #3`,
 			`bad-text`,
 			`11`,
-			"DLNA.ORG_OP=11;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000",
+			"DLNA.ORG_OP=11;DLNA.ORG_CI=0",
 			false,
 		},
 		{
-			`JPEG profile`,
-			`image/jpeg`,
+			`Media type does not infer profile`,
+			`video/mpeg`,
 			`00`,
-			"DLNA.ORG_PN=JPEG_LRG;DLNA.ORG_OP=00;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000",
-			false,
-		},
-		{
-			`PNG profile`,
-			`image/png`,
-			`00`,
-			"DLNA.ORG_PN=PNG_LRG;DLNA.ORG_OP=00;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000",
-			false,
-		},
-		{
-			// The live DLNA screencast advertises this type. The profile has to
-			// be an MPEG-TS one: MPEG1 here made renderers reject the stream.
-			// _ISO is the 188-byte packet variant, which is what the screencast
-			// muxes - the suffixless profile would promise 192-byte m2ts.
-			`MPEG-TS screencast profile`,
-			`video/mp2t`,
-			`00`,
-			"DLNA.ORG_PN=AVC_TS_MP_HD_AAC_MULT5_ISO;DLNA.ORG_OP=00;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000",
+			"DLNA.ORG_CI=0",
 			false,
 		},
 	}
@@ -139,6 +142,25 @@ func TestBuildContentFeatures(t *testing.T) {
 				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, tc.want)
 			}
 		})
+	}
+
+	if _, err := BuildContentFeatures("video/mp4", "invalid", false); err != ErrInvalidSeekFlag {
+		t.Fatalf("invalid seek error = %v, want %v", err, ErrInvalidSeekFlag)
+	}
+}
+
+func TestDLNAResourceMediaTypeAndTransferMode(t *testing.T) {
+	if got := DLNAResourceMediaType("video/mp4", true); got != "video/mpeg" {
+		t.Fatalf("transcoded media type = %q, want video/mpeg", got)
+	}
+	if got := DLNAResourceMediaType("image/jpeg", false); got != "image/jpeg" {
+		t.Fatalf("direct media type = %q, want image/jpeg", got)
+	}
+	if got := DLNATransferMode("image/jpeg"); got != "Interactive" {
+		t.Fatalf("image transfer mode = %q, want Interactive", got)
+	}
+	if got := DLNATransferMode("video/mpeg"); got != "Streaming" {
+		t.Fatalf("video transfer mode = %q, want Streaming", got)
 	}
 }
 

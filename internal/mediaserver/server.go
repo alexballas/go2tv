@@ -418,25 +418,23 @@ func (s *Server) serveHTTP(w http.ResponseWriter, request *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if r.mediaType != "" {
-		w.Header().Set("Content-Type", r.mediaType)
-		w.Header().Set("transferMode.dlna.org", "Streaming")
+	wireMediaType := r.mediaType
+	if r.request.Target.Protocol != "Chromecast" {
+		wireMediaType = utils.DLNAResourceMediaType(r.mediaType, r.request.Transcode)
+	}
+	if wireMediaType != "" {
+		w.Header().Set("Content-Type", wireMediaType)
+		w.Header().Set("transferMode.dlna.org", utils.DLNATransferMode(wireMediaType))
 		w.Header().Set("realTimeInfo.dlna.org", "DLNA.ORG_TLAG=*")
 	}
 	if r.request.Target.Protocol == "Chromecast" {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 	}
 	if request.Header.Get("getcontentFeatures.dlna.org") == "1" {
-		seek := "00"
-		if !r.request.Transcode && r.open != nil {
-			seek = "01"
-		}
-		contentFeatures, err := utils.BuildContentFeatures(r.mediaType, seek, r.request.Transcode)
-		if err != nil {
-			http.NotFound(w, request)
-			return
-		}
-		w.Header().Set("contentFeatures.dlna.org", contentFeatures)
+		w.Header().Set("contentFeatures.dlna.org", utils.BuildDLNAContentFeatures(utils.DLNAContentFeaturesOptions{
+			ByteSeek:  !r.request.Transcode && (r.open != nil || r.contents != nil),
+			Converted: r.request.Transcode,
+		}))
 	}
 	if r.artwork {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")

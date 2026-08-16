@@ -278,7 +278,7 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 			if strings.HasSuffix(requestPathLower, ".m3u8") {
 				w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 			} else if strings.HasSuffix(requestPathLower, ".ts") {
-				w.Header().Set("Content-Type", "video/mp2t")
+				w.Header().Set("Content-Type", "video/mpeg")
 			} else if strings.HasSuffix(requestPathLower, ".mp4") || strings.HasSuffix(requestPathLower, ".m4s") {
 				w.Header().Set("Content-Type", "video/mp4")
 			}
@@ -410,7 +410,7 @@ func (s *HTTPserver) AddHLSHandler(urlPrefix, dir string) {
 			w.Header().Set("Pragma", "no-cache")
 			w.Header().Set("Expires", "0")
 		} else if strings.HasSuffix(requestPathLower, ".ts") {
-			w.Header().Set("Content-Type", "video/MP2T")
+			w.Header().Set("Content-Type", "video/mpeg")
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 			w.Header().Set("Pragma", "no-cache")
 			w.Header().Set("Expires", "0")
@@ -458,7 +458,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 	if tv != nil {
 		isMedia = true
 		transcode = tv.Transcode
-		mediaType = tv.MediaType
+		mediaType = utils.DLNAResourceMediaType(tv.MediaType, transcode)
 		seek = tv.Seekable
 		tv.Log().Debug("", "Method", "DLNAMediaHTTP", "Action", "Request", "HTTP Method", r.Method, "Path", r.URL.Path,
 			"TimeSeekRange", r.Header.Get("TimeSeekRange.dlna.org"), "Range", r.Header.Get("Range"),
@@ -473,10 +473,9 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 		mediaType = "video/mp4" // Chromecast transcoding outputs fragmented MP4
 	}
 
-	w.Header()["transferMode.dlna.org"] = []string{"Interactive"}
+	w.Header()["transferMode.dlna.org"] = []string{utils.DLNATransferMode(mediaType)}
 
 	if isMedia {
-		w.Header()["transferMode.dlna.org"] = []string{"Streaming"}
 		w.Header()["realTimeInfo.dlna.org"] = []string{"DLNA.ORG_TLAG=*"}
 		w.Header()["Content-Type"] = []string{mediaType}
 	}
@@ -527,13 +526,7 @@ func serveContentBytes(w http.ResponseWriter, r *http.Request, mediaType string,
 	}
 
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-		contentFeatures, err := utils.BuildContentFeatures(mediaType, "01", false)
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-
-		w.Header()["contentFeatures.dlna.org"] = []string{contentFeatures}
+		w.Header()["contentFeatures.dlna.org"] = []string{utils.BuildDLNAContentFeatures(utils.DLNAContentFeaturesOptions{ByteSeek: true})}
 	}
 
 	bReader := bytes.NewReader(f)
@@ -545,13 +538,7 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 	defer f.Close()
 
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-		contentFeatures, err := utils.BuildContentFeatures(mediaType, "00", transcode)
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-
-		w.Header()["contentFeatures.dlna.org"] = []string{contentFeatures}
+		w.Header()["contentFeatures.dlna.org"] = []string{utils.BuildDLNAContentFeatures(utils.DLNAContentFeaturesOptions{Converted: transcode})}
 	}
 	// In ffmpeg we can emulate seek support for live streams
 	if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "video") {
@@ -608,18 +595,7 @@ func serveContentSeekCloser(w http.ResponseWriter, r *http.Request, mediaType st
 	defer f.Close()
 
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-		seekflag := "00"
-		if seek {
-			seekflag = "01"
-		}
-
-		contentFeatures, err := utils.BuildContentFeatures(mediaType, seekflag, false)
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-
-		w.Header()["contentFeatures.dlna.org"] = []string{contentFeatures}
+		w.Header()["contentFeatures.dlna.org"] = []string{utils.BuildDLNAContentFeatures(utils.DLNAContentFeaturesOptions{ByteSeek: seek})}
 	}
 
 	name := strings.TrimLeft(r.URL.Path, "/")
@@ -628,18 +604,10 @@ func serveContentSeekCloser(w http.ResponseWriter, r *http.Request, mediaType st
 
 func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode, seek bool, f osFileType, ff *exec.Cmd) {
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
-		seekflag := "00"
-		if seek {
-			seekflag = "01"
-		}
-
-		contentFeatures, err := utils.BuildContentFeatures(mediaType, seekflag, transcode)
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-
-		w.Header()["contentFeatures.dlna.org"] = []string{contentFeatures}
+		w.Header()["contentFeatures.dlna.org"] = []string{utils.BuildDLNAContentFeatures(utils.DLNAContentFeaturesOptions{
+			ByteSeek:  seek && !transcode,
+			Converted: transcode,
+		})}
 	}
 	if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "video") {
 		// Since we're dealing with an io.Reader we can't

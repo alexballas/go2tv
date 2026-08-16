@@ -424,7 +424,6 @@ func TestDLNAGaplessQueuesAndReadsNextURI(t *testing.T) {
 	}
 	if !strings.Contains(setNextBody, "<NextURI>http://127.0.0.1/next.mp3</NextURI>") ||
 		!strings.Contains(setNextBody, "Next track") ||
-		!strings.Contains(setNextBody, "DLNA.ORG_OP=00") ||
 		!strings.Contains(setNextBody, "DLNA.ORG_CI=1") ||
 		!strings.Contains(setNextBody, "duration=&#34;00:01:40&#34;") {
 		t.Fatalf("SetNextAVTransportURI body = %q", setNextBody)

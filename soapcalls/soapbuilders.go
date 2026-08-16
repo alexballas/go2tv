@@ -443,18 +443,14 @@ func setNextAVTransportSoapBuild(tvdata *TVPayload, clear bool) ([]byte, error) 
 }
 
 func buildDIDLLite(tvdata *TVPayload, mediaURL string, mediaMetadata metadata.Media) ([]byte, error) {
-	seekflag := "00"
-	if tvdata.Seekable {
-		seekflag = "01"
-	}
-
-	contentFeatures, err := utils.BuildContentFeatures(tvdata.MediaType, seekflag, tvdata.Transcode)
-	if err != nil {
-		return nil, fmt.Errorf("build content features: %w", err)
-	}
+	wireMediaType := utils.DLNAResourceMediaType(tvdata.MediaType, tvdata.Transcode)
+	contentFeatures := utils.BuildDLNAContentFeatures(utils.DLNAContentFeaturesOptions{
+		ByteSeek:  tvdata.Seekable && !tvdata.Transcode,
+		Converted: tvdata.Transcode,
+	})
 
 	class := "object.item.videoItem.movie"
-	switch strings.Split(tvdata.MediaType, "/")[0] {
+	switch strings.Split(wireMediaType, "/")[0] {
 	case "audio":
 		class = "object.item.audioItem.musicTrack"
 	case "image":
@@ -472,7 +468,7 @@ func buildDIDLLite(tvdata *TVPayload, mediaURL string, mediaMetadata metadata.Me
 	}
 
 	resNodeData := []resNode{{
-		ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", tvdata.MediaType, contentFeatures),
+		ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", wireMediaType, contentFeatures),
 		Value:        mediaURL,
 	}}
 	if tvdata.MediaDuration > 0 {

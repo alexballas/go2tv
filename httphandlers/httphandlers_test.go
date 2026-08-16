@@ -87,8 +87,8 @@ func TestServeContent(t *testing.T) {
 
 			for c := range strings.SplitSeq(cf[0], ";") {
 				if strings.Contains(c, "DLNA.ORG_OP") {
-					if tc.tvdata != nil && tc.tvdata.Transcode && c != "DLNA.ORG_OP=00" {
-						t.Fatalf("%s: no proper DLNA.ORG_OP header for transcoded video", tc.name)
+					if tc.tvdata != nil && tc.tvdata.Transcode {
+						t.Fatalf("%s: transcoded media must not advertise seek", tc.name)
 					}
 				}
 			}
@@ -133,18 +133,36 @@ func TestTranscodedDLNAHEADKeepsPlayableResourceContract(t *testing.T) {
 	if got := result.Header.Get("Content-Length"); got != strconv.Itoa(len(media)) {
 		t.Fatalf("content length = %q", got)
 	}
-	if got := result.Header.Get("Content-Type"); got != "video/mp4" {
+	if got := result.Header.Get("Content-Type"); got != "video/mpeg" {
 		t.Fatalf("content type = %q", got)
 	}
 	if got := result.Header.Get("Accept-Ranges"); got != "" {
 		t.Fatalf("accept ranges = %q", got)
 	}
 	features := result.Header["contentFeatures.dlna.org"] //nolint:staticcheck
-	if len(features) != 1 || !strings.Contains(features[0], "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5") || !strings.Contains(features[0], "DLNA.ORG_OP=00") || !strings.Contains(features[0], "DLNA.ORG_CI=1") || !strings.Contains(features[0], "DLNA.ORG_FLAGS=01700000") {
+	if len(features) != 1 || features[0] != "DLNA.ORG_CI=1" {
 		t.Fatalf("content features = %q", features)
 	}
 	if strings.Contains(features[0], "DLNA.ORG_OP=10") {
 		t.Fatalf("unsupported live time seek advertised: %q", features)
+	}
+}
+
+func TestDLNAImageUsesInteractiveTransferMode(t *testing.T) {
+	tv := &soapcalls.TVPayload{MediaType: "image/jpeg", Seekable: true}
+	request := httptest.NewRequest(http.MethodGet, "/photo.jpg", nil)
+	request.Header.Set("getcontentFeatures.dlna.org", "1")
+	response := httptest.NewRecorder()
+
+	serveContent(response, request, tv, nil, []byte("jpeg"), new(exec.Cmd))
+	if got := response.Header().Get("Content-Type"); got != "image/jpeg" {
+		t.Fatalf("content type = %q", got)
+	}
+	if got := response.Header()["transferMode.dlna.org"]; len(got) != 1 || got[0] != "Interactive" { //nolint:staticcheck
+		t.Fatalf("transfer mode = %q, want Interactive", got)
+	}
+	if got := response.Header()["contentFeatures.dlna.org"]; len(got) != 1 || got[0] != "DLNA.ORG_OP=01;DLNA.ORG_CI=0" { //nolint:staticcheck
+		t.Fatalf("content features = %q", got)
 	}
 }
 
@@ -300,7 +318,7 @@ func (t *testReadSeekCloser) Close() error {
 // concurrent GET must be refused outright rather than served a body made of
 // whichever packets it managed to steal from the renderer already playing.
 func TestLiveStreamServesOneReaderAtATime(t *testing.T) {
-	tv := &soapcalls.TVPayload{MediaType: "video/mp2t"}
+	tv := &soapcalls.TVPayload{MediaType: "video/mpeg"}
 
 	var (
 		mu   sync.Mutex

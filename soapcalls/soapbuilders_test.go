@@ -133,7 +133,7 @@ func TestBuildDIDLLiteTranscodedKeepsPlayableResourceContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	metadata := string(got)
-	for _, want := range []string{"http-get:*:video/mp4:", "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5", "DLNA.ORG_OP=00", "DLNA.ORG_CI=1", "DLNA.ORG_FLAGS=01700000", `duration="01:42:56"`, "http://host/movie.mp4"} {
+	for _, want := range []string{"http-get:*:video/mpeg:DLNA.ORG_CI=1", "DLNA.ORG_CI=1", `duration="01:42:56"`, "http://host/movie.mp4"} {
 		if !strings.Contains(metadata, want) {
 			t.Fatalf("DIDL missing %q: %s", want, metadata)
 		}

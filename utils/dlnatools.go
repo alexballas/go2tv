@@ -12,90 +12,74 @@ import (
 	"github.com/h2non/filetype"
 )
 
-const (
-	// dlnaOrgFlagSenderPaced = 1 << 31
-	// dlnaOrgFlagTimeBasedSeek = 1 << 30
-	// dlnaOrgFlagByteBasedSeek = 1 << 29
-	// dlnaOrgFlagPlayContainer = 1 << 28
-	// dlnaOrgFlagS0Increase = 1 << 27
-	// dlnaOrgFlagSnIncrease = 1 << 26
-	// dlnaOrgFlagRtspPause = 1 << 25
-	dlnaOrgFlagStreamingTransferMode = 1 << 24
-	// dlnaOrgFlagInteractiveTransfertMode = 1 << 23
-	dlnaOrgFlagBackgroundTransfertMode = 1 << 22
-	dlnaOrgFlagConnectionStall         = 1 << 21
-	dlnaOrgFlagDlnaV15                 = 1 << 20
-)
-
 var (
-	dlnaprofiles = map[string]string{
-		"video/x-mkv":      "DLNA.ORG_PN=MATROSKA",
-		"video/x-matroska": "DLNA.ORG_PN=MATROSKA",
-		"video/x-msvideo":  "DLNA.ORG_PN=AVI",
-		"video/mpeg":       "DLNA.ORG_PN=MPEG1",
-		"video/mp2t":       "DLNA.ORG_PN=AVC_TS_MP_HD_AAC_MULT5_ISO",
-		"video/mp4":        "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
-		"video/quicktime":  "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
-		"video/x-m4v":      "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
-		"video/3gpp":       "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
-		"video/x-flv":      "DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5",
-		"video/x-ms-wmv":   "DLNA.ORG_PN=WMVHIGH_FULL",
-		"audio/mpeg":       "DLNA.ORG_PN=MP3",
-		"image/jpeg":       "DLNA.ORG_PN=JPEG_LRG",
-		"image/png":        "DLNA.ORG_PN=PNG_LRG",
-	}
-
 	ErrInvalidSeekFlag    = errors.New("invalid seek flag")
 	ErrInvalidClockFormat = errors.New("invalid clock format")
 )
 
-func defaultStreamingFlags() string {
-	return fmt.Sprintf("%.8x%.24x", dlnaOrgFlagStreamingTransferMode|
-		dlnaOrgFlagBackgroundTransfertMode|
-		dlnaOrgFlagConnectionStall|
-		dlnaOrgFlagDlnaV15, 0)
+// DLNAContentFeaturesOptions describes only capabilities that are true for
+// the bytes served by the HTTP endpoint. Profile names and FLAGS are omitted
+// unless a future classifier can verify them from the actual media stream.
+type DLNAContentFeaturesOptions struct {
+	TimeSeek  bool
+	ByteSeek  bool
+	Converted bool
 }
 
-// BuildContentFeatures builds the content features string
-// for the "contentFeatures.dlna.org" header.
-func BuildContentFeatures(mediaType string, seek string, transcode bool) (string, error) {
-	var cf strings.Builder
-
-	if mediaType != "" {
-		dlnaProf, profExists := dlnaprofiles[mediaType]
-		if profExists {
-			cf.WriteString(dlnaProf + ";")
-		}
+// BuildDLNAContentFeatures builds contentFeatures.dlna.org for a resource.
+func BuildDLNAContentFeatures(opts DLNAContentFeaturesOptions) string {
+	features := make([]string, 0, 2)
+	switch {
+	case opts.TimeSeek && opts.ByteSeek:
+		features = append(features, "DLNA.ORG_OP=11")
+	case opts.TimeSeek:
+		features = append(features, "DLNA.ORG_OP=10")
+	case opts.ByteSeek:
+		features = append(features, "DLNA.ORG_OP=01")
 	}
+	if opts.Converted {
+		features = append(features, "DLNA.ORG_CI=1")
+	} else {
+		features = append(features, "DLNA.ORG_CI=0")
+	}
+	return strings.Join(features, ";")
+}
 
-	// "00" neither time seek range nor range supported
-	// "01" range supported
-	// "10" time seek range supported
-	// "11" both time seek range and range supported
+// DLNAResourceMediaType returns the MIME type of the bytes on the wire.
+func DLNAResourceMediaType(sourceMediaType string, transcode bool) string {
+	mediaType := strings.TrimSpace(sourceMediaType)
+	if transcode && strings.HasPrefix(strings.ToLower(mediaType), "video/") {
+		return "video/mpeg"
+	}
+	return mediaType
+}
+
+// DLNATransferMode selects the UPnP transfer mode for a media class.
+func DLNATransferMode(mediaType string) string {
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(mediaType)), "image/") {
+		return "Interactive"
+	}
+	return "Streaming"
+}
+
+// BuildContentFeatures is kept for callers that still pass the legacy seek
+// string. It no longer infers profiles or emits OP=00/FLAGS.
+// Deprecated: use BuildDLNAContentFeatures.
+func BuildContentFeatures(_ string, seek string, transcode bool) (string, error) {
+	opts := DLNAContentFeaturesOptions{Converted: transcode}
 	switch seek {
 	case "00":
-		cf.WriteString("DLNA.ORG_OP=00;")
 	case "01":
-		cf.WriteString("DLNA.ORG_OP=01;")
+		opts.ByteSeek = true
 	case "10":
-		cf.WriteString("DLNA.ORG_OP=10;")
+		opts.TimeSeek = true
 	case "11":
-		cf.WriteString("DLNA.ORG_OP=11;")
+		opts.TimeSeek = true
+		opts.ByteSeek = true
 	default:
 		return "", ErrInvalidSeekFlag
 	}
-
-	switch transcode {
-	case true:
-		cf.WriteString("DLNA.ORG_CI=1;")
-	default:
-		cf.WriteString("DLNA.ORG_CI=0;")
-	}
-
-	cf.WriteString("DLNA.ORG_FLAGS=")
-	cf.WriteString(defaultStreamingFlags())
-
-	return cf.String(), nil
+	return BuildDLNAContentFeatures(opts), nil
 }
 
 // GetMimeDetailsFromPath returns the media mime details from a local file path.

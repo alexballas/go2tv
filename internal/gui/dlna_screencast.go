@@ -11,18 +11,9 @@ import (
 	"go2tv.app/screencast/ts"
 )
 
-// dlnaScreencastMediaType is the DLNA media type used for the live MPEG-TS
-// stream. The first path segment ("video") matches the Sink protocol list
-// advertised by most renderers (see parseProtocolInfo, which compares only
-// that segment). The pipeline itself is the shared go2tv.app/screencast/ts
-// package, which muxes plain 188-byte TS packets, so this pairs with the _ISO
-// profile in dlnaprofiles rather than the 192-byte m2ts one.
-//
-// video/vnd.dlna.mpeg-tts, the type DLNA pairs with the m2ts profiles, is
-// deliberately not used: ffmpeg's m2ts mode declares the AAC track as PES
-// private data, which GStreamer-based renderers drop, leaving a silent
-// picture. See the screencast/ts package comment.
-const dlnaScreencastMediaType = "video/mp2t"
+// dlnaScreencastMediaType describes the plain 188-byte MPEG-TS stream emitted
+// by the screencast pipeline. DLNA uses video/mpeg for this wire format.
+const dlnaScreencastMediaType = "video/mpeg"
 
 // errScreencastStreamBusy is returned when the live stream is already being
 // served to a renderer.
@@ -31,11 +22,7 @@ var errScreencastStreamBusy = errors.New("screencast stream already has a reader
 // startDLNAScreencast starts the shared MPEG-TS pipeline. *ts.Session already
 // satisfies screencastSession, so it is handed to the caller as is.
 //
-// Audio is always captured. It is not a preference: we advertise the
-// AVC_TS_MP_HD_AAC_MULT5_ISO profile, which promises the renderer an AAC track,
-// so a video-only stream would make that promise false. Nothing is lost by
-// forcing it either, because the pipeline substitutes synthetic silence when
-// the machine has no audio source, so an AAC track exists either way.
+// Audio is always captured so the renderer receives a complete stream.
 func startDLNAScreencast(ffmpegPath string, logOutput io.Writer) (*ts.Session, error) {
 	return ts.Start(&ts.Options{
 		FFmpegPath:   ffmpegPath,

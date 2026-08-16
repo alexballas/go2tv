@@ -38,6 +38,33 @@ func TestParseProtocolInfo(t *testing.T) {
 	}
 }
 
+func TestParseProtocolInfoMatchesFullMIMEAndIgnoresFeatures(t *testing.T) {
+	response := func(sink string) []byte {
+		return []byte(`<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetProtocolInfoResponse xmlns:u="urn:schemas-upnp-org:service:ConnectionManager:1"><Sink>` + sink + `</Sink></u:GetProtocolInfoResponse></s:Body></s:Envelope>`)
+	}
+
+	tests := []struct {
+		name string
+		sink string
+		mt   string
+		want bool
+	}{
+		{name: "exact MIME with different features", sink: `http-get:*:video/mp4:DLNA.ORG_CI=0`, mt: "video/mp4", want: true},
+		{name: "MIME wildcard", sink: `http-get:*:video/*:*`, mt: "video/x-matroska", want: true},
+		{name: "escaped feature comma", sink: `http-get:*:video/mp4:vendor=one\,two`, mt: "video/mp4", want: true},
+		{name: "wrong MIME", sink: `http-get:*:audio/mpeg:*`, mt: "video/mp4", want: false},
+		{name: "empty Sink is permissive", sink: ``, mt: "video/mp4", want: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := parseProtocolInfo(response(test.sink), test.mt)
+			if (err == nil) != test.want {
+				t.Fatalf("parseProtocolInfo() err = %v, want success=%t", err, test.want)
+			}
+		})
+	}
+}
+
 func TestSetVolumeSoapCallHeaders(t *testing.T) {
 	type headerCapture struct {
 		contentType string
@@ -306,6 +333,18 @@ func TestGetProtocolInfoSkipsWhenConnectionManagerMissing(t *testing.T) {
 
 	if err := p.GetProtocolInfo(); err != nil {
 		t.Fatalf("GetProtocolInfo() err = %v, want nil", err)
+	}
+}
+
+func TestGetProtocolInfoUsesTranscodedWireMIME(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetProtocolInfoResponse xmlns:u="urn:schemas-upnp-org:service:ConnectionManager:1"><Sink>http-get:*:video/mpeg:*</Sink></u:GetProtocolInfoResponse></s:Body></s:Envelope>`))
+	}))
+	defer srv.Close()
+
+	p := &TVPayload{ConnectionManagerURL: srv.URL, MediaType: "video/x-matroska", Transcode: true}
+	if err := p.GetProtocolInfo(); err != nil {
+		t.Fatalf("GetProtocolInfo() err = %v, want wire MIME match", err)
 	}
 }
 

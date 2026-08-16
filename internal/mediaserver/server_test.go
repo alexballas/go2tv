@@ -287,6 +287,31 @@ func TestGETHEADMethodRangeAndCallbackCoexist(t *testing.T) {
 	}
 }
 
+func TestImageRouteUsesInteractiveTransferMode(t *testing.T) {
+	server := New(Config{ListenAddr: "127.0.0.1:0"})
+	startTestServer(t, server, mediaRequest([]byte("media"), ".mp4", "video/mp4"))
+	route, err := server.Add(context.Background(), playback.RouteRequest{MediaType: "image/jpeg", Contents: []byte("jpeg")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, _ := http.NewRequest(http.MethodGet, route.URL, nil)
+	request.Header.Set("getcontentFeatures.dlna.org", "1")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if got := response.Header.Get("Content-Type"); got != "image/jpeg" {
+		t.Fatalf("content type = %q", got)
+	}
+	if got := response.Header.Get("transferMode.dlna.org"); got != "Interactive" {
+		t.Fatalf("transfer mode = %q, want Interactive", got)
+	}
+	if got := response.Header.Get("contentFeatures.dlna.org"); got != "DLNA.ORG_OP=01;DLNA.ORG_CI=0" {
+		t.Fatalf("content features = %q", got)
+	}
+}
+
 func TestTranscodedDLNAKeepsPlayableResourceContract(t *testing.T) {
 	requests := make(chan playback.ServerRequest, 1)
 	server := New(Config{
@@ -319,13 +344,13 @@ func TestTranscodedDLNAKeepsPlayableResourceContract(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("HEAD status=%d", response.StatusCode)
 	}
-	if features := response.Header.Get("contentFeatures.dlna.org"); !strings.Contains(features, "DLNA.ORG_OP=00") || !strings.Contains(features, "DLNA.ORG_CI=1") {
+	if features := response.Header.Get("contentFeatures.dlna.org"); features != "DLNA.ORG_CI=1" {
 		t.Fatalf("content features = %q", features)
 	}
-	if got := response.Header.Get("Content-Type"); got != "video/x-matroska" {
+	if got := response.Header.Get("Content-Type"); got != "video/mpeg" {
 		t.Fatalf("content type = %q", got)
 	}
-	if features := response.Header.Get("contentFeatures.dlna.org"); !strings.Contains(features, "DLNA.ORG_PN=MATROSKA") || !strings.Contains(features, "DLNA.ORG_FLAGS=01700000") || strings.Contains(features, "DLNA.ORG_OP=10") {
+	if features := response.Header.Get("contentFeatures.dlna.org"); strings.Contains(features, "DLNA.ORG_OP") || strings.Contains(features, "DLNA.ORG_FLAGS") {
 		t.Fatalf("transcode profile = %q", features)
 	}
 	if got := response.Header.Get("TimeSeekRange.dlna.org"); got != "" {
