@@ -111,6 +111,41 @@ func TestServeMediaHandlerUppercaseSubtitleAddsCORS(t *testing.T) {
 	if got := w.Result().Header.Get("Access-Control-Allow-Origin"); got != "*" {
 		t.Fatalf("expected CORS header '*', got %q", got)
 	}
+	if got := w.Result().Header["transferMode.dlna.org"]; len(got) != 1 || got[0] != "Interactive" { //nolint:staticcheck
+		t.Fatalf("transfer mode = %q, want Interactive", got)
+	}
+}
+
+func TestHLSMPEGTSContentType(t *testing.T) {
+	segment := []byte("mpeg-ts segment")
+
+	t.Run("media handler", func(t *testing.T) {
+		srv := NewServer("127.0.0.1:0")
+		srv.AddHandler("/hls/segment.ts", nil, nil, segment)
+
+		response := httptest.NewRecorder()
+		srv.ServeMediaHandler()(response, httptest.NewRequest(http.MethodGet, "/hls/segment.ts", nil))
+
+		if got := response.Result().Header.Get("Content-Type"); got != "video/mp2t" {
+			t.Fatalf("Content-Type = %q, want video/mp2t", got)
+		}
+	})
+
+	t.Run("directory handler", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "segment.ts"), segment, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		srv := NewServer("127.0.0.1:0")
+		srv.AddHLSHandler("/hls/", dir)
+
+		response := httptest.NewRecorder()
+		srv.Mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/hls/segment.ts", nil))
+
+		if got := response.Result().Header.Get("Content-Type"); got != "video/mp2t" {
+			t.Fatalf("Content-Type = %q, want video/mp2t", got)
+		}
+	})
 }
 
 func TestTranscodedDLNAHEADKeepsPlayableResourceContract(t *testing.T) {

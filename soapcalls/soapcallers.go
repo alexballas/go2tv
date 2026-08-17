@@ -1600,7 +1600,11 @@ func parseProtocolInfo(b []byte, mt string) error {
 }
 
 func normalizeProtocolMediaType(mediaType string) string {
-	return strings.ToLower(strings.TrimSpace(strings.SplitN(mediaType, ";", 2)[0]))
+	mediaType = strings.TrimSpace(mediaType)
+	if parameterStart := strings.IndexByte(mediaType, ';'); parameterStart >= 0 {
+		return strings.ToLower(mediaType[:parameterStart]) + mediaType[parameterStart:]
+	}
+	return strings.ToLower(mediaType)
 }
 
 func protocolInfoFieldMatches(advertised, requested string) bool {
@@ -1612,16 +1616,7 @@ func protocolInfoFieldMatches(advertised, requested string) bool {
 func protocolInfoMediaTypeMatches(advertised, requested string) bool {
 	advertised = normalizeProtocolMediaType(advertised)
 	requested = normalizeProtocolMediaType(requested)
-	if advertised == "*" || requested == "*" || advertised == requested {
-		return true
-	}
-	if strings.HasSuffix(advertised, "/*") {
-		return strings.HasPrefix(requested, strings.TrimSuffix(advertised, "*"))
-	}
-	if strings.HasSuffix(requested, "/*") {
-		return strings.HasPrefix(advertised, strings.TrimSuffix(requested, "*"))
-	}
-	return false
+	return advertised == "*" || requested == "*" || advertised == requested
 }
 
 func splitProtocolInfo(value string) []string {

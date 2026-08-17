@@ -56,10 +56,11 @@ func DLNAResourceMediaType(sourceMediaType string, transcode bool) string {
 
 // DLNATransferMode selects the UPnP transfer mode for a media class.
 func DLNATransferMode(mediaType string) string {
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(mediaType)), "image/") {
-		return "Interactive"
+	mediaType = strings.ToLower(strings.TrimSpace(mediaType))
+	if strings.HasPrefix(mediaType, "audio/") || strings.HasPrefix(mediaType, "video/") {
+		return "Streaming"
 	}
-	return "Streaming"
+	return "Interactive"
 }
 
 // BuildContentFeatures is kept for callers that still pass the legacy seek

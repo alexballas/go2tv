@@ -278,7 +278,7 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 			if strings.HasSuffix(requestPathLower, ".m3u8") {
 				w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 			} else if strings.HasSuffix(requestPathLower, ".ts") {
-				w.Header().Set("Content-Type", "video/mpeg")
+				w.Header().Set("Content-Type", "video/mp2t")
 			} else if strings.HasSuffix(requestPathLower, ".mp4") || strings.HasSuffix(requestPathLower, ".m4s") {
 				w.Header().Set("Content-Type", "video/mp4")
 			}
@@ -410,7 +410,7 @@ func (s *HTTPserver) AddHLSHandler(urlPrefix, dir string) {
 			w.Header().Set("Pragma", "no-cache")
 			w.Header().Set("Expires", "0")
 		} else if strings.HasSuffix(requestPathLower, ".ts") {
-			w.Header().Set("Content-Type", "video/mpeg")
+			w.Header().Set("Content-Type", "video/mp2t")
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 			w.Header().Set("Pragma", "no-cache")
 			w.Header().Set("Expires", "0")

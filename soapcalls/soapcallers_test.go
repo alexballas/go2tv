@@ -38,7 +38,7 @@ func TestParseProtocolInfo(t *testing.T) {
 	}
 }
 
-func TestParseProtocolInfoMatchesFullMIMEAndIgnoresFeatures(t *testing.T) {
+func TestParseProtocolInfoMatchesContentFormat(t *testing.T) {
 	response := func(sink string) []byte {
 		return []byte(`<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetProtocolInfoResponse xmlns:u="urn:schemas-upnp-org:service:ConnectionManager:1"><Sink>` + sink + `</Sink></u:GetProtocolInfoResponse></s:Body></s:Envelope>`)
 	}
@@ -49,8 +49,12 @@ func TestParseProtocolInfoMatchesFullMIMEAndIgnoresFeatures(t *testing.T) {
 		mt   string
 		want bool
 	}{
-		{name: "exact MIME with different features", sink: `http-get:*:video/mp4:DLNA.ORG_CI=0`, mt: "video/mp4", want: true},
-		{name: "MIME wildcard", sink: `http-get:*:video/*:*`, mt: "video/x-matroska", want: true},
+		{name: "exact MIME with different additional info", sink: `http-get:*:video/mp4:DLNA.ORG_CI=0`, mt: "video/mp4", want: true},
+		{name: "matching MIME parameters", sink: `http-get:*:video/mp4;profile=main:*`, mt: "video/mp4;profile=main", want: true},
+		{name: "different MIME parameters", sink: `http-get:*:video/mp4;profile=main:*`, mt: "video/mp4;profile=high", want: false},
+		{name: "case-sensitive MIME parameter", sink: `http-get:*:multipart/mixed;boundary=CaseSensitive:*`, mt: "multipart/mixed;boundary=casesensitive", want: false},
+		{name: "MIME subtype wildcard is not a wildcard", sink: `http-get:*:video/*:*`, mt: "video/x-matroska", want: false},
+		{name: "whole MIME wildcard", sink: `http-get:*:*:*`, mt: "video/x-matroska", want: true},
 		{name: "escaped feature comma", sink: `http-get:*:video/mp4:vendor=one\,two`, mt: "video/mp4", want: true},
 		{name: "wrong MIME", sink: `http-get:*:audio/mpeg:*`, mt: "video/mp4", want: false},
 		{name: "empty Sink is permissive", sink: ``, mt: "video/mp4", want: true},

@@ -156,11 +156,21 @@ func TestDLNAResourceMediaTypeAndTransferMode(t *testing.T) {
 	if got := DLNAResourceMediaType("image/jpeg", false); got != "image/jpeg" {
 		t.Fatalf("direct media type = %q, want image/jpeg", got)
 	}
-	if got := DLNATransferMode("image/jpeg"); got != "Interactive" {
-		t.Fatalf("image transfer mode = %q, want Interactive", got)
+	tests := []struct {
+		mediaType string
+		want      string
+	}{
+		{mediaType: "audio/mpeg", want: "Streaming"},
+		{mediaType: "video/mpeg", want: "Streaming"},
+		{mediaType: " image/jpeg ", want: "Interactive"},
+		{mediaType: "text/vtt", want: "Interactive"},
+		{mediaType: "application/octet-stream", want: "Interactive"},
+		{mediaType: "", want: "Interactive"},
 	}
-	if got := DLNATransferMode("video/mpeg"); got != "Streaming" {
-		t.Fatalf("video transfer mode = %q, want Streaming", got)
+	for _, test := range tests {
+		if got := DLNATransferMode(test.mediaType); got != test.want {
+			t.Errorf("DLNATransferMode(%q) = %q, want %q", test.mediaType, got, test.want)
+		}
 	}
 }
 
