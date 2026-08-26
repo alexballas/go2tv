@@ -331,10 +331,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 			if s.ffmpegPathChanged {
 				if ffmpegErr == nil && s.mediafile != "" {
-					furi, err := storage.ParseURI("file://" + s.mediafile)
-					if err == nil {
-						selectMediaFile(s, furi)
-					}
+					selectMediaFile(s, mediaFileURI(s.mediafile))
 				}
 				s.ffmpegPathChanged = false
 			}
@@ -402,6 +399,10 @@ func Start(ctx context.Context, s *FyneScreen) {
 	showPendingCrashPopup(s)
 
 	w.ShowAndRun()
+}
+
+func mediaFileURI(path string) fyne.URI {
+	return storage.NewFileURI(path)
 }
 
 // EmitMsg Method to implement the screen interface
