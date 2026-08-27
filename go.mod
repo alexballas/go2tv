@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/alexballas/fyne-tooltip v0.0.0-20260528093432-da161b5c8cac
 	github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab
-	github.com/alexballas/refyne/v2 v2.8.103
+	github.com/alexballas/refyne/v2 v2.8.105
 	github.com/alexballas/tunetag v0.0.0-20260719100601-dc1983c44140
 	github.com/alexballas/xfilepicker v0.0.0-20260722221937-2760d0132b88
 	github.com/buger/jsonparser v1.6.1
@@ -49,7 +49,6 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
-	github.com/fredbi/uri v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/fyne-io/gl-js v0.2.1-0.20260315212741-029c47fd27e8 // indirect
 	github.com/fyne-io/glfw-js v0.4.0 // indirect
