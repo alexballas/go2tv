@@ -87,8 +87,7 @@ func showRemoteDiagnosticsSaveDialog(s *FyneScreen, parent fyne.Window) {
 	}
 
 	resumeHotkeys = suspendHotkeys(s)
-	fd.Show()
-	fd.Resize(fyne.NewSize(filePickerFillSize, filePickerFillSize))
+	showFilePicker(fd, parent)
 }
 
 func saveRemoteSessionDiagnostics(writer fyne.URIWriteCloser, s *FyneScreen, parent fyne.Window) {

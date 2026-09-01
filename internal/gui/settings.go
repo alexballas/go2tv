@@ -130,8 +130,6 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		s.clearResumeSession()
 		fynedialog.ShowInformation(lang.L("Playback History"), lang.L("Playback history cleared"), w)
 	})
-	rememberPlaybackPositionControls := container.NewGridWithColumns(2, rememberPlaybackPositionCheck, clearPlaybackHistoryButton)
-
 	ffmpegFolderReset := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		fyne.CurrentApp().Preferences().SetString("ffmpeg", "")
 		path := ffmpegDirDisplayPath("")
@@ -173,8 +171,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		}
 
 		resumeHotkeys = suspendHotkeys(s)
-		fd.Show()
-		fd.Resize(fyne.NewSize(filePickerFillSize, filePickerFillSize))
+		showFilePicker(fd, w)
 	})
 
 	ffmpegRightButtons := container.NewHBox(ffmpegFolderSelect, ffmpegFolderReset)
@@ -327,12 +324,16 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	rtmpKeyContainer := container.NewBorder(nil, nil, nil, container.NewHBox(regenKeyBtn), streamKeyEntry)
 
 	generalSettings := container.NewVBox(
-		container.NewGridWithColumns(2,
+		container.New(newResponsiveTwoColumnLayout(480, 0.5),
 			newSettingsField(lang.L("Theme"), dropdownTheme),
 			newSettingsField(lang.L("Language"), dropdownLanguage),
 		),
 		newSettingsField("ffmpeg "+lang.L("Path"), ffmpegPathControls),
-		newSettingsCheckboxField(rememberPlaybackPositionControls),
+		newSettingsCheckboxField(container.New(
+			newResponsiveTwoColumnLayout(480, 0.5),
+			rememberPlaybackPositionCheck,
+			clearPlaybackHistoryButton,
+		)),
 	)
 
 	autoNextSettings := container.NewVBox(
@@ -366,7 +367,11 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		widget.NewCard(lang.L("Auto-Play Next File"), "", autoNextSettings),
 		widget.NewCard(lang.L("RTMP Server"), "", rtmpSettings),
 	)
-	settingsCategories := container.NewGridWithColumns(2, leftColumn, rightColumn)
+	settingsCategories := container.New(
+		newResponsiveTwoColumnLayout(800, 0.5),
+		leftColumn,
+		rightColumn,
+	)
 
 	return settingsCategories
 }
@@ -407,8 +412,7 @@ func showDiagnosticsSaveDialog(s *FyneScreen) {
 	}
 
 	resumeHotkeys = suspendHotkeys(s)
-	fd.Show()
-	fd.Resize(fyne.NewSize(filePickerFillSize, filePickerFillSize))
+	showFilePicker(fd, s.Current)
 }
 
 func saveDiagnostics(f fyne.URIWriteCloser, s *FyneScreen) {

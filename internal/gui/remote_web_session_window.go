@@ -363,8 +363,7 @@ func (s *FyneScreen) buildRemoteWebSessionDialog() {
 			}
 		}, parent)
 		resumeHotkeys = suspendHotkeys(s)
-		fd.Show()
-		fd.Resize(fyne.NewSize(filePickerFillSize, filePickerFillSize))
+		showFilePicker(fd, parent)
 	})
 	removeRootButton := widget.NewButtonWithIcon(lang.L("Remove"), theme.DeleteIcon(), func() {
 		if selectedRoot < 0 || selectedRoot >= len(roots) {

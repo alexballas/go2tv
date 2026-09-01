@@ -35,7 +35,6 @@ import (
 )
 
 const (
-	filePickerFillSize      = 10000
 	imagePreviewMinWidth    = 160
 	imagePreviewMinHeight   = 120
 	imagePreviewStartWidth  = 800
@@ -449,8 +448,7 @@ func openMediaPickerForWindow(screen *FyneScreen, w fyne.Window, onPaths func(*F
 	}
 
 	resumeHotkeys = suspendHotkeys(screen)
-	fd.Show()
-	fd.Resize(fyne.NewSize(filePickerFillSize, filePickerFillSize))
+	showFilePicker(fd, w)
 }
 
 func setInternalSubsDropdownNoSubs(screen *FyneScreen) {
@@ -547,8 +545,7 @@ func subsAction(screen *FyneScreen) {
 		}
 	}
 	resumeHotkeys = suspendHotkeys(screen)
-	fd.Show()
-	fd.Resize(fyne.NewSize(filePickerFillSize, filePickerFillSize))
+	showFilePicker(fd, w)
 }
 
 type playbackTarget struct {

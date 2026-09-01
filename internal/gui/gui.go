@@ -282,9 +282,11 @@ func Start(ctx context.Context, s *FyneScreen) {
 	w := s.Current
 	w.SetOnDropped(onDropFiles(s))
 
+	mainContent := container.NewScroll(container.NewPadded(mainWindow(s)))
+	settingsContent := container.NewScroll(container.NewPadded(settingsWindow(s)))
 	tabs := container.NewAppTabs(
-		container.NewTabItem("Go2TV", container.NewPadded(mainWindow(s))),
-		container.NewTabItem(lang.L("Settings"), container.NewPadded(settingsWindow(s))),
+		container.NewTabItem("Go2TV", mainContent),
+		container.NewTabItem(lang.L("Settings"), settingsContent),
 		container.NewTabItem(lang.L("About"), aboutWindow(s)),
 	)
 
@@ -356,7 +358,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	w.SetContent(fynetooltip.AddWindowToolTipLayer(tabs, w.Canvas()))
 	minSize := tabs.MinSize()
-	w.Resize(fyne.NewSize(fyne.Max(1000, minSize.Width), minSize.Height))
+	w.Resize(fyne.NewSize(fyne.Max(1000, minSize.Width), fyne.Max(700, minSize.Height)))
 	w.CenterOnScreen()
 	w.SetMaster()
 

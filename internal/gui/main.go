@@ -361,7 +361,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	sliderArea := container.NewBorder(nil, nil, widget.NewLabelWithData(curPos), widget.NewLabelWithData(endPos), sliderBar)
 
-	actionbuttons := container.NewHBox(
+	actionButtons := container.NewHBox(
 		skipPrevious,
 		playpause,
 		stop,
@@ -384,9 +384,14 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	commonCard := widget.NewCard(lang.L("Common Options"), "", container.NewVBox(medialoop, nextmedia))
 
-	advancedCard := widget.NewCard(lang.L("Advanced Options"), "", container.NewGridWithColumns(2, container.NewVBox(externalmedia, sfilecheck, transcode), container.NewVBox(screencast, rtmpServerCheck)))
+	advancedOptions := container.New(
+		newResponsiveTwoColumnLayout(600, 0.5),
+		container.NewVBox(externalmedia, sfilecheck, transcode),
+		container.NewVBox(screencast, rtmpServerCheck),
+	)
+	advancedCard := widget.NewCard(lang.L("Advanced Options"), "", advancedOptions)
 
-	playCard := widget.NewCard(lang.L("Playback"), "", container.NewVBox(sliderArea, actionbuttons))
+	playCard := widget.NewCard(lang.L("Playback"), "", container.NewVBox(sliderArea, actionButtons))
 
 	deviceHeader := widget.NewLabelWithStyle(lang.L("(auto refreshing)"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
@@ -402,7 +407,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	topCards := container.NewVBox(mediaCard, playCard, commonCard)
 	leftColumn := container.NewBorder(topCards, nil, nil, nil, advancedCard)
-	content := container.New(&RatioLayout{LeftRatio: 0.66}, leftColumn, deviceCard)
+	mainLayout := newResponsiveTwoColumnLayout(800, 0.66)
+	mainLayout.narrowTrailingMinHeight = 240
+	content := container.New(mainLayout, leftColumn, deviceCard)
 
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
