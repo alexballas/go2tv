@@ -6,8 +6,8 @@ github.com/alexballas/fyne-tooltip v0.0.0-20260528093432-da161b5c8cac h1:P+Mync0
 github.com/alexballas/fyne-tooltip v0.0.0-20260528093432-da161b5c8cac/go.mod h1:ahMS3ktoYdWFIzqbQFJ4TyqdFQpMRSAepNwjKc0Y4/o=
 github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab h1:IicL/N9O22AchM2bp5mwCtvzVpRqCzvPiy9g1FbFLS8=
 github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab/go.mod h1:bvfmHkfGgEntZVIbSzazSp6zSxD68BJGsLVASpcEHxI=
-github.com/alexballas/refyne/v2 v2.8.106-0.20260902192624-7f6800f72998 h1:E56m/CSr6qHXd93rVTaakr4UOUa+9CKG9nBiDxis/oo=
-github.com/alexballas/refyne/v2 v2.8.106-0.20260902192624-7f6800f72998/go.mod h1:8mePE3bcQW5bqyox9Eisa7zOaszDaZ7uQr7ibgUDmrw=
+github.com/alexballas/refyne/v2 v2.8.106 h1:+697Q5JTCyHhFhkTOgjzY/yDhJSJXrmSLvcmXQMOwfQ=
+github.com/alexballas/refyne/v2 v2.8.106/go.mod h1:8mePE3bcQW5bqyox9Eisa7zOaszDaZ7uQr7ibgUDmrw=
 github.com/alexballas/tunetag v0.0.0-20260719100601-dc1983c44140 h1:Lbt0bbEAdfIHF14lkSlXcJP4jyAvZzkmAlsMhSvN814=
 github.com/alexballas/tunetag v0.0.0-20260719100601-dc1983c44140/go.mod h1:HURLWYLMoZtxUiboPNZ5/en9npmAWfnC23RAOwgFv8Y=
 github.com/alexballas/xfilepicker v0.0.0-20260901184720-4ffaf35bd889 h1:qN+LQh1HWiblqKCBLeOLHRQ0u3q8x+wZCS97Wxfh8dg=
