@@ -78,7 +78,7 @@ ANDROID_BUILD_TOOLS?=$(shell ls -d $$ANDROID_HOME/build-tools/* 2>/dev/null | so
 # aligned; the android target verifies both, since neither is ours to control.
 ANDROID_ELF_ALIGN=0x4000
 
-.PHONY: webui build build-lite wayland x11 windows windows-sysroot windows-fyne install uninstall clean run test appimage appimage-ffmpeg android android-fyne check-no-replace print-app-version print-app-build
+.PHONY: webui build build-lite wayland x11 windows windows-sysroot windows-fyne install uninstall clean run test test-wayland-first-render appimage appimage-ffmpeg android android-fyne check-no-replace print-app-version print-app-build
 
 # Packagers driven outside this Makefile (the macOS workflows) read the version
 # metadata from here so the arithmetic lives in one place.
@@ -207,6 +207,17 @@ run: build
 
 test:
 	env $(GO_BUILD_ENV) go test -v ./...
+
+WAYLAND_STRESS_ITERATIONS?=100
+WAYLAND_STRESS_SETTLE_SECONDS?=1
+
+# Repeatedly map Go2TV on the current Wayland compositor and verify that the
+# final viewport destination matches the compositor's final positive configure.
+test-wayland-first-render: wayland
+	GO2TV_WAYLAND_BINARY="$(CURDIR)/$(BIN)" \
+	WAYLAND_STRESS_ITERATIONS="$(WAYLAND_STRESS_ITERATIONS)" \
+	WAYLAND_STRESS_SETTLE_SECONDS="$(WAYLAND_STRESS_SETTLE_SECONDS)" \
+	./scripts/test-wayland-first-render.sh
 
 # Run before pushing. A local `replace` pointing at a refyne checkout is how the
 # Android share target is developed, and it makes the module unbuildable from a
