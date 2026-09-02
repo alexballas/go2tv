@@ -36,18 +36,6 @@ import (
 	"go2tv.app/go2tv/v2/utils"
 )
 
-const (
-	initialWindowWidth  = 1024
-	initialWindowHeight = 660
-)
-
-func initialWindowSize(minSize fyne.Size) fyne.Size {
-	return fyne.NewSize(
-		fyne.Max(initialWindowWidth, minSize.Width),
-		fyne.Max(initialWindowHeight, minSize.Height),
-	)
-}
-
 // screencastSession abstracts a live screencast capture session.
 // Both the Chromecast HLS pipeline (go2tv.app/screencast/hls.Session)
 // and the DLNA MPEG-TS pipeline (go2tv.app/screencast/ts.Session) implement it.
@@ -370,7 +358,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	w.SetContent(fynetooltip.AddWindowToolTipLayer(tabs, w.Canvas()))
 	minSize := tabs.MinSize()
-	w.Resize(initialWindowSize(minSize))
+	w.Resize(fyne.NewSize(fyne.Max(1000, minSize.Width), fyne.Max(700, minSize.Height)))
 	w.CenterOnScreen()
 	w.SetMaster()
 
