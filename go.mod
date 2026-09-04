@@ -5,9 +5,9 @@ go 1.26
 require (
 	github.com/alexballas/fyne-tooltip v0.0.0-20260528093432-da161b5c8cac
 	github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab
-	github.com/alexballas/refyne/v2 v2.8.107-0.20260902230348-fc90d5151460
+	github.com/alexballas/refyne/v2 v2.8.107-0.20260903230837-a6e988324af5
 	github.com/alexballas/tunetag v0.0.0-20260719100601-dc1983c44140
-	github.com/alexballas/xfilepicker v0.0.0-20260901184720-4ffaf35bd889
+	github.com/alexballas/xfilepicker v0.0.0-20260903230936-5f9afb2d2f48
 	github.com/buger/jsonparser v1.6.1
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
@@ -39,6 +39,7 @@ require (
 require (
 	fyne.io/systray v1.12.2 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
+	github.com/alexballas/portal v0.5.0 // indirect
 	github.com/anthonynsimon/bild v0.17.0 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
@@ -75,7 +76,6 @@ require (
 	github.com/nicksnyder/go-i18n/v2 v2.6.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/rymdport/portal v0.4.2 // indirect
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c // indirect
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
