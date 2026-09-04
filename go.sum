@@ -8,8 +8,8 @@ github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab h1:IicL/N9O22
 github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab/go.mod h1:bvfmHkfGgEntZVIbSzazSp6zSxD68BJGsLVASpcEHxI=
 github.com/alexballas/portal v0.5.0 h1:EnPnpmSBOUCmawJqRxvqGjuufz/vldoUhll/aDbfv6w=
 github.com/alexballas/portal v0.5.0/go.mod h1:dR5jsSfTTvnMf3WVYVprxGAAN9ge+9S5tG6hl4xEpGQ=
-github.com/alexballas/refyne/v2 v2.8.107-0.20260903230837-a6e988324af5 h1:mvmjly9mS0BlUi+uxUpp9GO0NKcU/6KSONPv9CRtjXo=
-github.com/alexballas/refyne/v2 v2.8.107-0.20260903230837-a6e988324af5/go.mod h1:BL4gB6sNRmvvhBLReTag61eauzvGLJDUMB7LwiYyV/o=
+github.com/alexballas/refyne/v2 v2.8.107-0.20260904114627-aaa4ad0168c6 h1:fvJem8kiqGtVJz+ue69z4cB9F2RuaJrEpgtKPC5sSz0=
+github.com/alexballas/refyne/v2 v2.8.107-0.20260904114627-aaa4ad0168c6/go.mod h1:BL4gB6sNRmvvhBLReTag61eauzvGLJDUMB7LwiYyV/o=
 github.com/alexballas/tunetag v0.0.0-20260719100601-dc1983c44140 h1:Lbt0bbEAdfIHF14lkSlXcJP4jyAvZzkmAlsMhSvN814=
 github.com/alexballas/tunetag v0.0.0-20260719100601-dc1983c44140/go.mod h1:HURLWYLMoZtxUiboPNZ5/en9npmAWfnC23RAOwgFv8Y=
 github.com/alexballas/xfilepicker v0.0.0-20260903230936-5f9afb2d2f48 h1:urcicivhce623JycPA+Ja105h2p8qKXda6p4EDnEM0w=

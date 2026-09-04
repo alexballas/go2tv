@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/alexballas/fyne-tooltip v0.0.0-20260528093432-da161b5c8cac
 	github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab
-	github.com/alexballas/refyne/v2 v2.8.107-0.20260903230837-a6e988324af5
+	github.com/alexballas/refyne/v2 v2.8.107-0.20260904114627-aaa4ad0168c6
 	github.com/alexballas/tunetag v0.0.0-20260719100601-dc1983c44140
 	github.com/alexballas/xfilepicker v0.0.0-20260903230936-5f9afb2d2f48
 	github.com/buger/jsonparser v1.6.1
