@@ -1,4 +1,8 @@
 {
+    "General": "General",
+    "Connections": "Connections",
+    "Advanced": "Advanced",
+    "Open Session": "Open Session",
     "Play": "Play",
     "Pause": "Pause",
     "Stop": "Stop",

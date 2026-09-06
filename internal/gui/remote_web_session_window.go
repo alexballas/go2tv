@@ -583,8 +583,8 @@ func (s *FyneScreen) buildRemoteWebSessionDialog() {
 	)
 	diagnosticsActions := container.NewVBox(widget.NewSeparator(), exportButton, exportHint)
 	sessionContent := container.NewBorder(sessionActions, diagnosticsActions, nil, nil, layout.NewSpacer())
-	sessionCard := widget.NewCard(lang.L("Session"), "", sessionContent)
-	accessCard := widget.NewCard(lang.L("Media access"), "", accessContent)
+	sessionCard := newSectionCard(lang.L("Session"), sessionContent)
+	accessCard := newSectionCard(lang.L("Media access"), accessContent)
 
 	content := container.NewBorder(
 		container.NewVBox(isolationNotice, widget.NewSeparator()),

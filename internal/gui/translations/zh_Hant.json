@@ -1,4 +1,8 @@
 {
+    "General": "一般",
+    "Connections": "連線",
+    "Advanced": "進階",
+    "Open Session": "開啟工作階段",
     "Play": "播放",
     "Pause": "暫停",
     "Stop": "停止",

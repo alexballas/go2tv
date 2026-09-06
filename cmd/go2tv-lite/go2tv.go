@@ -299,6 +299,7 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 	}
 
 	if err := client.Connect(); err != nil {
+		_ = client.Close(false)
 		return fmt.Errorf("chromecast connect: %w", err)
 	}
 	defer client.Close(true)

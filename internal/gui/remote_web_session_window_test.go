@@ -131,6 +131,8 @@ func remoteDialogButtonTexts(object fyne.CanvasObject) []string {
 		return remoteDialogButtonTexts(typed.Content)
 	case *widget.Card:
 		return remoteDialogButtonTexts(typed.Content)
+	case *sectionCard:
+		return remoteDialogButtonTexts(typed.content)
 	case *fyne.Container:
 		for _, child := range typed.Objects {
 			texts = append(texts, remoteDialogButtonTexts(child)...)
@@ -149,6 +151,8 @@ func findRemoteDialogButton(object fyne.CanvasObject, text string) *widget.Butto
 		return findRemoteDialogButton(typed.Content, text)
 	case *widget.Card:
 		return findRemoteDialogButton(typed.Content, text)
+	case *sectionCard:
+		return findRemoteDialogButton(typed.content, text)
 	case *fyne.Container:
 		for _, child := range typed.Objects {
 			if button := findRemoteDialogButton(child, text); button != nil {

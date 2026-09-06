@@ -380,20 +380,21 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, srightwidgets), srightwidgets, sfiletext)
 	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
 
-	mediaCard := widget.NewCard(lang.L("Media"), "", viewfilescont)
+	mediaCard := newSectionCard(lang.L("Media"), viewfilescont)
 
-	commonCard := widget.NewCard(lang.L("Common Options"), "", container.NewVBox(medialoop, nextmedia))
+	commonCard := newSectionCard(lang.L("Common Options"), container.NewVBox(medialoop, nextmedia))
 
 	advancedOptions := container.New(
 		newResponsiveTwoColumnLayout(600, 0.5),
 		container.NewVBox(externalmedia, sfilecheck, transcode),
 		container.NewVBox(screencast, rtmpServerCheck),
 	)
-	advancedCard := widget.NewCard(lang.L("Advanced Options"), "", advancedOptions)
+	advancedCard := newSectionCard(lang.L("Advanced Options"), advancedOptions)
 
-	playCard := widget.NewCard(lang.L("Playback"), "", container.NewVBox(sliderArea, actionButtons))
+	playCard := newSectionCard(lang.L("Playback"), container.NewVBox(sliderArea, actionButtons))
 
-	deviceHeader := widget.NewLabelWithStyle(lang.L("(auto refreshing)"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	deviceHeader := widget.NewLabel(lang.L("(auto refreshing)"))
+	deviceHeader.Importance = widget.LowImportance
 
 	s.ActiveDeviceLabel = widget.NewLabel("")
 	s.ActiveDeviceLabel.Wrapping = fyne.TextWrapWord
@@ -403,7 +404,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.ActiveDeviceCard.Hide()
 
 	deviceBottom := container.NewVBox(s.ActiveDeviceCard, s.rtmpURLCard)
-	deviceCard := widget.NewCard(lang.L("Devices"), "", container.NewBorder(deviceHeader, deviceBottom, nil, nil, list))
+	deviceCard := newSectionCard(lang.L("Devices"), container.NewBorder(deviceHeader, deviceBottom, nil, nil, list))
 
 	topCards := container.NewVBox(mediaCard, playCard, commonCard)
 	leftColumn := container.NewBorder(topCards, nil, nil, nil, advancedCard)

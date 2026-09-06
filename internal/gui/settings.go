@@ -71,14 +71,22 @@ func ffmpegDirDisplayPath(pref string) string {
 }
 
 func newSettingsField(label string, control fyne.CanvasObject) fyne.CanvasObject {
-	return container.NewVBox(
-		widget.NewLabel(label),
-		container.NewPadded(control),
+	return newSettingsRow(widget.NewLabel(label), control)
+}
+
+func newSettingsRow(label, control fyne.CanvasObject) fyne.CanvasObject {
+	return container.New(
+		&settingsRowLayout{stacked: true},
+		label,
+		control,
 	)
 }
 
-func newSettingsCheckboxField(control fyne.CanvasObject) fyne.CanvasObject {
-	return container.NewPadded(control)
+func newSettingsSection(title string, content fyne.CanvasObject) fyne.CanvasObject {
+	return container.NewVBox(
+		widget.NewLabelWithStyle(title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		content,
+	)
 }
 
 func (s *FyneScreen) setAutoPlaySameTypes(enabled bool) {
@@ -324,21 +332,17 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	rtmpKeyContainer := container.NewBorder(nil, nil, nil, container.NewHBox(regenKeyBtn), streamKeyEntry)
 
 	generalSettings := container.NewVBox(
-		container.New(newResponsiveTwoColumnLayout(480, 0.5),
-			newSettingsField(lang.L("Theme"), dropdownTheme),
-			newSettingsField(lang.L("Language"), dropdownLanguage),
-		),
-		newSettingsField("ffmpeg "+lang.L("Path"), ffmpegPathControls),
-		newSettingsCheckboxField(container.New(
-			newResponsiveTwoColumnLayout(480, 0.5),
-			rememberPlaybackPositionCheck,
-			clearPlaybackHistoryButton,
-		)),
+		newSettingsField(lang.L("Theme"), dropdownTheme),
+		newSettingsField(lang.L("Language"), dropdownLanguage),
 	)
 
-	autoNextSettings := container.NewVBox(
+	playbackSettings := container.NewVBox(
+		newSettingsRow(
+			rememberPlaybackPositionCheck,
+			container.NewHBox(clearPlaybackHistoryButton),
+		),
 		newSettingsField(lang.L("Gapless Playback"), gaplessdropdown),
-		newSettingsCheckboxField(sameTypeAutoNextCheck),
+		sameTypeAutoNextCheck,
 		newSettingsField(lang.L("Image Auto-Skip Timeout"), imageAutoSkipControls),
 	)
 
@@ -347,33 +351,31 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		newSettingsField(lang.L("RTMP Stream Key"), rtmpKeyContainer),
 	)
 
-	debugSettings := container.NewVBox(
-		newSettingsField(lang.L("Diagnostics"), debugExport),
+	advancedSettings := container.NewVBox(
+		newSettingsField("ffmpeg "+lang.L("Path"), ffmpegPathControls),
+		newSettingsField(lang.L("Diagnostics"), container.NewHBox(debugExport)),
 	)
 
-	remoteSessionButton := widget.NewButton(lang.L("Remote Web Session")+"…", func() {
+	remoteSessionButton := widget.NewButton(lang.L("Open Session")+"…", func() {
 		s.openRemoteWebSessionDialog()
 	})
-	remoteSessionSettings := container.NewVBox(
-		newSettingsField(lang.L("Remote Web Session"), remoteSessionButton),
+	connectionSettings := container.NewVBox(
+		newSettingsField(lang.L("Remote Web Session"), container.NewHBox(remoteSessionButton)),
+		widget.NewAccordion(widget.NewAccordionItem(lang.L("RTMP Server"), rtmpSettings)),
 	)
 
-	leftColumn := container.NewVBox(
-		widget.NewCard(lang.L("Common Options"), "", generalSettings),
-		widget.NewCard(lang.L("Remote Web Session"), "", remoteSessionSettings),
-		widget.NewCard(lang.L("Diagnostics"), "", debugSettings),
-	)
-	rightColumn := container.NewVBox(
-		widget.NewCard(lang.L("Auto-Play Next File"), "", autoNextSettings),
-		widget.NewCard(lang.L("RTMP Server"), "", rtmpSettings),
-	)
-	settingsCategories := container.New(
-		newResponsiveTwoColumnLayout(800, 0.5),
-		leftColumn,
-		rightColumn,
+	settingsCategories := container.NewVBox(
+		newSettingsSection(lang.L("General"), generalSettings),
+		widget.NewSeparator(),
+		newSettingsSection(lang.L("Playback"), playbackSettings),
+		widget.NewSeparator(),
+		newSettingsSection(lang.L("Connections"), connectionSettings),
+		widget.NewSeparator(),
+		widget.NewAccordion(widget.NewAccordionItem(lang.L("Advanced"), advancedSettings)),
 	)
 
-	return settingsCategories
+	return container.New(layout.NewCustomPaddedLayout(8, 8, 16, 16),
+		container.New(settingsPanelLayout{}, settingsCategories))
 }
 
 func showDiagnosticsSaveDialog(s *FyneScreen) {

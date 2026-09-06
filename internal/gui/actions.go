@@ -139,6 +139,7 @@ func selectedChromecastControlClient(screen *FyneScreen) (*castprotocol.CastClie
 	client.LogOutput = screen.Debug
 
 	if err := client.Connect(); err != nil {
+		_ = client.Close(false)
 		return nil, nil, fmt.Errorf("chromecast connect: %w", err)
 	}
 
@@ -1344,6 +1345,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 		client.LogOutput = screen.Debug
 
 		if err := client.Connect(); err != nil {
+			_ = client.Close(false)
 			check(screen, fmt.Errorf("chromecast connect: %w", err))
 			startAfreshPlayButton(screen)
 			return

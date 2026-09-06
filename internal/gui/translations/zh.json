@@ -1,4 +1,8 @@
 {
+    "General": "常规",
+    "Connections": "连接",
+    "Advanced": "高级",
+    "Open Session": "打开会话",
     "Play": "播放",
     "Pause": "暂停",
     "Stop": "停止",

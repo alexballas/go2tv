@@ -757,6 +757,7 @@ func (f *Factory) Open(ctx context.Context, device playback.Device) (playback.Tr
 			return nil, err
 		}
 		if err := cast.Connect(ctx); err != nil {
+			_ = cast.Close(context.Background())
 			return nil, err
 		}
 		return cast, nil

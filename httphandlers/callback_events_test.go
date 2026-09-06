@@ -38,7 +38,10 @@ type blockingCallbackSink struct {
 }
 
 func (s blockingCallbackSink) HandleCallbackEvent(context.Context, CallbackEvent) {
-	s.entered <- struct{}{}
+	select {
+	case s.entered <- struct{}{}:
+	default:
+	}
 	<-s.release
 }
 

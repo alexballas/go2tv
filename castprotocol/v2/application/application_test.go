@@ -36,6 +36,7 @@ type sentFrame struct {
 // startHarness wires a mock Conn that answers the receiver and media GET_STATUS
 // requests with the supplied snapshots and records every frame in order.
 type startHarness struct {
+	t      *testing.T
 	conn   *mockCast.Conn
 	status cast.ReceiverStatusResponse
 	media  cast.MediaStatusResponse
@@ -53,10 +54,14 @@ type startHarness struct {
 func newStartHarness(t *testing.T, startErr error) *startHarness {
 	t.Helper()
 
-	h := &startHarness{conn: &mockCast.Conn{}}
+	h := &startHarness{t: t, conn: &mockCast.Conn{}}
 	recvChan := make(chan *pb.CastMessage, 5)
+	var closeOnce sync.Once
 	h.conn.On("MsgChan").Return(recvChan)
 	h.conn.On("Start", mockAddr, mockPort).Return(startErr)
+	h.conn.On("Close").Run(func(mock.Arguments) {
+		closeOnce.Do(func() { close(recvChan) })
+	}).Return(nil)
 	h.conn.On("Send", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
 			payload, _ := args.Get(1).(*cast.PayloadHeader)
@@ -113,6 +118,7 @@ func (h *startHarness) frames() []sentFrame {
 func (h *startHarness) app() *application.Application {
 	app := application.NewApplication(application.WithConnection(h.conn))
 	app.SetCacheDisabled(true)
+	h.t.Cleanup(func() { _ = app.Close(false) })
 	return app
 }
 
@@ -278,6 +284,7 @@ func TestSeekPathsRejectClearedMediaSession(t *testing.T) {
 
 func TestPlayableMediaTypeUppercaseExtension(t *testing.T) {
 	app := application.NewApplication()
+	t.Cleanup(func() { _ = app.Close(false) })
 
 	if !app.PlayableMediaType("clip.AVI") {
 		t.Fatal("expected uppercase AVI extension to be playable")

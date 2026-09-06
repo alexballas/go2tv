@@ -248,9 +248,8 @@ func (c *Connection) handleMessage(requestID int, message *pb.CastMessage, heade
 		}
 	default:
 		c.recvMsgMu.RLock()
-		closed := c.recvMsgClosed
-		c.recvMsgMu.RUnlock()
-		if closed {
+		defer c.recvMsgMu.RUnlock()
+		if c.recvMsgClosed {
 			return
 		}
 		select {

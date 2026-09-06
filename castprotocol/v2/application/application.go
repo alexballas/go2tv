@@ -97,6 +97,7 @@ type Application struct {
 	// Relay messages received so users can add custom logic to
 	// events.
 	messageChan   chan *pb.CastMessage
+	recvDone      chan struct{}
 	closeChanOnce sync.Once
 	// Functions that will receive messages from 'messageChan'
 	messageFuncs []CastMessageFunc
@@ -196,6 +197,7 @@ func NewApplication(opts ...ApplicationOption) *Application {
 		conn:              cast.NewConnection(),
 		resultChanMap:     map[int]chan *pb.CastMessage{},
 		messageChan:       make(chan *pb.CastMessage),
+		recvDone:          make(chan struct{}),
 		playedItems:       map[string]PlayedItem{},
 		cache:             storage.NewStorage(),
 		connectionRetries: 5,
@@ -275,6 +277,7 @@ func (a *Application) MediaFinished() {
 }
 
 func (a *Application) recvMessages() {
+	defer close(a.recvDone)
 	for msg := range a.conn.MsgChan() {
 		requestID, err := jsonparser.GetInt([]byte(*msg.PayloadUtf8), "requestId")
 		if err == nil {
@@ -470,10 +473,12 @@ func (a *Application) Close(stopMedia bool) error {
 		a.sendMediaConn(&cast.CloseHeader)
 		a.sendDefaultConn(&cast.CloseHeader)
 	}
-	defer a.closeChanOnce.Do(func() {
+	err := a.conn.Close()
+	<-a.recvDone
+	a.closeChanOnce.Do(func() {
 		close(a.messageChan)
 	})
-	return a.conn.Close()
+	return err
 }
 
 func (a *Application) Status() (*cast.Application, *cast.Media, *cast.Volume) {
