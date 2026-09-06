@@ -587,7 +587,7 @@ func TestSingleActiveQueueItemRemoveButtonEnabled(t *testing.T) {
 	}
 }
 
-func TestMultiItemPlaylistButtonTurnsProminent(t *testing.T) {
+func TestMultiItemPlaylistButtonKeepsNeutralBackground(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
@@ -601,8 +601,8 @@ func TestMultiItemPlaylistButtonTurnsProminent(t *testing.T) {
 	screen.refreshQueueStateUI()
 	fyne.DoAndWait(func() {})
 
-	if screen.QueueButton.Importance != widget.HighImportance {
-		t.Fatalf("expected multi-item playlist button to become prominent, got %v", screen.QueueButton.Importance)
+	if screen.QueueButton.Importance != widget.MediumImportance {
+		t.Fatalf("expected multi-item playlist button to stay neutral, got %v", screen.QueueButton.Importance)
 	}
 }
 

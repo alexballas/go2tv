@@ -257,9 +257,6 @@ func (screen *FyneScreen) refreshQueueStateUI() {
 	if queue != nil && queue.Len() > 0 {
 		statusText = screen.queueStatusText(queue, activeIndex)
 		buttonText = statusText
-		if queue.Len() > 1 {
-			buttonImportance = widget.HighImportance
-		}
 	}
 
 	queueLen := 0

@@ -342,6 +342,7 @@ func setCurrentMediaPath(screen *FyneScreen, mediaPath string) error {
 	}
 
 	fyne.Do(func() {
+		screen.selectArtwork(absMediaFile)
 		if screen.SelectInternalSubs != nil {
 			screen.SelectInternalSubs.ClearSelected()
 		}
@@ -366,6 +367,7 @@ func setCurrentMediaPath(screen *FyneScreen, mediaPath string) error {
 }
 
 func clearCurrentMediaSelection(screen *FyneScreen) {
+	screen.selectArtwork("")
 	if screen.MediaText != nil {
 		screen.MediaText.SetText("")
 	}
@@ -2962,6 +2964,7 @@ func startRTMPServer(screen *FyneScreen) {
 			screen.rtmpHLSURL = hlsDir
 			// Set text to indicate streaming mode, but keep disabled
 			screen.MediaText.SetText(lang.L("RTMP Live Stream"))
+			screen.selectArtwork("")
 			screen.mediafile = lang.L("RTMP Live Stream")
 			setPlayPauseView("", screen)
 		})

@@ -215,13 +215,13 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		clearsubsAction(s)
 	})
 
-	skipPrevious := widget.NewButtonWithIcon(lang.L("Previous"), theme.MediaSkipPreviousIcon(), func() {
+	skipPrevious := widget.NewButtonWithIcon("", theme.MediaSkipPreviousIcon(), func() {
 		skipPreviousAction(s)
 	})
 	skipPrevious.Importance = widget.LowImportance
 	skipPrevious.Alignment = widget.ButtonAlignCenter
 
-	skipNext := widget.NewButtonWithIcon(lang.L("Next"), theme.MediaSkipNextIcon(), func() {
+	skipNext := widget.NewButtonWithIcon("", theme.MediaSkipNextIcon(), func() {
 		skipNextAction(s)
 	})
 	skipNext.Importance = widget.LowImportance
@@ -391,7 +391,12 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	)
 	advancedCard := newSectionCard(lang.L("Advanced Options"), advancedOptions)
 
-	playCard := newSectionCard(lang.L("Playback"), container.NewVBox(sliderArea, actionButtons))
+	s.selectedArtwork = newSelectedArtwork()
+	playbackControls := container.New(
+		layout.NewCustomPaddedLayout(8, 8, 8, 8), container.NewVBox(sliderArea, actionButtons),
+	)
+	playbackRow := container.New(artworkPlaybackLayout{}, s.selectedArtwork, playbackControls)
+	playCard := newSectionCard(lang.L("Playback"), playbackRow)
 
 	deviceHeader := widget.NewLabel(lang.L("(auto refreshing)"))
 	deviceHeader.Importance = widget.LowImportance
@@ -506,6 +511,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			clearmedia.Disable()
 			s.MediaText.Disable()
 			s.MediaText.SetPlaceHolder("")
+			s.selectArtwork("")
 			s.MediaText.SetText(lang.L("Cast Desktop Live Stream"))
 			s.mediafile = lang.L("Cast Desktop Live Stream")
 			sfilecheck.SetChecked(false)
