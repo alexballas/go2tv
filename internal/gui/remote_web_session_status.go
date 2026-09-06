@@ -114,7 +114,7 @@ func newRemoteSessionStatusView(screen *FyneScreen, desktopView fyne.CanvasObjec
 		container.NewCenter(copyButton),
 		container.NewCenter(container.NewHBox(openButton, stopButton)),
 	)
-	statusCard := widget.NewCard("", "", container.NewPadded(statusContent))
+	statusCard := newSectionCard("", statusContent)
 	statusView := container.NewCenter(statusCard)
 	statusView.Hide()
 

@@ -40,6 +40,9 @@ func (c *sectionCard) CreateRenderer() fyne.WidgetRenderer {
 	background.StrokeWidth = 1
 	header := canvas.NewText(c.title, color.Transparent)
 	header.TextStyle.Bold = true
+	if c.title == "" {
+		header.Hide()
+	}
 	body := container.NewBorder(header, nil, nil, nil, c.content)
 	inset := container.New(layout.NewCustomPaddedLayout(
 		sectionCardVerticalPadding, sectionCardVerticalPadding, sectionCardPadding, sectionCardPadding,
