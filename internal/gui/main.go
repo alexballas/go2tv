@@ -10,6 +10,7 @@ import (
 	"sort"
 	"time"
 
+	ttwidget "github.com/alexballas/fyne-tooltip/widget"
 	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/container"
 	"github.com/alexballas/refyne/v2/data/binding"
@@ -179,7 +180,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	sbrowse.Disable()
 	sfiletext.Disable()
 
-	playpause := widget.NewButtonWithIcon(lang.L("Cast")+"   ", theme.MediaPlayIcon(), func() {
+	playpause := ttwidget.NewButtonWithIcon(lang.L("Cast")+"   ", theme.MediaPlayIcon(), func() {
 		playAction(s)
 	})
 	playpause.Importance = widget.HighImportance
@@ -323,7 +324,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	curPos := binding.NewString()
 	endPos := binding.NewString()
 
-	s.PlayPause = playpause
+	s.PlayPause = &playpause.Button
+	s.playPauseToolTip = playpause
 	s.Stop = stop
 	s.MuteUnmute = muteunmute
 	s.CustomSubsCheck = sfilecheck

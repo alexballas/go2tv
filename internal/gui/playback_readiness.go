@@ -25,14 +25,20 @@ func (s *FyneScreen) refreshPlaybackReadiness() {
 	state := s.getScreenState()
 	active := state == "Playing" || state == "Paused"
 	status := lang.L("Ready to cast")
+	toolTip := ""
 	switch {
 	case active:
 		status = lang.L(state)
 	case s.selectedDevice.addr == "":
 		status = lang.L("Select a device")
+		toolTip = status
 	case s.mediafile == "" && s.MediaText.Text == "" && !s.Screencast && !(s.rtmpServerCheck != nil && s.rtmpServerCheck.Checked):
 		status = lang.L("Choose media to cast")
+		toolTip = status
 		s.PlayPause.Disable()
+	}
+	if s.playPauseToolTip != nil {
+		s.playPauseToolTip.SetToolTip(toolTip)
 	}
 	if s.selectedDevice.addr != "" {
 		status += " · " + s.selectedDevice.name

@@ -60,6 +60,7 @@ type FyneScreen struct {
 	Current                  fyne.Window
 	cancelEnablePlay         context.CancelFunc
 	PlayPause                *widget.Button
+	playPauseToolTip         *ttwidget.Button
 	Debug                    *debugWriter
 	DiscoveryDebug           *debugWriter
 	VolumeUp                 *widget.Button
