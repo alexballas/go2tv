@@ -68,16 +68,20 @@ func TestMainTabStartupFitsContentWithSmallMargin(t *testing.T) {
 			w := app.NewWindow("startup")
 			w.SetPadded(padded)
 			left := canvas.NewRectangle(color.Transparent)
-			left.SetMinSize(fyne.NewSize(500, 640))
+			left.SetMinSize(fyne.NewSize(740, 640))
 			right := canvas.NewRectangle(color.Transparent)
 			right.SetMinSize(fyne.NewSize(200, 240))
+			columns := newResponsiveTwoColumnLayout(800, 0.66)
 			main := container.NewScroll(container.NewPadded(container.New(
-				newResponsiveTwoColumnLayout(800, 0.66), left, right,
+				columns, left, right,
 			)))
 			tabs := container.NewAppTabs(container.NewTabItem("Go2TV", main))
 			w.SetContent(tabs)
 			w.Resize(mainTabWindowSize(w, tabs, main))
 			main.Refresh()
+			if columns.stacked {
+				t.Fatal("startup should fit playback beside Devices")
+			}
 
 			if main.Content.Size().Height > main.Size().Height {
 				t.Fatalf("padded=%v: main tab overflows: content %v, viewport %v", padded, main.Content.Size(), main.Size())

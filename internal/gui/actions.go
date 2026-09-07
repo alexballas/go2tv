@@ -500,11 +500,15 @@ func selectSubsFile(screen *FyneScreen, f fyne.URI) {
 		return
 	}
 
+	if screen.mediaSelection != nil {
+		screen.mediaSelection.subtitles.SetSelected(lang.L(subtitleExternal))
+	}
 	screen.SelectInternalSubs.ClearSelected()
-
-	screen.SubsText.Text = filepath.Base(sfile)
 	screen.subsfile = absSubtitlesFile
-	screen.SubsText.Refresh()
+	screen.SubsText.SetText(filepath.Base(sfile))
+	if screen.mediaSelection != nil {
+		screen.mediaSelection.refresh()
+	}
 }
 
 func mediaAction(screen *FyneScreen) {
@@ -2240,6 +2244,9 @@ func clearsubsAction(screen *FyneScreen) {
 	screen.SelectInternalSubs.ClearSelected()
 	screen.SubsText.SetText("")
 	screen.subsfile = ""
+	if screen.mediaSelection != nil {
+		screen.mediaSelection.refresh()
+	}
 }
 
 func skipPreviousAction(screen *FyneScreen) {

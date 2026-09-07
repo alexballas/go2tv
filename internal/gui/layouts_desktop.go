@@ -65,7 +65,7 @@ func mainTabWindowSize(w fyne.Window, tabs *container.AppTabs, main *container.S
 	if w.Padded() {
 		padding = 2 * theme.Padding()
 	}
-	width := fyne.Max(1000, tabs.MinSize().Width+padding)
+	width := fyne.Max(1120, tabs.MinSize().Width+padding)
 	// Resolve responsive columns at the starting width before measuring height.
 	// Scroll.MinSize only describes its viewport, not the controls it contains.
 	tabs.Resize(fyne.NewSize(width-padding, 700))
@@ -73,4 +73,34 @@ func mainTabWindowSize(w fyne.Window, tabs *container.AppTabs, main *container.S
 	tabBarHeight := tabs.Size().Height - main.Size().Height
 	height := main.Content.MinSize().Height + tabBarHeight + theme.Padding()
 	return fyne.NewSize(width, fyne.Max(height, tabs.MinSize().Height)+padding)
+}
+
+// Keep mode switches grouped with fixed gaps and compact hit areas.
+type playbackModesLayout struct{}
+
+const playbackControlsGap float32 = 14
+
+func (playbackModesLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	if len(objects) == 0 {
+		return fyne.NewSize(0, 0)
+	}
+	size := fyne.NewSize(0, 0)
+	for _, object := range objects {
+		size.Width += object.MinSize().Width
+		size.Height = fyne.Max(size.Height, object.MinSize().Height)
+	}
+	return fyne.NewSize(size.Width+playbackControlsGap*float32(len(objects)-1), size.Height)
+}
+
+func (playbackModesLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	if len(objects) == 0 {
+		return
+	}
+	x := float32(0)
+	for _, object := range objects {
+		width := object.MinSize().Width
+		object.Move(fyne.NewPos(x, 0))
+		object.Resize(fyne.NewSize(width, size.Height))
+		x += width + playbackControlsGap
+	}
 }

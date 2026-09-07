@@ -43,10 +43,11 @@ func (l *responsiveTwoColumnLayout) Layout(objects []fyne.CanvasObject, size fyn
 
 	leftMin := objects[0].MinSize()
 	rightMin := objects[1].MinSize()
-	wideMinWidth := fyne.Max(leftMin.Width/l.leftRatio, rightMin.Width/(1-l.leftRatio))
+	// Prefer the requested ratio, but use spare room before stacking.
+	wideMinWidth := leftMin.Width + rightMin.Width
 	l.stacked = size.Width < fyne.Max(l.breakpoint, wideMinWidth)
 	if !l.stacked {
-		leftWidth := size.Width * l.leftRatio
+		leftWidth := fyne.Max(leftMin.Width, fyne.Min(size.Width*l.leftRatio, size.Width-rightMin.Width))
 		objects[0].Move(fyne.NewPos(0, 0))
 		objects[0].Resize(fyne.NewSize(leftWidth, size.Height))
 		objects[1].Move(fyne.NewPos(leftWidth, 0))

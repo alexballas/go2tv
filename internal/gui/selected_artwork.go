@@ -125,15 +125,25 @@ type artworkPlaybackLayout struct{}
 func (artworkPlaybackLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
 	playback := objects[1].MinSize()
 	side := fyne.Max(playbackArtworkSize, playback.Height)
-	return fyne.NewSize(playback.Width+side+playbackArtworkGap, side)
+	width, height := playback.Width, side
+	if len(objects) > 2 {
+		width = fyne.Max(width, objects[2].MinSize().Width)
+		height += playbackArtworkGap + objects[2].MinSize().Height
+	}
+	return fyne.NewSize(width+side+playbackArtworkGap, height)
 }
 
 func (artworkPlaybackLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
 	side := fyne.Max(playbackArtworkSize, objects[1].MinSize().Height)
 	objects[0].Move(fyne.NewPos(0, 0))
 	objects[0].Resize(fyne.NewSize(side, side))
-	objects[1].Move(fyne.NewPos(side+playbackArtworkGap, 0))
-	objects[1].Resize(fyne.NewSize(size.Width-side-playbackArtworkGap, side))
+	x := side + playbackArtworkGap
+	objects[1].Move(fyne.NewPos(x, 0))
+	objects[1].Resize(fyne.NewSize(size.Width-x, side))
+	if len(objects) > 2 {
+		objects[2].Move(fyne.NewPos(x, side+playbackArtworkGap))
+		objects[2].Resize(fyne.NewSize(size.Width-x, objects[2].MinSize().Height))
+	}
 }
 
 var _ fyne.Layout = artworkPlaybackLayout{}

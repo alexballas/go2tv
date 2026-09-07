@@ -224,16 +224,13 @@ func (screen *FyneScreen) queueStatusText(queue *SessionQueue, activeIndex int) 
 	return fmt.Sprintf(lang.L("Playlist: %d items"), queue.Len())
 }
 
-func (screen *FyneScreen) queueButtonText(queue *SessionQueue, activeIndex int) string {
-	if queue == nil || queue.Len() == 0 {
-		return lang.L("Playlist")
+func (screen *FyneScreen) queueButtonText(queue *SessionQueue) string {
+	count := 0
+	if queue != nil {
+		count = queue.Len()
 	}
 
-	if activeIndex >= 0 && activeIndex < queue.Len() {
-		return fmt.Sprintf(lang.L("Playlist %d/%d"), activeIndex+1, queue.Len())
-	}
-
-	return fmt.Sprintf(lang.L("Playlist %d"), queue.Len())
+	return fmt.Sprintf("%s · %d", lang.L("Playlist"), count)
 }
 
 func (screen *FyneScreen) queueInteractionsLocked() bool {
@@ -246,7 +243,7 @@ func (screen *FyneScreen) refreshQueueStateUI() {
 	queue, selectedIndex, queueRevision, queueList := screen.queueRenderSnapshot()
 	activeIndex := screen.activeQueueIndex(queue)
 	statusText := ""
-	buttonText := screen.queueButtonText(queue, activeIndex)
+	buttonText := screen.queueButtonText(queue)
 	buttonImportance := widget.MediumImportance
 	detailsText := lang.L("No item selected")
 	locked := screen.queueInteractionsLocked()
@@ -256,7 +253,6 @@ func (screen *FyneScreen) refreshQueueStateUI() {
 	}
 	if queue != nil && queue.Len() > 0 {
 		statusText = screen.queueStatusText(queue, activeIndex)
-		buttonText = statusText
 	}
 
 	queueLen := 0

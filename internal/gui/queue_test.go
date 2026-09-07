@@ -565,6 +565,9 @@ func TestSingleItemPlaylistButtonStaysNeutral(t *testing.T) {
 	if screen.QueueButton.Importance != widget.MediumImportance {
 		t.Fatalf("expected single-item playlist button to stay neutral, got %v", screen.QueueButton.Importance)
 	}
+	if screen.QueueButton.Text != "Playlist · 1" {
+		t.Fatalf("expected compact playlist count, got %q", screen.QueueButton.Text)
+	}
 }
 
 func TestSingleActiveQueueItemRemoveButtonEnabled(t *testing.T) {
@@ -603,6 +606,9 @@ func TestMultiItemPlaylistButtonKeepsNeutralBackground(t *testing.T) {
 
 	if screen.QueueButton.Importance != widget.MediumImportance {
 		t.Fatalf("expected multi-item playlist button to stay neutral, got %v", screen.QueueButton.Importance)
+	}
+	if screen.QueueButton.Text != "Playlist · 2" {
+		t.Fatalf("expected total playlist count, got %q", screen.QueueButton.Text)
 	}
 }
 

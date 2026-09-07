@@ -127,6 +127,9 @@ func (t *tappedSlider) Dragged(e *fyne.DragEvent) {
 }
 
 func (t *tappedSlider) DragEnd() {
+	if t.Disabled() {
+		return
+	}
 	// This ensures the slider functions correctly by addressing the race condition
 	// between the DragEnd action and the auto-refresh action.
 	// The auto-refresh action will reset this flag to false after the first iteration.
@@ -164,6 +167,9 @@ func (t *tappedSlider) DragEnd() {
 }
 
 func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
+	if t.Disabled() {
+		return
+	}
 	// The auto-refresh action should reset this back to false
 	// after the first iterration.
 	t.screen.sliderActive = true

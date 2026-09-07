@@ -73,9 +73,31 @@ func TestResponsiveTwoColumnLayoutStacksForWideChild(t *testing.T) {
 	objects := []fyne.CanvasObject{left, right}
 	responsive := newResponsiveTwoColumnLayout(800, 0.66)
 
-	responsive.Layout(objects, fyne.NewSize(850, 700))
+	responsive.Layout(objects, fyne.NewSize(800, 700))
 
 	if !responsive.stacked {
 		t.Fatal("expected wide child to trigger stacking above fixed breakpoint")
+	}
+}
+
+func TestResponsiveTwoColumnLayoutUsesAvailableWidth(t *testing.T) {
+	left := canvas.NewRectangle(color.Transparent)
+	left.SetMinSize(fyne.NewSize(740, 300))
+	right := canvas.NewRectangle(color.Transparent)
+	right.SetMinSize(fyne.NewSize(220, 200))
+	objects := []fyne.CanvasObject{left, right}
+	responsive := newResponsiveTwoColumnLayout(800, 0.66)
+	for _, width := range []float32{1120, 1000, 960} {
+		responsive.Layout(objects, fyne.NewSize(width, 700))
+		if responsive.stacked {
+			t.Fatalf("columns fit but stacked at width %v", width)
+		}
+		if left.Size().Width < 740 || right.Size().Width < 220 {
+			t.Fatal("columns must retain their minimum widths")
+		}
+	}
+	responsive.Layout(objects, fyne.NewSize(950, 700))
+	if !responsive.stacked {
+		t.Fatal("columns must stack when their combined minimum exceeds the viewport")
 	}
 }

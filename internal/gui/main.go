@@ -5,11 +5,11 @@ package gui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"sort"
 	"time"
 
-	ttwidget "github.com/alexballas/fyne-tooltip/widget"
 	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/container"
 	"github.com/alexballas/refyne/v2/data/binding"
@@ -69,6 +69,8 @@ func newDeviceList(s *FyneScreen, dd *[]devType) *deviceList {
 		// Swap icon based on state
 		if isActive {
 			row.setLeadingIcon(theme.MediaPlayIcon())
+		} else if item.addr == s.selectedDevice.addr {
+			row.setLeadingIcon(theme.ConfirmIcon())
 		} else {
 			row.setLeadingIcon(castIcon())
 		}
@@ -227,7 +229,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	skipNext.Importance = widget.LowImportance
 	skipNext.Alignment = widget.ButtonAlignCenter
 
-	queueButton := widget.NewButton(lang.L("Playlist"), func() {
+	queueButton := widget.NewButtonWithIcon(lang.L("Playlist"), theme.ListIcon(), func() {
 		s.openQueueWindow()
 	})
 	queueButton.Importance = widget.MediumImportance
@@ -248,17 +250,22 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	sfilecheck := widget.NewCheck(lang.L("Manual Subtitles"), func(b bool) {})
 	externalmedia := widget.NewCheck(lang.L("Media from URL"), func(b bool) {})
-	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
-	nextmedia := widget.NewCheck(lang.L("Auto-Play Next File"), func(b bool) {})
-	transcode := ttwidget.NewCheck(lang.L("Transcode"), func(b bool) {})
-	screencast := ttwidget.NewCheck(lang.L("Cast Desktop (experimental)"), func(b bool) {})
-	rtmpServerCheck := ttwidget.NewCheck(lang.L("Enable RTMP Server"), func(b bool) {
+	loopToggle := newPlaybackToggle(lang.L("Loop"), playbackLoopIcon())
+	nextToggle := newPlaybackToggle(lang.L("Auto-play"), playbackAutoplayIcon())
+	medialoop, nextmedia := &loopToggle.Check.Check, &nextToggle.Check.Check
+	transcodeToggle := newPlaybackToggle(lang.L("Transcode"), playbackTranscodeIcon())
+	transcode := &transcodeToggle.Check
+	screencastToggle := newPlaybackToggle(lang.L("Cast Desktop (experimental)"), playbackDesktopIcon())
+	screencast := &screencastToggle.Check
+	rtmpToggle := newPlaybackToggle(lang.L("RTMP Server"), playbackServerIcon())
+	rtmpServerCheck := &rtmpToggle.Check
+	rtmpServerCheck.OnChanged = func(b bool) {
 		if b {
 			startRTMPServer(s)
 		} else {
 			stopRTMPServer(s)
 		}
-	})
+	}
 	s.rtmpServerCheck = &rtmpServerCheck.Check
 	s.transcodeToolTipCheck = transcode
 	s.screencastToolTipCheck = screencast
@@ -308,19 +315,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.rtmpURLCard = widget.NewCard(lang.L("RTMP Server"), "", rtmpRows)
 	s.rtmpURLCard.Hide()
 
-	mediafilelabel := widget.NewLabel(lang.L("Media File") + ":")
-	subsfilelabel := widget.NewLabel(lang.L("Subtitles") + ":")
-
-	selectInternalSubs := widget.NewSelect([]string{}, func(item string) {
-		if item == "" {
-			return
-		}
-		s.SubsText.SetText("")
-		s.subsfile = ""
-		sfilecheck.Checked = false
-		sfilecheck.Refresh()
-		s.SubsBrowse.Disable()
-	})
+	selectInternalSubs := widget.NewSelect([]string{}, nil)
 
 	selectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
 	selectInternalSubs.Disable()
@@ -361,45 +356,50 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	sliderArea := container.NewBorder(nil, nil, widget.NewLabelWithData(curPos), widget.NewLabelWithData(endPos), sliderBar)
 
-	actionButtons := container.NewHBox(
-		skipPrevious,
-		playpause,
-		stop,
-		skipNext,
-		queueButton,
-		layout.NewSpacer(),
-		volumedown,
-		volumeup,
-		muteunmute,
-	)
+	volumedown.SetText("−")
+	volumeup.SetText("+")
+	volumedown.SetIcon(nil)
+	volumeup.SetIcon(nil)
+	muteunmute.SetText(lang.L("Mute"))
+	volumeRow := container.NewHBox(widget.NewLabel(lang.L("Volume")), volumedown, volumeup, muteunmute)
+	transportRow := container.NewHBox(playpause, stop, skipPrevious, skipNext)
+	actionButtons := container.New(layout.NewCustomPaddedLayout(0, 0, theme.InnerPadding(), 0), container.NewBorder(nil, nil, transportRow, volumeRow))
+	s.playbackTitle = widget.NewLabel(lang.L("No media selected"))
+	s.playbackTitle.TextStyle.Bold = true
+	s.playbackTitle.Truncation = fyne.TextTruncateEllipsis
+	s.playbackStatus = widget.NewLabel(lang.L("Select a device"))
+	s.playbackStatus.Importance = widget.MediumImportance
+	s.playbackStatus.Truncation = fyne.TextTruncateEllipsis
 
-	mrightwidgets := container.NewHBox(previewmedia, clearmedia, mbrowse)
-	srightwidgets := container.NewHBox(selectInternalSubs, clearsubs, sbrowse)
+	mediaSelection := newMediaSelectionCard(s, previewmedia, clearsubs)
+	mediaCard := newSectionCard(lang.L("Media"), mediaSelection.content)
 
-	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, mrightwidgets), mrightwidgets, mfiletext)
-	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, srightwidgets), srightwidgets, sfiletext)
-	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
+	commonOptions := container.New(playbackModesLayout{}, loopToggle, nextToggle)
+	commonHeader := widget.NewRichText(&widget.TextSegment{Text: lang.L("Common Options"), Style: widget.RichTextStyle{SizeName: theme.SizeNameCaptionText}})
 
-	mediaCard := newSectionCard(lang.L("Media"), viewfilescont)
-
-	commonCard := newSectionCard(lang.L("Common Options"), container.NewVBox(medialoop, nextmedia))
-
-	advancedOptions := container.New(
-		newResponsiveTwoColumnLayout(600, 0.5),
-		container.NewVBox(externalmedia, sfilecheck, transcode),
-		container.NewVBox(screencast, rtmpServerCheck),
-	)
-	advancedCard := newSectionCard(lang.L("Advanced Options"), advancedOptions)
+	advancedOptions := container.NewVBox(container.New(playbackModesLayout{}, transcodeToggle, screencastToggle, rtmpToggle))
+	advancedHeader := widget.NewRichText(&widget.TextSegment{Text: lang.L("Advanced Options"), Style: widget.RichTextStyle{SizeName: theme.SizeNameCaptionText}})
 
 	s.selectedArtwork = newSelectedArtwork()
 	playbackControls := container.New(
-		layout.NewCustomPaddedLayout(8, 8, 8, 8), container.NewVBox(sliderArea, actionButtons),
+		layout.NewCustomPaddedLayout(0, 0, 0, 0), container.NewVBox(s.playbackTitle, s.playbackStatus, sliderArea, actionButtons),
 	)
 	playbackRow := container.New(artworkPlaybackLayout{}, s.selectedArtwork, playbackControls)
-	playCard := newSectionCard(lang.L("Playback"), playbackRow)
+	playCard := newSectionCard(lang.L("Playback"), container.New(
+		layout.NewCustomPaddedLayout(8, 8, 8, 8),
+		container.New(layout.NewCustomPaddedVBoxLayout(12),
+			playbackRow,
+			widget.NewSeparator(),
+			container.NewVBox(commonHeader, commonOptions),
+			widget.NewSeparator(),
+			container.NewVBox(advancedHeader, advancedOptions),
+		),
+	))
+	playCard.headerAction = queueButton
 
-	deviceHeader := widget.NewLabel(lang.L("(auto refreshing)"))
-	deviceHeader.Importance = widget.LowImportance
+	deviceHeader := widget.NewLabel(lang.L("Searching for devices…"))
+	s.deviceSummary = deviceHeader
+	deviceHeader.Importance = widget.MediumImportance
 
 	s.ActiveDeviceLabel = widget.NewLabel("")
 	s.ActiveDeviceLabel.Wrapping = fyne.TextWrapWord
@@ -411,9 +411,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	deviceBottom := container.NewVBox(s.ActiveDeviceCard, s.rtmpURLCard)
 	deviceCard := newSectionCard(lang.L("Devices"), container.NewBorder(deviceHeader, deviceBottom, nil, nil, list))
 
-	topCards := container.NewVBox(mediaCard, playCard, commonCard)
-	leftColumn := container.NewBorder(topCards, nil, nil, nil, advancedCard)
-	mainLayout := newResponsiveTwoColumnLayout(800, 0.66)
+	leftColumn := container.NewBorder(mediaCard, nil, nil, nil, playCard)
+	mainLayout := newResponsiveTwoColumnLayout(800, 0.72)
 	mainLayout.narrowTrailingMinHeight = 240
 	content := container.New(mainLayout, leftColumn, deviceCard)
 
@@ -470,6 +469,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			s.checkChromecastCompatibility()
 		}
 		setPlayPauseView("", s)
+		list.Refresh()
 	}
 
 	transcode.OnChanged = func(b bool) {
@@ -568,53 +568,6 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		}
 
 		sbrowse.Disable()
-	}
-
-	var mediafileOld, mediafileOldText string
-
-	externalmedia.OnChanged = func(b bool) {
-		if b {
-			nextmedia.SetChecked(false)
-			nextmedia.Disable()
-			mbrowse.Disable()
-			previewmedia.Disable()
-			skipNext.Disable()
-			skipPrevious.Disable()
-
-			// keep old values
-			mediafileOld = s.mediafile
-			mediafileOldText = s.MediaText.Text
-
-			// rename the label
-			mediafilelabel.Text = lang.L("URL") + ":"
-			mediafilelabel.Refresh()
-
-			// Clear the Media Text Area
-			clearCurrentMediaSelection(s)
-
-			// Set some Media text defaults
-			// to indicate that we're expecting a URL
-			s.MediaText.SetPlaceHolder(lang.L("Enter URL here"))
-			s.MediaText.Enable()
-			setPlayPauseView("", s)
-			return
-		}
-
-		if !nextmedia.Checked {
-			medialoop.Enable()
-		}
-
-		if !medialoop.Checked {
-			nextmedia.Enable()
-		}
-
-		mbrowse.Enable()
-		previewmedia.Enable()
-		mediafilelabel.Text = lang.L("Media File") + ":"
-		s.MediaText.SetPlaceHolder("")
-		mediafilelabel.Refresh()
-		s.MediaText.Disable()
-		restoreMediaInputState(s, mediafileOld, mediafileOldText)
 	}
 
 	medialoop.OnChanged = func(b bool) {
@@ -774,6 +727,12 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 			}
 
 			s.DeviceList.Refresh()
+			if s.deviceSummary != nil {
+				s.deviceSummary.SetText(fmt.Sprintf(lang.L("%d devices found"), len(newDevices)))
+			}
+			if clearSelection {
+				setPlayPauseView("", s)
+			}
 		})
 
 		refreshDevices.Reset(time.Second)

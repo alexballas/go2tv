@@ -47,6 +47,10 @@ type screencastSession interface {
 
 // FyneScreen .
 type FyneScreen struct {
+	mediaSelection           *mediaSelectionCard
+	playbackTitle            *widget.Label
+	playbackStatus           *widget.Label
+	deviceSummary            *widget.Label
 	tempFiles                []string
 	SelectInternalSubs       *widget.Select
 	CurrentPos               binding.String
@@ -556,6 +560,9 @@ func autoSelectNextSubs(v string, screen *FyneScreen) {
 	screen.subsfile = path
 	fyne.Do(func() {
 		screen.SubsText.Refresh()
+		if screen.mediaSelection != nil {
+			screen.mediaSelection.refresh()
+		}
 	})
 }
 
@@ -574,6 +581,11 @@ func getNextPossibleSubs(v string) (string, string) {
 }
 
 func setPlayPauseView(s string, screen *FyneScreen) {
+	fyne.Do(func() {
+		if screen.mediaSelection != nil {
+			screen.mediaSelection.refresh()
+		}
+	})
 	if screen.cancelEnablePlay != nil {
 		screen.cancelEnablePlay()
 	}
@@ -617,10 +629,14 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 					screen.PlayPause.SetText(lang.L("Start RTMP Session") + "  ")
 				} else {
 					screen.PlayPause.SetText(lang.L("Cast") + "  ")
+					if screen.selectedDevice.addr == "" {
+						screen.PlayPause.Disable()
+					}
 				}
 				screen.PlayPause.SetIcon(theme.MediaPlayIcon())
 			}
 		}
+		screen.refreshPlaybackReadiness()
 		screen.PlayPause.Refresh()
 		screen.refreshTraversalControls()
 	})
@@ -633,6 +649,10 @@ func setMuteUnmuteView(muted bool, screen *FyneScreen) {
 
 	fyne.Do(func() {
 		screen.MuteUnmute.SetIcon(theme.VolumeMuteIcon())
+		screen.MuteUnmute.SetText(lang.L("Mute"))
+		if muted {
+			screen.MuteUnmute.SetText(lang.L("Unmute"))
+		}
 		if muted {
 			screen.MuteUnmute.Importance = widget.DangerImportance
 		} else {
@@ -661,6 +681,7 @@ func (p *FyneScreen) updateScreenState(a string) {
 			p.DeviceList.Refresh()
 		}
 		p.updateActiveDeviceView()
+		p.refreshPlaybackReadiness()
 	})
 }
 

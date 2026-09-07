@@ -24,8 +24,9 @@ const (
 // or the padding of the controls they contain.
 type sectionCard struct {
 	widget.BaseWidget
-	title   string
-	content fyne.CanvasObject
+	title        string
+	content      fyne.CanvasObject
+	headerAction fyne.CanvasObject
 }
 
 func newSectionCard(title string, content fyne.CanvasObject) *sectionCard {
@@ -43,7 +44,11 @@ func (c *sectionCard) CreateRenderer() fyne.WidgetRenderer {
 	if c.title == "" {
 		header.Hide()
 	}
-	body := container.NewBorder(header, nil, nil, nil, c.content)
+	var headerRow fyne.CanvasObject = header
+	if c.headerAction != nil {
+		headerRow = container.NewBorder(nil, nil, container.NewCenter(header), c.headerAction)
+	}
+	body := container.NewBorder(headerRow, nil, nil, nil, c.content)
 	inset := container.New(layout.NewCustomPaddedLayout(
 		sectionCardVerticalPadding, sectionCardVerticalPadding, sectionCardPadding, sectionCardPadding,
 	), body)
