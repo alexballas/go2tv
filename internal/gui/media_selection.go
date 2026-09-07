@@ -184,14 +184,28 @@ func (c *mediaSelectionCard) refresh() {
 	} else {
 		c.source.Enable()
 	}
-	if s.ExternalMediaURL.Disabled() || mediamodel.IsAudioExtension(filepath.Ext(s.mediafile)) {
+	mediaKind := mediamodel.KindForPath(s.mediafile)
+	subtitlesUnavailable := mediaKind == mediamodel.MediaKindAudio || mediaKind == mediamodel.MediaKindImage
+	if subtitlesUnavailable {
+		if c.subtitles.Selected != lang.L(subtitleAutomatic) {
+			c.subtitles.SetSelected(lang.L(subtitleAutomatic))
+		}
+		s.CustomSubsCheck.SetChecked(false)
+		s.SelectInternalSubs.ClearSelected()
+		s.SubsText.SetText("")
+		s.subsfile = ""
+	}
+	if s.ExternalMediaURL.Disabled() || subtitlesUnavailable {
 		c.subtitles.Disable()
 	} else {
 		c.subtitles.Enable()
 	}
 	c.subtitles.SetToolTip("")
-	if mediamodel.IsAudioExtension(filepath.Ext(s.mediafile)) {
+	switch mediaKind {
+	case mediamodel.MediaKindAudio:
 		c.subtitles.SetToolTip(lang.L("Not available for audio"))
+	case mediamodel.MediaKindImage:
+		c.subtitles.SetToolTip(lang.L("Not available for images"))
 	}
 	externalSubs := c.subtitles.Selected == lang.L(subtitleExternal)
 	c.subs.setPath(s.subsfile, lang.L("No subtitle selected"))

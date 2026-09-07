@@ -5,22 +5,28 @@ package gui
 import (
 	"testing"
 
+	"github.com/alexballas/refyne/v2/lang"
 	"github.com/alexballas/refyne/v2/widget"
 )
 
-func TestAudioSubtitlesStayVisibleAndRecover(t *testing.T) {
+func TestAudioAndImageSubtitlesResetDisableAndRecover(t *testing.T) {
 	s, card := newMediaCardTestScreen(t)
 	for _, tc := range []struct {
 		path     string
 		disabled bool
 	}{
-		{"track.mp3", true}, {"movie.mkv", false}, {"track.flac", true}, {"", false},
+		{"track.mp3", true}, {"movie.mkv", false}, {"photo.jpg", true}, {"track.flac", true}, {"poster.PNG", true}, {"", false},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
+			card.subtitles.SetSelected(lang.L(subtitleExternal))
+			s.subsfile = "captions.srt"
 			s.mediafile = tc.path
 			card.refresh()
 			if !card.subtitles.Visible() || card.subtitles.Disabled() != tc.disabled {
 				t.Fatalf("subtitles visible=%v disabled=%v", card.subtitles.Visible(), card.subtitles.Disabled())
+			}
+			if tc.disabled && (card.subtitles.Selected != lang.L(subtitleAutomatic) || s.subsfile != "" || s.CustomSubsCheck.Checked) {
+				t.Fatalf("disabled subtitles mode=%q file=%q custom=%v", card.subtitles.Selected, s.subsfile, s.CustomSubsCheck.Checked)
 			}
 		})
 	}
