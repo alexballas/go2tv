@@ -56,6 +56,17 @@ func TestMediaCardSourceSwitchAndClear(t *testing.T) {
 	}
 }
 
+func TestMediaCardDropdownsAlign(t *testing.T) {
+	_, c := newMediaCardTestScreen(t)
+	c.content.Resize(c.content.MinSize())
+	c.content.Refresh()
+	sourceRow := c.content.Objects[0].(*fyne.Container)
+	subtitleRow := c.content.Objects[2].(*fyne.Container)
+	if sourceRow.Objects[1].Position().X != subtitleRow.Objects[1].Position().X {
+		t.Fatalf("dropdown positions differ: Source=%v Subtitles=%v", sourceRow.Objects[1].Position().X, subtitleRow.Objects[1].Position().X)
+	}
+}
+
 func TestMediaCardReservesHeightAcrossSources(t *testing.T) {
 	s, c := newMediaCardTestScreen(t)
 	media := newSectionCard("Media", c.content)

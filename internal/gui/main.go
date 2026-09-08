@@ -388,7 +388,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	)
 	playbackRow := container.New(artworkPlaybackLayout{}, s.selectedArtwork, playbackControls)
 	playCard := newSectionCard(lang.L("Playback"), container.New(
-		layout.NewCustomPaddedLayout(8, 8, 8, 8),
+		layout.NewCustomPaddedLayout(8, 8, 0, 8),
 		container.New(layout.NewCustomPaddedVBoxLayout(12),
 			playbackRow,
 			widget.NewSeparator(),

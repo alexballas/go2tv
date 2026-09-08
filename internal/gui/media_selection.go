@@ -123,13 +123,34 @@ func newMediaSelectionCard(s *FyneScreen, preview, clearSubs *widget.Button) *me
 		c.refresh()
 	}
 	c.subtitles.Selected = lang.L(subtitleAutomatic)
-	sourceRow := container.NewHBox(widget.NewLabel(lang.L("Source")), c.source)
-	subtitleRow := container.NewHBox(widget.NewLabel(lang.L("Subtitles")), c.subtitles)
+	sourceLabel := widget.NewLabel(lang.L("Source"))
+	subtitleLabel := widget.NewLabel(lang.L("Subtitles"))
+	labelWidth := fyne.Max(sourceLabel.MinSize().Width, subtitleLabel.MinSize().Width)
+	sourceRow := container.New(selectionFieldLayout{labelWidth: labelWidth}, sourceLabel, c.source)
+	subtitleRow := container.New(selectionFieldLayout{labelWidth: labelWidth}, subtitleLabel, c.subtitles)
 	mediaArea := container.New(reservedSelectionLayout{}, c.media, s.MediaText)
 	c.content = container.NewVBox(sourceRow, mediaArea, subtitleRow, s.SelectInternalSubs, c.subs)
 	c.bindSource(preview)
 	c.refresh()
 	return c
+}
+
+// Keep related dropdowns aligned even when translated labels differ in width.
+type selectionFieldLayout struct {
+	labelWidth float32
+}
+
+func (l selectionFieldLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	label, control := objects[0].MinSize(), objects[1].MinSize()
+	return fyne.NewSize(l.labelWidth+theme.Padding()+control.Width, fyne.Max(label.Height, control.Height))
+}
+
+func (l selectionFieldLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	controlX := l.labelWidth + theme.Padding()
+	objects[0].Move(fyne.NewPos(0, 0))
+	objects[0].Resize(fyne.NewSize(l.labelWidth, size.Height))
+	objects[1].Move(fyne.NewPos(controlX, 0))
+	objects[1].Resize(fyne.NewSize(fyne.Max(0, size.Width-controlX), size.Height))
 }
 
 // Source alternatives share one area sized for the largest state, including
