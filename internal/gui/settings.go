@@ -58,13 +58,9 @@ func ffmpegDirDisplayPath(pref string) string {
 		return filepath.ToSlash(filepath.Dir(pref))
 	}
 
-	if filepath.Base(pref) != pref {
-		return filepath.ToSlash(filepath.Dir(pref))
-	}
-
 	path, err := utils.ResolveFFmpegPath(pref)
 	if err != nil {
-		return ""
+		return filepath.ToSlash(pref)
 	}
 
 	return filepath.ToSlash(filepath.Dir(path))

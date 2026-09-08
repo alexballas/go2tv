@@ -3,7 +3,7 @@ module go2tv.app/go2tv/v2
 go 1.26
 
 require (
-	github.com/alexballas/fyne-tooltip v0.0.0-20260528093432-da161b5c8cac
+	github.com/alexballas/fyne-tooltip v0.0.0-20260907194307-bfdbb9024bac
 	github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab
 	github.com/alexballas/refyne/v2 v2.8.107-0.20260907171104-59203c1293e8
 	github.com/alexballas/tunetag v0.0.0-20260719100601-dc1983c44140

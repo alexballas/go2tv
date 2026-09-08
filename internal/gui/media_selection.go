@@ -3,7 +3,6 @@
 package gui
 
 import (
-	"go2tv.app/go2tv/v2/internal/mediamodel"
 	"image/color"
 	"path/filepath"
 
@@ -15,6 +14,8 @@ import (
 	"github.com/alexballas/refyne/v2/layout"
 	"github.com/alexballas/refyne/v2/theme"
 	"github.com/alexballas/refyne/v2/widget"
+
+	"go2tv.app/go2tv/v2/internal/mediamodel"
 )
 
 const (
@@ -25,12 +26,12 @@ const (
 )
 
 type mediaSelectionCard struct {
-	screen         *FyneScreen
-	source         *widget.Select
-	subtitles      *ttwidget.Select
-	media, subs    *selectionRow
-	empty, content *fyne.Container
-	syncing        bool
+	screen      *FyneScreen
+	source      *widget.Select
+	subtitles   *ttwidget.Select
+	media, subs *selectionRow
+	content     *fyne.Container
+	syncing     bool
 }
 
 // Both file selections share the same padding and stretch across the card.
@@ -89,16 +90,10 @@ func newMediaSelectionCard(s *FyneScreen, preview, clearSubs *widget.Button) *me
 		b.SetIcon(nil)
 		b.Importance = widget.LowImportance
 	}
-	c.media = newSelectionRow(preview, s.ClearMedia)
+	c.media = newSelectionRow(preview, s.MediaBrowse, s.ClearMedia)
 	// Main source height stays stable even before a file is selected.
 	c.media.reservePath = true
 	c.subs = newSelectionRow(s.SubsBrowse, clearSubs)
-	emptyText := widget.NewRichText(
-		&widget.TextSegment{Text: lang.L("No media selected")},
-		&widget.TextSegment{Text: lang.L("Choose a media file to start casting."), Style: widget.RichTextStyle{ColorName: theme.ColorNamePlaceHolder}},
-	)
-	emptyText.Truncation = fyne.TextTruncateEllipsis
-	c.empty = container.NewVBox(emptyText)
 	c.source = widget.NewSelect([]string{lang.L("Local File"), lang.L("URL")}, func(value string) {
 		if c.syncing {
 			return
@@ -128,10 +123,9 @@ func newMediaSelectionCard(s *FyneScreen, preview, clearSubs *widget.Button) *me
 		c.refresh()
 	}
 	c.subtitles.Selected = lang.L(subtitleAutomatic)
-	sourceBrowse := container.New(reservedSelectionLayout{}, s.MediaBrowse)
-	sourceRow := container.NewBorder(nil, nil, container.NewHBox(widget.NewLabel(lang.L("Source")), c.source), sourceBrowse)
+	sourceRow := container.NewHBox(widget.NewLabel(lang.L("Source")), c.source)
 	subtitleRow := container.NewHBox(widget.NewLabel(lang.L("Subtitles")), c.subtitles)
-	mediaArea := container.New(reservedSelectionLayout{}, c.empty, c.media, s.MediaText)
+	mediaArea := container.New(reservedSelectionLayout{}, c.media, s.MediaText)
 	c.content = container.NewVBox(sourceRow, mediaArea, subtitleRow, s.SelectInternalSubs, c.subs)
 	c.bindSource(preview)
 	c.refresh()
@@ -171,9 +165,12 @@ func (c *mediaSelectionCard) refresh() {
 	if c.source.Selected != source {
 		c.source.SetSelected(source)
 	}
-	c.media.setPath(s.mediafile, "")
-	setSelectionVisible(c.media, !urlMode && s.mediafile != "")
-	setSelectionVisible(c.empty, !urlMode && s.mediafile == "")
+	c.media.setPath(s.mediafile, lang.L("No media selected"))
+	if s.mediafile == "" {
+		c.media.path.Text = lang.L("Choose a media file to start casting.")
+		c.media.text.Refresh()
+	}
+	setSelectionVisible(c.media, !urlMode)
 	setSelectionVisible(s.MediaText, urlMode)
 	setSelectionVisible(s.MediaBrowse, !urlMode)
 	if urlMode && !s.MediaText.Disabled() {

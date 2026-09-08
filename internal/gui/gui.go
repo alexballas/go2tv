@@ -901,17 +901,7 @@ func NewFyneScreen(version string, crash *crashlog.Session) *FyneScreen {
 	discoveryDebug := newDebugWriter(discoveryDebugRingSize)
 	devices.SetDiscoveryLogOutput(discoveryDebug)
 
-	ffmpegPath := func() string {
-		if go2tv.Preferences().String("ffmpeg") != "" {
-			path, err := utils.ResolveFFmpegPath(go2tv.Preferences().String("ffmpeg"))
-			if err == nil {
-				return path
-			}
-		}
-
-		path, _ := utils.ResolveFFmpegPath("")
-		return path
-	}()
+	ffmpegPath := configuredFFmpegPath(go2tv.Preferences().String("ffmpeg"))
 
 	return &FyneScreen{
 		Current:            w,
@@ -931,6 +921,20 @@ func NewFyneScreen(version string, crash *crashlog.Session) *FyneScreen {
 		remoteSession:      newRemoteSessionManager(),
 		shutdownDone:       make(chan struct{}),
 	}
+}
+
+func configuredFFmpegPath(pref string) string {
+	pref = strings.TrimSpace(pref)
+	if pref != "" {
+		path, err := utils.ResolveFFmpegPath(pref)
+		if err == nil {
+			return path
+		}
+		return pref
+	}
+
+	path, _ := utils.ResolveFFmpegPath("")
+	return path
 }
 
 func crashPath(crash *crashlog.Session) string {

@@ -34,15 +34,15 @@ func newMediaCardTestScreen(t *testing.T) (*FyneScreen, *mediaSelectionCard) {
 
 func TestMediaCardSourceSwitchAndClear(t *testing.T) {
 	s, c := newMediaCardTestScreen(t)
-	if !c.empty.Visible() || c.media.Visible() || s.MediaText.Visible() || !s.MediaBrowse.Visible() {
-		t.Fatal("local empty state should show only its message and source Browse")
+	if !c.media.Visible() || s.MediaText.Visible() || !s.MediaBrowse.Visible() {
+		t.Fatal("local empty state should show its selection row and Browse")
 	}
 	path := filepath.Join(t.TempDir(), "movie.mp4")
 	if err := setCurrentMediaPath(s, path); err != nil {
 		t.Fatal(err)
 	}
 	c.source.SetSelected(lang.L("URL"))
-	if !s.ExternalMediaURL.Checked || !s.MediaText.Visible() || s.MediaText.Disabled() || c.media.Visible() || c.empty.Visible() || s.MediaBrowse.Visible() {
+	if !s.ExternalMediaURL.Checked || !s.MediaText.Visible() || s.MediaText.Disabled() || c.media.Visible() || s.MediaBrowse.Visible() {
 		t.Fatal("URL mode should replace the local selection with an editable URL")
 	}
 	s.MediaText.SetText("https://example.org/movie.mp4")
@@ -51,7 +51,7 @@ func TestMediaCardSourceSwitchAndClear(t *testing.T) {
 		t.Fatal("switching back should restore the local selection")
 	}
 	test.Tap(s.ClearMedia)
-	if s.mediafile != "" || c.media.Visible() || !c.empty.Visible() {
+	if s.mediafile != "" || !c.media.Visible() || !s.MediaBrowse.Visible() {
 		t.Fatal("Clear should restore the empty state")
 	}
 }

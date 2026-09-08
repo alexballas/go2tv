@@ -210,11 +210,11 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	volumedown.Importance = widget.LowImportance
 	volumedown.Alignment = widget.ButtonAlignCenter
 
-	clearmedia := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+	clearmedia := widget.NewButton(lang.L("Clear"), func() {
 		clearmediaAction(s)
 	})
 
-	clearsubs := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+	clearsubs := widget.NewButton(lang.L("Clear"), func() {
 		clearsubsAction(s)
 	})
 
@@ -242,7 +242,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	// for the specific action.
 	throttle := rate.Every(3 * time.Second)
 	r := rate.NewLimiter(throttle, 1)
-	previewmedia := widget.NewButtonWithIcon("", theme.VisibilityIcon(), func() {
+	previewmedia := widget.NewButton(lang.L("Preview"), func() {
 		if !r.Allow() {
 			return
 		}

@@ -4,6 +4,8 @@ github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk
 github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
 github.com/alexballas/fyne-tooltip v0.0.0-20260528093432-da161b5c8cac h1:P+Mync0JWw6YiLlQospvPSwxzFUHzOMQRA1iQTsOHIo=
 github.com/alexballas/fyne-tooltip v0.0.0-20260528093432-da161b5c8cac/go.mod h1:ahMS3ktoYdWFIzqbQFJ4TyqdFQpMRSAepNwjKc0Y4/o=
+github.com/alexballas/fyne-tooltip v0.0.0-20260907194307-bfdbb9024bac h1:S5wamz3ec+heid/oeeyLCQ0Gz8AHqL8+aKsuc4Rwkdw=
+github.com/alexballas/fyne-tooltip v0.0.0-20260907194307-bfdbb9024bac/go.mod h1:ahMS3ktoYdWFIzqbQFJ4TyqdFQpMRSAepNwjKc0Y4/o=
 github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab h1:IicL/N9O22AchM2bp5mwCtvzVpRqCzvPiy9g1FbFLS8=
 github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab/go.mod h1:bvfmHkfGgEntZVIbSzazSp6zSxD68BJGsLVASpcEHxI=
 github.com/alexballas/portal v0.5.0 h1:EnPnpmSBOUCmawJqRxvqGjuufz/vldoUhll/aDbfv6w=
