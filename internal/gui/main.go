@@ -362,13 +362,15 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	volumeup.SetText("+")
 	volumedown.SetIcon(nil)
 	volumeup.SetIcon(nil)
+	// Reserve both labels so toggling mute never shifts the volume controls.
+	muteunmute.SetText(lang.L("Unmute"))
+	muteSize := muteunmute.MinSize()
 	muteunmute.SetText(lang.L("Mute"))
-	volumeRow := container.NewHBox(widget.NewLabel(lang.L("Volume")), volumedown, volumeup, muteunmute)
+	muteSize = muteSize.Max(muteunmute.MinSize())
+	muteControl := container.NewGridWrap(muteSize, muteunmute)
+	volumeRow := container.NewHBox(widget.NewLabel(lang.L("Volume")), volumedown, volumeup, muteControl)
 	transportRow := container.NewHBox(playpause, stop, skipPrevious, skipNext)
 	actionButtons := container.New(layout.NewCustomPaddedLayout(0, 0, theme.InnerPadding(), 0), container.NewBorder(nil, nil, transportRow, volumeRow))
-	s.playbackTitle = widget.NewLabel(lang.L("No media selected"))
-	s.playbackTitle.TextStyle.Bold = true
-	s.playbackTitle.Truncation = fyne.TextTruncateEllipsis
 	s.playbackStatus = widget.NewLabel(lang.L("Select a device"))
 	s.playbackStatus.Importance = widget.MediumImportance
 	s.playbackStatus.Truncation = fyne.TextTruncateEllipsis
@@ -384,7 +386,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	s.selectedArtwork = newSelectedArtwork()
 	playbackControls := container.New(
-		layout.NewCustomPaddedLayout(0, 0, 0, 0), container.NewVBox(s.playbackTitle, s.playbackStatus, sliderArea, actionButtons),
+		layout.NewCustomPaddedLayout(0, 0, 0, 0), container.NewVBox(s.playbackStatus, sliderArea, actionButtons),
 	)
 	playbackRow := container.New(artworkPlaybackLayout{}, s.selectedArtwork, playbackControls)
 	playCard := newSectionCard(lang.L("Playback"), container.New(

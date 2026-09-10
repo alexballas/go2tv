@@ -79,7 +79,7 @@ func TestArtworkPlaybackRowKeepsSquareAndSpace(t *testing.T) {
 		newPlaybackToggle("Auto-play", playbackAutoplayIcon()),
 		newPlaybackToggle("Transcode", playbackTranscodeIcon()),
 	)
-	playback := container.NewVBox(widget.NewLabel("Track title"), widget.NewLabel("Ready to cast"), widget.NewSlider(0, 100), widget.NewButton("Cast", nil))
+	playback := container.NewVBox(widget.NewLabel("Ready to cast"), widget.NewSlider(0, 100), widget.NewButton("Cast", nil))
 	row := container.New(artworkPlaybackLayout{}, art, playback, modes)
 	for _, width := range []float32{row.MinSize().Width, 640, 900} {
 		row.Resize(fyne.NewSize(width, row.MinSize().Height))

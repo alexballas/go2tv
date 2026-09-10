@@ -9,6 +9,7 @@ import (
 
 	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/container"
+	"github.com/alexballas/refyne/v2/driver/desktop"
 	"github.com/alexballas/refyne/v2/lang"
 	"github.com/alexballas/refyne/v2/storage"
 	"github.com/alexballas/refyne/v2/test"
@@ -60,10 +61,39 @@ func TestMediaCardDropdownsAlign(t *testing.T) {
 	_, c := newMediaCardTestScreen(t)
 	c.content.Resize(c.content.MinSize())
 	c.content.Refresh()
-	sourceRow := c.content.Objects[0].(*fyne.Container)
-	subtitleRow := c.content.Objects[2].(*fyne.Container)
+	selectors := c.content.Objects[0].(*fyne.Container)
+	sourceRow := selectors.Objects[0].(*fyne.Container)
+	subtitleRow := selectors.Objects[1].(*fyne.Container)
+	if sourceRow.Size().Width != subtitleRow.Size().Width || sourceRow.Position().Y != subtitleRow.Position().Y || subtitleRow.Position().X < sourceRow.Position().X+sourceRow.Size().Width {
+		t.Fatal("selectors must share one row with equal widths and no overlap")
+	}
 	if sourceRow.Objects[1].Position().X != subtitleRow.Objects[1].Position().X {
 		t.Fatalf("dropdown positions differ: Source=%v Subtitles=%v", sourceRow.Objects[1].Position().X, subtitleRow.Objects[1].Position().X)
+	}
+}
+
+func TestMediaTitleTooltipOnlyWhenTruncated(t *testing.T) {
+	s, c := newMediaCardTestScreen(t)
+	s.mediafile = "/media/a-long-movie-filename-with-a-full-descriptive-title.mp4"
+	c.refresh()
+	tt := []struct {
+		name  string
+		width float32
+		want  string
+	}{
+		{"truncated", 400, filepath.Base(s.mediafile)},
+		{"fits after resize", 1600, ""},
+		{"truncated again", 400, filepath.Base(s.mediafile)},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			c.content.Resize(fyne.NewSize(tc.width, c.content.MinSize().Height))
+			c.media.text.MouseIn(&desktop.MouseEvent{})
+			defer c.media.text.MouseOut()
+			if got := c.media.text.ToolTip(); got != tc.want {
+				t.Fatalf("tooltip = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -148,6 +178,13 @@ func TestMediaCardSubtitleModes(t *testing.T) {
 			}
 			if c.subs.Visible() != tc.external || s.SelectInternalSubs.Visible() != tc.embedded {
 				t.Fatal("only the selected mode's control should be visible")
+			}
+			c.content.Resize(c.content.MinSize())
+			mediaArea := c.content.Objects[1]
+			for _, control := range []fyne.CanvasObject{c.subs, s.SelectInternalSubs} {
+				if control.Visible() && control.Position().Y < mediaArea.Position().Y+mediaArea.Size().Height {
+					t.Fatal("subtitle controls must appear below source media info")
+				}
 			}
 			if err := setCurrentMediaPath(s, movie); err != nil {
 				t.Fatal(err)

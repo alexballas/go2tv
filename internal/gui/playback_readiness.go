@@ -3,7 +3,6 @@
 package gui
 
 import (
-	"path/filepath"
 	"strings"
 
 	"github.com/alexballas/refyne/v2/lang"
@@ -11,17 +10,9 @@ import (
 
 // Called on the UI thread; keep all playback slots present in every state.
 func (s *FyneScreen) refreshPlaybackReadiness() {
-	if s.playbackTitle == nil {
+	if s.playbackStatus == nil {
 		return
 	}
-	title := lang.L("No media selected")
-	if s.mediafile != "" {
-		title = filepath.Base(s.mediafile)
-	}
-	if s.ExternalMediaURL.Checked && s.MediaText.Text != "" {
-		title = s.MediaText.Text
-	}
-	s.playbackTitle.SetText(title)
 	state := s.getScreenState()
 	active := state == "Playing" || state == "Paused"
 	status := lang.L("Ready to cast")

@@ -48,7 +48,6 @@ type screencastSession interface {
 // FyneScreen .
 type FyneScreen struct {
 	mediaSelection           *mediaSelectionCard
-	playbackTitle            *widget.Label
 	playbackStatus           *widget.Label
 	deviceSummary            *widget.Label
 	tempFiles                []string

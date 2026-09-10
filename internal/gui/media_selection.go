@@ -10,6 +10,7 @@ import (
 	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/canvas"
 	"github.com/alexballas/refyne/v2/container"
+	"github.com/alexballas/refyne/v2/driver/desktop"
 	"github.com/alexballas/refyne/v2/lang"
 	"github.com/alexballas/refyne/v2/layout"
 	"github.com/alexballas/refyne/v2/theme"
@@ -38,7 +39,7 @@ type mediaSelectionCard struct {
 type selectionRow struct {
 	widget.BaseWidget
 	name, path  *widget.TextSegment
-	text        *widget.RichText
+	text        *selectionText
 	actions     *fyne.Container
 	reservePath bool
 }
@@ -49,10 +50,28 @@ func newSelectionRow(actions ...fyne.CanvasObject) *selectionRow {
 		path:    &widget.TextSegment{Style: widget.RichTextStyle{ColorName: theme.ColorNamePlaceHolder}},
 		actions: container.NewHBox(actions...),
 	}
-	r.text = widget.NewRichText(r.name, r.path)
+	r.text = &selectionText{RichText: ttwidget.NewRichText(r.name, r.path)}
+	r.text.ExtendBaseWidget(r.text)
 	r.text.Truncation = fyne.TextTruncateEllipsis
 	r.ExtendBaseWidget(r)
 	return r
+}
+
+type selectionText struct {
+	*ttwidget.RichText
+	title *widget.TextSegment
+}
+
+func (t *selectionText) MouseIn(e *desktop.MouseEvent) {
+	t.SetToolTip("")
+	if t.title != nil {
+		width := fyne.MeasureText(t.title.Text, theme.SizeForWidget(theme.SizeNameText, t), t.title.Style.TextStyle).Width
+		available := t.Size().Width - 2*theme.SizeForWidget(theme.SizeNameInnerPadding, t)
+		if width > available {
+			t.SetToolTip(t.title.Text)
+		}
+	}
+	t.RichText.MouseIn(e)
 }
 
 func (r *selectionRow) CreateRenderer() fyne.WidgetRenderer {
@@ -91,6 +110,7 @@ func newMediaSelectionCard(s *FyneScreen, preview, clearSubs *widget.Button) *me
 		b.Importance = widget.LowImportance
 	}
 	c.media = newSelectionRow(preview, s.MediaBrowse, s.ClearMedia)
+	c.media.text.title = c.media.name
 	// Main source height stays stable even before a file is selected.
 	c.media.reservePath = true
 	c.subs = newSelectionRow(s.SubsBrowse, clearSubs)
@@ -128,8 +148,9 @@ func newMediaSelectionCard(s *FyneScreen, preview, clearSubs *widget.Button) *me
 	labelWidth := fyne.Max(sourceLabel.MinSize().Width, subtitleLabel.MinSize().Width)
 	sourceRow := container.New(selectionFieldLayout{labelWidth: labelWidth}, sourceLabel, c.source)
 	subtitleRow := container.New(selectionFieldLayout{labelWidth: labelWidth}, subtitleLabel, c.subtitles)
+	selectors := container.NewGridWithColumns(2, sourceRow, subtitleRow)
 	mediaArea := container.New(reservedSelectionLayout{}, c.media, s.MediaText)
-	c.content = container.NewVBox(sourceRow, mediaArea, subtitleRow, s.SelectInternalSubs, c.subs)
+	c.content = container.NewVBox(selectors, mediaArea, s.SelectInternalSubs, c.subs)
 	c.bindSource(preview)
 	c.refresh()
 	return c

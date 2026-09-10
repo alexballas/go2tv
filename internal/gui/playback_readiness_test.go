@@ -35,7 +35,6 @@ func TestAudioAndImageSubtitlesResetDisableAndRecover(t *testing.T) {
 
 func TestCastButtonTooltipExplainsMissingRequirement(t *testing.T) {
 	s, _ := newMediaCardTestScreen(t)
-	s.playbackTitle = widget.NewLabel("")
 	s.playbackStatus = widget.NewLabel("")
 	s.playPauseToolTip = ttwidget.NewButton("Cast", nil)
 	s.PlayPause = &s.playPauseToolTip.Button
@@ -62,7 +61,6 @@ func TestCastButtonTooltipExplainsMissingRequirement(t *testing.T) {
 
 func TestPlaybackReadinessKeepsLayoutAndDisablesIdleActions(t *testing.T) {
 	s, _ := newMediaCardTestScreen(t)
-	s.playbackTitle = widget.NewLabel("")
 	s.playbackStatus = widget.NewLabel("")
 	s.Stop = widget.NewButton("Stop", nil)
 	s.SlideBar = newTappableSlider(s)
@@ -86,7 +84,7 @@ func TestPlaybackReadinessKeepsLayoutAndDisablesIdleActions(t *testing.T) {
 			if s.Stop.Disabled() == tc.active || s.SlideBar.Disabled() == tc.active {
 				t.Fatal("idle/active actions incorrect")
 			}
-			if !s.playbackTitle.Visible() || !s.playbackStatus.Visible() {
+			if !s.playbackStatus.Visible() {
 				t.Fatal("playback information disappeared")
 			}
 		})
