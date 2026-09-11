@@ -48,7 +48,7 @@ type screencastSession interface {
 // FyneScreen .
 type FyneScreen struct {
 	mediaSelection           *mediaSelectionCard
-	playbackStatus           *widget.Label
+	playbackStatus           *playbackStatusLabel
 	deviceSummary            *widget.Label
 	tempFiles                []string
 	SelectInternalSubs       *widget.Select
@@ -92,6 +92,7 @@ type FyneScreen struct {
 	imageAutoSkipID          uint64
 	State                    string
 	mediafile                string
+	playingMediaPath         string
 	version                  string
 	eventURL                 string
 	subsfile                 string
@@ -448,9 +449,18 @@ func (p *FyneScreen) Fini() {
 		gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
 		target := autoPlayPlaybackTarget(p)
 
+		// An item removed from the playlist has no successor.
+		queue, _ := p.queueSnapshot()
+		removed := (p.ExternalMediaURL == nil || !p.ExternalMediaURL.Checked) &&
+			(queue == nil || queue.IndexByPath(p.mediafile) < 0)
+
 		// Finished-media transitions should always restart from a stopped state.
 		// Otherwise playAction may interpret the follow-up as pause/resume.
 		p.updateScreenState("Stopped")
+		if removed {
+			startAfreshPlayButton(p)
+			return
+		}
 
 		// For Chromecast, ignore gapless setting (it's DLNA-specific)
 		isChromecast := target.device.deviceType == devices.DeviceTypeChromecast
@@ -674,6 +684,11 @@ func (p *FyneScreen) isMuted() bool {
 func (p *FyneScreen) updateScreenState(a string) {
 	p.mu.Lock()
 	p.State = a
+	if a == "Stopped" {
+		p.playingMediaPath = ""
+	} else if (a == "Playing" || a == "Paused") && p.playingMediaPath == "" {
+		p.playingMediaPath = p.mediafile
+	}
 	p.mu.Unlock()
 
 	fyne.Do(func() {
@@ -682,12 +697,16 @@ func (p *FyneScreen) updateScreenState(a string) {
 		}
 		p.updateActiveDeviceView()
 		p.refreshPlaybackReadiness()
+		p.refreshQueueStateUI()
 	})
 }
 
 func (p *FyneScreen) setActiveDevice(device devType) {
 	p.mu.Lock()
 	p.activeDevice = device
+	if device.addr != "" {
+		p.playingMediaPath = p.mediafile
+	}
 	p.mu.Unlock()
 
 	fyne.Do(func() {
@@ -700,6 +719,26 @@ func (p *FyneScreen) setActiveDevice(device devType) {
 
 func (p *FyneScreen) clearActiveDevice() {
 	p.setActiveDevice(devType{})
+}
+
+// Playback identity survives playlist edits and changes only with the session.
+func (p *FyneScreen) nowPlayingPath() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if p.State != "Playing" && p.State != "Paused" {
+		return ""
+	}
+	return p.playingMediaPath
+}
+
+func (p *FyneScreen) setPlayingMediaPath(path string) {
+	p.mu.Lock()
+	p.playingMediaPath = path
+	p.mu.Unlock()
+	fyne.Do(func() {
+		p.refreshPlaybackReadiness()
+		p.refreshQueueStateUI()
+	})
 }
 
 func (p *FyneScreen) getActiveDevice() devType {

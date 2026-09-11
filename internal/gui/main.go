@@ -371,7 +371,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	volumeRow := container.NewHBox(widget.NewLabel(lang.L("Volume")), volumedown, volumeup, muteControl)
 	transportRow := container.NewHBox(playpause, stop, skipPrevious, skipNext)
 	actionButtons := container.New(layout.NewCustomPaddedLayout(0, 0, theme.InnerPadding(), 0), container.NewBorder(nil, nil, transportRow, volumeRow))
-	s.playbackStatus = widget.NewLabel(lang.L("Select a device"))
+	s.playbackStatus = newPlaybackStatusLabel(lang.L("Select a device"))
 	s.playbackStatus.Importance = widget.MediumImportance
 	s.playbackStatus.Truncation = fyne.TextTruncateEllipsis
 

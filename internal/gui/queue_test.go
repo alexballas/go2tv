@@ -4,7 +4,9 @@ package gui
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/alexballas/refyne/v2"
@@ -442,7 +444,9 @@ func TestActiveQueueIndexRequiresCurrentMedia(t *testing.T) {
 		t.Fatalf("expected no active queue item without media selection, got %d", got)
 	}
 
-	screen.mediafile = "/tmp/two.mp4"
+	screen.mediafile = "/tmp/one.mp4"
+	screen.playingMediaPath = "/tmp/two.mp4"
+	screen.State = "Playing"
 	if got := screen.activeQueueIndex(queue); got != 1 {
 		t.Fatalf("expected active queue index 1, got %d", got)
 	}
@@ -706,5 +710,52 @@ func TestQueueRowDedupesThumbnailRequests(t *testing.T) {
 	}
 	if row.pendingThumbPath != second.Path() {
 		t.Fatalf("expected pending thumbnail path %q after path change, got %q", second.Path(), row.pendingThumbPath)
+	}
+}
+
+func TestPlaylistEditsPreservePlayback(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	for _, state := range []string{"Playing", "Paused"} {
+		for _, clear := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/clear=%t", state, clear), func(t *testing.T) {
+				screen := newQueueMediaSelectionTestScreen()
+				screen.State = state
+				screen.mediafile = "/tmp/old.mp4"
+				screen.playingMediaPath = screen.mediafile
+				screen.SessionQueue = newSessionQueue(testQueueItems(screen.mediafile), 0)
+				screen.queueSelectedIndex = 0
+				screen.playbackStatus = newPlaybackStatusLabel("")
+				screen.selectedDevice = devType{name: "TV", addr: "device"}
+				if clear {
+					screen.clearSessionQueueAction()
+				} else {
+					screen.removeSelectedQueueItem()
+				}
+				if err := appendMediaPaths(screen, []string{"/tmp/new.mp4"}); err != nil {
+					t.Fatal(err)
+				}
+				fyne.DoAndWait(func() { screen.refreshPlaybackReadiness() })
+				assertQueuePaths(t, screen, []string{"/tmp/new.mp4"})
+				if screen.nowPlayingPath() != "/tmp/old.mp4" || screen.mediafile != "/tmp/old.mp4" {
+					t.Fatal("playlist edit changed playback")
+				}
+				if _, playing := screen.queueItemForList(0); playing {
+					t.Fatal("new item has playback indicator")
+				}
+				if screen.playbackStatus.Text != state+" · TV · old.mp4" {
+					t.Fatalf("status = %q", screen.playbackStatus.Text)
+				}
+				if _, _, err := getAdjacentMedia(screen, 1); err == nil {
+					t.Fatal("removed media must not advance into new playlist")
+				}
+				screen.updateScreenState("Stopped")
+				fyne.DoAndWait(func() {})
+				if screen.nowPlayingPath() != "" || strings.Contains(screen.playbackStatus.Text, "old.mp4") {
+					t.Fatal("stopped media still shown as playing")
+				}
+			})
+		}
 	}
 }

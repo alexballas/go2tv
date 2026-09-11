@@ -3,10 +3,37 @@
 package gui
 
 import (
+	"path/filepath"
 	"strings"
 
+	ttwidget "github.com/alexballas/fyne-tooltip/widget"
+	"github.com/alexballas/refyne/v2"
+	"github.com/alexballas/refyne/v2/driver/desktop"
 	"github.com/alexballas/refyne/v2/lang"
+	"github.com/alexballas/refyne/v2/theme"
 )
+
+// Keep the status on one line; reveal the filename only when truncated.
+type playbackStatusLabel struct {
+	*ttwidget.Label
+	filename string
+}
+
+func newPlaybackStatusLabel(text string) *playbackStatusLabel {
+	label := &playbackStatusLabel{Label: ttwidget.NewLabel(text)}
+	label.ExtendBaseWidget(label)
+	return label
+}
+
+func (l *playbackStatusLabel) MouseIn(e *desktop.MouseEvent) {
+	l.SetToolTip("")
+	available := l.Size().Width - 2*theme.SizeForWidget(theme.SizeNameInnerPadding, l)
+	width := fyne.MeasureText(l.Text, theme.SizeForWidget(theme.SizeNameText, l), l.TextStyle).Width
+	if l.filename != "" && available > 0 && width > available {
+		l.SetToolTip(l.filename)
+	}
+	l.Label.MouseIn(e)
+}
 
 // Called on the UI thread; keep all playback slots present in every state.
 func (s *FyneScreen) refreshPlaybackReadiness() {
@@ -31,8 +58,20 @@ func (s *FyneScreen) refreshPlaybackReadiness() {
 	if s.playPauseToolTip != nil {
 		s.playPauseToolTip.SetToolTip(toolTip)
 	}
-	if s.selectedDevice.addr != "" {
-		status += " · " + s.selectedDevice.name
+	device := s.selectedDevice
+	if active {
+		if playingDevice := s.getActiveDevice(); playingDevice.addr != "" {
+			device = playingDevice
+		}
+	}
+	if device.addr != "" {
+		status += " · " + device.name
+	}
+	s.playbackStatus.filename = ""
+	s.playbackStatus.SetToolTip("")
+	if mediaPath := s.nowPlayingPath(); mediaPath != "" {
+		s.playbackStatus.filename = filepath.Base(mediaPath)
+		status += " · " + s.playbackStatus.filename
 	}
 	s.playbackStatus.SetText(status)
 	if !s.renderGate.remoteLeaseHeld() && s.Stop != nil {

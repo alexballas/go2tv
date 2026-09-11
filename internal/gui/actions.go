@@ -289,12 +289,15 @@ func appendMediaPaths(screen *FyneScreen, paths []string) error {
 	}
 
 	currentIndex := 0
+	if screen.nowPlayingPath() != "" {
+		currentIndex = -1
+	}
 	if queue != nil && queue.Len() > 0 {
 		for _, item := range queue.Items() {
 			addItem(item)
 		}
 		currentIndex = queue.CurrentIndex()
-	} else if screen.mediafile != "" && (screen.ExternalMediaURL == nil || !screen.ExternalMediaURL.Checked) {
+	} else if screen.nowPlayingPath() == "" && screen.mediafile != "" && (screen.ExternalMediaURL == nil || !screen.ExternalMediaURL.Checked) {
 		if currentItem, ok := screen.newQueueItem(screen.mediafile); ok {
 			addItem(currentItem)
 		}
@@ -2210,6 +2213,7 @@ out:
 						screen.GaplessMediaWatcher = nil
 						break out
 					}
+					screen.setPlayingMediaPath(mediaPath)
 				}
 
 				newTVPayload, err := queueNext(screen, false)
@@ -2479,6 +2483,7 @@ func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target 
 				return
 			}
 			removeGUIArtworkHandler(server, oldArtwork, artworkAsset)
+			screen.setPlayingMediaPath(targetMediaPath)
 			screen.updateScreenState("Playing")
 			setPlayPauseView("Pause", screen)
 			armChromecastImageAutoSkipAfterReady(screen, client, actionID, mediaType, targetMediaPath)

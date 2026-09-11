@@ -35,7 +35,7 @@ func TestAudioAndImageSubtitlesResetDisableAndRecover(t *testing.T) {
 
 func TestCastButtonTooltipExplainsMissingRequirement(t *testing.T) {
 	s, _ := newMediaCardTestScreen(t)
-	s.playbackStatus = widget.NewLabel("")
+	s.playbackStatus = newPlaybackStatusLabel("")
 	s.playPauseToolTip = ttwidget.NewButton("Cast", nil)
 	s.PlayPause = &s.playPauseToolTip.Button
 
@@ -61,7 +61,7 @@ func TestCastButtonTooltipExplainsMissingRequirement(t *testing.T) {
 
 func TestPlaybackReadinessKeepsLayoutAndDisablesIdleActions(t *testing.T) {
 	s, _ := newMediaCardTestScreen(t)
-	s.playbackStatus = widget.NewLabel("")
+	s.playbackStatus = newPlaybackStatusLabel("")
 	s.Stop = widget.NewButton("Stop", nil)
 	s.SlideBar = newTappableSlider(s)
 	for _, tc := range []struct {

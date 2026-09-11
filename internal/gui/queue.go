@@ -36,6 +36,7 @@ type QueueItem = mediamodel.QueueItem
 type SessionQueue = mediamodel.Queue
 
 type queueUIState struct {
+	playbackState    string
 	revision         uint64
 	queueLen         int
 	selectedIndex    int
@@ -164,7 +165,7 @@ func (screen *FyneScreen) queueItemForList(index int) (QueueItem, bool) {
 		return QueueItem{}, false
 	}
 	item, ok := screen.SessionQueue.Item(index)
-	return item, ok && screen.mediafile == item.Path()
+	return item, ok && (screen.State == "Playing" || screen.State == "Paused") && screen.playingMediaPath == item.Path()
 }
 
 func (screen *FyneScreen) hasSessionQueue() bool {
@@ -209,11 +210,11 @@ func (screen *FyneScreen) setQueueSelectedIndex(index int) {
 }
 
 func (screen *FyneScreen) activeQueueIndex(queue *SessionQueue) int {
-	if queue == nil || queue.Len() == 0 || screen.mediafile == "" {
+	if queue == nil || queue.Len() == 0 || screen.nowPlayingPath() == "" {
 		return -1
 	}
 
-	return queue.IndexByPath(screen.mediafile)
+	return queue.IndexByPath(screen.nowPlayingPath())
 }
 
 func (screen *FyneScreen) queueStatusText(queue *SessionQueue, activeIndex int) string {
@@ -261,6 +262,7 @@ func (screen *FyneScreen) refreshQueueStateUI() {
 	}
 
 	state := queueUIState{
+		playbackState:    screen.getScreenState(),
 		revision:         queueRevision,
 		queueLen:         queueLen,
 		selectedIndex:    selectedIndex,
@@ -443,7 +445,7 @@ func (screen *FyneScreen) openQueueWindow() {
 }
 
 func (screen *FyneScreen) queueDropMode() droppedMediaMode {
-	if screen.hasSessionQueue() {
+	if screen.hasSessionQueue() || screen.nowPlayingPath() != "" {
 		return droppedMediaModeAppend
 	}
 
@@ -577,7 +579,7 @@ func (screen *FyneScreen) activateSelectedQueueItem() {
 	if !ok {
 		return
 	}
-	if item.Path() == screen.mediafile {
+	if item.Path() == screen.nowPlayingPath() || (screen.nowPlayingPath() == "" && item.Path() == screen.mediafile) {
 		screen.setQueueSelectedIndex(selectedIndex)
 		return
 	}
@@ -633,7 +635,7 @@ func (screen *FyneScreen) removeSelectedQueueItem() {
 		screen.SessionQueue = nil
 		screen.queueSelectedIndex = -1
 		screen.mu.Unlock()
-		if currentIsActive {
+		if currentIsActive && screen.nowPlayingPath() == "" {
 			clearCurrentMediaSelection(screen)
 			return
 		}
@@ -670,7 +672,9 @@ func (screen *FyneScreen) moveSelectedQueueItem(delta int) {
 
 func (screen *FyneScreen) clearSessionQueueAction() {
 	screen.replaceSessionQueue(nil, -1)
-	clearCurrentMediaSelection(screen)
+	if screen.nowPlayingPath() == "" {
+		clearCurrentMediaSelection(screen)
+	}
 }
 
 type queueRow struct {
@@ -802,6 +806,9 @@ func (r *queueRow) setRow(index int, item QueueItem, isCurrent bool) {
 
 	if isCurrent {
 		r.currentIcon.SetResource(theme.MediaPlayIcon())
+		if r.screen.getScreenState() == "Paused" {
+			r.currentIcon.SetResource(theme.MediaPauseIcon())
+		}
 		r.currentIcon.Show()
 	} else {
 		r.currentIcon.SetResource(nil)
