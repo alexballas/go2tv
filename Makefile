@@ -57,7 +57,9 @@ WINDOWS_CPPWINRT_PKG=mingw-w64-x86_64-cppwinrt-$(WINDOWS_CPPWINRT_VERSION)-any.p
 WINDOWS_CGO_INCLUDE=-I$(WINDOWS_SYSROOT_ABS)/mingw64/include
 WINDOWS_CGO_LDFLAGS=-static -static-libgcc -static-libstdc++ -Wl,-Bstatic -l:libstdc++.a -l:libwinpthread.a
 WINDOWS_APP_VERSION?=$(APP_VERSION_CLEAN)
-WINDOWS_APP_BUILD?=$(APP_BUILD)
+# Windows appends this as the fourth manifest version component (0-65535).
+# Android's full version code exceeds that limit; only use the revision here.
+WINDOWS_APP_BUILD?=$(if $(findstring -dev,$(VERSION)),1,99)
 APK_OUT=$(BUILD_DIR)/Go2TV.apk
 APK_ALIGNED=$(BUILD_DIR)/Go2TV-aligned.apk
 ANDROID_FFMPEG_BASE_URL?=https://raw.githubusercontent.com/hzw1199/Android-FFmpeg-Prebuilt/main/ffmpeg-8.1.1/bin
@@ -78,7 +80,7 @@ ANDROID_BUILD_TOOLS?=$(shell ls -d $$ANDROID_HOME/build-tools/* 2>/dev/null | so
 # aligned; the android target verifies both, since neither is ours to control.
 ANDROID_ELF_ALIGN=0x4000
 
-.PHONY: webui build build-lite wayland x11 windows windows-sysroot windows-fyne install uninstall clean run test test-wayland-first-render appimage appimage-ffmpeg android android-fyne check-no-replace print-app-version print-app-build
+.PHONY: webui build build-lite wayland x11 windows windows-check-version windows-sysroot windows-fyne install uninstall clean run test test-wayland-first-render appimage appimage-ffmpeg android android-fyne check-no-replace print-app-version print-app-build
 
 # Packagers driven outside this Makefile (the macOS workflows) read the version
 # metadata from here so the arithmetic lives in one place.
@@ -105,6 +107,7 @@ x11: clean
 	env $(GO_BUILD_ENV) go build -tags "$(TAGS),x11" -trimpath -ldflags $(LDFLAGS) -o $(BIN) ./cmd/go2tv
 
 windows: clean
+	$(MAKE) windows-check-version
 	$(MAKE) windows-sysroot windows-fyne
 	set -e; \
 	CC_BIN="$$(command -v x86_64-w64-mingw32-gcc-win32 || command -v x86_64-w64-mingw32-gcc || true)"; \
@@ -144,6 +147,13 @@ windows: clean
 		! grep -Eq "libwinpthread-1.dll|libstdc\\+\\+-6.dll" $(BUILD_DIR)/go2tv-windows-imports.txt; \
 	fi; \
 	echo "EXE created at $(BIN_WIN)"
+
+windows-check-version:
+	@echo "$(if $(WINDOWS_APP_VERSION),$(WINDOWS_APP_VERSION),0.0.0).$(WINDOWS_APP_BUILD)" | awk -F. '\
+		NF != 4 { exit 1 } \
+		$$4 + 0 < 1 { exit 1 } \
+		{ for (i = 1; i <= NF; i++) if ($$i !~ /^[0-9]+$$/ || $$i + 0 > 65535) exit 1 }' || \
+		{ echo "Windows version components must be 0-65535; WINDOWS_APP_BUILD must be 1-65535"; exit 1; }
 
 windows-sysroot:
 	set -e; \

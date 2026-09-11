@@ -107,7 +107,6 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 
 	themeName := lang.L(fyne.CurrentApp().Preferences().StringWithFallback("Theme", "System Default"))
 	dropdownTheme.PlaceHolder = themeName
-	parseTheme(s)(themeName)
 
 	s.systemTheme = fyne.CurrentApp().Settings().ThemeVariant()
 

@@ -871,6 +871,8 @@ func (p *FyneScreen) checkChromecastCompatibility() {
 // NewFyneScreen creates and initializes a new FyneScreen instance with the provided version string.
 func NewFyneScreen(version string, crash *crashlog.Session) *FyneScreen {
 	go2tv := app.NewWithID("app.go2tv.go2tv")
+	// Resolve the saved theme before any window or widget caches its colors.
+	go2tv.Settings().SetTheme(go2tvTheme{Theme: go2tv.Preferences().StringWithFallback("Theme", "System Default")})
 
 	// Hack. Ongoing discussion in https://github.com/fyne-io/fyne/issues/5333
 	var content []byte
