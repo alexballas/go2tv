@@ -52,8 +52,8 @@ No need to copy files to a USB drive or set up a media server. Just select your 
 
 **GUI Mode**
 
-![](https://i.imgur.com/6hwB4DC.png)
-![](https://i.imgur.com/dQ40FWb.png)
+![](https://i.imgur.com/z2Lg3Pv.png)
+![](https://i.imgur.com/fwOGRZL.png)
 
 **CLI Mode**
 

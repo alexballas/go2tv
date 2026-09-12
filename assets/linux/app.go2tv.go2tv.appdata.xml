@@ -21,19 +21,19 @@
   <launchable type="desktop-id">app.go2tv.go2tv.desktop</launchable>
   <screenshots>
     <screenshot type="default">
-      <image>https://i.imgur.com/6hwB4DC.png</image>
-      <caption>Main window (light mode - view 1)</caption>
-    </screenshot>
-     <screenshot>
-      <image>https://i.imgur.com/dQ40FWb.png</image>
-      <caption>Main window (light mode - view 2)</caption>
+      <image>https://i.imgur.com/z2Lg3Pv.png</image>
+      <caption>Main window (light mode)</caption>
     </screenshot>
     <screenshot>
-      <image>https://i.imgur.com/TKqpwfe.png</image>
+      <image>https://i.imgur.com/fwOGRZL.png</image>
       <caption>Main window (dark mode)</caption>
     </screenshot>
     <screenshot>
-      <image>https://i.imgur.com/mc8WvnS.png</image>
+      <image>https://i.imgur.com/YGHhMP2.png</image>
+      <caption>Settings window (light mode)</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://i.imgur.com/WQljXP5.png</image>
       <caption>Settings window (dark mode)</caption>
     </screenshot>
   </screenshots>
