@@ -51,6 +51,19 @@
   </branding>
 
   <releases>
+      <release version="2.6.0" date="2026-09-14" type="stable">
+        <description>
+          <ul>
+            <li>Desktop App: Refreshed the interface while keeping the existing functionality.</li>
+            <li>Desktop App: Improved responsiveness on low-resolution displays and narrow/portrait window layouts.</li>
+            <li>Desktop App: Cast Desktop now supports DLNA devices.</li>
+            <li>Improved overall performance.</li>
+            <li>Fixed an "Unexpected response from D-Bus" error affecting some Flatpak installations.</li>
+            <li>Fixed a Chromecast race condition that could cause the app to crash.</li>
+          </ul>
+        </description>
+        <url type="details">https://github.com/alexballas/go2tv/releases/tag/v2.6.0</url>
+      </release>
       <release version="2.5.0" date="2026-08-04" type="stable">
         <description>
           <ul>
