@@ -51,9 +51,14 @@ func TestCastButtonTooltipExplainsMissingRequirement(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s.selectedDevice = devType{addr: tt.device}
 			s.mediafile = tt.media
+			// Control recomputation enables Cast before applying readiness.
+			s.PlayPause.Enable()
 			s.refreshPlaybackReadiness()
 			if got := s.playPauseToolTip.ToolTip(); got != tt.want {
 				t.Fatalf("tooltip=%q, want %q", got, tt.want)
+			}
+			if s.PlayPause.Disabled() != (tt.want != "") {
+				t.Fatalf("Cast disabled=%v, missing requirement=%q", s.PlayPause.Disabled(), tt.want)
 			}
 		})
 	}

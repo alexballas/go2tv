@@ -38,10 +38,9 @@ type mediaSelectionCard struct {
 // Both file selections share the same padding and stretch across the card.
 type selectionRow struct {
 	widget.BaseWidget
-	name, path  *widget.TextSegment
-	text        *selectionText
-	actions     *fyne.Container
-	reservePath bool
+	name, path *widget.TextSegment
+	text       *selectionText
+	actions    *fyne.Container
 }
 
 func newSelectionRow(actions ...fyne.CanvasObject) *selectionRow {
@@ -84,16 +83,13 @@ func (r *selectionRow) CreateRenderer() fyne.WidgetRenderer {
 }
 
 func (r *selectionRow) setPath(path, empty string) {
+	path = mediamodel.QueueDisplayPath(path)
 	name := empty
 	if path != "" {
 		name = filepath.Base(path)
 	}
 	r.name.Text = name
 	r.path.Text = path
-	r.text.Segments = []widget.RichTextSegment{r.name}
-	if path != "" || r.reservePath {
-		r.text.Segments = append(r.text.Segments, r.path)
-	}
 	r.text.Refresh()
 }
 
@@ -111,8 +107,6 @@ func newMediaSelectionCard(s *FyneScreen, preview, clearSubs *widget.Button) *me
 	}
 	c.media = newSelectionRow(preview, s.MediaBrowse, s.ClearMedia)
 	c.media.text.title = c.media.name
-	// Main source height stays stable even before a file is selected.
-	c.media.reservePath = true
 	c.subs = newSelectionRow(s.SubsBrowse, clearSubs)
 	c.source = widget.NewSelect([]string{lang.L("Local File"), lang.L("URL")}, func(value string) {
 		if c.syncing {

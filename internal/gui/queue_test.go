@@ -630,15 +630,14 @@ func TestRecordQueueUIStateSkipsDuplicateRefreshes(t *testing.T) {
 	)
 
 	state := queueUIState{
-		revision:         7,
-		queueLen:         32,
-		selectedIndex:    2,
-		activeIndex:      2,
-		buttonText:       "Playlist 3/32",
-		buttonImportance: widget.HighImportance,
-		statusText:       "Playlist 3/32",
-		detailsText:      "/tmp/three.mp4",
-		list:             listOne,
+		revision:      7,
+		queueLen:      32,
+		selectedIndex: 2,
+		activeIndex:   2,
+		buttonText:    "Playlist 3/32",
+		statusText:    "Playlist 3/32",
+		detailsText:   "/tmp/three.mp4",
+		list:          listOne,
 	}
 
 	if !screen.recordQueueUIState(state) {

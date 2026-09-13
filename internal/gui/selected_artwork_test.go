@@ -74,20 +74,12 @@ func TestArtworkPlaybackRowKeepsSquareAndSpace(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 	art := newSelectedArtwork()
-	modes := container.NewGridWithColumns(3,
-		newPlaybackToggle("Loop", playbackLoopIcon()),
-		newPlaybackToggle("Auto-play", playbackAutoplayIcon()),
-		newPlaybackToggle("Transcode", playbackTranscodeIcon()),
-	)
 	playback := container.NewVBox(widget.NewLabel("Ready to cast"), widget.NewSlider(0, 100), widget.NewButton("Cast", nil))
-	row := container.New(artworkPlaybackLayout{}, art, playback, modes)
+	row := container.New(artworkPlaybackLayout{}, art, playback)
 	for _, width := range []float32{row.MinSize().Width, 640, 900} {
 		row.Resize(fyne.NewSize(width, row.MinSize().Height))
 		if art.Size().Height != playback.Size().Height {
 			t.Fatal("artwork bottom must align with the transport row")
-		}
-		if modes.Position().X != playback.Position().X || modes.Position().Y < art.Size().Height {
-			t.Fatal("modes must align with controls below the artwork")
 		}
 		if art.Size().Width != art.Size().Height {
 			t.Fatal("artwork is not square")

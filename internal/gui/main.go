@@ -381,13 +381,11 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	commonOptions := container.New(playbackModesLayout{}, loopToggle, nextToggle)
 	commonHeader := widget.NewRichText(&widget.TextSegment{Text: lang.L("Common Options"), Style: widget.RichTextStyle{SizeName: theme.SizeNameCaptionText}})
 
-	advancedOptions := container.NewVBox(container.New(playbackModesLayout{}, transcodeToggle, screencastToggle, rtmpToggle))
+	advancedOptions := container.New(playbackModesLayout{}, transcodeToggle, screencastToggle, rtmpToggle)
 	advancedHeader := widget.NewRichText(&widget.TextSegment{Text: lang.L("Advanced Options"), Style: widget.RichTextStyle{SizeName: theme.SizeNameCaptionText}})
 
 	s.selectedArtwork = newSelectedArtwork()
-	playbackControls := container.New(
-		layout.NewCustomPaddedLayout(0, 0, 0, 0), container.NewVBox(s.playbackStatus, sliderArea, actionButtons),
-	)
+	playbackControls := container.NewVBox(s.playbackStatus, sliderArea, actionButtons)
 	playbackRow := container.New(artworkPlaybackLayout{}, s.selectedArtwork, playbackControls)
 	playCard := newSectionCard(lang.L("Playback"), container.New(
 		layout.NewCustomPaddedLayout(8, 8, 0, 8),

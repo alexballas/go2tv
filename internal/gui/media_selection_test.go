@@ -205,9 +205,15 @@ func TestMediaCardSubtitleModes(t *testing.T) {
 	if s.SubsBrowse.Disabled() {
 		t.Fatal("External File must enable Browse after Embedded Track")
 	}
+	c.content.Resize(fyne.NewSize(900, c.content.MinSize().Height))
+	emptyHeight := c.subs.Size().Height
 	selectSubsFile(s, storage.NewFileURI(sidecar))
+	c.content.Resize(fyne.NewSize(900, c.content.MinSize().Height))
 	if s.subsfile != sidecar || c.subs.path.Text != sidecar {
 		t.Fatal("external selection should keep the subtitle path")
+	}
+	if c.subs.Size().Height != emptyHeight || c.subs.text.Size().Height < c.media.text.MinSize().Height {
+		t.Fatal("external picker must reserve enough height for filename and path before selection")
 	}
 	clearsubsAction(s)
 	if s.subsfile != "" || !c.subs.Visible() {

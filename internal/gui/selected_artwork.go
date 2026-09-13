@@ -23,12 +23,13 @@ import (
 // playback state. Cancelling a selection also invalidates queued UI results.
 type selectedArtwork struct {
 	widget.BaseWidget
-	content     *fyne.Container
 	note        *canvas.Text
 	picture     *canvas.Image
 	placeholder *fyne.Container
 	cancel      context.CancelFunc
 }
+
+const playbackSurfaceRadius float32 = 8
 
 func newSelectedArtwork() *selectedArtwork {
 	icon := canvas.NewText("♪", color.Transparent)
@@ -39,7 +40,6 @@ func newSelectedArtwork() *selectedArtwork {
 	picture.CornerRadius = playbackSurfaceRadius
 	picture.Hide()
 	a := &selectedArtwork{
-		content: container.NewStack(newPlaybackSurface(container.NewStack(placeholder, picture))),
 		picture: picture, placeholder: placeholder,
 		note: icon,
 	}
@@ -48,20 +48,32 @@ func newSelectedArtwork() *selectedArtwork {
 }
 
 func (a *selectedArtwork) CreateRenderer() fyne.WidgetRenderer {
-	r := &selectedArtworkRenderer{WidgetRenderer: widget.NewSimpleRenderer(a.content), card: a}
+	background := canvas.NewRectangle(color.Transparent)
+	background.CornerRadius = playbackSurfaceRadius
+	r := &selectedArtworkRenderer{
+		WidgetRenderer: widget.NewSimpleRenderer(container.NewStack(background, a.placeholder, a.picture)),
+		card:           a,
+		background:     background,
+	}
 	r.Refresh()
 	return r
 }
 
 type selectedArtworkRenderer struct {
 	fyne.WidgetRenderer
-	card *selectedArtwork
+	card       *selectedArtwork
+	background *canvas.Rectangle
 }
 
 func (r *selectedArtworkRenderer) Refresh() {
 	th := r.card.Theme()
 	variant := fyne.CurrentApp().Settings().ThemeVariant()
 	r.card.note.Color = th.Color(theme.ColorNameForeground, variant)
+	bg := color.NRGBAModel.Convert(th.Color(theme.ColorNameBackground, variant)).(color.NRGBA)
+	fg := color.NRGBAModel.Convert(r.card.note.Color).(color.NRGBA)
+	// Six percent foreground stays subtle in both light and dark themes.
+	mix := func(b, f uint8) uint8 { return uint8((uint16(b)*94 + uint16(f)*6) / 100) }
+	r.background.FillColor = color.NRGBA{R: mix(bg.R, fg.R), G: mix(bg.G, fg.G), B: mix(bg.B, fg.B), A: 255}
 	r.WidgetRenderer.Refresh()
 }
 
@@ -125,12 +137,7 @@ type artworkPlaybackLayout struct{}
 func (artworkPlaybackLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
 	playback := objects[1].MinSize()
 	side := fyne.Max(playbackArtworkSize, playback.Height)
-	width, height := playback.Width, side
-	if len(objects) > 2 {
-		width = fyne.Max(width, objects[2].MinSize().Width)
-		height += playbackArtworkGap + objects[2].MinSize().Height
-	}
-	return fyne.NewSize(width+side+playbackArtworkGap, height)
+	return fyne.NewSize(playback.Width+side+playbackArtworkGap, side)
 }
 
 func (artworkPlaybackLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
@@ -140,10 +147,6 @@ func (artworkPlaybackLayout) Layout(objects []fyne.CanvasObject, size fyne.Size)
 	x := side + playbackArtworkGap
 	objects[1].Move(fyne.NewPos(x, 0))
 	objects[1].Resize(fyne.NewSize(size.Width-x, side))
-	if len(objects) > 2 {
-		objects[2].Move(fyne.NewPos(x, side+playbackArtworkGap))
-		objects[2].Resize(fyne.NewSize(size.Width-x, objects[2].MinSize().Height))
-	}
 }
 
 var _ fyne.Layout = artworkPlaybackLayout{}

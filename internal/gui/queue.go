@@ -36,17 +36,16 @@ type QueueItem = mediamodel.QueueItem
 type SessionQueue = mediamodel.Queue
 
 type queueUIState struct {
-	playbackState    string
-	revision         uint64
-	queueLen         int
-	selectedIndex    int
-	activeIndex      int
-	buttonText       string
-	buttonImportance widget.Importance
-	statusText       string
-	detailsText      string
-	locked           bool
-	list             *widget.List
+	playbackState string
+	revision      uint64
+	queueLen      int
+	selectedIndex int
+	activeIndex   int
+	buttonText    string
+	statusText    string
+	detailsText   string
+	locked        bool
+	list          *widget.List
 }
 
 func newSessionQueue(items []QueueItem, currentIndex int) *SessionQueue {
@@ -245,7 +244,6 @@ func (screen *FyneScreen) refreshQueueStateUI() {
 	activeIndex := screen.activeQueueIndex(queue)
 	statusText := ""
 	buttonText := screen.queueButtonText(queue)
-	buttonImportance := widget.MediumImportance
 	detailsText := lang.L("No item selected")
 	locked := screen.queueInteractionsLocked()
 
@@ -262,17 +260,16 @@ func (screen *FyneScreen) refreshQueueStateUI() {
 	}
 
 	state := queueUIState{
-		playbackState:    screen.getScreenState(),
-		revision:         queueRevision,
-		queueLen:         queueLen,
-		selectedIndex:    selectedIndex,
-		activeIndex:      activeIndex,
-		buttonText:       buttonText,
-		buttonImportance: buttonImportance,
-		statusText:       statusText,
-		detailsText:      detailsText,
-		locked:           locked,
-		list:             queueList,
+		playbackState: screen.getScreenState(),
+		revision:      queueRevision,
+		queueLen:      queueLen,
+		selectedIndex: selectedIndex,
+		activeIndex:   activeIndex,
+		buttonText:    buttonText,
+		statusText:    statusText,
+		detailsText:   detailsText,
+		locked:        locked,
+		list:          queueList,
 	}
 	if !screen.recordQueueUIState(state) {
 		screen.refreshTraversalControls()
@@ -282,8 +279,6 @@ func (screen *FyneScreen) refreshQueueStateUI() {
 	fyne.Do(func() {
 		if screen.QueueButton != nil {
 			screen.QueueButton.SetText(buttonText)
-			screen.QueueButton.Importance = buttonImportance
-			screen.QueueButton.Refresh()
 		}
 
 		if screen.queueHeader != nil {
