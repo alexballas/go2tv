@@ -132,7 +132,6 @@ func newMediaSelectionCard(s *FyneScreen, preview, clearSubs *widget.Button) *me
 			return
 		}
 		s.subsfile = ""
-		s.SubsText.SetText("")
 		s.CustomSubsCheck.SetChecked(true)
 		c.refresh()
 	}
@@ -225,7 +224,6 @@ func (c *mediaSelectionCard) refresh() {
 		}
 		s.CustomSubsCheck.SetChecked(false)
 		s.SelectInternalSubs.ClearSelected()
-		s.SubsText.SetText("")
 		s.subsfile = ""
 	}
 	if s.ExternalMediaURL.Disabled() || subtitlesUnavailable {

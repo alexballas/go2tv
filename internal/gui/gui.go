@@ -68,7 +68,6 @@ type FyneScreen struct {
 	tvdata                   *soapcalls.TVPayload
 	tabs                     *container.AppTabs
 	CheckVersion             *widget.Button
-	SubsText                 *widget.Entry
 	CustomSubsCheck          *widget.Check
 	NextMediaCheck           *widget.Check
 	LoopSelectedCheck        *widget.Check
@@ -111,11 +110,8 @@ type FyneScreen struct {
 	queuedArtworkIdentity    string
 	artworkCache             map[string]artworkCacheEntry
 	chromecastCheckedFile    string // Tracks which file was already auto-checked for Chromecast compatibility
-	systemTheme              fyne.ThemeVariant
 	mediaFormats             []string
-	audioFormats             []string
 	videoFormats             []string
-	imageFormats             []string
 	muError                  sync.RWMutex
 	mu                       sync.RWMutex
 	ffmpegPathChanged        bool
@@ -565,29 +561,23 @@ func getNextAutoPlayMediaOrError(screen *FyneScreen) (string, string, error) {
 }
 
 func autoSelectNextSubs(v string, screen *FyneScreen) {
-	name, path := getNextPossibleSubs(v)
-	screen.SubsText.Text = name
-	screen.subsfile = path
+	screen.subsfile = getNextPossibleSubs(v)
 	fyne.Do(func() {
-		screen.SubsText.Refresh()
 		if screen.mediaSelection != nil {
 			screen.mediaSelection.refresh()
 		}
 	})
 }
 
-func getNextPossibleSubs(v string) (string, string) {
-	var name, path string
-
+func getNextPossibleSubs(v string) string {
 	possibleSub := v[0:len(v)-
 		len(filepath.Ext(v))] + ".srt"
 
 	if _, err := os.Stat(possibleSub); err == nil {
-		name = filepath.Base(possibleSub)
-		path = possibleSub
+		return possibleSub
 	}
 
-	return name, path
+	return ""
 }
 
 func setPlayPauseView(s string, screen *FyneScreen) {
@@ -948,9 +938,7 @@ func NewFyneScreen(version string, crash *crashlog.Session) *FyneScreen {
 		currentmfolder:     currentDir,
 		ffmpegPath:         ffmpegPath,
 		mediaFormats:       mediamodel.AllMediaExtensions(),
-		imageFormats:       mediamodel.ImageExtensions(),
 		videoFormats:       mediamodel.VideoExtensions(),
-		audioFormats:       mediamodel.AudioExtensions(),
 		version:            version,
 		Debug:              dw,
 		DiscoveryDebug:     discoveryDebug,

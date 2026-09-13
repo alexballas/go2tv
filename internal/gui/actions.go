@@ -508,7 +508,6 @@ func selectSubsFile(screen *FyneScreen, f fyne.URI) {
 	}
 	screen.SelectInternalSubs.ClearSelected()
 	screen.subsfile = absSubtitlesFile
-	screen.SubsText.SetText(filepath.Base(sfile))
 	if screen.mediaSelection != nil {
 		screen.mediaSelection.refresh()
 	}
@@ -2246,7 +2245,6 @@ func clearmediaAction(screen *FyneScreen) {
 
 func clearsubsAction(screen *FyneScreen) {
 	screen.SelectInternalSubs.ClearSelected()
-	screen.SubsText.SetText("")
 	screen.subsfile = ""
 	if screen.mediaSelection != nil {
 		screen.mediaSelection.refresh()
@@ -2797,7 +2795,7 @@ func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, spath := getNextPossibleSubs(fpath)
+	spath := getNextPossibleSubs(fpath)
 
 	var mediaType string
 	var isSeek bool

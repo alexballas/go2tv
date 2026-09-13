@@ -21,8 +21,6 @@ func newTraversalTestScreen(t *testing.T, currentPath string) *FyneScreen {
 		mediafile:    currentPath,
 		mediaFormats: []string{".mp4", ".mp3", ".jpg"},
 		videoFormats: []string{".mp4"},
-		audioFormats: []string{".mp3"},
-		imageFormats: []string{".jpg"},
 		State:        "Stopped",
 	}
 }
@@ -32,7 +30,6 @@ func newQueueMediaSelectionTestScreen() *FyneScreen {
 		mediaFormats:       []string{".mp4"},
 		videoFormats:       []string{".mp4"},
 		MediaText:          widget.NewEntry(),
-		SubsText:           widget.NewEntry(),
 		SelectInternalSubs: widget.NewSelect(nil, nil),
 		CustomSubsCheck:    widget.NewCheck("", nil),
 		PlayPause:          widget.NewButton("", nil),
@@ -293,7 +290,6 @@ func TestSelectMediaPathsSingleFileCreatesQueue(t *testing.T) {
 		mediaFormats:       []string{".mp4"},
 		videoFormats:       []string{".mp4"},
 		MediaText:          widget.NewEntry(),
-		SubsText:           widget.NewEntry(),
 		SelectInternalSubs: widget.NewSelect(nil, nil),
 		CustomSubsCheck:    widget.NewCheck("", nil),
 		PlayPause:          widget.NewButton("", nil),
@@ -328,7 +324,6 @@ func TestSelectMediaPathsUppercaseExtensionCreatesQueue(t *testing.T) {
 		mediaFormats:       []string{".mkv"},
 		videoFormats:       []string{".mkv"},
 		MediaText:          widget.NewEntry(),
-		SubsText:           widget.NewEntry(),
 		SelectInternalSubs: widget.NewSelect(nil, nil),
 		CustomSubsCheck:    widget.NewCheck("", nil),
 		PlayPause:          widget.NewButton("", nil),

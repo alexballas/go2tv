@@ -63,7 +63,6 @@ func (t *playbackToggle) MouseMoved(e *desktop.MouseEvent) { t.Check.ToolTipWidg
 func (t *playbackToggle) CreateRenderer() fyne.WidgetRenderer {
 	background := canvas.NewRectangle(color.Transparent)
 	background.CornerRadius = 10
-	background.StrokeWidth = 1
 	icon := canvas.NewImageFromResource(t.icon)
 	icon.FillMode = canvas.ImageFillContain
 	label := canvas.NewText(t.Text, color.Transparent)

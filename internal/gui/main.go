@@ -165,7 +165,6 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		}
 		setPlayPauseView("", s)
 	}
-	sfiletext := widget.NewEntry()
 
 	mbrowse := widget.NewButtonWithIcon(lang.L("Browse"), theme.FolderOpenIcon(), func() {
 		mediaAction(s)
@@ -178,7 +177,6 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	})
 
 	sbrowse.Disable()
-	sfiletext.Disable()
 
 	playpause := ttwidget.NewButtonWithIcon(lang.L("Cast")+"   ", theme.MediaPlayIcon(), func() {
 		playAction(s)
@@ -192,7 +190,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	stop.Importance = widget.LowImportance
 	stop.Alignment = widget.ButtonAlignCenter
 
-	volumeup := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() {
+	volumeup := widget.NewButton("+", func() {
 		volumeAction(s, true)
 	})
 	volumeup.Importance = widget.LowImportance
@@ -204,7 +202,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	muteunmute.Importance = widget.LowImportance
 	muteunmute.Alignment = widget.ButtonAlignCenter
 
-	volumedown := widget.NewButtonWithIcon("", theme.VolumeDownIcon(), func() {
+	volumedown := widget.NewButton("−", func() {
 		volumeAction(s, false)
 	})
 	volumedown.Importance = widget.LowImportance
@@ -331,7 +329,6 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.CustomSubsCheck = sfilecheck
 	s.ExternalMediaURL = externalmedia
 	s.MediaText = mfiletext
-	s.SubsText = sfiletext
 	s.DeviceList = list
 	s.VolumeUp = volumeup
 	s.VolumeDown = volumedown
@@ -358,10 +355,6 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	sliderArea := container.NewBorder(nil, nil, widget.NewLabelWithData(curPos), widget.NewLabelWithData(endPos), sliderBar)
 
-	volumedown.SetText("−")
-	volumeup.SetText("+")
-	volumedown.SetIcon(nil)
-	volumeup.SetIcon(nil)
 	// Reserve both labels so toggling mute never shifts the volume controls.
 	muteunmute.SetText(lang.L("Unmute"))
 	muteSize := muteunmute.MinSize()
@@ -518,7 +511,6 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			s.mediafile = lang.L("Cast Desktop Live Stream")
 			sfilecheck.SetChecked(false)
 			s.subsfile = ""
-			s.SubsText.SetText("")
 			setPlayPauseView("", s)
 			return
 		}

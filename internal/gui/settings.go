@@ -108,8 +108,6 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	themeName := lang.L(fyne.CurrentApp().Preferences().StringWithFallback("Theme", "System Default"))
 	dropdownTheme.PlaceHolder = themeName
 
-	s.systemTheme = fyne.CurrentApp().Settings().ThemeVariant()
-
 	ffmpegTextEntry := widget.NewEntry()
 	var updatingFFmpegEntry bool
 
