@@ -3,9 +3,11 @@ package utils
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 
 	"github.com/go-viper/mapstructure/v2"
 )
@@ -134,29 +136,41 @@ func ExtractSub(ffmpeg string, n int, f string) (string, error) {
 		return "", err
 	}
 
-	tempSub, err := os.CreateTemp(os.TempDir(), "go2tv-sub-*.srt")
-	if err != nil {
-		return "", err
-	}
-
 	resolvedFFmpeg, err := ResolveFFmpegPath(ffmpeg)
 	if err != nil {
 		return "", err
 	}
 
-	cmd := exec.Command(
-		resolvedFFmpeg,
-		"-y",
-		"-i", f,
-		"-map", "0:s:"+strconv.Itoa(n),
-		tempSub.Name(),
-	)
-	setSysProcAttr(cmd)
-
-	_, err = cmd.Output()
+	tempSub, err := os.CreateTemp("", "go2tv-sub-*.srt")
 	if err != nil {
 		return "", err
 	}
+	subPath := tempSub.Name()
+	success := false
+	defer func() {
+		if !success {
+			_ = os.Remove(subPath)
+		}
+	}()
+	if err := tempSub.Close(); err != nil {
+		return "", fmt.Errorf("close subtitle file: %w", err)
+	}
 
-	return tempSub.Name(), nil
+	cmd := exec.Command(
+		resolvedFFmpeg,
+		"-nostdin", "-loglevel", "error",
+		"-y",
+		"-i", f,
+		"-map", "0:s:"+strconv.Itoa(n),
+		subPath,
+	)
+	setSysProcAttr(cmd)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("extract subtitle track %d: %w: %s", n+1, err, strings.TrimSpace(string(output)))
+	}
+
+	success = true
+	return subPath, nil
 }

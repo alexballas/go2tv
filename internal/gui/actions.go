@@ -886,7 +886,9 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 						screen.PlayPause.Refresh()
 					})
 					if err != nil {
-						break
+						check(screen, err)
+						startAfreshPlayButton(screen)
+						return
 					}
 
 					screen.tempFiles = append(screen.tempFiles, tempSubsPath)
@@ -1323,7 +1325,9 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 					screen.PlayPause.Refresh()
 				})
 				if err != nil {
-					break
+					check(screen, err)
+					startAfreshPlayButton(screen)
+					return
 				}
 
 				screen.tempFiles = append(screen.tempFiles, tempSubsPath)
@@ -1482,17 +1486,10 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 				}
 			}
 
-			subsPath := ""
-			if screen.subsfile != "" {
-				subsPath = screen.subsfile
-			}
-
 			tcOpts := &utils.TranscodeOptions{
-				FFmpegPath:   screen.ffmpegPath,
-				SubsPath:     subsPath,
-				SeekSeconds:  0,
-				SubtitleSize: utils.SubtitleSizeMedium,
-				LogOutput:    screen.Debug,
+				FFmpegPath:  screen.ffmpegPath,
+				SeekSeconds: 0,
+				LogOutput:   screen.Debug,
 			}
 
 			screen.mediaDuration = 0
@@ -1630,18 +1627,10 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 				screen.mediaDuration = duration
 			}
 
-			// Determine subtitle path for burning (only if user selected)
-			subsPath := ""
-			if screen.subsfile != "" {
-				subsPath = screen.subsfile
-			}
-
 			tcOpts = &utils.TranscodeOptions{
-				FFmpegPath:   screen.ffmpegPath,
-				SubsPath:     subsPath,
-				SeekSeconds:  ffmpegSeek,
-				SubtitleSize: utils.SubtitleSizeMedium,
-				LogOutput:    screen.Debug,
+				FFmpegPath:  screen.ffmpegPath,
+				SeekSeconds: ffmpegSeek,
+				LogOutput:   screen.Debug,
 			}
 			// Update content type for transcoded output
 			mediaType = "video/mp4"
@@ -1664,32 +1653,21 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 		mediaURL = "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile)
 	}
 
-	// Handle subtitles
-	var subtitleURL string
-	isRTMP := screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked
-	if screen.subsfile != "" && screen.httpserver != nil && (!transcode || isRTMP) {
-		if subtitleHost == "" {
-			mediaURLParsed, err := url.Parse(mediaURL)
-			if err == nil {
-				subtitleHost = mediaURLParsed.Host
-			}
+	// Keep the receiver's subtitle styling identical during transcoding.
+	if subtitleHost == "" {
+		if parsed, err := url.Parse(mediaURL); err == nil {
+			subtitleHost = parsed.Host
 		}
-		if subtitlesPath, ok := playback.ChromecastSubtitlePath(screen.subsfile); ok && subtitleHost != "" {
-			ext := strings.ToLower(filepath.Ext(subtitlesPath))
-			switch ext {
-			case ".srt":
-				webvttData, err := utils.ConvertSRTtoWebVTT(subtitlesPath)
-				if err != nil {
-					check(screen, fmt.Errorf("subtitle conversion: %w", err))
-				} else {
-					screen.httpserver.AddHandler("/subtitles.vtt", nil, nil, webvttData)
-					subtitleURL = "http://" + subtitleHost + "/subtitles.vtt"
-				}
-			case ".vtt":
-				screen.httpserver.AddHandler("/subtitles.vtt", nil, nil, subtitlesPath)
-				subtitleURL = "http://" + subtitleHost + "/subtitles.vtt"
-			}
-		}
+	}
+	subtitleOffset := 0
+	if transcode {
+		subtitleOffset = ffmpegSeek
+	}
+	subtitleURL, err := registerChromecastSubtitles(screen.httpserver, subtitleHost, screen.subsfile, subtitleOffset)
+	if err != nil {
+		check(screen, err)
+		startAfreshPlayButton(screen)
+		return
 	}
 
 	// Load media and update UI on success
@@ -1774,17 +1752,10 @@ func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
 		serverStoppedCTX, serverCTXStop := context.WithCancel(context.Background())
 		screen.serverStopCTX = serverStoppedCTX
 		screen.cancelServerStop = serverCTXStop
-		// Determine subtitle path for burning
-		subsPath := ""
-		if screen.subsfile != "" {
-			subsPath = screen.subsfile
-		}
 		tcOpts := &utils.TranscodeOptions{
-			FFmpegPath:   screen.ffmpegPath,
-			SubsPath:     subsPath,
-			SeekSeconds:  seekPos,
-			SubtitleSize: utils.SubtitleSizeMedium,
-			LogOutput:    screen.Debug,
+			FFmpegPath:  screen.ffmpegPath,
+			SeekSeconds: seekPos,
+			LogOutput:   screen.Debug,
 		}
 		go func() {
 			screen.httpserver.StartSimpleServerWithTranscode(serverStarted, screen.mediafile, tcOpts)
@@ -1797,10 +1768,15 @@ func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
 		}
 		mediaURL := "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile)
 		// Load media on existing connection (skips 2-second receiver launch delay)
-		// No subtitles needed since they're burned in during transcoding
+		subtitleURL, err := registerChromecastSubtitles(screen.httpserver, whereToListen, screen.subsfile, seekPos)
+		if err != nil {
+			check(screen, err)
+			return
+		}
 		// live=false because this is local file playback (seeking)
 		if err := client.LoadMediaOnExisting(castprotocol.LoadRequest{
 			MediaURL:    mediaURL,
+			SubtitleURL: subtitleURL,
 			ContentType: mediaType,
 			Metadata:    guiMediaMetadata(chromecastMediaTitle(screen, mediaURL), whereToListen, artworkAsset),
 			Duration:    screen.mediaDuration,
@@ -2379,18 +2355,10 @@ func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target 
 					screen.mediaDuration = duration
 				}
 
-				// Determine subtitle path for burning (only if user selected)
-				subsPath := ""
-				if screen.subsfile != "" {
-					subsPath = screen.subsfile
-				}
-
 				tcOpts := &utils.TranscodeOptions{
-					FFmpegPath:   screen.ffmpegPath,
-					SubsPath:     subsPath,
-					SeekSeconds:  ffmpegSeek,
-					SubtitleSize: utils.SubtitleSizeMedium,
-					LogOutput:    screen.Debug,
+					FFmpegPath:  screen.ffmpegPath,
+					SeekSeconds: ffmpegSeek,
+					LogOutput:   screen.Debug,
 				}
 
 				// Create new HTTP server with transcoding
@@ -2415,29 +2383,11 @@ func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target 
 				// Transcoded output is always video/mp4
 				mediaType = "video/mp4"
 				mediaURL = "http://" + whereToListen + "/" + utils.ConvertFilename(targetMediaPath)
-				// Subtitles are burned in during transcoding, no separate URL needed
 
 			} else {
 				// NON-TRANSCODING PATH: Just update handlers on existing server
 				// Clear stored duration for non-transcoded streams (Chromecast reports it correctly)
 				screen.mediaDuration = 0
-
-				// Get subtitle URL if needed (remove old handler first)
-				server.RemoveHandler("/subtitles.vtt")
-				if screen.subsfile != "" {
-					ext := strings.ToLower(filepath.Ext(screen.subsfile))
-					switch ext {
-					case ".srt":
-						webvttData, err := utils.ConvertSRTtoWebVTT(screen.subsfile)
-						if err == nil {
-							server.AddHandler("/subtitles.vtt", nil, nil, webvttData)
-							subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
-						}
-					case ".vtt":
-						server.AddHandler("/subtitles.vtt", nil, nil, screen.subsfile)
-						subtitleURL = "http://" + whereToListen + "/subtitles.vtt"
-					}
-				}
 
 				// Remove old media handler and add new one
 				// Handler paths use filepath.Base (decoded) because r.URL.Path is decoded by Go's HTTP server
@@ -2452,6 +2402,16 @@ func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target 
 
 				// Use existing server context
 				serverStoppedCTX = screen.serverStopCTX
+			}
+
+			subtitleOffset := 0
+			if transcode {
+				subtitleOffset = ffmpegSeek
+			}
+			subtitleURL, err = registerChromecastSubtitles(server, whereToListen, screen.subsfile, subtitleOffset)
+			if err != nil {
+				check(screen, err)
+				return
 			}
 
 			// Set state to Waiting to ensure status watcher triggers UI update when playing starts
