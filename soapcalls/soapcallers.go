@@ -1174,8 +1174,12 @@ func (p *TVPayload) GetProtocolInfo() error {
 
 	p.Log().Debug(string(resBytes), "Method", "GetProtocolInfo", "Action", "Response", "Status Code", strconv.Itoa(res.StatusCode), "Headers", json.RawMessage(headerBytesRes))
 
-	if err := parseProtocolInfo(resBytes, utils.DLNAResourceMediaType(p.MediaType, p.Transcode)); err != nil {
-		return fmt.Errorf("GetProtocolInfo Selected device does not support the media type: %w", err)
+	wireMediaType := utils.DLNAResourceMediaType(p.MediaType, p.Transcode)
+	if err := parseProtocolInfo(resBytes, wireMediaType); err != nil {
+		p.Log().Error("Media compatibility check failed", "Method", "GetProtocolInfo",
+			"MediaType", p.MediaType, "WireMediaType", wireMediaType,
+			"Transcode", p.Transcode, "MediaPath", p.MediaPath, "error", err)
+		return fmt.Errorf("GetProtocolInfo Selected device does not support the media type %q: %w", wireMediaType, err)
 	}
 
 	return nil
@@ -1573,8 +1577,6 @@ func parseProtocolInfo(b []byte, mt string) error {
 		return nil
 	}
 
-	mt = normalizeProtocolMediaType(mt)
-
 	if err := xml.Unmarshal(b, &respProtocolInfo); err != nil {
 		return err
 	}
@@ -1591,20 +1593,12 @@ func parseProtocolInfo(b []byte, mt string) error {
 		items := strings.SplitN(strings.TrimSpace(i), ":", 4)
 		// Here we hardcode check the http-get protocol. We would need to change that
 		// if we were to support rtp/rtsp/udp.
-		if len(items) == 4 && protocolInfoFieldMatches(items[0], "http-get") && protocolInfoFieldMatches(items[1], "*") && protocolInfoMediaTypeMatches(items[2], mt) {
+		if len(items) == 4 && protocolInfoFieldMatches(items[0], "http-get") && protocolInfoFieldMatches(items[1], "*") && protocolInfoMediaCategoryMatches(items[2], mt) {
 			return nil
 		}
 	}
 
 	return ErrNoMatchingFileType
-}
-
-func normalizeProtocolMediaType(mediaType string) string {
-	mediaType = strings.TrimSpace(mediaType)
-	if parameterStart := strings.IndexByte(mediaType, ';'); parameterStart >= 0 {
-		return strings.ToLower(mediaType[:parameterStart]) + mediaType[parameterStart:]
-	}
-	return strings.ToLower(mediaType)
 }
 
 func protocolInfoFieldMatches(advertised, requested string) bool {
@@ -1613,10 +1607,19 @@ func protocolInfoFieldMatches(advertised, requested string) bool {
 	return advertised == "*" || requested == "*" || advertised == requested
 }
 
-func protocolInfoMediaTypeMatches(advertised, requested string) bool {
-	advertised = normalizeProtocolMediaType(advertised)
-	requested = normalizeProtocolMediaType(requested)
-	return advertised == "*" || requested == "*" || advertised == requested
+// protocolInfoMediaCategoryMatches is a permissive preflight check, as in 2.5.0.
+// Renderers can omit playable formats or advertise alternate MIME names. Check
+// only the category here; let playback determine container and codec support.
+// This does not change the MIME used in HTTP headers or resource metadata.
+func protocolInfoMediaCategoryMatches(advertised, requested string) bool {
+	advertised = strings.ToLower(strings.TrimSpace(advertised))
+	requested = strings.ToLower(strings.TrimSpace(requested))
+	if advertised == "*" || requested == "*" {
+		return true
+	}
+	advertisedCategory, _, hasSubtype := strings.Cut(advertised, "/")
+	requestedCategory, _, _ := strings.Cut(requested, "/")
+	return hasSubtype && advertisedCategory != "" && advertisedCategory == requestedCategory
 }
 
 func splitProtocolInfo(value string) []string {

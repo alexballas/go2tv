@@ -38,28 +38,34 @@ func TestParseProtocolInfo(t *testing.T) {
 	}
 }
 
-func TestParseProtocolInfoMatchesContentFormat(t *testing.T) {
+func TestParseProtocolInfoMatchesMediaCategory(t *testing.T) {
 	response := func(sink string) []byte {
 		return []byte(`<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetProtocolInfoResponse xmlns:u="urn:schemas-upnp-org:service:ConnectionManager:1"><Sink>` + sink + `</Sink></u:GetProtocolInfoResponse></s:Body></s:Envelope>`)
 	}
 
-	tests := []struct {
+	tt := []struct {
 		name string
 		sink string
 		mt   string
 		want bool
 	}{
 		{name: "exact MIME with different additional info", sink: `http-get:*:video/mp4:DLNA.ORG_CI=0`, mt: "video/mp4", want: true},
-		{name: "matching MIME parameters", sink: `http-get:*:video/mp4;profile=main:*`, mt: "video/mp4;profile=main", want: true},
-		{name: "different MIME parameters", sink: `http-get:*:video/mp4;profile=main:*`, mt: "video/mp4;profile=high", want: false},
-		{name: "case-sensitive MIME parameter", sink: `http-get:*:multipart/mixed;boundary=CaseSensitive:*`, mt: "multipart/mixed;boundary=casesensitive", want: false},
-		{name: "MIME subtype wildcard is not a wildcard", sink: `http-get:*:video/*:*`, mt: "video/x-matroska", want: false},
+		{name: "Samsung Matroska alias", sink: `http-get:*:video/x-mkv:*`, mt: "video/x-matroska", want: true},
+		{name: "unlisted video format", sink: `http-get:*:video/mpeg:*`, mt: "video/mp4", want: true},
+		{name: "unlisted audio format", sink: `http-get:*:audio/mpeg:*`, mt: "audio/flac", want: true},
+		{name: "unlisted image format", sink: `http-get:*:image/jpeg:*`, mt: "image/png", want: true},
+		{name: "category case and whitespace", sink: `http-get:*: VIDEO/MPEG :*`, mt: " Video/MP4 ", want: true},
+		{name: "MIME parameters do not restrict category", sink: `http-get:*:video/mp4;profile=main:*`, mt: "video/mp4;profile=high", want: true},
+		{name: "video category wildcard", sink: `http-get:*:video/*:*`, mt: "video/x-matroska", want: true},
 		{name: "whole MIME wildcard", sink: `http-get:*:*:*`, mt: "video/x-matroska", want: true},
 		{name: "escaped feature comma", sink: `http-get:*:video/mp4:vendor=one\,two`, mt: "video/mp4", want: true},
-		{name: "wrong MIME", sink: `http-get:*:audio/mpeg:*`, mt: "video/mp4", want: false},
+		{name: "audio renderer rejects video", sink: `http-get:*:audio/mpeg:*`, mt: "video/mp4", want: false},
+		{name: "audio wildcard rejects video", sink: `http-get:*:audio/*:*`, mt: "video/mp4", want: false},
+		{name: "video renderer rejects images", sink: `http-get:*:video/mp4:*`, mt: "image/jpeg", want: false},
+		{name: "wrong transport rejects same category", sink: `rtsp-rtp-udp:*:video/mpeg:*`, mt: "video/mp4", want: false},
 		{name: "empty Sink is permissive", sink: ``, mt: "video/mp4", want: true},
 	}
-	for _, test := range tests {
+	for _, test := range tt {
 		t.Run(test.name, func(t *testing.T) {
 			err := parseProtocolInfo(response(test.sink), test.mt)
 			if (err == nil) != test.want {
@@ -340,15 +346,18 @@ func TestGetProtocolInfoSkipsWhenConnectionManagerMissing(t *testing.T) {
 	}
 }
 
-func TestGetProtocolInfoUsesTranscodedWireMIME(t *testing.T) {
+func TestGetProtocolInfoAllowsUnlistedVideoFormat(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetProtocolInfoResponse xmlns:u="urn:schemas-upnp-org:service:ConnectionManager:1"><Sink>http-get:*:video/mpeg:*</Sink></u:GetProtocolInfoResponse></s:Body></s:Envelope>`))
 	}))
 	defer srv.Close()
 
-	p := &TVPayload{ConnectionManagerURL: srv.URL, MediaType: "video/x-matroska", Transcode: true}
+	p := &TVPayload{ConnectionManagerURL: srv.URL, MediaType: "video/x-matroska"}
 	if err := p.GetProtocolInfo(); err != nil {
-		t.Fatalf("GetProtocolInfo() err = %v, want wire MIME match", err)
+		t.Fatalf("GetProtocolInfo() err = %v, want video category match", err)
+	}
+	if p.MediaType != "video/x-matroska" {
+		t.Fatalf("GetProtocolInfo() changed resource MIME to %q", p.MediaType)
 	}
 }
 
