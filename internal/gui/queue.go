@@ -680,6 +680,7 @@ type queueRow struct {
 	thumbPath          string
 	pendingThumbPath   string
 	thumbnailRequestID uint64
+	thumbnailLoader    func(string, mediamodel.MediaKind) *canvas.Image
 	thumbnail          *canvas.Image
 	fallbackIcon       *canvas.Image
 	title              *widget.Label
@@ -707,11 +708,12 @@ func newQueueRow(screen *FyneScreen) *queueRow {
 	)
 
 	row := &queueRow{
-		screen:       screen,
-		thumbnail:    thumbnail,
-		fallbackIcon: fallbackIcon,
-		title:        title,
-		currentIcon:  widget.NewIcon(nil),
+		screen:          screen,
+		thumbnailLoader: screen.queueMediaThumbnail,
+		thumbnail:       thumbnail,
+		fallbackIcon:    fallbackIcon,
+		title:           title,
+		currentIcon:     widget.NewIcon(nil),
 	}
 	row.content = container.NewBorder(
 		nil,
@@ -789,7 +791,7 @@ func (r *queueRow) setRow(index int, item QueueItem, isCurrent bool) {
 				}
 				kind := item.MediaKind()
 				go func() {
-					apply(r.screen.queueMediaThumbnail(path, kind))
+					apply(r.thumbnailLoader(path, kind))
 				}()
 			}
 		}
