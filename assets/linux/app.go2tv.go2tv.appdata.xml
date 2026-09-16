@@ -51,6 +51,14 @@
   </branding>
 
   <releases>
+      <release version="2.6.1" date="2026-09-16" type="stable">
+        <description>
+          <ul>
+            <li>Fixed a `getprotocolinfo` call error in version 2.6.0 that caused many MKV files to fail to play.</li>
+          </ul>
+        </description>
+        <url type="details">https://github.com/alexballas/go2tv/releases/tag/v2.6.1</url>
+      </release>
       <release version="2.6.0" date="2026-09-14" type="stable">
         <description>
           <ul>
