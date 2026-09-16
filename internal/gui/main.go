@@ -6,12 +6,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image/color"
 	"net/url"
 	"sort"
 	"time"
 
 	ttwidget "github.com/alexballas/fyne-tooltip/widget"
 	"github.com/alexballas/refyne/v2"
+	"github.com/alexballas/refyne/v2/canvas"
 	"github.com/alexballas/refyne/v2/container"
 	"github.com/alexballas/refyne/v2/data/binding"
 	"github.com/alexballas/refyne/v2/lang"
@@ -183,6 +185,17 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	})
 	playpause.Importance = widget.HighImportance
 	// playpause.Alignment = widget.ButtonAlignCenter
+	// Reserve the widest playback label so transport controls stay in place.
+	playText := playpause.Text
+	playSize := playpause.MinSize()
+	for _, label := range []string{lang.L("Cast"), lang.L("Play"), lang.L("Pause")} {
+		playpause.SetText(label + "  ")
+		playSize = playSize.Max(playpause.MinSize())
+	}
+	playpause.SetText(playText)
+	playSpace := canvas.NewRectangle(color.Transparent)
+	playSpace.SetMinSize(playSize)
+	playControl := container.NewStack(playSpace, playpause)
 
 	stop := widget.NewButtonWithIcon(lang.L("Stop"), theme.MediaStopIcon(), func() {
 		stopAction(s)
@@ -362,7 +375,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	muteSize = muteSize.Max(muteunmute.MinSize())
 	muteControl := container.NewGridWrap(muteSize, muteunmute)
 	volumeRow := container.NewHBox(widget.NewLabel(lang.L("Volume")), volumedown, volumeup, muteControl)
-	transportRow := container.NewHBox(playpause, stop, skipPrevious, skipNext)
+	transportRow := container.NewHBox(playControl, stop, skipPrevious, skipNext)
 	actionButtons := container.New(layout.NewCustomPaddedLayout(0, 0, theme.InnerPadding(), 0), container.NewBorder(nil, nil, transportRow, volumeRow))
 	s.playbackStatus = newPlaybackStatusLabel(lang.L("Select a device"))
 	s.playbackStatus.Importance = widget.MediumImportance

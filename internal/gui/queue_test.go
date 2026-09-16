@@ -10,8 +10,10 @@ import (
 	"testing"
 
 	"github.com/alexballas/refyne/v2"
+	"github.com/alexballas/refyne/v2/canvas"
 	"github.com/alexballas/refyne/v2/test"
 	"github.com/alexballas/refyne/v2/widget"
+	"go2tv.app/go2tv/v2/internal/mediamodel"
 )
 
 func newTraversalTestScreen(t *testing.T, currentPath string) *FyneScreen {
@@ -683,6 +685,12 @@ func TestQueueRowDedupesThumbnailRequests(t *testing.T) {
 	row := newQueueRow(&FyneScreen{
 		Debug: newDebugWriter(8),
 	})
+	releaseThumbnails := make(chan struct{})
+	row.thumbnailLoader = func(string, mediamodel.MediaKind) *canvas.Image {
+		<-releaseThumbnails
+		return nil
+	}
+	defer close(releaseThumbnails)
 
 	first := testQueueItems(firstPath)[0]
 	second := testQueueItems(secondPath)[0]
