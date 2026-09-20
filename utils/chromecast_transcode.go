@@ -74,7 +74,6 @@ func ServeChromecastTranscodedStream(
 
 	// Build video filter chain.
 	// Raw screencast input doesn't carry subtitle tracks.
-	scaleFilter := "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2"
 	subFilter := ""
 	if !isRawInput {
 		var err error
@@ -90,8 +89,16 @@ func ServeChromecastTranscodedStream(
 		profile = videoEncoderProfileChromecastRaw
 	}
 	encoderPlan := selectTranscodeVideoEncoder(opts.FFmpegPath, profile)
-	buildArgs := func(plan videoEncoderPlan) []string {
-		vf := joinVideoFilters(subFilter, scaleFilter, plan.filterTail)
+	buildArgs := func(plan videoEncoderPlan, hw string) []string {
+		var vf string
+		switch hw {
+		case "cuda":
+			vf = cudaTranscodeScaleFilter
+		case "vaapi":
+			vf = vaapiTranscodeScaleFilter
+		default:
+			vf = joinVideoFilters(subFilter, softwareTranscodeScaleFilter, plan.filterTail)
+		}
 
 		// For piped input, skip -ss parameter entirely (even -ss 0) as it can cause issues.
 		// File transcoding is deliberately unpaced so the renderer can build a
@@ -101,7 +108,7 @@ func ServeChromecastTranscodedStream(
 		if in != "pipe:0" && opts.SeekSeconds > 0 {
 			args = append(args, "-ss", strconv.Itoa(opts.SeekSeconds), "-copyts")
 		}
-		args = append(args, plan.globalArgs...)
+		args = append(args, transcodeInputArgs(plan, hw)...)
 
 		if isRawInput {
 			pixelFormat := strings.ToLower(opts.RawInput.PixelFormat)
@@ -156,20 +163,6 @@ func ServeChromecastTranscodedStream(
 		return ErrInvalidInput
 	}
 
-	bytesWritten, err := runFFmpegTranscode(ctx, ff, input, in, w, buildArgs(encoderPlan))
-	if err == nil {
-		return nil
-	}
-
-	// If HW encoder fails before stream starts, retry file-based transcode with software for this request.
-	if encoderPlan.hardware && in != "pipe:0" && bytesWritten == 0 && ctx.Err() == nil {
-		software := transcodeSoftwareEncoderPlan(profile)
-		_, swErr := runFFmpegTranscode(ctx, ff, input, in, w, buildArgs(software))
-		if swErr == nil {
-			return nil
-		}
-		return swErr
-	}
-
-	return err
+	hw := selectTranscodeVideoDecoder(opts.FFmpegPath, encoderPlan, subFilter, in, isRawInput)
+	return runTranscodeWithFallback(ctx, ff, input, in, w, encoderPlan, profile, hw, buildArgs, opts.Log())
 }

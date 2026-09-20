@@ -8,6 +8,9 @@ import (
 	"sync"
 )
 
+// Bound output to 1080p without upscaling, with even dimensions for H.264.
+const softwareTranscodeScaleFilter = "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2"
+
 var ffmpegFilterCache sync.Map
 
 // subtitleBurnFilter builds the ffmpeg "subtitles" filter used to burn

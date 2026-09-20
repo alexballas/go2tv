@@ -4,8 +4,42 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"strings"
 	"testing"
 )
+
+func TestTranscodeHardwareCodecArgs(t *testing.T) {
+	tt := []struct {
+		codec, dlna, raw, file string
+	}{
+		{"h264_nvenc", "-g 30 -rc vbr -b:v 10M -maxrate 20M -bufsize 40M -preset p4", "-profile:v high -g 30 -rc vbr -b:v 10M -maxrate 20M -bufsize 40M -preset p4", "-profile:v high -g 30 -rc vbr -b:v 10M -maxrate 20M -bufsize 40M -preset p4"},
+		{"h264_amf", "-g 30 -quality balanced -rc vbr_peak", "-profile:v high -g 30 -maxrate 5M -bufsize 1M -quality balanced -rc vbr_peak", "-profile:v high -g 30 -b:v 10M -maxrate 20M -bufsize 40M -quality balanced -rc vbr_peak"},
+		{"h264_videotoolbox", "-g 30 -b:v 5M -qmin -1 -qmax -1", "-profile:v high -g 30 -b:v 5M -qmin -1 -qmax -1", "-profile:v high -g 30 -b:v 5M -qmin -1 -qmax -1"},
+		{"h264_vaapi", "-g 30", "-profile:v high -g 30 -maxrate 5M -bufsize 1M", "-profile:v high -g 30 -b:v 10M -maxrate 20M -bufsize 40M"},
+		{"h264_qsv", "-g 30", "-profile:v high -g 30 -maxrate 5M -bufsize 1M", "-profile:v high -g 30 -b:v 10M -maxrate 20M -bufsize 40M"},
+		{"h264_mediacodec", "-g 30 -b:v 5M -maxrate 10M -bufsize 20M", "-profile:v high -g 30 -maxrate 5M -bufsize 1M", "-profile:v high -g 30 -b:v 5M -maxrate 10M -bufsize 20M"},
+		{"h264_v4l2m2m", "-g 30 -b:v 5M -maxrate 10M -bufsize 20M", "-profile:v high -g 30 -maxrate 5M -bufsize 1M", "-profile:v high -g 30 -b:v 5M -maxrate 10M -bufsize 20M"},
+		{"h264_omx", "-g 30", "-profile:v high -g 30 -maxrate 5M -bufsize 1M", "-profile:v high -g 30 -b:v 5M -maxrate 10M -bufsize 20M"},
+	}
+	for _, tc := range tt {
+		for _, profile := range []struct {
+			name videoEncoderProfile
+			want string
+		}{
+			{videoEncoderProfileDLNA, tc.dlna},
+			{videoEncoderProfileChromecastRaw, tc.raw},
+			{videoEncoderProfileChromecastFile, tc.file},
+		} {
+			t.Run(tc.codec+"/"+string(profile.name), func(t *testing.T) {
+				want := append([]string{"-c:v", tc.codec}, strings.Fields(profile.want)...)
+				if got := transcodeHardwareCodecArgs(profile.name, tc.codec); !slices.Equal(got, want) {
+					t.Fatalf("args = %q, want %q", got, want)
+				}
+			})
+		}
+	}
+}
 
 func TestSelectTranscodeEncoderFallsBackToSoftware(t *testing.T) {
 	plan := selectTranscodeVideoEncoder("/path/does/not/exist/ffmpeg", videoEncoderProfileChromecastFile)

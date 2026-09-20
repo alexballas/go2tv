@@ -117,6 +117,12 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	rememberPlaybackPositionCheck.SetChecked(
 		fyne.CurrentApp().Preferences().BoolWithFallback(rememberPlaybackPositionPref, false),
 	)
+	disableVersionNotificationsCheck := widget.NewCheck(lang.L("Disable Future Version Notifications"), func(disabled bool) {
+		fyne.CurrentApp().Preferences().SetBool(disableVersionNotificationsPref, disabled)
+	})
+	disableVersionNotificationsCheck.SetChecked(
+		fyne.CurrentApp().Preferences().BoolWithFallback(disableVersionNotificationsPref, false),
+	)
 	clearPlaybackHistoryButton := widget.NewButtonWithIcon(lang.L("Clear Playback History"), theme.DeleteIcon(), func() {
 		store := currentResumeStore()
 		if store == nil {
@@ -327,6 +333,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	generalSettings := container.NewVBox(
 		newSettingsField(lang.L("Theme"), dropdownTheme),
 		newSettingsField(lang.L("Language"), dropdownLanguage),
+		disableVersionNotificationsCheck,
 	)
 
 	playbackSettings := container.NewVBox(

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strconv"
@@ -25,7 +26,8 @@ const (
 
 // ServeTranscodedStream passes an input file or io.Reader to ffmpeg and writes the output directly
 // to our io.Writer. The context is used to kill ffmpeg when the HTTP request is cancelled.
-func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec.Cmd, ffmpegPath, subs string, seekSeconds int, subSize SubtitleSize) error {
+// An optional logger records pipeline attempts and startup fallback reasons.
+func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec.Cmd, ffmpegPath, subs string, seekSeconds int, subSize SubtitleSize, loggers ...*slog.Logger) error {
 	// Pipe streaming is not great as explained here
 	// https://video.stackexchange.com/questions/34087/ffmpeg-fails-on-pipe-to-pipe-video-decoding.
 	// That's why if we have the option to pass the file directly to ffmpeg, we should.
@@ -57,16 +59,22 @@ func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec
 	subFilter, _ := subtitleBurnFilter(ffmpegPath, subs, subSize)
 
 	encoderPlan := selectTranscodeVideoEncoder(ffmpegPath, videoEncoderProfileDLNA)
-	buildArgs := func(plan videoEncoderPlan) []string {
-		vf := joinVideoFilters(
-			"scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease",
-			"scale=trunc(iw/2)*2:trunc(ih/2)*2",
-			subFilter,
-			plan.filterTail,
-		)
-
+	buildArgs := func(plan videoEncoderPlan, hw string) []string {
+		var vf string
 		args := []string{ffmpegPath}
-		args = append(args, plan.globalArgs...)
+		switch hw {
+		case "cuda":
+			vf = cudaTranscodeScaleFilter
+		case "vaapi":
+			vf = vaapiTranscodeScaleFilter
+		default:
+			vf = joinVideoFilters(
+				softwareTranscodeScaleFilter,
+				subFilter,
+				plan.filterTail,
+			)
+		}
+		args = append(args, transcodeInputArgs(plan, hw)...)
 
 		if in != "pipe:0" && seekSeconds > 0 {
 			args = append(args, "-ss", strconv.Itoa(seekSeconds), "-copyts")
@@ -91,20 +99,10 @@ func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec
 		return args
 	}
 
-	bytesWritten, err := runFFmpegTranscode(ctx, ff, input, in, w, buildArgs(encoderPlan))
-	if err == nil {
-		return nil
+	var logger *slog.Logger
+	if len(loggers) > 0 {
+		logger = loggers[0]
 	}
-
-	// If HW encoder fails before streaming starts, retry once with software for this request.
-	if encoderPlan.hardware && in != "pipe:0" && bytesWritten == 0 && ctx.Err() == nil {
-		software := transcodeSoftwareEncoderPlan(videoEncoderProfileDLNA)
-		_, swErr := runFFmpegTranscode(ctx, ff, input, in, w, buildArgs(software))
-		if swErr == nil {
-			return nil
-		}
-		return swErr
-	}
-
-	return err
+	hw := selectTranscodeVideoDecoder(ffmpegPath, encoderPlan, subFilter, in, false)
+	return runTranscodeWithFallback(ctx, ff, input, in, w, encoderPlan, videoEncoderProfileDLNA, hw, buildArgs, logger)
 }

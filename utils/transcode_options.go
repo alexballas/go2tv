@@ -35,6 +35,7 @@ import (
 //	LogOutput: io.Writer for debug logging (same pattern as TVPayload).
 //	           Pass screen.Debug to enable export from settings menu.
 //	           Pass nil to disable logging.
+//	           Includes full FFmpeg arguments for each transcode attempt.
 type TranscodeOptions struct {
 	FFmpegPath   string
 	SubsPath     string
@@ -58,11 +59,16 @@ type RawVideoInput struct {
 // LogError logs an error using the same pattern as TVPayload.Log().
 // Does nothing if LogOutput is nil.
 func (t *TranscodeOptions) LogError(function, action string, err error) {
+	t.Log().Error("", "function", function, "Action", action, "error", err)
+}
+
+// Log returns the optional debug logger, or a discard logger when disabled.
+func (t *TranscodeOptions) Log() *slog.Logger {
 	if t.LogOutput == nil {
-		return
+		return logging.Discard
 	}
 	t.initLogOnce.Do(func() {
 		t.logger = logging.NewJSON(t.LogOutput)
 	})
-	t.logger.Error("", "function", function, "Action", action, "error", err)
+	return t.logger
 }
