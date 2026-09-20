@@ -246,8 +246,10 @@ make appimage-ffmpeg   # With FFmpeg
 ```
 
 For the FFmpeg build, `APPIMAGE_FFMPEG_MODE` supports `auto` (default), `system`,
-`download`, or `none`. Override binary paths with `APPIMAGE_FFMPEG_BIN` and
-`APPIMAGE_FFPROBE_BIN`.
+`download`, or `none`. Downloaded builds pin FFmpeg 8.1.2 for Pascal/NVENC
+compatibility. Override binary paths with `APPIMAGE_FFMPEG_BIN` and
+`APPIMAGE_FFPROBE_BIN`, or override the archive with `APPIMAGE_FFMPEG_URL` and
+`APPIMAGE_FFMPEG_SHA256`.
 
 ### Android builds
 

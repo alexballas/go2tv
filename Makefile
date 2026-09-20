@@ -34,6 +34,13 @@ FFMPEG_STATIC_ARCHIVE=$(BUILD_DIR)/ffmpeg-static.tar.xz
 FFMPEG_STATIC_DIR=$(BUILD_DIR)/ffmpeg-static
 FFMPEG_APP_LIBDIR=$(APPDIR)/usr/lib/ffmpeg
 APPIMAGE_FFMPEG_MODE?=auto
+# FFmpeg 8.1.2 is the last stable branch confirmed compatible with Pascal
+# NVENC on NVIDIA 580xx drivers. Pin the exact BtbN build for reproducible
+# AppImages; override URL and SHA256 together when testing another build.
+APPIMAGE_FFMPEG_RELEASE?=autobuild-2026-09-17-13-19
+APPIMAGE_FFMPEG_BUILD?=n8.1.2-54-gc573a95381
+APPIMAGE_FFMPEG_SHA256_X86_64?=7b170fc2bf3d015ff346c186b77d22cf2bc97eb2868bd442ca0e61ee93b144ed
+APPIMAGE_FFMPEG_SHA256_AARCH64?=e58da59c8b0d92531a0fd6f308f902d572c2e9e9ec6bca98ae9ba7e85f7cd2c1
 WINDOWS_FYNE?=$(CURDIR)/$(BUILD_DIR)/tools/fyne
 ANDROID_FYNE=$(CURDIR)/$(BUILD_DIR)/tools/fyne
 # The CLI that packages the APK. Defaults to the one android-fyne provisions;
@@ -411,15 +418,17 @@ appimage-ffmpeg: build
 				exit 1; \
 			fi; \
 			case "$(ARCH)" in \
-				x86_64) FFMPEG_URL="https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz" ;; \
-				aarch64|arm64) FFMPEG_URL="https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz" ;; \
-				armv7l|armhf) FFMPEG_URL="https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarmhf-gpl.tar.xz" ;; \
-				*) echo "Unsupported arch for auto ffmpeg download: $(ARCH)"; exit 1 ;; \
+				x86_64) FFMPEG_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/$(APPIMAGE_FFMPEG_RELEASE)/ffmpeg-$(APPIMAGE_FFMPEG_BUILD)-linux64-gpl-8.1.tar.xz"; FFMPEG_SHA256="$(APPIMAGE_FFMPEG_SHA256_X86_64)" ;; \
+				aarch64|arm64) FFMPEG_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/$(APPIMAGE_FFMPEG_RELEASE)/ffmpeg-$(APPIMAGE_FFMPEG_BUILD)-linuxarm64-gpl-8.1.tar.xz"; FFMPEG_SHA256="$(APPIMAGE_FFMPEG_SHA256_AARCH64)" ;; \
+				armv7l|armhf) if [ -z "$${APPIMAGE_FFMPEG_URL:-}" ]; then echo "Pinned FFmpeg 8.1.2 build unavailable for $(ARCH); set APPIMAGE_FFMPEG_URL and APPIMAGE_FFMPEG_SHA256"; exit 1; fi ;; \
+				*) echo "Unsupported arch for pinned ffmpeg download: $(ARCH)"; exit 1 ;; \
 			esac; \
 			FFMPEG_URL="$${APPIMAGE_FFMPEG_URL:-$$FFMPEG_URL}"; \
+			FFMPEG_SHA256="$${APPIMAGE_FFMPEG_SHA256:-$$FFMPEG_SHA256}"; \
 			rm -rf $(FFMPEG_STATIC_DIR) $(FFMPEG_STATIC_ARCHIVE); \
 			echo "Downloading ffmpeg bundle: $$FFMPEG_URL"; \
 			curl -fsSL "$$FFMPEG_URL" -o $(FFMPEG_STATIC_ARCHIVE) || wget -q -O $(FFMPEG_STATIC_ARCHIVE) "$$FFMPEG_URL"; \
+			if [ -n "$$FFMPEG_SHA256" ]; then echo "$$FFMPEG_SHA256  $(FFMPEG_STATIC_ARCHIVE)" | sha256sum -c -; fi; \
 			mkdir -p $(FFMPEG_STATIC_DIR); \
 			tar -xf $(FFMPEG_STATIC_ARCHIVE) -C $(FFMPEG_STATIC_DIR); \
 			FFMPEG_BIN="$$(find $(FFMPEG_STATIC_DIR) -type f -name ffmpeg | head -n 1)"; \
