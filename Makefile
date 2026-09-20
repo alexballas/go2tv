@@ -307,10 +307,13 @@ android: android-fyne
 		android.permission.CHANGE_NETWORK_STATE \
 		android.permission.POST_NOTIFICATIONS \
 		android.permission.WAKE_LOCK \
-		android.permission.CHANGE_WIFI_MULTICAST_STATE \
-		android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS; do \
+		android.permission.CHANGE_WIFI_MULTICAST_STATE; do \
 		check_manifest "$$perm" "$$perm"; \
 	done; \
+	if echo "$$MANIFEST_DUMP" | grep -q 'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'; then \
+		echo "manifest must not request direct battery-optimization exemption"; \
+		exit 1; \
+	fi; \
 	READELF="$$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"; \
 	if [ ! -x "$$READELF" ]; then READELF="$$(command -v llvm-readelf || command -v readelf || true)"; fi; \
 	if [ -n "$$READELF" ]; then \

@@ -79,6 +79,7 @@ type FyneScreen struct {
 	sliderActive           bool
 	dlnaSeekRestart        bool
 	castingMediaType       string // MIME type of currently casting media
+	resumeSession          resumePlaybackSession
 	hotkeysSuspendCount    int32
 	Crash                  *crashlog.Session
 	PendingCrashPath       string
@@ -103,18 +104,30 @@ func Start(ctx context.Context, s *FyneScreen) {
 	prepareBackgroundSession(s)
 	devices.StartDiscovery(ctx)
 
+	settingsContent, refreshMobileSettings := mobileSettingsWindow(s)
+	settingsTab := container.NewTabItem(lang.L("Settings"), container.NewVScroll(container.NewPadded(settingsContent)))
+
+	tabs := container.NewAppTabs(
+		container.NewTabItem("Go2TV", container.NewVScroll(container.NewPadded(mainWindow(s)))),
+		settingsTab,
+		container.NewTabItem(lang.L("About"), container.NewVScroll(aboutWindow(s))),
+	)
+	tabs.OnSelected = func(tab *container.TabItem) {
+		if tab == settingsTab {
+			refreshMobileSettings()
+		}
+	}
+
 	if app := fyne.CurrentApp(); app != nil {
+		app.Lifecycle().SetOnEnteredForeground(func() {
+			fyne.Do(refreshMobileSettings)
+		})
 		app.Lifecycle().SetOnStopped(func() {
 			if s.Crash != nil {
 				_ = s.Crash.CloseClean()
 			}
 		})
 	}
-
-	tabs := container.NewAppTabs(
-		container.NewTabItem("Go2TV", container.NewVScroll(container.NewPadded(mainWindow(s)))),
-		container.NewTabItem("About", container.NewVScroll(aboutWindow(s))),
-	)
 
 	w.SetContent(tabs)
 	w.CenterOnScreen()
@@ -270,8 +283,8 @@ func setMuteUnmuteView(s string, screen *FyneScreen) {
 // NewFyneScreen .
 func NewFyneScreen(version string, crash *crashlog.Session) *FyneScreen {
 	go2tv := app.NewWithID("app.go2tv.go2tv")
-	go2tv.Settings().SetTheme(go2tvTheme{"Dark"})
-	go2tv.Driver().SetDisableScreenBlanking(true)
+	themeName := go2tv.Preferences().StringWithFallback("Theme", "System Default")
+	go2tv.Settings().SetTheme(go2tvTheme{themeName})
 
 	w := go2tv.NewWindow("Go2TV")
 	dw := newDebugWriter(runtimeDebugRingSize)

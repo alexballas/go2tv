@@ -47,28 +47,65 @@ func chromecastMediaTitle(screen *FyneScreen, fallback string) string {
 	return fallback
 }
 
+func selectedMobileChromecastControlClient(screen *FyneScreen, device devType) (*castprotocol.CastClient, func(), error) {
+	if device.deviceType != devices.DeviceTypeChromecast || device.addr == "" {
+		return nil, nil, errors.New("chromecast device not selected")
+	}
+
+	if client := screen.chromecastClient; client != nil && client.IsConnected() && chromecastClientOwnsDevice(client, device) {
+		return client, func() {}, nil
+	}
+
+	client, err := castprotocol.NewCastClient(device.addr)
+	if err != nil {
+		return nil, nil, err
+	}
+	client.LogOutput = screen.Debug
+	if err := client.Connect(); err != nil {
+		_ = client.Close(false)
+		return nil, nil, err
+	}
+
+	return client, func() { _ = client.Close(false) }, nil
+}
+
 func muteAction(screen *FyneScreen) {
 	w := screen.Current
+	selectedDevice := screen.selectedDevice
+
+	// Query the selected Chromecast instead of trusting the icon: the icon may
+	// still describe an active cast after the user selects another device.
+	if selectedDevice.deviceType == devices.DeviceTypeChromecast {
+		go func() {
+			client, cleanup, err := selectedMobileChromecastControlClient(screen, selectedDevice)
+			if err != nil {
+				check(w, errors.New(lang.L("chromecast not connected")))
+				return
+			}
+			defer cleanup()
+
+			status, err := client.GetStatus()
+			if err != nil {
+				check(w, errors.New(lang.L("could not send mute action")))
+				return
+			}
+			muted := !status.Muted
+			if err := client.SetMuted(muted); err != nil {
+				check(w, errors.New(lang.L("could not send mute action")))
+				return
+			}
+			if muted {
+				setMuteUnmuteView("Unmute", screen)
+				return
+			}
+			setMuteUnmuteView("Mute", screen)
+		}()
+		return
+	}
 
 	// Handle icon toggle (mute -> unmute)
 	if screen.MuteUnmute.Icon == theme.VolumeMuteIcon() {
 		unmuteAction(screen)
-		return
-	}
-
-	// Handle Chromecast mute
-	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
-		go func() {
-			if screen.chromecastClient == nil || !screen.chromecastClient.IsConnected() {
-				check(w, errors.New(lang.L("chromecast not connected")))
-				return
-			}
-			if err := screen.chromecastClient.SetMuted(true); err != nil {
-				check(w, errors.New(lang.L("could not send mute action")))
-				return
-			}
-			setMuteUnmuteView("Unmute", screen)
-		}()
 		return
 	}
 
@@ -214,7 +251,7 @@ func subsAction(screen *FyneScreen) {
 		screen.SubsText.Refresh()
 	}, w)
 
-	fd.SetFilter(storage.NewExtensionFileFilter(mediamodel.SRTExtensions()))
+	fd.SetFilter(storage.NewExtensionFileFilter(mediamodel.SubtitleExtensions()))
 
 	resumeHotkeys = suspendHotkeys(screen)
 	fd.Show()
@@ -453,6 +490,9 @@ func playAction(screen *FyneScreen) {
 	}
 
 	transcodeEnabled := mediaTranscodeEnabled(screen, mediaType)
+	storedResume := screen.prepareResumeSession(mediaType)
+	var directResumeSeek int
+	screen.ffmpegSeek, directResumeSeek = computeResumeStart(existingSeek, storedResume, transcodeEnabled)
 
 	// Non-transcoded local media is served with HTTP range support (see
 	// seekableMediaForCasting), so advertise it as seekable and let the renderer
@@ -544,6 +584,7 @@ func playAction(screen *FyneScreen) {
 		return
 	}
 	screen.setActiveDevice(sessionDevice)
+	screen.applyInitialDLNAResume(screen.tvdata, directResumeSeek)
 }
 
 func clearmediaAction(screen *FyneScreen) {
@@ -749,6 +790,8 @@ func stopActionSync(screen *FyneScreen) {
 
 func stopActionInternal(screen *FyneScreen, wait bool) {
 	preserveSeek := screen.dlnaSeekRestart
+	screen.persistDisplayedResumeProgress(true)
+	screen.clearResumeSession()
 	screen.nextChromecastActionID()
 	screen.clearActiveDevice()
 
@@ -841,15 +884,18 @@ func getDevices() ([]devType, error) {
 
 func volumeAction(screen *FyneScreen, up bool) {
 	w := screen.Current
+	selectedDevice := screen.selectedDevice
 	go func() {
 		// Handle Chromecast volume
-		if screen.selectedDeviceType == devices.DeviceTypeChromecast {
-			if screen.chromecastClient == nil || !screen.chromecastClient.IsConnected() {
+		if selectedDevice.deviceType == devices.DeviceTypeChromecast {
+			client, cleanup, err := selectedMobileChromecastControlClient(screen, selectedDevice)
+			if err != nil {
 				check(w, errors.New(lang.L("chromecast not connected")))
 				return
 			}
+			defer cleanup()
 
-			status, err := screen.chromecastClient.GetStatus()
+			status, err := client.GetStatus()
 			if err != nil {
 				check(w, errors.New(lang.L("could not get the volume levels")))
 				return
@@ -869,7 +915,7 @@ func volumeAction(screen *FyneScreen, up bool) {
 				newVolume = 1
 			}
 
-			if err := screen.chromecastClient.SetVolume(newVolume); err != nil {
+			if err := client.SetVolume(newVolume); err != nil {
 				check(w, errors.New(lang.L("could not send volume action")))
 			}
 			return
@@ -976,6 +1022,8 @@ func dropDeadChromecastSession(screen *FyneScreen, client *castprotocol.CastClie
 }
 
 func startAfreshPlayButton(screen *FyneScreen) {
+	screen.persistDisplayedResumeProgress(true)
+	screen.clearResumeSession()
 	screen.nextChromecastActionID()
 
 	if screen.cancelEnablePlay != nil {
@@ -1068,8 +1116,10 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 	var mediaURL string
 	var mediaType string
 	var transcode bool
+	var playbackStart int
 	serverStoppedCTX := context.Background()
 	subtitleHost := ""
+	screen.clearResumeSession()
 	screen.ffmpegSeek = 0
 	screen.mediaDuration = 0
 
@@ -1177,6 +1227,13 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 		}
 
 		transcode = mediaTranscodeEnabled(screen, mediaType) && !isAudioMediaType(mediaType)
+		storedResume := screen.prepareResumeSession(mediaType)
+		resumeStart := computeChromecastResumeStart(0, storedResume)
+		if transcode {
+			screen.ffmpegSeek = resumeStart
+		} else {
+			playbackStart = resumeStart
+		}
 
 		screen.SetMediaType(mediaType)
 
@@ -1204,6 +1261,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 				startAfreshPlayButton(screen)
 				return
 			}
+			tcOpts.SeekSeconds = screen.ffmpegSeek
 			switch source := media.(type) {
 			case string:
 				if duration, err := utils.DurationForMediaSeconds(screen.ffmpegPath, source); err == nil {
@@ -1276,6 +1334,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 			MediaURL:    mediaURL,
 			ContentType: mediaType,
 			Metadata:    guiMediaMetadata(chromecastMediaTitle(screen, mediaURL), listenAddress, artworkAsset),
+			StartTime:   playbackStart,
 			Duration:    screen.mediaDuration,
 			SubtitleURL: subtitleURL,
 			Live:        live,
@@ -1489,7 +1548,7 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 
 			// Mute state rides along with the status poll (checkMutefunc
 			// skips Chromecast to avoid a second GetStatus loop).
-			if muted := status.Muted; lastMuted == nil || *lastMuted != muted {
+			if muted := status.Muted; chromecastClientOwnsDevice(client, screen.selectedDevice) && (lastMuted == nil || *lastMuted != muted) {
 				lastMuted = &muted
 				if muted {
 					setMuteUnmuteView("Unmute", screen)
@@ -1579,6 +1638,7 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 					screen.CurrentPos.Set(utils.SecondsToClockTime(int(shownTime)))
 					screen.EndPos.Set(utils.SecondsToClockTime(int(duration)))
 				})
+				screen.persistResumeProgress(int(shownTime), duration, false)
 			}
 
 			// Near-end stall safety net: natural completion is detected via

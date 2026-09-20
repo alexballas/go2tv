@@ -9,6 +9,11 @@
     "No Embedded Subs": "No Embedded Subs",
     "Embedded Subs": "Embedded Subs",
     "Select Device": "Select Device",
+    "Searching for devices…": "Searching for devices…",
+    "No devices found": "No devices found",
+    "1 device found": "1 device found",
+    "%d devices found": "%d devices found",
+    "Device discovery error": "Device discovery error",
     "Select Media File": "Select Media File",
     "Select Subtitles File": "Select Subtitles File",
     "URL": "URL",
@@ -155,6 +160,8 @@
     "Previous": "Previous",
     "No item selected": "No item selected",
     "Clear Playback History": "Clear Playback History",
+    "Playback History": "Playback History",
+    "Playback history cleared": "Playback history cleared",
     "Export Diagnostics": "Export Diagnostics",
     "Only Auto-Play Same File Types": "Only Auto-Play Same File Types",
     "Diagnostics": "Diagnostics",
@@ -215,5 +222,10 @@
     "Casting": "Casting",
     "Casting in progress": "Casting in progress",
     "Keep casting in the background": "Keep casting in the background",
-    "Some phones stop background apps to save battery, which interrupts casting. Exempt Go2TV from battery optimisation?": "Some phones stop background apps to save battery, which interrupts casting. Exempt Go2TV from battery optimisation?"
+    "Some phones stop background apps to save battery, which interrupts casting. Open Android battery settings and set Go2TV to Unrestricted?": "Some phones stop background apps to save battery, which interrupts casting. Open Android battery settings and set Go2TV to Unrestricted?",
+    "Background casting": "Background casting",
+    "Setup needed": "Setup needed",
+    "Casting is less likely to be interrupted when your screen is off.": "Casting is less likely to be interrupted when your screen is off.",
+    "Android may interrupt casting when your screen is off. Open battery settings and set Go2TV to Unrestricted.": "Android may interrupt casting when your screen is off. Open battery settings and set Go2TV to Unrestricted.",
+    "Open battery settings": "Open battery settings"
 }

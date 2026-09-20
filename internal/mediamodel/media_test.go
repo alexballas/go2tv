@@ -36,6 +36,11 @@ func TestExtensionSnapshotsCannotMutateDefaults(t *testing.T) {
 	images[0] = ".bad"
 	all := AllMediaExtensions()
 	all[0] = ".bad"
+	subtitles := SubtitleExtensions()
+	if want := []string{".srt", ".vtt"}; !slices.Equal(subtitles, want) {
+		t.Fatalf("subtitle extensions = %v, want %v", subtitles, want)
+	}
+	subtitles[0] = ".bad"
 	if !IsImageExtension(".JPG") || KindForPath("photo.JpEg") != MediaKindImage {
 		t.Fatal("image defaults mutated or mixed-case failed")
 	}
@@ -44,6 +49,9 @@ func TestExtensionSnapshotsCannotMutateDefaults(t *testing.T) {
 	}
 	if !IsSRTPath("captions.SrT") || !IsVTTPath("captions.VtT") {
 		t.Fatal("subtitle mixed-case membership failed")
+	}
+	if got := SubtitleExtensions(); !slices.Equal(got, []string{".srt", ".vtt"}) {
+		t.Fatalf("subtitle defaults mutated: %v", got)
 	}
 }
 

@@ -10,7 +10,6 @@ Build = 138
 [Android]
 ShareMimeTypes = ["video/*", "audio/*", "image/*"]
 MulticastDiscovery = true
-BatteryOptimizationExemption = true
 
 [Android.BackgroundService]
 Type = "connectedDevice"

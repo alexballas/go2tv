@@ -61,13 +61,18 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	w := s.Current
 	var data []devType
 	list := newDeviceList(&data)
+	discoveryStatus := widget.NewLabel(discoveryStatusText(0, false, nil))
+	discoveryStatus.Alignment = fyne.TextAlignTrailing
 
 	// Avoid parallel execution of getDevices.
 	blockGetDevices := make(chan struct{})
 	go func() {
 		datanew, err := getDevices()
-		if err != nil {
+		searched := err == nil
+		if errors.Is(err, devices.ErrNoDeviceAvailable) {
 			datanew = nil
+			err = nil
+			searched = true
 		}
 
 		// Sort devices alphabetically for consistent ordering
@@ -76,6 +81,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		fyne.DoAndWait(func() {
 			data = datanew
 			list.Refresh()
+			discoveryStatus.SetText(discoveryStatusText(len(datanew), searched, err))
 		})
 
 		blockGetDevices <- struct{}{}
@@ -157,6 +163,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	mediafilelabel := widget.NewLabel(lang.L("Media File") + ":")
 	subsfilelabel := widget.NewLabel(lang.L("Subtitles") + ":")
 	devicelabel := widget.NewLabel(lang.L("Select Device") + ":")
+	deviceHeader := container.NewBorder(nil, nil, devicelabel, discoveryStatus)
 
 	s.PlayPause = playpause
 	s.Stop = stop
@@ -191,7 +198,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
 	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearmedia), clearmedia, mfiletext)
 	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
-	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, sliderArea, actionbuttons, container.NewPadded(devicelabel))
+	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, sliderArea, actionbuttons, container.NewPadded(deviceHeader))
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
 
 	// Widgets actions
@@ -275,7 +282,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	// Device list auto-refresh
 	go func() {
 		<-blockGetDevices
-		refreshDevList(s, &data)
+		refreshDevList(s, &data, discoveryStatus)
 	}()
 
 	// Check mute status for selected device
@@ -287,18 +294,15 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	return content
 }
 
-func refreshDevList(s *FyneScreen, data *[]devType) {
+func refreshDevList(s *FyneScreen, data *[]devType, discoveryStatus *widget.Label) {
 	refreshDevices := time.NewTicker(5 * time.Second)
-
-	w := s.Current
-
-	_, err := getDevices()
-	if err != nil && !errors.Is(err, devices.ErrNoDeviceAvailable) {
-		check(w, err)
-	}
+	defer refreshDevices.Stop()
 
 	for range refreshDevices.C {
-		datanew, _ := getDevices()
+		datanew, discoveryErr := getDevices()
+		if errors.Is(discoveryErr, devices.ErrNoDeviceAvailable) {
+			discoveryErr = nil
+		}
 
 		var oldDevices []devType
 		var selectedAddr string
@@ -363,6 +367,7 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 
 		fyne.DoAndWait(func() {
 			*data = datanew
+			discoveryStatus.SetText(discoveryStatusText(len(datanew), true, discoveryErr))
 
 			if clearSelection {
 				s.controlURL = ""

@@ -125,7 +125,7 @@ func backgroundSessionTarget(screen *FyneScreen) string {
 	return screen.selectedDevice.name
 }
 
-// maybePromptBatteryOptimization offers the exemption once, ever. The foreground
+// maybePromptBatteryOptimization offers the battery settings once, ever. The foreground
 // service is what actually keeps the cast alive under the platform rules; this
 // only covers vendors whose own task killers go further. It is not worth
 // interrupting anyone twice for, so a dismissal is remembered.
@@ -144,7 +144,7 @@ func maybePromptBatteryOptimization(screen *FyneScreen) {
 	fyne.Do(func() {
 		dialog.ShowConfirm(
 			lang.L("Keep casting in the background"),
-			lang.L("Some phones stop background apps to save battery, which interrupts casting. Exempt Go2TV from battery optimisation?"),
+			lang.L("Some phones stop background apps to save battery, which interrupts casting. Open Android battery settings and set Go2TV to Unrestricted?"),
 			func(exempt bool) {
 				if exempt {
 					power.RequestBatteryOptimizationExemption()

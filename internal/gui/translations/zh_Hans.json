@@ -9,6 +9,11 @@
     "No Embedded Subs": "无嵌入字幕",
     "Embedded Subs": "嵌入字幕",
     "Select Device": "选择设备",
+    "Searching for devices…": "正在搜索设备…",
+    "No devices found": "未找到设备",
+    "1 device found": "找到 1 个设备",
+    "%d devices found": "找到 %d 个设备",
+    "Device discovery error": "设备发现错误",
     "Select Media File": "选择媒体文件",
     "Select Subtitles File": "选择字幕文件",
     "URL": "网址",
@@ -155,6 +160,8 @@
     "Previous": "上一个",
     "No item selected": "未选择项目",
     "Clear Playback History": "清除播放历史",
+    "Playback History": "播放历史",
+    "Playback history cleared": "播放历史已清除",
     "Export Diagnostics": "导出诊断信息",
     "Only Auto-Play Same File Types": "仅自动播放同类型文件",
     "Diagnostics": "诊断",
@@ -211,5 +218,11 @@
     "the selected network address is unavailable": "所选网络地址不可用",
     "permission denied while opening the selected port": "打开所选端口时权限被拒绝",
     "the server could not open the selected address and port": "服务器无法打开所选地址和端口",
-    "the server failed to start": "服务器启动失败"
+    "the server failed to start": "服务器启动失败",
+    "Some phones stop background apps to save battery, which interrupts casting. Open Android battery settings and set Go2TV to Unrestricted?": "部分手机会为节省电量而停止后台应用，导致投屏中断。是否打开 Android 电池设置并将 Go2TV 设为“不受限制”？",
+    "Background casting": "后台投屏",
+    "Setup needed": "需要设置",
+    "Casting is less likely to be interrupted when your screen is off.": "屏幕关闭时，投屏不易中断。",
+    "Android may interrupt casting when your screen is off. Open battery settings and set Go2TV to Unrestricted.": "屏幕关闭时，Android 可能会中断投屏。请打开电池设置并将 Go2TV 设为“不受限制”。",
+    "Open battery settings": "打开电池设置"
 }

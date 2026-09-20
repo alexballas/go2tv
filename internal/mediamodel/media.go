@@ -30,6 +30,14 @@ func VideoExtensions() []string { return slices.Clone(videoExtensions[:]) }
 func AudioExtensions() []string { return slices.Clone(audioExtensions[:]) }
 func SRTExtensions() []string   { return slices.Clone(srtExtensions[:]) }
 
+// SubtitleExtensions returns subtitle formats supported by playback.
+func SubtitleExtensions() []string {
+	extensions := make([]string, 0, len(srtExtensions)+len(vttExtensions))
+	extensions = append(extensions, srtExtensions[:]...)
+	extensions = append(extensions, vttExtensions[:]...)
+	return extensions
+}
+
 func AllMediaExtensions() []string {
 	extensions := make([]string, 0, len(imageExtensions)+len(videoExtensions)+len(audioExtensions))
 	extensions = append(extensions, videoExtensions[:]...)
