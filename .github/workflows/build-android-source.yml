@@ -3,15 +3,6 @@ name: Build Android from source
 on:
   workflow_dispatch:
   push:
-    paths:
-      - .github/workflows/build-android-source.yml
-      - Makefile
-      - scripts/build-android-ffmpeg.sh
-      - go.mod
-      - go.sum
-      - cmd/go2tv/**
-      - internal/**
-      - utils/**
 
 permissions:
   contents: read
@@ -28,6 +19,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Set version
+        run: |
+          version="$(cat version.txt)"
+          if [ "$version" != devel ]; then
+            version="v$version"
+          fi
+          echo "GO2TV_VERSION=$version" >> "$GITHUB_ENV"
 
       - name: Check out official FFmpeg source
         uses: actions/checkout@v6
@@ -71,6 +70,15 @@ jobs:
             export GO2TV_ANDROID_KEYSTORE_PASS="$ANDROID_KEYSTORE_PASSWORD"
             export GO2TV_ANDROID_KEY_ALIAS="${ANDROID_KEY_ALIAS:-go2tv}"
             export GO2TV_ANDROID_KEY_PASS="${ANDROID_KEY_PASSWORD:-$ANDROID_KEYSTORE_PASSWORD}"
+            keytool -list \
+              -keystore "$GO2TV_ANDROID_KEYSTORE" \
+              -storepass "$GO2TV_ANDROID_KEYSTORE_PASS" \
+              -alias "$GO2TV_ANDROID_KEY_ALIAS" >/dev/null
+          elif [ "$GITHUB_REPOSITORY" = "alexballas/go2tv" ]; then
+            echo "release Android signing secrets are required for canonical builds"
+            exit 1
+          else
+            echo "::warning::Release signing secrets unavailable; using a local debug key."
           fi
           make android-source \
             ANDROID_FFMPEG_SOURCE_DIR="$GITHUB_WORKSPACE/ffmpeg-source" \
@@ -81,7 +89,7 @@ jobs:
 
       - uses: actions/upload-artifact@v6
         with:
-          name: go2tv_android_source-built
+          name: go2tv_${{ env.GO2TV_VERSION }}_android_source-built
           path: |
             LICENSE
             README.md
