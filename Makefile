@@ -74,6 +74,10 @@ ANDROID_FFMPEG_URL?=$(ANDROID_FFMPEG_BASE_URL)/ffmpeg
 ANDROID_FFPROBE_URL?=$(ANDROID_FFMPEG_BASE_URL)/ffprobe
 ANDROID_FFMPEG_BIN=$(BUILD_DIR)/ffmpeg-android
 ANDROID_FFPROBE_BIN=$(BUILD_DIR)/ffprobe-android
+ANDROID_FFMPEG_MODE?=download
+ANDROID_FFMPEG_SOURCE_DIR?=
+ANDROID_X264_SOURCE_DIR?=
+ANDROID_FFMPEG_SOURCE_OUT?=$(BUILD_DIR)/ffmpeg-android-source
 ANDROID_APK_LIBS=$(BUILD_DIR)/apk-libs
 ANDROID_ABI?=arm64-v8a
 # Kept out of BUILD_DIR so `make clean` cannot delete it: a regenerated key does
@@ -87,7 +91,7 @@ ANDROID_BUILD_TOOLS?=$(shell ls -d $$ANDROID_HOME/build-tools/* 2>/dev/null | so
 # aligned; the android target verifies both, since neither is ours to control.
 ANDROID_ELF_ALIGN=0x4000
 
-.PHONY: webui build build-lite wayland x11 windows windows-check-version windows-sysroot windows-fyne install uninstall clean run test test-wayland-first-render appimage appimage-ffmpeg android android-fyne check-no-replace print-app-version print-app-build
+.PHONY: webui build build-lite wayland x11 windows windows-check-version windows-sysroot windows-fyne install uninstall clean run test test-wayland-first-render appimage appimage-ffmpeg android android-source android-ffmpeg-source android-fyne check-no-replace print-app-version print-app-build
 
 # Packagers driven outside this Makefile (the macOS workflows) read the version
 # metadata from here so the arithmetic lives in one place.
@@ -245,6 +249,17 @@ check-no-replace:
 		exit 1; \
 	fi
 
+android-ffmpeg-source:
+	@if [ -z "$(ANDROID_FFMPEG_SOURCE_DIR)" ]; then echo "ANDROID_FFMPEG_SOURCE_DIR is required"; exit 1; fi
+	@if [ -z "$(ANDROID_X264_SOURCE_DIR)" ]; then echo "ANDROID_X264_SOURCE_DIR is required"; exit 1; fi
+	ANDROID_ABI="$(ANDROID_ABI)" scripts/build-android-ffmpeg.sh "$(ANDROID_FFMPEG_SOURCE_DIR)" "$(ANDROID_X264_SOURCE_DIR)" "$(ANDROID_FFMPEG_SOURCE_OUT)"
+
+android-source: android-ffmpeg-source
+	$(MAKE) android \
+		ANDROID_FFMPEG_MODE=local \
+		ANDROID_FFMPEG_BIN="$(ANDROID_FFMPEG_SOURCE_OUT)/ffmpeg" \
+		ANDROID_FFPROBE_BIN="$(ANDROID_FFMPEG_SOURCE_OUT)/ffprobe"
+
 android: android-fyne
 	set -e; \
 	if [ -z "$$ANDROID_NDK_HOME" ]; then echo "ANDROID_NDK_HOME is required"; exit 1; fi; \
@@ -260,7 +275,14 @@ android: android-fyne
 	cp "$$FYNEAPP" "$$FYNEAPP_BAK"; \
 	trap 'cp "$$FYNEAPP_BAK" "$$FYNEAPP"; rm -f "$$FYNEAPP_BAK"' EXIT; \
 	mkdir -p $(BUILD_DIR); \
-	rm -rf $(ANDROID_APK_LIBS) $(ANDROID_FFMPEG_BIN) $(ANDROID_FFPROBE_BIN) $(APK_OUT) $(APK_ALIGNED); \
+	rm -rf $(ANDROID_APK_LIBS) $(APK_OUT) $(APK_ALIGNED); \
+	case "$(ANDROID_FFMPEG_MODE)" in \
+		download) rm -f $(ANDROID_FFMPEG_BIN) $(ANDROID_FFPROBE_BIN) ;; \
+		local) \
+			if [ ! -x "$(ANDROID_FFMPEG_BIN)" ]; then echo "local ffmpeg missing: $(ANDROID_FFMPEG_BIN)"; exit 1; fi; \
+			if [ ! -x "$(ANDROID_FFPROBE_BIN)" ]; then echo "local ffprobe missing: $(ANDROID_FFPROBE_BIN)"; exit 1; fi ;; \
+		*) echo "invalid ANDROID_FFMPEG_MODE: $(ANDROID_FFMPEG_MODE)"; exit 1 ;; \
+	esac; \
 	cd cmd/go2tv; \
 	rm -f ./*.apk; \
 	ANDROID_NDK_HOME="$$ANDROID_NDK_HOME" $(FYNE) package \
@@ -275,16 +297,27 @@ android: android-fyne
 	if [ -z "$$APK_BUILT" ]; then echo "fyne did not create an APK"; exit 1; fi; \
 	mv "$$APK_BUILT" ../../$(APK_OUT); \
 	cd ../..; \
-	echo "Downloading android ffmpeg: $(ANDROID_FFMPEG_URL)"; \
-	curl -fsSL "$(ANDROID_FFMPEG_URL)" -o $(ANDROID_FFMPEG_BIN) || wget -q -O $(ANDROID_FFMPEG_BIN) "$(ANDROID_FFMPEG_URL)"; \
-	echo "Downloading android ffprobe: $(ANDROID_FFPROBE_URL)"; \
-	curl -fsSL "$(ANDROID_FFPROBE_URL)" -o $(ANDROID_FFPROBE_BIN) || wget -q -O $(ANDROID_FFPROBE_BIN) "$(ANDROID_FFPROBE_URL)"; \
-	chmod 755 $(ANDROID_FFMPEG_BIN) $(ANDROID_FFPROBE_BIN); \
+	if [ "$(ANDROID_FFMPEG_MODE)" = download ]; then \
+		echo "Downloading android ffmpeg: $(ANDROID_FFMPEG_URL)"; \
+		curl -fsSL "$(ANDROID_FFMPEG_URL)" -o $(ANDROID_FFMPEG_BIN) || wget -q -O $(ANDROID_FFMPEG_BIN) "$(ANDROID_FFMPEG_URL)"; \
+		echo "Downloading android ffprobe: $(ANDROID_FFPROBE_URL)"; \
+		curl -fsSL "$(ANDROID_FFPROBE_URL)" -o $(ANDROID_FFPROBE_BIN) || wget -q -O $(ANDROID_FFPROBE_BIN) "$(ANDROID_FFPROBE_URL)"; \
+		chmod 755 $(ANDROID_FFMPEG_BIN) $(ANDROID_FFPROBE_BIN); \
+	fi; \
 	mkdir -p $(ANDROID_APK_LIBS)/lib/$(ANDROID_ABI); \
 	cp $(ANDROID_FFMPEG_BIN) $(ANDROID_APK_LIBS)/lib/$(ANDROID_ABI)/libffmpeg.so; \
 	cp $(ANDROID_FFPROBE_BIN) $(ANDROID_APK_LIBS)/lib/$(ANDROID_ABI)/libffprobe.so; \
 	chmod 755 $(ANDROID_APK_LIBS)/lib/$(ANDROID_ABI)/libffmpeg.so $(ANDROID_APK_LIBS)/lib/$(ANDROID_ABI)/libffprobe.so; \
 	( cd $(ANDROID_APK_LIBS) && zip -q -g ../$(notdir $(APK_OUT)) lib/$(ANDROID_ABI)/libffmpeg.so lib/$(ANDROID_ABI)/libffprobe.so ); \
+	if [ "$(ANDROID_FFMPEG_MODE)" = local ]; then \
+		NOTICE_SOURCE="$$(dirname "$(ANDROID_FFMPEG_BIN)")"; \
+		mkdir -p $(ANDROID_APK_LIBS)/assets/licenses; \
+		for notice in FFmpeg-GPL-2.0.txt x264-GPL-2.0.txt build-info.txt; do \
+			if [ ! -f "$$NOTICE_SOURCE/$$notice" ]; then echo "source-build notice missing: $$NOTICE_SOURCE/$$notice"; exit 1; fi; \
+			cp "$$NOTICE_SOURCE/$$notice" $(ANDROID_APK_LIBS)/assets/licenses/; \
+		done; \
+		( cd $(ANDROID_APK_LIBS) && zip -q -g ../$(notdir $(APK_OUT)) assets/licenses/* ); \
+	fi; \
 	MANIFEST_DUMP="$$($(ANDROID_BUILD_TOOLS)/aapt dump xmltree $(APK_OUT) AndroidManifest.xml || true)"; \
 	if echo "$$MANIFEST_DUMP" | grep -E "extractNativeLibs.*(false|0x0)" >/dev/null; then \
 		echo "AndroidManifest sets extractNativeLibs=false"; \
@@ -341,7 +374,8 @@ android: android-fyne
 	fi; \
 	$(ANDROID_BUILD_TOOLS)/apksigner sign --ks "$$KEYSTORE" --ks-key-alias "$$KEY_ALIAS" --ks-pass pass:"$$STOREPASS" --key-pass pass:"$$KEYPASS" $(APK_OUT); \
 	$(ANDROID_BUILD_TOOLS)/apksigner verify --print-certs $(APK_OUT); \
-	rm -rf $(ANDROID_APK_LIBS) $(ANDROID_FFMPEG_BIN) $(ANDROID_FFPROBE_BIN); \
+	rm -rf $(ANDROID_APK_LIBS); \
+	if [ "$(ANDROID_FFMPEG_MODE)" = download ]; then rm -f $(ANDROID_FFMPEG_BIN) $(ANDROID_FFPROBE_BIN); fi; \
 	echo "APK created at $(APK_OUT)"
 
 appimage: build

@@ -1,0 +1,95 @@
+name: Build Android from source
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/build-android-source.yml
+      - Makefile
+      - scripts/build-android-ffmpeg.sh
+      - go.mod
+      - go.sum
+      - cmd/go2tv/**
+      - internal/**
+      - utils/**
+
+permissions:
+  contents: read
+
+env:
+  FFMPEG_REF: 239f2c733de417201d7ad3b3b8b0d9b63285b2b1
+  X264_REF: b35605ace3ddf7c1a5d67a2eb553f034aef41d55
+  NDK_VERSION: r27d
+  NDK_SHA1: 22105e410cf29afcf163760cc95522b9fb981121
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check out official FFmpeg source
+        uses: actions/checkout@v6
+        with:
+          repository: FFmpeg/FFmpeg
+          ref: ${{ env.FFMPEG_REF }}
+          path: ffmpeg-source
+          fetch-depth: 1
+
+      - name: Check out official x264 source
+        run: |
+          git init x264-source
+          git -C x264-source remote add origin https://code.videolan.org/videolan/x264.git
+          git -C x264-source fetch --depth 1 origin "$X264_REF"
+          git -C x264-source checkout --detach FETCH_HEAD
+          test "$(git -C x264-source rev-parse HEAD)" = "$X264_REF"
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install pinned Android NDK
+        run: |
+          archive="android-ndk-${NDK_VERSION}-linux.zip"
+          curl -fL "https://dl.google.com/android/repository/${archive}" -o "$archive"
+          printf '%s  %s\n' "$NDK_SHA1" "$archive" | sha1sum -c -
+          unzip -q "$archive"
+          echo "ANDROID_NDK_HOME=$GITHUB_WORKSPACE/android-ndk-${NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Build FFmpeg and package APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            test -n "$ANDROID_KEYSTORE_PASSWORD"
+            export GO2TV_ANDROID_KEYSTORE="$RUNNER_TEMP/release.keystore"
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '\n\r' | base64 -d > "$GO2TV_ANDROID_KEYSTORE"
+            export GO2TV_ANDROID_KEYSTORE_PASS="$ANDROID_KEYSTORE_PASSWORD"
+            export GO2TV_ANDROID_KEY_ALIAS="${ANDROID_KEY_ALIAS:-go2tv}"
+            export GO2TV_ANDROID_KEY_PASS="${ANDROID_KEY_PASSWORD:-$ANDROID_KEYSTORE_PASSWORD}"
+          fi
+          make android-source \
+            ANDROID_FFMPEG_SOURCE_DIR="$GITHUB_WORKSPACE/ffmpeg-source" \
+            ANDROID_X264_SOURCE_DIR="$GITHUB_WORKSPACE/x264-source"
+          cp build/Go2TV.apk Go2TV.apk
+          tar --exclude=.git -cJf FFmpeg-source.tar.xz -C ffmpeg-source .
+          tar --exclude=.git -cJf x264-source.tar.xz -C x264-source .
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: go2tv_android_source-built
+          path: |
+            LICENSE
+            README.md
+            build/ffmpeg-android-source/FFmpeg-GPL-2.0.txt
+            build/ffmpeg-android-source/x264-GPL-2.0.txt
+            build/ffmpeg-android-source/build-info.txt
+            build/ffmpeg-android-source/ffmpeg-config.mak
+            FFmpeg-source.tar.xz
+            x264-source.tar.xz
+            Go2TV.apk
+          retention-days: 7

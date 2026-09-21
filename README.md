@@ -12,6 +12,7 @@
 [![Build for ARMv6 (32-bit)](https://github.com/alexballas/go2tv/actions/workflows/build-arm.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-arm.yml)
 [![Build for ARMv8 (64-bit)](https://github.com/alexballas/go2tv/actions/workflows/build-arm64.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-arm64.yml)
 [![Build for Android](https://github.com/alexballas/go2tv/actions/workflows/build-android.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-android.yml)
+[![Android source build](https://github.com/alexballas/go2tv/actions/workflows/build-android-source.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-android-source.yml)
 [![Build for Linux](https://github.com/alexballas/go2tv/actions/workflows/build-linux.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-linux.yml)
 [![Build for MacOS Intel](https://github.com/alexballas/go2tv/actions/workflows/build-mac-intel.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-mac-intel.yml)
 [![Build for MacOS Apple Silicon](https://github.com/alexballas/go2tv/actions/workflows/build-mac.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-mac.yml)
@@ -259,6 +260,23 @@ make android
 
 `make android` builds the arm64 APK and bundles Android `ffmpeg`/`ffprobe` executables as native libraries. Set `ANDROID_NDK_HOME` and `ANDROID_HOME`.
 
+To compile the bundled FFmpeg tools from an official source checkout:
+
+``` console
+git clone --branch n8.1.1 --depth 1 https://github.com/FFmpeg/FFmpeg.git ffmpeg-source
+git clone --branch stable --depth 1 https://code.videolan.org/videolan/x264.git x264-source
+make android-source \
+  ANDROID_FFMPEG_SOURCE_DIR="$PWD/ffmpeg-source" \
+  ANDROID_X264_SOURCE_DIR="$PWD/x264-source"
+```
+
+`android-source` performs no dependency downloads. It builds x264, then a GPL
+FFmpeg arm64 configuration with both MediaCodec and libx264 using the NDK. It
+verifies required transcoding features and 16 KB ELF alignment before packaging.
+The source-build workflow pins FFmpeg, x264, and the official Android NDK. GPL
+notices and exact source revisions are embedded in the APK and uploaded with the
+corresponding source archives.
+
 ### Using Docker
 
 Build the image:
@@ -282,4 +300,4 @@ Alexandros Ballas <alex@ballas.org>
 
 MIT
 
-Artifacts that bundle FFmpeg inherit the bundled FFmpeg build's license obligations. The Android FFmpeg APK uses an Android NDK-built LGPL FFmpeg package by default; AppImages built with the default bundled FFmpeg use GPL builds.
+Artifacts that bundle FFmpeg inherit the bundled FFmpeg build's license obligations. Source-built Android APKs and default bundled AppImages use GPL FFmpeg builds. The legacy Android binary-download target uses an LGPL FFmpeg build.

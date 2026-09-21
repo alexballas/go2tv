@@ -12,8 +12,8 @@ github.com/alexballas/refyne/v2 v2.8.107 h1:6cpDtqpSDNwa7oNRmQGVMbe2j8JkMXJD2ac5
 github.com/alexballas/refyne/v2 v2.8.107/go.mod h1:ns79edWPk+P/WSTCRHkMi9e7n4korAjc2tYuh30aF0k=
 github.com/alexballas/tunetag v0.0.0-20260719100601-dc1983c44140 h1:Lbt0bbEAdfIHF14lkSlXcJP4jyAvZzkmAlsMhSvN814=
 github.com/alexballas/tunetag v0.0.0-20260719100601-dc1983c44140/go.mod h1:HURLWYLMoZtxUiboPNZ5/en9npmAWfnC23RAOwgFv8Y=
-github.com/alexballas/xfilepicker v0.0.0-20260919200016-d34d60609b9c h1:j7nBxO9KY4xcnU2pNr9FzAdaIqbo23e0JghTvkw5reg=
-github.com/alexballas/xfilepicker v0.0.0-20260919200016-d34d60609b9c/go.mod h1:ZHb4HlFuW4EljFwasYHIlkzcIe9IcQspWph8yqU50SM=
+github.com/alexballas/xfilepicker v0.0.0-20260921231749-b5e595de2dba h1:sweDU88QeH2oticuDt3JAdsgAypvpiF1k+UxESzwPaE=
+github.com/alexballas/xfilepicker v0.0.0-20260921231749-b5e595de2dba/go.mod h1:ZHb4HlFuW4EljFwasYHIlkzcIe9IcQspWph8yqU50SM=
 github.com/anthonynsimon/bild v0.17.0 h1:kmPJOZpUgvrM2uoS7KMesbDU5+QTvZ92zIBjHM/oa18=
 github.com/anthonynsimon/bild v0.17.0/go.mod h1:ULwssBwK+8dLFObGrI3fIydKYQ2l454Y0eo+mqPclto=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=

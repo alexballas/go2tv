@@ -7,7 +7,7 @@ require (
 	github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab
 	github.com/alexballas/refyne/v2 v2.8.107
 	github.com/alexballas/tunetag v0.0.0-20260719100601-dc1983c44140
-	github.com/alexballas/xfilepicker v0.0.0-20260919200016-d34d60609b9c
+	github.com/alexballas/xfilepicker v0.0.0-20260921231749-b5e595de2dba
 	github.com/buger/jsonparser v1.6.1
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
