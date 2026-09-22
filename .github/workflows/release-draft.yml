@@ -80,7 +80,7 @@ jobs:
           });
 
           const expected = [
-            `go2tv_${versionTag}_android_source-built_signed`,
+            `go2tv_${versionTag}_android`,
             `go2tv_${versionTag}_linux_amd64`,
             `go2tv_${versionTag}_linux_amd64_ffmpeg.AppImage`,
             `go2tv_${versionTag}_linux_arm`,
@@ -137,7 +137,7 @@ jobs:
 
           unzip -q "$zip_path" -d "$workdir"
 
-          if [[ "$name" == *"_android_source-built_signed" ]]; then
+          if [[ "$name" == *"_android" ]]; then
             apk_path="$(find "$workdir" -type f -name 'Go2TV.apk' | head -n1 || true)"
             if [ -z "$apk_path" ]; then
               echo "android apk missing in $zip_path"

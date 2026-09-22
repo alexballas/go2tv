@@ -97,7 +97,7 @@ jobs:
       - name: Upload signed APK and sources
         uses: actions/upload-artifact@v6
         with:
-          name: go2tv_${{ env.GO2TV_VERSION }}_android_source-built_signed
+          name: go2tv_${{ env.GO2TV_VERSION }}_android
           path: |
             LICENSE
             README.md
@@ -113,7 +113,7 @@ jobs:
       - name: Upload unsigned APK
         uses: actions/upload-artifact@v6
         with:
-          name: go2tv_${{ env.GO2TV_VERSION }}_android_source-built_unsigned
+          name: go2tv_${{ env.GO2TV_VERSION }}_android_unsigned
           path: |
             LICENSE
             README.md
