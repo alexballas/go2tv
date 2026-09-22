@@ -81,15 +81,23 @@ jobs:
             echo "::warning::Release signing secrets unavailable; using a local debug key."
           fi
           make android-source \
+            ANDROID_SIGN=false \
             ANDROID_FFMPEG_SOURCE_DIR="$GITHUB_WORKSPACE/ffmpeg-source" \
             ANDROID_X264_SOURCE_DIR="$GITHUB_WORKSPACE/x264-source"
+          cp build/Go2TV.apk Go2TV-unsigned.apk
+
+          make android \
+            ANDROID_FFMPEG_MODE=local \
+            ANDROID_FFMPEG_BIN="$GITHUB_WORKSPACE/build/ffmpeg-android-source/ffmpeg" \
+            ANDROID_FFPROBE_BIN="$GITHUB_WORKSPACE/build/ffmpeg-android-source/ffprobe"
           cp build/Go2TV.apk Go2TV.apk
           tar --exclude=.git -cJf FFmpeg-source.tar.xz -C ffmpeg-source .
           tar --exclude=.git -cJf x264-source.tar.xz -C x264-source .
 
-      - uses: actions/upload-artifact@v6
+      - name: Upload signed APK and sources
+        uses: actions/upload-artifact@v6
         with:
-          name: go2tv_${{ env.GO2TV_VERSION }}_android_source-built
+          name: go2tv_${{ env.GO2TV_VERSION }}_android_source-built_signed
           path: |
             LICENSE
             README.md
@@ -100,4 +108,17 @@ jobs:
             FFmpeg-source.tar.xz
             x264-source.tar.xz
             Go2TV.apk
+          retention-days: 7
+
+      - name: Upload unsigned APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: go2tv_${{ env.GO2TV_VERSION }}_android_source-built_unsigned
+          path: |
+            LICENSE
+            README.md
+            build/ffmpeg-android-source/FFmpeg-GPL-2.0.txt
+            build/ffmpeg-android-source/x264-GPL-2.0.txt
+            build/ffmpeg-android-source/build-info.txt
+            Go2TV-unsigned.apk
           retention-days: 7

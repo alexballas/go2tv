@@ -11,7 +11,6 @@
 
 [![Build for ARMv6 (32-bit)](https://github.com/alexballas/go2tv/actions/workflows/build-arm.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-arm.yml)
 [![Build for ARMv8 (64-bit)](https://github.com/alexballas/go2tv/actions/workflows/build-arm64.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-arm64.yml)
-[![Build for Android](https://github.com/alexballas/go2tv/actions/workflows/build-android.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-android.yml)
 [![Android source build](https://github.com/alexballas/go2tv/actions/workflows/build-android-source.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-android-source.yml)
 [![Build for Linux](https://github.com/alexballas/go2tv/actions/workflows/build-linux.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-linux.yml)
 [![Build for MacOS Intel](https://github.com/alexballas/go2tv/actions/workflows/build-mac-intel.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-mac-intel.yml)
@@ -276,6 +275,9 @@ verifies required transcoding features and 16 KB ELF alignment before packaging.
 The source-build workflow pins FFmpeg, x264, and the official Android NDK. GPL
 notices and exact source revisions are embedded in the APK and uploaded with the
 corresponding source archives.
+
+Set `ANDROID_SIGN=false` to produce a zip-aligned unsigned APK for downstream
+packagers such as F-Droid. Signed builds remain the default.
 
 ### Using Docker
 

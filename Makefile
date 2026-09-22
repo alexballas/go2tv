@@ -80,6 +80,7 @@ ANDROID_X264_SOURCE_DIR?=
 ANDROID_FFMPEG_SOURCE_OUT?=$(BUILD_DIR)/ffmpeg-android-source
 ANDROID_APK_LIBS=$(BUILD_DIR)/apk-libs
 ANDROID_ABI?=arm64-v8a
+ANDROID_SIGN?=true
 # Kept out of BUILD_DIR so `make clean` cannot delete it: a regenerated key does
 # not match what is already installed, and Android then rejects the update until
 # the app (and its data) is removed.
@@ -269,7 +270,8 @@ android: android-fyne
 	if [ ! -x "$(ANDROID_BUILD_TOOLS)/zipalign" ]; then echo "zipalign missing in $(ANDROID_BUILD_TOOLS)"; exit 1; fi; \
 	if [ ! -x "$(ANDROID_BUILD_TOOLS)/apksigner" ]; then echo "apksigner missing in $(ANDROID_BUILD_TOOLS)"; exit 1; fi; \
 	if ! command -v zip >/dev/null 2>&1; then echo "zip is required"; exit 1; fi; \
-	if ! command -v keytool >/dev/null 2>&1; then echo "keytool is required"; exit 1; fi; \
+	case "$(ANDROID_SIGN)" in true|false) ;; *) echo "ANDROID_SIGN must be true or false"; exit 1 ;; esac; \
+	if [ "$(ANDROID_SIGN)" = true ] && ! command -v keytool >/dev/null 2>&1; then echo "keytool is required"; exit 1; fi; \
 	FYNEAPP="$(CURDIR)/cmd/go2tv/FyneApp.toml"; \
 	FYNEAPP_BAK="$$(mktemp)"; \
 	cp "$$FYNEAPP" "$$FYNEAPP_BAK"; \
@@ -361,19 +363,29 @@ android: android-fyne
 		done; \
 		rm -f "$$ELF_TMP"; \
 	fi; \
+	if unzip -Z1 $(APK_OUT) | grep -Eq '^META-INF/(MANIFEST\.MF|[^/]+\.(SF|RSA|DSA|EC))$$'; then \
+		zip -q -d $(APK_OUT) 'META-INF/MANIFEST.MF' 'META-INF/*.SF' 'META-INF/*.RSA' 'META-INF/*.DSA' 'META-INF/*.EC'; \
+	fi; \
 	$(ANDROID_BUILD_TOOLS)/zipalign -f -P 16 4 $(APK_OUT) $(APK_ALIGNED); \
 	mv $(APK_ALIGNED) $(APK_OUT); \
-	if [ -n "$${GO2TV_ANDROID_KEYSTORE:-}" ] && [ -z "$${GO2TV_ANDROID_KEYSTORE_PASS:-}" ]; then echo "GO2TV_ANDROID_KEYSTORE_PASS is required with GO2TV_ANDROID_KEYSTORE"; exit 1; fi; \
-	KEYSTORE="$${GO2TV_ANDROID_KEYSTORE:-$(ANDROID_DEBUG_KEYSTORE)}"; \
-	KEY_ALIAS="$${GO2TV_ANDROID_KEY_ALIAS:-go2tv}"; \
-	STOREPASS="$${GO2TV_ANDROID_KEYSTORE_PASS:-android}"; \
-	KEYPASS="$${GO2TV_ANDROID_KEY_PASS:-$$STOREPASS}"; \
-	if [ -z "$${GO2TV_ANDROID_KEYSTORE:-}" ] && [ ! -f "$$KEYSTORE" ]; then \
-		mkdir -p "$$(dirname "$$KEYSTORE")"; \
-		keytool -genkeypair -v -keystore "$$KEYSTORE" -storepass "$$STOREPASS" -keypass "$$KEYPASS" -alias "$$KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Go2TV,O=Go2TV,C=US"; \
+	if [ "$(ANDROID_SIGN)" = true ]; then \
+		if [ -n "$${GO2TV_ANDROID_KEYSTORE:-}" ] && [ -z "$${GO2TV_ANDROID_KEYSTORE_PASS:-}" ]; then echo "GO2TV_ANDROID_KEYSTORE_PASS is required with GO2TV_ANDROID_KEYSTORE"; exit 1; fi; \
+		KEYSTORE="$${GO2TV_ANDROID_KEYSTORE:-$(ANDROID_DEBUG_KEYSTORE)}"; \
+		KEY_ALIAS="$${GO2TV_ANDROID_KEY_ALIAS:-go2tv}"; \
+		STOREPASS="$${GO2TV_ANDROID_KEYSTORE_PASS:-android}"; \
+		KEYPASS="$${GO2TV_ANDROID_KEY_PASS:-$$STOREPASS}"; \
+		if [ -z "$${GO2TV_ANDROID_KEYSTORE:-}" ] && [ ! -f "$$KEYSTORE" ]; then \
+			mkdir -p "$$(dirname "$$KEYSTORE")"; \
+			keytool -genkeypair -v -keystore "$$KEYSTORE" -storepass "$$STOREPASS" -keypass "$$KEYPASS" -alias "$$KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Go2TV,O=Go2TV,C=US"; \
+		fi; \
+		$(ANDROID_BUILD_TOOLS)/apksigner sign --ks "$$KEYSTORE" --ks-key-alias "$$KEY_ALIAS" --ks-pass pass:"$$STOREPASS" --key-pass pass:"$$KEYPASS" $(APK_OUT); \
+		$(ANDROID_BUILD_TOOLS)/apksigner verify --print-certs $(APK_OUT); \
+	elif $(ANDROID_BUILD_TOOLS)/apksigner verify $(APK_OUT) >/dev/null 2>&1; then \
+		echo "unsigned APK unexpectedly contains a valid signature"; \
+		exit 1; \
+	else \
+		echo "Unsigned APK created at $(APK_OUT)"; \
 	fi; \
-	$(ANDROID_BUILD_TOOLS)/apksigner sign --ks "$$KEYSTORE" --ks-key-alias "$$KEY_ALIAS" --ks-pass pass:"$$STOREPASS" --key-pass pass:"$$KEYPASS" $(APK_OUT); \
-	$(ANDROID_BUILD_TOOLS)/apksigner verify --print-certs $(APK_OUT); \
 	rm -rf $(ANDROID_APK_LIBS); \
 	if [ "$(ANDROID_FFMPEG_MODE)" = download ]; then rm -f $(ANDROID_FFMPEG_BIN) $(ANDROID_FFPROBE_BIN); fi; \
 	echo "APK created at $(APK_OUT)"
