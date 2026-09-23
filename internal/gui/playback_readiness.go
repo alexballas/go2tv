@@ -89,4 +89,7 @@ func (s *FyneScreen) refreshPlaybackReadiness() {
 			s.SlideBar.Disable()
 		}
 	}
+	if s.mpris != nil {
+		s.mpris.refresh()
+	}
 }

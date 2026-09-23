@@ -338,6 +338,7 @@ func sliderUpdate(s *FyneScreen) {
 				s.SlideBar.SetValue(valueToSet)
 				s.CurrentPos.Set(currentClock)
 				s.EndPos.Set(end)
+				s.refreshMPRISProgress()
 			})
 			s.persistResumeProgress(current, float64(total), false)
 		}

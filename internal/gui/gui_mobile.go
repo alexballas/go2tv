@@ -27,6 +27,8 @@ import (
 	"go2tv.app/go2tv/v2/utils"
 )
 
+func (p *FyneScreen) refreshMPRISProgress() {}
+
 // FyneScreen .
 type FyneScreen struct {
 	mu                     sync.RWMutex

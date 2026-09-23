@@ -45,8 +45,21 @@ type screencastSession interface {
 	StderrTail(n int) string
 }
 
+type mprisBridge interface {
+	refresh()
+	volume(float64)
+	close()
+}
+
+func (p *FyneScreen) refreshMPRISProgress() {
+	if p.mpris != nil {
+		p.mpris.refresh()
+	}
+}
+
 // FyneScreen .
 type FyneScreen struct {
+	mpris                    mprisBridge
 	mediaSelection           *mediaSelectionCard
 	playbackStatus           *playbackStatusLabel
 	deviceSummary            *widget.Label
@@ -357,6 +370,11 @@ func Start(ctx context.Context, s *FyneScreen) {
 	s.updateFFmpegDependentCheckTooltips()
 
 	s.tabs = tabs
+	s.mpris = startMPRIS(s)
+	if s.mpris != nil {
+		defer s.mpris.close()
+		s.mpris.refresh()
+	}
 
 	w.SetContent(fynetooltip.AddWindowToolTipLayer(tabs, w.Canvas()))
 	w.Resize(mainTabWindowSize(w, tabs, mainContent))
@@ -680,6 +698,9 @@ func (p *FyneScreen) updateScreenState(a string) {
 		p.playingMediaPath = p.mediafile
 	}
 	p.mu.Unlock()
+	if p.mpris != nil {
+		p.mpris.refresh()
+	}
 
 	fyne.Do(func() {
 		if p.DeviceList != nil {
@@ -725,6 +746,9 @@ func (p *FyneScreen) setPlayingMediaPath(path string) {
 	p.mu.Lock()
 	p.playingMediaPath = path
 	p.mu.Unlock()
+	if p.mpris != nil {
+		p.mpris.refresh()
+	}
 	fyne.Do(func() {
 		p.refreshPlaybackReadiness()
 		p.refreshQueueStateUI()

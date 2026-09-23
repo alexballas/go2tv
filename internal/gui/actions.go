@@ -337,6 +337,9 @@ func setCurrentMediaPath(screen *FyneScreen, mediaPath string) error {
 	}
 
 	screen.mediafile = absMediaFile
+	if screen.mpris != nil {
+		screen.mpris.refresh()
+	}
 	screen.currentmfolder = filepath.Dir(absMediaFile)
 	screen.syncQueueCurrentWithMedia(absMediaFile)
 	screen.setCurrentArtworkTarget(guiArtworkIdentity(absMediaFile))
@@ -375,6 +378,9 @@ func clearCurrentMediaSelection(screen *FyneScreen) {
 		screen.MediaText.SetText("")
 	}
 	screen.mediafile = ""
+	if screen.mpris != nil {
+		screen.mpris.refresh()
+	}
 	screen.setCurrentArtwork(nil)
 	screen.clearQueueCurrent()
 	setInternalSubsDropdownNoSubs(screen)
@@ -2030,6 +2036,9 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 					total := utils.SecondsToClockTime(int(duration))
 					screen.CurrentPos.Set(current)
 					screen.EndPos.Set(total)
+					if screen.mpris != nil {
+						screen.mpris.refresh()
+					}
 				})
 				screen.persistResumeProgress(int(shownTime), duration, false)
 			}
@@ -2690,6 +2699,8 @@ func volumeAction(screen *FyneScreen, up bool) {
 
 			if err := client.SetVolume(newVolume); err != nil {
 				check(screen, errors.New(lang.L("could not send volume action")))
+			} else if screen.mpris != nil {
+				screen.mpris.volume(float64(newVolume))
 			}
 			return
 		}
@@ -2727,6 +2738,8 @@ func volumeAction(screen *FyneScreen, up bool) {
 
 		if err := screen.tvdata.SetVolumeSoapCall(stringVolume); err != nil {
 			check(screen, errors.New(lang.L("could not send volume action")))
+		} else if screen.mpris != nil {
+			screen.mpris.volume(float64(setVolume) / 100)
 		}
 	}()
 }

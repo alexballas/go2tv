@@ -579,6 +579,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	medialoop.OnChanged = func(b bool) {
 		s.Medialoop = b
+		if s.mpris != nil {
+			s.mpris.refresh()
+		}
 		if b {
 			nextmedia.SetChecked(false)
 			nextmedia.Disable()
@@ -591,6 +594,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	}
 
 	nextmedia.OnChanged = func(b bool) {
+		if s.mpris != nil {
+			s.mpris.refresh()
+		}
 		switch b {
 		case true:
 			medialoop.SetChecked(false)

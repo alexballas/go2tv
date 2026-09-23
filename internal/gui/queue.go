@@ -420,6 +420,9 @@ func (screen *FyneScreen) refreshTraversalControls() {
 				screen.SkipNextButton.Disable()
 			}
 		}
+		if screen.mpris != nil {
+			screen.mpris.refresh()
+		}
 	})
 }
 
