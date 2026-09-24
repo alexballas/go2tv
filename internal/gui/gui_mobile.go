@@ -29,6 +29,8 @@ import (
 
 func (p *FyneScreen) refreshMPRISProgress() {}
 
+func (p *FyneScreen) notifyMPRISSeek(int) {}
+
 // FyneScreen .
 type FyneScreen struct {
 	mu                     sync.RWMutex

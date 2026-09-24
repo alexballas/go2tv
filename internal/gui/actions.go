@@ -424,7 +424,7 @@ func openMediaPickerForWindow(screen *FyneScreen, w fyne.Window, onPaths func(*F
 		if onDone != nil {
 			defer onDone()
 		}
-		check(screen, err)
+		checkInWindow(screen, err, w)
 
 		if readers == nil {
 			return
@@ -440,7 +440,7 @@ func openMediaPickerForWindow(screen *FyneScreen, w fyne.Window, onPaths func(*F
 			paths = append(paths, reader.URI().Path())
 		}
 
-		check(screen, onPaths(screen, paths))
+		checkInWindow(screen, onPaths(screen, paths), w)
 	}, w, true)
 
 	if f, ok := fd.(xfilepicker.FilePicker); ok {
@@ -452,7 +452,7 @@ func openMediaPickerForWindow(screen *FyneScreen, w fyne.Window, onPaths func(*F
 		mfileLister, err := storage.ListerForURI(mfileURI)
 
 		if err != nil || mfileLister == nil {
-			check(screen, err)
+			checkInWindow(screen, err, w)
 			screen.currentmfolder = ""
 		} else if f, ok := fd.(xfilepicker.FilePicker); ok {
 			f.SetLocation(mfileLister)
@@ -787,7 +787,8 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 		var directResumeSeek int
 		transcodeEnabled := screen.Transcode
 		existingSeek := 0
-		if screen.dlnaSeekRestart {
+		seekRestart := screen.dlnaSeekRestart
+		if seekRestart {
 			existingSeek = screen.ffmpegSeek
 		}
 		screen.dlnaSeekRestart = false
@@ -996,6 +997,9 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 			return
 		}
 		screen.setActiveDevice(sessionDevice)
+		if seekRestart {
+			screen.notifyMPRISSeek(existingSeek)
+		}
 		if directResumeSeek > 0 && !screen.tvdata.Transcode {
 			screen.applyInitialDLNAResume(screen.tvdata, directResumeSeek)
 		}
@@ -1791,6 +1795,7 @@ func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
 			return
 		}
 		// Restart status watcher
+		screen.notifyMPRISSeek(seekPos)
 		go chromecastStatusWatcher(serverStoppedCTX, screen, actionID)
 	}()
 }

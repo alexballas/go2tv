@@ -48,7 +48,14 @@ type screencastSession interface {
 type mprisBridge interface {
 	refresh()
 	volume(float64)
+	seeked(int64)
 	close()
+}
+
+func (p *FyneScreen) notifyMPRISSeek(seconds int) {
+	if p.mpris != nil {
+		p.mpris.seeked(int64(seconds) * 1_000_000)
+	}
 }
 
 func (p *FyneScreen) refreshMPRISProgress() {
@@ -999,11 +1006,11 @@ func crashPath(crash *crashlog.Session) string {
 
 func onDropFiles(screen *FyneScreen) func(p fyne.Position, u []fyne.URI) {
 	return func(p fyne.Position, u []fyne.URI) {
-		handleDroppedFiles(screen, droppedMediaModeReplace, u)
+		handleDroppedFiles(screen, screen.Current, droppedMediaModeReplace, u)
 	}
 }
 
-func handleDroppedFiles(screen *FyneScreen, mode droppedMediaMode, uris []fyne.URI) {
+func handleDroppedFiles(screen *FyneScreen, parent fyne.Window, mode droppedMediaMode, uris []fyne.URI) {
 	if screen.renderGate.remoteLeaseHeld() {
 		return
 	}
@@ -1020,7 +1027,7 @@ func handleDroppedFiles(screen *FyneScreen, mode droppedMediaMode, uris []fyne.U
 	}
 
 	if err := screen.droppedMediaBlockedErrorForMode(mode); err != nil {
-		check(screen, err)
+		checkInWindow(screen, err, parent)
 		return
 	}
 
@@ -1038,7 +1045,7 @@ func handleDroppedFiles(screen *FyneScreen, mode droppedMediaMode, uris []fyne.U
 			err = selectMediaPaths(screen, paths)
 		}
 
-		check(screen, err)
+		checkInWindow(screen, err, parent)
 	}()
 }
 

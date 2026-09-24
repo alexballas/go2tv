@@ -219,6 +219,11 @@ func (m *guiMPRIS) artURL(asset *metadata.ArtworkAsset) string {
 
 func (m *guiMPRIS) seek(position int64) {
 	s := m.screen
+	release, permitted := s.rendererPermit(false)
+	if !permitted {
+		return
+	}
+	defer release()
 	if position < 0 {
 		return
 	}
@@ -226,6 +231,7 @@ func (m *guiMPRIS) seek(position int64) {
 	if client := s.activeChromecastPlaybackClient(); client != nil {
 		if s.mediaDuration > 0 {
 			chromecastTranscodedSeek(s, seconds)
+			return
 		} else if err := client.Seek(seconds); err != nil {
 			return
 		}
@@ -235,22 +241,38 @@ func (m *guiMPRIS) seek(position int64) {
 			s.dlnaSeekRestart = true
 			stopActionSync(s)
 			playAction(s)
+			return
 		} else if err := tv.SeekSoapCall(utils.SecondsToClockTime(seconds)); err != nil {
 			return
 		}
 	} else {
 		return
 	}
-	m.service.SetPositionUS(position, true)
+	m.seeked(int64(seconds) * 1_000_000)
+}
+
+func (m *guiMPRIS) seeked(position int64) {
 	fyne.Do(func() {
-		if s.CurrentPos != nil {
-			_ = s.CurrentPos.Set(utils.SecondsToClockTime(seconds))
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.closed {
+			return
 		}
+		if m.screen.CurrentPos != nil {
+			_ = m.screen.CurrentPos.Set(utils.SecondsToClockTime(int(position / 1_000_000)))
+		}
+		m.last.PositionUS = position
+		m.service.SetPositionUS(position, true)
 	})
 }
 
 func (m *guiMPRIS) setVolume(value float64) {
 	s := m.screen
+	release, permitted := s.rendererPermit(false)
+	if !permitted {
+		return
+	}
+	defer release()
 	value = min(max(value, 0), 1)
 	if client := s.activeChromecastPlaybackClient(); client != nil {
 		if err := client.SetVolume(float32(value)); err != nil {

@@ -5,23 +5,157 @@ package gui
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/alexballas/refyne/v2"
+	"github.com/alexballas/refyne/v2/data/binding"
 	"github.com/alexballas/tunetag/id3v1"
 	"github.com/godbus/dbus/v5"
 	"go2tv.app/go2tv/v2/internal/mediaartwork"
 	"go2tv.app/go2tv/v2/internal/mediamodel"
 	"go2tv.app/go2tv/v2/internal/mpris"
 	"go2tv.app/go2tv/v2/metadata"
+	"go2tv.app/go2tv/v2/soapcalls"
 )
+
+func TestMPRISVolumeHonorsRemoteLease(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("truncated response"))
+	}))
+	defer server.Close()
+	screen := &FyneScreen{tvdata: &soapcalls.TVPayload{RenderingControlURL: server.URL}}
+	bridge := &guiMPRIS{screen: screen}
+	release, err := screen.renderGate.acquireRemoteLease()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bridge.setVolume(0.5)
+	if requests.Load() != 0 {
+		t.Fatal("volume changed while remote session owned the renderer")
+	}
+	release()
+	bridge.setVolume(0.5)
+	if requests.Load() != 1 {
+		t.Fatal("volume request missing after remote lease released")
+	}
+}
+
+func TestMPRISVolumeHoldsPermitUntilRequestCompletes(t *testing.T) {
+	screen := &FyneScreen{}
+	leaseError := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		release, err := screen.renderGate.acquireRemoteLease()
+		if err == nil {
+			release()
+		}
+		leaseError <- err
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("truncated response"))
+	}))
+	defer server.Close()
+	screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: server.URL}
+	(&guiMPRIS{screen: screen}).setVolume(0.5)
+	if err := <-leaseError; !errors.Is(err, errRendererBusy) {
+		t.Fatalf("remote lease during volume request = %v, want renderer busy", err)
+	}
+	release, err := screen.renderGate.acquireRemoteLease()
+	if err != nil {
+		t.Fatalf("volume failure leaked permit: %v", err)
+	}
+	release()
+}
+
+func TestMPRISSliderSeekSignal(t *testing.T) {
+	if os.Getenv("DBUS_SESSION_BUS_ADDRESS") == "" {
+		t.Skip("session bus unavailable")
+	}
+	tt := []struct {
+		name       string
+		status     int
+		wantSignal bool
+	}{
+		{"success", http.StatusOK, true},
+		{"renderer rejects seek", http.StatusInternalServerError, false},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			var seeks atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.Contains(r.Header.Get("SOAPAction"), "GetPositionInfo") {
+					_, _ = w.Write([]byte(`<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetPositionInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><TrackDuration>00:02:00</TrackDuration><RelTime>00:00:10</RelTime></u:GetPositionInfoResponse></s:Body></s:Envelope>`))
+					return
+				}
+				seeks.Add(1)
+				w.WriteHeader(tc.status)
+			}))
+			defer server.Close()
+			screen, _ := newMediaCardTestScreen(t)
+			screen.SlideBar = newTappableSlider(screen)
+			screen.CurrentPos = binding.NewString()
+			screen.EndPos = binding.NewString()
+			screen.tvdata = &soapcalls.TVPayload{ControlURL: server.URL}
+			service, err := mpris.Start(mpris.Controls{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer service.Close()
+			base := mpris.Snapshot{Status: "Playing", Path: "/song.mp3", PositionUS: 10_000_000, LengthUS: 120_000_000}
+			service.Update(base)
+			bridge := &guiMPRIS{screen: screen, service: service, last: base}
+			screen.mpris = bridge
+			client, err := dbus.ConnectSessionBus()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer client.Close()
+			if err := client.AddMatchSignal(dbus.WithMatchObjectPath(mpris.Path), dbus.WithMatchInterface(mpris.PlayerIface), dbus.WithMatchMember("Seeked")); err != nil {
+				t.Fatal(err)
+			}
+			signals := make(chan *dbus.Signal, 10)
+			client.Signal(signals)
+			defer client.RemoveSignal(signals)
+			screen.SlideBar.SetValue(50)
+			screen.SlideBar.seekDLNAAsync()
+			select {
+			case signal := <-signals:
+				if !tc.wantSignal {
+					t.Fatalf("failed seek emitted %v", signal)
+				}
+				if len(signal.Body) != 1 || signal.Body[0] != int64(60_000_000) {
+					t.Fatalf("Seeked body = %v", signal.Body)
+				}
+				position, err := client.Object(service.Name(), mpris.Path).GetProperty(mpris.PlayerIface + ".Position")
+				if err != nil || position.Value() != int64(60_000_000) {
+					t.Fatalf("position = %v, %v", position, err)
+				}
+			case <-time.After(time.Second):
+				if tc.wantSignal {
+					t.Fatal("successful GUI seek did not emit Seeked")
+				}
+			}
+			if seeks.Load() != 1 {
+				t.Fatalf("seek requests = %d, want 1", seeks.Load())
+			}
+		})
+	}
+}
 
 func TestFlatpakMPRISArtworkUsesHostVisibleCache(t *testing.T) {
 	t.Setenv("FLATPAK_ID", mpris.AppID)

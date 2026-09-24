@@ -11,7 +11,9 @@ import (
 
 	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/canvas"
+	"github.com/alexballas/refyne/v2/storage"
 	"github.com/alexballas/refyne/v2/test"
+	"github.com/alexballas/refyne/v2/theme"
 	"github.com/alexballas/refyne/v2/widget"
 	"go2tv.app/go2tv/v2/internal/mediamodel"
 )
@@ -525,6 +527,59 @@ func TestRemoveSelectedQueueItemClearsCurrentOnLastRemove(t *testing.T) {
 	}
 }
 
+func TestRemoveCurrentQueueItemErrorUsesPlaylistWindow(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	mainWindow := app.NewWindow("main")
+	playlistWindow := app.NewWindow("playlist")
+	items := testQueueItems("/tmp/one.mp4", "/tmp/two.mp4")
+	screen := &FyneScreen{
+		Current:            mainWindow,
+		queueWindow:        playlistWindow,
+		mediafile:          items[0].Path(),
+		queueSelectedIndex: 0,
+		SessionQueue:       newSessionQueue(items, 0),
+	}
+
+	screen.removeSelectedQueueItem()
+	fyne.DoAndWait(func() {})
+
+	if got := len(mainWindow.Canvas().Overlays().List()); got != 0 {
+		t.Fatalf("main window overlays = %d, want 0", got)
+	}
+	if got := len(playlistWindow.Canvas().Overlays().List()); got != 1 {
+		t.Fatalf("playlist window overlays = %d, want 1", got)
+	}
+	if got := screen.SessionQueue.Len(); got != 2 {
+		t.Fatalf("playlist length = %d, want 2", got)
+	}
+}
+
+func TestPlaylistDropErrorUsesPlaylistWindow(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	mainWindow := app.NewWindow("main")
+	playlistWindow := app.NewWindow("playlist")
+	screen := &FyneScreen{
+		Current:      mainWindow,
+		queueWindow:  playlistWindow,
+		mediaFormats: []string{".mp4"},
+		Screencast:   true,
+	}
+
+	onQueueDropFiles(screen)(fyne.Position{}, []fyne.URI{storage.NewFileURI("/tmp/movie.mp4")})
+	fyne.DoAndWait(func() {})
+
+	if got := len(mainWindow.Canvas().Overlays().List()); got != 0 {
+		t.Fatalf("main window overlays = %d, want 0", got)
+	}
+	if got := len(playlistWindow.Canvas().Overlays().List()); got != 1 {
+		t.Fatalf("playlist window overlays = %d, want 1", got)
+	}
+}
+
 func TestClearSessionQueueActionClearsCurrentMedia(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
@@ -653,6 +708,11 @@ func TestRecordQueueUIStateSkipsDuplicateRefreshes(t *testing.T) {
 	if !screen.recordQueueUIState(state) {
 		t.Fatal("expected new queue list instance to force refresh")
 	}
+
+	state.mediaPath = "/tmp/three.mp4"
+	if !screen.recordQueueUIState(state) {
+		t.Fatal("expected main screen media change to force refresh")
+	}
 }
 
 func TestQueueSelectionDetailsShowsFullPath(t *testing.T) {
@@ -695,23 +755,74 @@ func TestQueueRowDedupesThumbnailRequests(t *testing.T) {
 	first := testQueueItems(firstPath)[0]
 	second := testQueueItems(secondPath)[0]
 
-	row.setRow(0, first, false)
+	row.setRow(0, first, false, false)
 	firstRequestID := row.thumbnailRequestID
 	if row.pendingThumbPath != first.Path() {
 		t.Fatalf("expected pending thumbnail path %q, got %q", first.Path(), row.pendingThumbPath)
 	}
 
-	row.setRow(0, first, false)
+	row.setRow(0, first, false, false)
 	if row.thumbnailRequestID != firstRequestID {
 		t.Fatalf("expected duplicate pending thumbnail request to be skipped, got request id %d want %d", row.thumbnailRequestID, firstRequestID)
 	}
 
-	row.setRow(0, second, false)
+	row.setRow(0, second, false, false)
 	if row.thumbnailRequestID == firstRequestID {
 		t.Fatal("expected path change to invalidate and replace pending thumbnail request")
 	}
 	if row.pendingThumbPath != second.Path() {
 		t.Fatalf("expected pending thumbnail path %q after path change, got %q", second.Path(), row.pendingThumbPath)
+	}
+}
+
+func TestQueueRowMarksMainScreenMedia(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	items := testQueueItems("/tmp/one.mp4", "/tmp/two.mp4")
+	screen := &FyneScreen{
+		SessionQueue:       newSessionQueue(items, 0),
+		queueSelectedIndex: 1,
+	}
+	row := newQueueRow(screen)
+	row.thumbnailLoader = func(string, mediamodel.MediaKind) *canvas.Image { return nil }
+
+	tests := []struct {
+		name        string
+		state       string
+		mediaPath   string
+		playingPath string
+		index       int
+		wantIcon    fyne.Resource
+	}{
+		{"selected while stopped", "Stopped", items[0].Path(), "", 0, theme.ConfirmIcon()},
+		{"other playlist row", "Stopped", items[0].Path(), "", 1, nil},
+		{"selection moved", "Stopped", items[1].Path(), "", 0, nil},
+		{"new selection", "Stopped", items[1].Path(), "", 1, theme.ConfirmIcon()},
+		{"playing selection", "Playing", items[1].Path(), items[1].Path(), 1, theme.MediaPlayIcon()},
+		{"paused selection", "Paused", items[1].Path(), items[1].Path(), 1, theme.MediaPauseIcon()},
+		{"playing different media", "Playing", items[1].Path(), items[0].Path(), 0, theme.MediaPlayIcon()},
+		{"selected different media", "Playing", items[1].Path(), items[0].Path(), 1, theme.ConfirmIcon()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			screen.State = tt.state
+			screen.mediafile = tt.mediaPath
+			screen.playingMediaPath = tt.playingPath
+			item, selected, playing := screen.queueItemForList(tt.index)
+			row.setRow(tt.index, item, selected, playing)
+
+			if tt.wantIcon == nil {
+				if row.currentIcon.Visible() {
+					t.Fatal("unexpected playlist indicator")
+				}
+				return
+			}
+			if !row.currentIcon.Visible() || row.currentIcon.Resource == nil || row.currentIcon.Resource.Name() != tt.wantIcon.Name() {
+				t.Fatalf("playlist indicator = %v, want %s", row.currentIcon.Resource, tt.wantIcon.Name())
+			}
+		})
 	}
 }
 
@@ -743,7 +854,7 @@ func TestPlaylistEditsPreservePlayback(t *testing.T) {
 				if screen.nowPlayingPath() != "/tmp/old.mp4" || screen.mediafile != "/tmp/old.mp4" {
 					t.Fatal("playlist edit changed playback")
 				}
-				if _, playing := screen.queueItemForList(0); playing {
+				if _, _, playing := screen.queueItemForList(0); playing {
 					t.Fatal("new item has playback indicator")
 				}
 				if screen.playbackStatus.Text != state+" · TV · old.mp4" {

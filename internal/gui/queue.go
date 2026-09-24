@@ -41,6 +41,7 @@ type queueUIState struct {
 	queueLen      int
 	selectedIndex int
 	activeIndex   int
+	mediaPath     string
 	buttonText    string
 	statusText    string
 	detailsText   string
@@ -138,11 +139,11 @@ func (screen *FyneScreen) queueSnapshot() (*SessionQueue, int) {
 	return screen.SessionQueue.Clone(), screen.queueSelectedIndex
 }
 
-func (screen *FyneScreen) queueRenderSnapshot() (*SessionQueue, int, uint64, *widget.List) {
+func (screen *FyneScreen) queueRenderSnapshot() (*SessionQueue, int, uint64, *widget.List, string) {
 	screen.mu.RLock()
 	defer screen.mu.RUnlock()
 
-	return screen.SessionQueue.Clone(), screen.queueSelectedIndex, screen.queueRevision, screen.queueList
+	return screen.SessionQueue.Clone(), screen.queueSelectedIndex, screen.queueRevision, screen.queueList, screen.mediafile
 }
 
 func (screen *FyneScreen) queueItemCount() int {
@@ -156,15 +157,16 @@ func (screen *FyneScreen) queueItemCount() int {
 	return screen.SessionQueue.Len()
 }
 
-func (screen *FyneScreen) queueItemForList(index int) (QueueItem, bool) {
+func (screen *FyneScreen) queueItemForList(index int) (QueueItem, bool, bool) {
 	screen.mu.RLock()
 	defer screen.mu.RUnlock()
 
 	if screen.SessionQueue == nil {
-		return QueueItem{}, false
+		return QueueItem{}, false, false
 	}
 	item, ok := screen.SessionQueue.Item(index)
-	return item, ok && (screen.State == "Playing" || screen.State == "Paused") && screen.playingMediaPath == item.Path()
+	return item, ok && screen.mediafile == item.Path(),
+		ok && (screen.State == "Playing" || screen.State == "Paused") && screen.playingMediaPath == item.Path()
 }
 
 func (screen *FyneScreen) hasSessionQueue() bool {
@@ -240,7 +242,7 @@ func (screen *FyneScreen) queueInteractionsLocked() bool {
 }
 
 func (screen *FyneScreen) refreshQueueStateUI() {
-	queue, selectedIndex, queueRevision, queueList := screen.queueRenderSnapshot()
+	queue, selectedIndex, queueRevision, queueList, mediaPath := screen.queueRenderSnapshot()
 	activeIndex := screen.activeQueueIndex(queue)
 	statusText := ""
 	buttonText := screen.queueButtonText(queue)
@@ -265,6 +267,7 @@ func (screen *FyneScreen) refreshQueueStateUI() {
 		queueLen:      queueLen,
 		selectedIndex: selectedIndex,
 		activeIndex:   activeIndex,
+		mediaPath:     mediaPath,
 		buttonText:    buttonText,
 		statusText:    statusText,
 		detailsText:   detailsText,
@@ -452,7 +455,11 @@ func (screen *FyneScreen) queueDropMode() droppedMediaMode {
 
 func onQueueDropFiles(screen *FyneScreen) func(p fyne.Position, u []fyne.URI) {
 	return func(p fyne.Position, u []fyne.URI) {
-		handleDroppedFiles(screen, screen.queueDropMode(), u)
+		parent := screen.queueWindow
+		if parent == nil {
+			parent = screen.Current
+		}
+		handleDroppedFiles(screen, parent, screen.queueDropMode(), u)
 	}
 }
 
@@ -472,13 +479,13 @@ func (screen *FyneScreen) buildQueueWindow() {
 		},
 		func(id widget.ListItemID, object fyne.CanvasObject) {
 			row := object.(*queueRow)
-			item, isCurrent := screen.queueItemForList(id)
+			item, isSelected, isPlaying := screen.queueItemForList(id)
 			if item.Path() == "" {
-				row.setRow(id, QueueItem{}, false)
+				row.setRow(id, QueueItem{}, false, false)
 				return
 			}
 
-			row.setRow(id, item, isCurrent)
+			row.setRow(id, item, isSelected, isPlaying)
 		},
 	)
 	list.OnSelected = func(id widget.ListItemID) {
@@ -588,8 +595,16 @@ func (screen *FyneScreen) activateSelectedQueueItem() {
 	}
 
 	if err := setCurrentMediaPath(screen, item.Path()); err != nil {
-		check(screen, err)
+		screen.showQueueError(err)
 	}
+}
+
+func (screen *FyneScreen) showQueueError(err error) {
+	parent := screen.queueWindow
+	if parent == nil {
+		parent = screen.Current
+	}
+	checkInWindow(screen, err, parent)
 }
 
 func (screen *FyneScreen) handleQueueRowTap(index int) {
@@ -622,7 +637,7 @@ func (screen *FyneScreen) removeSelectedQueueItem() {
 	currentIsActive := screen.mediafile != "" && selectedItem.Path() == screen.mediafile
 	if currentIsActive && screen.SessionQueue.Len() > 1 {
 		screen.mu.Unlock()
-		check(screen, fmt.Errorf("%s", lang.L("cannot remove the current queue item")))
+		screen.showQueueError(fmt.Errorf("%s", lang.L("cannot remove the current queue item")))
 		return
 	}
 
@@ -744,7 +759,7 @@ func (r *queueRow) Tapped(*fyne.PointEvent) {
 	r.screen.handleQueueRowTap(r.index)
 }
 
-func (r *queueRow) setRow(index int, item QueueItem, isCurrent bool) {
+func (r *queueRow) setRow(index int, item QueueItem, isSelected, isPlaying bool) {
 	samePath := r.currentPath == item.Path()
 	r.index = index
 	r.currentPath = item.Path()
@@ -804,13 +819,17 @@ func (r *queueRow) setRow(index int, item QueueItem, isCurrent bool) {
 		r.fallbackIcon.Hide()
 	}
 
-	if isCurrent {
-		r.currentIcon.SetResource(theme.MediaPlayIcon())
-		if r.screen.getScreenState() == "Paused" {
-			r.currentIcon.SetResource(theme.MediaPauseIcon())
-		}
+	switch {
+	case isPlaying && r.screen.getScreenState() == "Paused":
+		r.currentIcon.SetResource(theme.MediaPauseIcon())
 		r.currentIcon.Show()
-	} else {
+	case isPlaying:
+		r.currentIcon.SetResource(theme.MediaPlayIcon())
+		r.currentIcon.Show()
+	case isSelected:
+		r.currentIcon.SetResource(theme.ConfirmIcon())
+		r.currentIcon.Show()
+	default:
 		r.currentIcon.SetResource(nil)
 		r.currentIcon.Hide()
 	}
