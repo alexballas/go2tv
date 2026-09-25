@@ -784,8 +784,6 @@ func TestQueueRowMarksMainScreenMedia(t *testing.T) {
 		SessionQueue:       newSessionQueue(items, 0),
 		queueSelectedIndex: 1,
 	}
-	row := newQueueRow(screen)
-	row.thumbnailLoader = func(string, mediamodel.MediaKind) *canvas.Image { return nil }
 
 	tests := []struct {
 		name        string
@@ -807,6 +805,8 @@ func TestQueueRowMarksMainScreenMedia(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			row := newQueueRow(screen)
+			row.thumbnailLoader = func(string, mediamodel.MediaKind) *canvas.Image { return nil }
 			screen.State = tt.state
 			screen.mediafile = tt.mediaPath
 			screen.playingMediaPath = tt.playingPath

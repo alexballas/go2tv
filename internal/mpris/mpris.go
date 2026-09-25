@@ -54,8 +54,8 @@ func Start(controls Controls) (*Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connect session bus: %w", err)
 	}
-	s := &Service{conn: conn, controls: controls, trackID: noTrack}
 	initial := Snapshot{Status: "Stopped", LoopStatus: "None", Volume: 1}
+	s := &Service{conn: conn, controls: controls, snapshot: initial, trackID: noTrack}
 	props, err := prop.Export(conn, Path, s.propertyMap(initial))
 	if err != nil {
 		conn.Close()
@@ -95,7 +95,6 @@ func Start(controls Controls) (*Service, error) {
 		}
 		return nil, fmt.Errorf("request MPRIS bus name %q: reply %d", name, reply)
 	}
-	s.snapshot = initial
 	s.name = name
 	return s, nil
 }
