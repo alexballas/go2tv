@@ -24,24 +24,44 @@ jobs:
         go-version-file: go.mod
 
     - name: Get dependencies
-      run: sudo apt update && sudo apt install -y xorg-dev libwayland-dev libxkbcommon-dev libegl-dev libpipewire-0.3-dev pkg-config curl wget tar xz-utils libfuse2t64
+      run: sudo apt update && sudo apt install -y xorg-dev libwayland-dev libxkbcommon-dev libegl-dev libpipewire-0.3-dev pkg-config curl wget tar xz-utils libfuse2t64 zsync
 
     - name: Package (AppImage)
       env:
         APPIMAGE_EXTRACT_AND_RUN: 1
       run: |
         set -euo pipefail
-        make appimage-ffmpeg APPIMAGE_FFMPEG_MODE=download
-        appimage_path="$(find build -maxdepth 1 -type f -name 'Go2TV-*.AppImage' | head -n 1)"
-        if [ -z "$appimage_path" ]; then
-          echo "AppImage missing"
-          exit 1
+        appimage_name="go2tv_${GO2TV_VERSION}_linux_amd64_ffmpeg.AppImage"
+        update_info=""
+        if [[ "$GO2TV_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          update_info='gh-releases-zsync|alexballas|go2tv|latest|go2tv_*_linux_amd64_ffmpeg.AppImage.zsync'
         fi
-        mv "$appimage_path" "go2tv_${GO2TV_VERSION}_linux_amd64_ffmpeg.AppImage"
-        chmod +x "go2tv_${GO2TV_VERSION}_linux_amd64_ffmpeg.AppImage"
+        make appimage-ffmpeg APPIMAGE_FFMPEG_MODE=download \
+          "APPIMAGE_OUT=build/$appimage_name" \
+          "APPIMAGE_UPDATE_INFO=$update_info"
+        test -s "build/$appimage_name"
+        if [ -n "$update_info" ]; then
+          test -s "build/$appimage_name.zsync"
+          actual_update_info="$("build/$appimage_name" --appimage-updateinformation)"
+          if [ "$actual_update_info" != "$update_info" ]; then
+            echo "AppImage update information mismatch: $actual_update_info"
+            exit 1
+          fi
+          zsync_url="$(sed -n 's/^URL: //p;/^$/q' "build/$appimage_name.zsync")"
+          if [ "$zsync_url" != "$appimage_name" ]; then
+            echo "zsync URL mismatch: $zsync_url"
+            exit 1
+          fi
+          mv "build/$appimage_name.zsync" "$appimage_name.zsync"
+        fi
+        mv "build/$appimage_name" "$appimage_name"
+        chmod +x "$appimage_name"
 
     - uses: actions/upload-artifact@v6
       with:
         name: go2tv_${{ env.GO2TV_VERSION }}_linux_amd64_ffmpeg.AppImage
-        path: go2tv_${{ env.GO2TV_VERSION }}_linux_amd64_ffmpeg.AppImage
+        path: |
+          go2tv_${{ env.GO2TV_VERSION }}_linux_amd64_ffmpeg.AppImage
+          go2tv_${{ env.GO2TV_VERSION }}_linux_amd64_ffmpeg.AppImage.zsync
+        if-no-files-found: error
         retention-days: 2

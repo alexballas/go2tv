@@ -251,6 +251,11 @@ compatibility. Override binary paths with `APPIMAGE_FFMPEG_BIN` and
 `APPIMAGE_FFPROBE_BIN`, or override the archive with `APPIMAGE_FFMPEG_URL` and
 `APPIMAGE_FFMPEG_SHA256`.
 
+Release AppImages include update information for AppImageUpdate and a matching
+`.AppImage.zsync` asset. Local builds omit update information by default. To
+generate the pair locally, install `zsyncmake` and set `APPIMAGE_UPDATE_INFO`
+and `APPIMAGE_OUT` (using the final release filename) when running `make`.
+
 ### Android builds
 
 ``` console

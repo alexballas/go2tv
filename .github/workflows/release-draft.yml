@@ -147,13 +147,15 @@ jobs:
           fi
 
           if [[ "$name" == *"_linux_amd64_ffmpeg.AppImage" ]]; then
-            appimage_path="$(find "$workdir" -type f -name '*.AppImage' | head -n1 || true)"
-            if [ -z "$appimage_path" ]; then
-              echo "AppImage missing in $zip_path"
+            appimage_path="$workdir/$name"
+            zsync_path="$appimage_path.zsync"
+            if [ ! -s "$appimage_path" ] || [ ! -s "$zsync_path" ]; then
+              echo "AppImage or zsync file missing in $zip_path"
               exit 1
             fi
             chmod +x "$appimage_path"
             cp "$appimage_path" "$GITHUB_WORKSPACE/release-assets/$name"
+            cp "$zsync_path" "$GITHUB_WORKSPACE/release-assets/$name.zsync"
             rm -rf "$workdir"
             continue
           fi
@@ -193,6 +195,7 @@ jobs:
           release-assets/*.zip
           release-assets/*.apk
           release-assets/*.AppImage
+          release-assets/*.AppImage.zsync
         draft: true
         overwrite_files: true
       env:

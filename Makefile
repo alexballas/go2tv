@@ -30,6 +30,7 @@ APPDATA_APPDIR=$(APPDIR)/usr/share/metainfo
 APPIMAGETOOL=$(BUILD_DIR)/appimagetool
 ARCH:=$(shell uname -m)
 APPIMAGE_OUT=$(BUILD_DIR)/Go2TV-$(ARCH).AppImage
+APPIMAGE_UPDATE_INFO?=
 FFMPEG_STATIC_ARCHIVE=$(BUILD_DIR)/ffmpeg-static.tar.xz
 FFMPEG_STATIC_DIR=$(BUILD_DIR)/ffmpeg-static
 FFMPEG_APP_LIBDIR=$(APPDIR)/usr/lib/ffmpeg
@@ -428,7 +429,14 @@ appimage: build
 	fi
 
 	# Build the AppImage
-	( cd $(BUILD_DIR) && ./appimagetool AppDir "$(notdir $(APPIMAGE_OUT))" ); \
+	@set -e; \
+	if [ -n "$(APPIMAGE_UPDATE_INFO)" ]; then \
+		command -v zsyncmake >/dev/null || { echo "zsyncmake required for updateable AppImages"; exit 1; }; \
+		( cd $(BUILD_DIR) && ./appimagetool -u "$(APPIMAGE_UPDATE_INFO)" AppDir "$(abspath $(APPIMAGE_OUT))" ); \
+		test -s "$(APPIMAGE_OUT).zsync" || { echo "AppImage zsync file missing: $(APPIMAGE_OUT).zsync"; exit 1; }; \
+	else \
+		( cd $(BUILD_DIR) && ./appimagetool AppDir "$(abspath $(APPIMAGE_OUT))" ); \
+	fi; \
 	echo "AppImage created at $(APPIMAGE_OUT)"
 
 appimage-ffmpeg: build
@@ -539,7 +547,15 @@ appimage-ffmpeg: build
 	if [ "$$(wc -c < $(APPIMAGETOOL))" -lt 1000000 ]; then echo "appimagetool download invalid: $(APPIMAGETOOL)"; exit 1; fi
 
 	# Build the AppImage
-	( cd $(BUILD_DIR) && ./appimagetool AppDir "$(notdir $(APPIMAGE_OUT))" ) && echo "AppImage created at $(APPIMAGE_OUT)"
+	@set -e; \
+	if [ -n "$(APPIMAGE_UPDATE_INFO)" ]; then \
+		command -v zsyncmake >/dev/null || { echo "zsyncmake required for updateable AppImages"; exit 1; }; \
+		( cd $(BUILD_DIR) && ./appimagetool -u "$(APPIMAGE_UPDATE_INFO)" AppDir "$(abspath $(APPIMAGE_OUT))" ); \
+		test -s "$(APPIMAGE_OUT).zsync" || { echo "AppImage zsync file missing: $(APPIMAGE_OUT).zsync"; exit 1; }; \
+	else \
+		( cd $(BUILD_DIR) && ./appimagetool AppDir "$(abspath $(APPIMAGE_OUT))" ); \
+	fi; \
+	echo "AppImage created at $(APPIMAGE_OUT)"
 
 	# Clean up ffmpeg build/download files
 	rm -rf $(FFMPEG_STATIC_DIR) $(FFMPEG_STATIC_ARCHIVE) $(BUILD_DIR)/ffmpeg-src $(BUILD_DIR)/ffmpeg.tar.xz
