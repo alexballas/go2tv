@@ -33,6 +33,9 @@ type CastClient struct {
 	initLogOnce sync.Once
 }
 
+// ErrCastDisconnected reports a connection closed before media loading finished.
+var ErrCastDisconnected = errors.New("chromecast connection closed during load")
+
 // Log returns the slog logger, initializing it lazily if LogOutput is set.
 // Same pattern as TVPayload.Log() in soapcalls/soapcallers.go.
 func (c *CastClient) Log() *slog.Logger {
@@ -164,8 +167,7 @@ func (c *CastClient) ensureDefaultReceiverReady() error {
 	var lastErr error
 	for attempt := range 5 {
 		if !c.IsConnected() {
-			c.Log().Debug("connection closed during receiver launch, aborting silently", "Method", "ensureDefaultReceiverReady")
-			return nil
+			return ErrCastDisconnected
 		}
 
 		c.Log().Debug("launching default receiver", "Method", "ensureDefaultReceiverReady", "Attempt", attempt+1)
@@ -174,8 +176,7 @@ func (c *CastClient) ensureDefaultReceiverReady() error {
 			if isTimeoutError(err) && attempt < 4 {
 				c.Log().Debug("timeout, TV may be waking up, retrying...", "Method", "ensureDefaultReceiverReady", "Attempt", attempt+1, "error", err)
 				if !c.IsConnected() {
-					c.Log().Debug("connection closed during retry wait, aborting silently", "Method", "ensureDefaultReceiverReady")
-					return nil
+					return ErrCastDisconnected
 				}
 				time.Sleep(4 * time.Second)
 				continue
@@ -186,8 +187,7 @@ func (c *CastClient) ensureDefaultReceiverReady() error {
 
 		for i := range 8 {
 			if !c.IsConnected() {
-				c.Log().Debug("connection closed during app update, aborting silently", "Method", "ensureDefaultReceiverReady")
-				return nil
+				return ErrCastDisconnected
 			}
 
 			if err := c.app.Update(); err != nil {
@@ -209,8 +209,7 @@ func (c *CastClient) ensureDefaultReceiverReady() error {
 		if attempt < 4 {
 			c.Log().Debug("receiver not ready, retrying...", "Method", "ensureDefaultReceiverReady", "Attempt", attempt+1)
 			if !c.IsConnected() {
-				c.Log().Debug("connection closed during retry wait, aborting silently", "Method", "ensureDefaultReceiverReady")
-				return nil
+				return ErrCastDisconnected
 			}
 			time.Sleep(4 * time.Second)
 			continue
@@ -263,16 +262,14 @@ func (c *CastClient) LoadMedia(req LoadRequest) error {
 		var lastErr error
 		for attempt := range 5 {
 			if !c.IsConnected() {
-				c.Log().Debug("connection closed during load, aborting silently", "Method", "Load")
-				return nil
+				return ErrCastDisconnected
 			}
 			if err := c.app.Load(req.MediaURL, req.StartTime, req.ContentType, false, false, false); err != nil {
 				lastErr = err
 				if isTimeoutError(err) && attempt < 5 {
 					c.Log().Debug("timeout, TV may be waking up, retrying...", "Method", "Load", "Attempt", attempt, "error", err)
 					if !c.IsConnected() {
-						c.Log().Debug("connection closed during retry wait, aborting silently", "Method", "Load")
-						return nil
+						return ErrCastDisconnected
 					}
 					time.Sleep(4 * time.Second) // Wait for TV to wake up
 					continue
@@ -296,8 +293,7 @@ func (c *CastClient) LoadMedia(req LoadRequest) error {
 	var lastErr error
 	for attempt := range 5 {
 		if !c.IsConnected() {
-			c.Log().Debug("connection closed during load, aborting silently", "Method", "Load")
-			return nil
+			return ErrCastDisconnected
 		}
 
 		app := c.app.App()
@@ -311,8 +307,7 @@ func (c *CastClient) LoadMedia(req LoadRequest) error {
 			if attempt < 4 {
 				c.Log().Debug("no transport ID, retrying...", "Method", "Load", "Attempt", attempt+1)
 				if !c.IsConnected() {
-					c.Log().Debug("connection closed during retry wait, aborting silently", "Method", "Load")
-					return nil
+					return ErrCastDisconnected
 				}
 				time.Sleep(4 * time.Second)
 				continue
@@ -330,8 +325,7 @@ func (c *CastClient) LoadMedia(req LoadRequest) error {
 			if isTimeoutError(err) && attempt < 5 {
 				c.Log().Debug("timeout, TV may be waking up, retrying...", "Method", "Load", "Attempt", attempt, "error", err)
 				if !c.IsConnected() {
-					c.Log().Debug("connection closed during retry wait, aborting silently", "Method", "Load")
-					return nil
+					return ErrCastDisconnected
 				}
 				time.Sleep(4 * time.Second)
 				continue
@@ -410,8 +404,7 @@ func (c *CastClient) LoadMediaOnExisting(req LoadRequest) error {
 	var transportId string
 	for i := range 5 {
 		if !c.IsConnected() {
-			c.Log().Debug("connection closed during app update, aborting silently", "Method", "LoadOnExisting")
-			return nil
+			return ErrCastDisconnected
 		}
 
 		if err := c.app.Update(); err != nil {

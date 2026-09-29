@@ -793,6 +793,7 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 	screen.persistDisplayedResumeProgress(true)
 	screen.clearResumeSession()
 	screen.nextChromecastActionID()
+	chromecastClient := screen.chromecastClientForStop()
 	screen.clearActiveDevice()
 
 	setPlayPauseView("Play", screen)
@@ -819,16 +820,24 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 	}
 
 	// Handle Chromecast stop
-	if screen.chromecastClient != nil && screen.chromecastClient.IsConnected() {
-		client := screen.chromecastClient
+	if chromecastClient != nil {
+		client := chromecastClient
 		server := screen.httpserver
+		client.Log().Debug("stopping Chromecast session", "Method", "StopAction")
 
+		if screen.cancelServerStop != nil {
+			screen.cancelServerStop()
+			screen.cancelServerStop = nil
+		}
+		screen.serverStopCTX = nil
 		screen.chromecastClient = nil
 		screen.httpserver = nil
 
 		go func() {
-			_ = client.Stop()
-			client.Close(false)
+			if client.IsConnected() {
+				_ = client.Stop()
+			}
+			_ = client.Close(false)
 			if server != nil {
 				server.StopServer()
 			}
@@ -1086,31 +1095,25 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 		startAfreshPlayButton(screen)
 		return
 	}
+	screen.setActiveDevice(sessionDevice)
 
 	// Reuse existing client if connected, otherwise create new one
 	client := screen.chromecastClient
-	if client == nil || !client.IsConnected() {
+	if client == nil || !client.IsConnected() || !chromecastClientOwnsDevice(client, sessionDevice) {
 		var err error
-		client, err = castprotocol.NewCastClient(sessionDevice.addr)
+		client, err = connectChromecastForAction(screen, actionID, sessionDevice)
 		if err != nil {
-			check(w, fmt.Errorf("chromecast init: %w", err))
+			if !screen.isChromecastActionCurrent(actionID) {
+				return
+			}
+			check(w, err)
 			startAfreshPlayButton(screen)
 			return
 		}
-
-		// Into the same ring the DLNA calls go to, so a failed cast shows up in
-		// the diagnostics report. Without it a Chromecast session leaves no trace
-		// at all and there is nothing to go on but "it did not play".
-		client.LogOutput = screen.Debug
-
-		if err := client.Connect(); err != nil {
+		if !screen.installChromecastClientForAction(actionID, client) {
 			_ = client.Close(false)
-			check(w, fmt.Errorf("chromecast connect: %w", err))
-			startAfreshPlayButton(screen)
 			return
 		}
-
-		screen.chromecastClient = client
 	}
 
 	var mediaURL string
@@ -1330,7 +1333,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 		if parsedMediaURL, err := url.Parse(mediaURL); err == nil {
 			listenAddress = parsedMediaURL.Host
 		}
-		if err := client.LoadMedia(castprotocol.LoadRequest{
+		_, err := loadChromecastForAction(screen, actionID, sessionDevice, client, castprotocol.LoadRequest{
 			MediaURL:    mediaURL,
 			ContentType: mediaType,
 			Metadata:    guiMediaMetadata(chromecastMediaTitle(screen, mediaURL), listenAddress, artworkAsset),
@@ -1338,7 +1341,8 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 			Duration:    screen.mediaDuration,
 			SubtitleURL: subtitleURL,
 			Live:        live,
-		}); err != nil {
+		})
+		if err != nil {
 			if !screen.isChromecastActionCurrent(actionID) {
 				return
 			}
@@ -1350,9 +1354,8 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 			return
 		}
 		screen.setActiveDevice(sessionDevice)
+		go chromecastStatusWatcher(serverStoppedCTX, screen, actionID)
 	}()
-
-	go chromecastStatusWatcher(serverStoppedCTX, screen, actionID)
 }
 
 // chromecastTranscodedSeek restarts mobile transcoding at seekPos while

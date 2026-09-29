@@ -50,11 +50,11 @@ FYNE?=$(ANDROID_FYNE)
 # The Android share-target handler lives in Java, which the packaging CLI carries
 # as a pre-compiled dex blob inside its own binary - not in the refyne library the
 # app links against. A CLI from a different revision than go.mod therefore builds a
-# green APK with no handler in it, silently. Resolve both from go.mod so the two
-# cannot drift: a directory replace has no version to install from, so build the
-# CLI out of that checkout instead.
+# green APK with no handler in it, silently. Resolve both from the module graph
+# so they cannot drift: a directory replace or go.work module has no version to
+# install from, so build the CLI out of that checkout instead.
 REFYNE_ANDROID_VERSION?=$(shell go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' github.com/alexballas/refyne/v2 2>/dev/null)
-REFYNE_ANDROID_DIR?=$(shell go list -m -f '{{if .Replace}}{{if not .Replace.Version}}{{.Replace.Dir}}{{end}}{{end}}' github.com/alexballas/refyne/v2 2>/dev/null)
+REFYNE_ANDROID_DIR?=$(shell go list -m -f '{{if .Replace}}{{if not .Replace.Version}}{{.Replace.Dir}}{{end}}{{else if .Main}}{{.Dir}}{{end}}' github.com/alexballas/refyne/v2 2>/dev/null)
 WINDOWS_SYSROOT=$(BUILD_DIR)/windows-sysroot
 WINDOWS_SYSROOT_ABS=$(CURDIR)/$(WINDOWS_SYSROOT)
 WINDOWS_MINGW_URL?=https://mirror.msys2.org/mingw/mingw64

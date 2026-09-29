@@ -441,11 +441,12 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			s.connectionManagerURL = ""
 			s.tvdata = nil
 
-			if s.chromecastClient != nil && s.chromecastClient.IsConnected() {
+			if s.shouldCloseChromecastClientOnSelectionChange() {
 				client := s.chromecastClient
 				server := s.httpserver
 				s.chromecastClient = nil
 				s.httpserver = nil
+				client.Log().Debug("closing idle Chromecast after device selection", "Method", "DeviceSelection")
 				go func() {
 					_ = client.Close(false)
 					if server != nil {

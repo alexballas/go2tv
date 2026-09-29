@@ -126,3 +126,21 @@ func TestReusableChromecastClientForSelectedDeviceRequiresSameDevice(t *testing.
 		t.Fatal("expected no reusable client for non-Chromecast selection")
 	}
 }
+
+func TestChromecastSelectionKeepsStartupClient(t *testing.T) {
+	client := newConnectedCastClientForTest(t, "http://living-room:8009")
+	screen := &FyneScreen{
+		chromecastClient: client,
+		activeDevice:     devType{name: "Living Room", addr: "http://living-room:8009", deviceType: devices.DeviceTypeChromecast},
+		State:            "Stopped",
+	}
+
+	if screen.shouldCloseChromecastClientOnSelectionChange() {
+		t.Fatal("selection would close a Chromecast client while its cast is starting")
+	}
+
+	screen.clearActiveDevice()
+	if !screen.shouldCloseChromecastClientOnSelectionChange() {
+		t.Fatal("selection should close an idle client after playback ends")
+	}
+}

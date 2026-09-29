@@ -212,7 +212,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		// so user can still control it while browsing other devices
 		currentState := s.getScreenState()
 		isActivePlayback := currentState == "Playing" || currentState == "Paused"
-		if s.chromecastClient != nil && !isActivePlayback {
+		if !isActivePlayback && s.shouldCloseChromecastClientOnSelectionChange() {
+			s.chromecastClient.Log().Debug("closing idle Chromecast after device selection", "Method", "DeviceSelection")
 			s.chromecastClient.Close(false)
 			s.chromecastClient = nil
 		}

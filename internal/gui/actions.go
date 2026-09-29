@@ -1356,24 +1356,19 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 		}
 
 		var err error
-		client, err = castprotocol.NewCastClient(sessionDevice.addr)
+		client, err = connectChromecastForAction(screen, actionID, sessionDevice)
 		if err != nil {
-			check(screen, fmt.Errorf("chromecast init: %w", err))
+			if !screen.isChromecastActionCurrent(actionID) {
+				return
+			}
+			check(screen, err)
 			startAfreshPlayButton(screen)
 			return
 		}
-
-		// Enable debug logging (same pattern as TVPayload)
-		client.LogOutput = screen.Debug
-
-		if err := client.Connect(); err != nil {
+		if !screen.installChromecastClientForAction(actionID, client) {
 			_ = client.Close(false)
-			check(screen, fmt.Errorf("chromecast connect: %w", err))
-			startAfreshPlayButton(screen)
 			return
 		}
-
-		screen.chromecastClient = client
 	}
 
 	if screen.Screencast {
@@ -1394,7 +1389,13 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 		}
 
 		go func() {
-			if err := client.Load(mediaURL, mediaType, chromecastMediaTitle(screen, mediaURL), 0, 0, "", true); err != nil {
+			_, err := loadChromecastForAction(screen, actionID, sessionDevice, client, castprotocol.LoadRequest{
+				MediaURL:    mediaURL,
+				ContentType: mediaType,
+				Metadata:    metadata.Media{Title: chromecastMediaTitle(screen, mediaURL)},
+				Live:        true,
+			})
+			if err != nil {
 				if !screen.isChromecastActionCurrent(actionID) {
 					return
 				}
@@ -1414,9 +1415,9 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 			screen.updateScreenState("Playing")
 			setPlayPauseView("Pause", screen)
 			screen.configureImageAutoSkipTimer(mediaType, screen.mediafile)
+			go chromecastStatusWatcher(serverStoppedCTX, screen, actionID)
 		}()
 
-		go chromecastStatusWatcher(serverStoppedCTX, screen, actionID)
 		return
 	}
 
@@ -1688,7 +1689,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 		if parsedMediaURL, err := url.Parse(mediaURL); err == nil {
 			listenAddress = parsedMediaURL.Host
 		}
-		if err := client.LoadMedia(castprotocol.LoadRequest{
+		loadedClient, err := loadChromecastForAction(screen, actionID, sessionDevice, client, castprotocol.LoadRequest{
 			MediaURL:    mediaURL,
 			ContentType: mediaType,
 			Metadata:    guiMediaMetadata(chromecastMediaTitle(screen, mediaURL), listenAddress, artworkAsset),
@@ -1696,7 +1697,8 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 			Duration:    screen.mediaDuration,
 			SubtitleURL: subtitleURL,
 			Live:        live,
-		}); err != nil {
+		})
+		if err != nil {
 			if !screen.isChromecastActionCurrent(actionID) {
 				return
 			}
@@ -1704,6 +1706,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 			startAfreshPlayButton(screen)
 			return
 		}
+		client = loadedClient
 		if !screen.isChromecastActionCurrent(actionID) {
 			return
 		}
@@ -1711,9 +1714,8 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 		screen.updateScreenState("Playing")
 		setPlayPauseView("Pause", screen)
 		armChromecastImageAutoSkipAfterReady(screen, client, actionID, mediaType, screen.mediafile)
+		go chromecastStatusWatcher(serverStoppedCTX, screen, actionID)
 	}()
-
-	go chromecastStatusWatcher(serverStoppedCTX, screen, actionID)
 }
 
 // chromecastTranscodedSeek performs a seek on transcoded Chromecast streams
@@ -2559,9 +2561,8 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 
 	screen.persistDisplayedResumeProgress(true)
 	screen.clearResumeSession()
-	chromecastClient := screen.chromecastSessionClient()
-
 	screen.nextChromecastActionID()
+	chromecastClient := screen.chromecastClientForStop()
 	screen.cancelImageAutoSkipTimer()
 	screen.clearActiveDevice()
 	screen.resetQueuedArtworkState()
@@ -2573,6 +2574,7 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 	screen.SetMediaType("")
 
 	if chromecastClient != nil {
+		chromecastClient.Log().Debug("stopping Chromecast session", "Method", "StopAction")
 		// Capture references before clearing
 		server := screen.httpserver
 
@@ -2600,8 +2602,10 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 		permitHandedOff = true
 		go func() {
 			defer releasePermit()
-			_ = chromecastClient.Stop()
-			chromecastClient.Close(false)
+			if chromecastClient.IsConnected() {
+				_ = chromecastClient.Stop()
+			}
+			_ = chromecastClient.Close(false)
 			if server != nil {
 				server.StopServer()
 			}
