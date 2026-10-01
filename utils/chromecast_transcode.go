@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"go2tv.app/go2tv/v2/internal/mediasource"
 )
 
 // escapeFFmpegPath escapes special characters in paths for FFmpeg filtergraph syntax.
@@ -56,7 +58,8 @@ func ServeChromecastTranscodedStream(
 	var in string
 	switch f := input.(type) {
 	case string:
-		in = f
+		in = mediasource.Input(f)
+		input = in
 	case *os.File:
 		in = ffmpegInputForFile(opts.FFmpegPath, f)
 	case io.Reader:

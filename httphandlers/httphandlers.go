@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
 )
@@ -286,6 +287,21 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 
 		switch f := out.media.(type) {
 		case string:
+			if source, ok := mediasource.Lookup(f); ok {
+				reader, err := source.Open(r.Context())
+				if err != nil {
+					http.Error(w, "media unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				defer reader.Close()
+				if out.transcode == nil && (out.payload == nil || !out.payload.Transcode) {
+					w.Header().Set("Content-Type", source.MIME())
+				}
+				// FFmpeg receives the source URL, never the sparse cache or stdin.
+				// Its range requests then use fresh piece-aware readers too.
+				out.media = osFileType{file: reader, path: source.URL()}
+				break
+			}
 			m, err := os.Open(f)
 			if err != nil {
 				http.NotFound(w, r)

@@ -86,6 +86,7 @@ type FyneScreen struct {
 	SkipPreviousButton       *widget.Button
 	SkipNextButton           *widget.Button
 	tvdata                   *soapcalls.TVPayload
+	torrent                  torrentUIState
 	tabs                     *container.AppTabs
 	CheckVersion             *widget.Button
 	CustomSubsCheck          *widget.Check
@@ -287,6 +288,7 @@ var translations embed.FS
 
 // Start .
 func Start(ctx context.Context, s *FyneScreen) {
+	s.torrent.ctx = ctx
 	if s == nil {
 		return
 	}

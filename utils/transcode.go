@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+
+	"go2tv.app/go2tv/v2/internal/mediasource"
 )
 
 var (
@@ -42,7 +44,8 @@ func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec
 	var in string
 	switch f := input.(type) {
 	case string:
-		in = f
+		in = mediasource.Input(f)
+		input = in
 	case *os.File:
 		in = ffmpegInputForFile(ffmpegPath, f)
 	case io.Reader:

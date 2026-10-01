@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -51,7 +50,7 @@ func DurationForMedia(ffmpeg string, f string) (string, error) {
 // DurationForMediaSeconds returns the media duration in seconds.
 // Transcoded streams use it to expose the source timeline.
 func DurationForMediaSeconds(ffmpeg string, f string) (float64, error) {
-	_, err := os.Stat(f)
+	f, err := mediaInput(f)
 	if err != nil {
 		return 0, err
 	}
@@ -65,7 +64,9 @@ func DurationForMediaSeconds(ffmpeg string, f string) (float64, error) {
 		return 0, err
 	}
 
-	cmd := exec.Command(
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx,
 		ffprobePath,
 		"-loglevel", "error",
 		"-show_format",
@@ -158,7 +159,7 @@ func DurationForMediaReaderSeconds(ctx context.Context, ffmpeg string, media io.
 }
 
 func GetMediaCodecInfo(ffmpeg string, f string) (*MediaCodecInfo, error) {
-	_, err := os.Stat(f)
+	f, err := mediaInput(f)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +173,9 @@ func GetMediaCodecInfo(ffmpeg string, f string) (*MediaCodecInfo, error) {
 		return nil, err
 	}
 
-	cmd := exec.Command(
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx,
 		ffprobePath,
 		"-loglevel", "error",
 		"-show_format",

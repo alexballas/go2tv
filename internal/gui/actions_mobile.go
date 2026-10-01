@@ -24,6 +24,7 @@ import (
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
 	"go2tv.app/go2tv/v2/internal/mediamodel"
+	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/internal/playback"
 	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/soapcalls"
@@ -181,12 +182,16 @@ func mediaAction(screen *FyneScreen) {
 			return
 		}
 
+		if strings.EqualFold(filepath.Ext(reader.URI().Name()), ".torrent") {
+			// The torrent dialog's picker supports provider-backed documents.
+			showTorrentDocument(screen, reader)
+			return
+		}
 		defer reader.Close()
-
 		setMobileMediaURI(screen, reader.URI())
 	}, w)
 
-	fd.SetFilter(storage.NewExtensionFileFilter(screen.mediaFormats))
+	fd.SetFilter(storage.NewExtensionFileFilter(append(append([]string(nil), screen.mediaFormats...), ".torrent")))
 
 	resumeHotkeys = suspendHotkeys(screen)
 	fd.Show()
@@ -196,6 +201,19 @@ func mediaAction(screen *FyneScreen) {
 // the file picker above and a share from another app - go through here so they
 // cannot drift apart. Must be called on the Fyne goroutine.
 func setMobileMediaURI(screen *FyneScreen, uri fyne.URI) {
+	if strings.EqualFold(filepath.Ext(uri.Name()), ".torrent") {
+		go func() {
+			reader, err := storage.Reader(uri)
+			fyne.Do(func() {
+				if err != nil {
+					dialog.ShowError(err, screen.Current)
+					return
+				}
+				showTorrentDocument(screen, reader)
+			})
+		}()
+		return
+	}
 	screen.MediaText.Text = uri.Name()
 	screen.mediafile = uri
 	resolveSelectedMobileArtwork(screen, uri)
@@ -413,15 +431,7 @@ func playAction(screen *FyneScreen) {
 		// storage.ReaderSeeker first (a real seekable handle, no copy) and fall
 		// back to a temp file copy when the platform can't provide one. See
 		// seekableMediaForCasting.
-		mediaURLinfo, err := storage.Reader(screen.mediafile)
-		check(screen.Current, err)
-		if err != nil {
-			startAfreshPlayButton(screen)
-			return
-		}
-
-		mediaType, err = utils.GetMimeDetailsFromStream(mediaURLinfo)
-		mediaURLinfo.Close()
+		mediaType, err = mobileMediaMIME(screen.mediafile)
 		check(w, err)
 		if err != nil {
 			startAfreshPlayButton(screen)
@@ -455,7 +465,7 @@ func playAction(screen *FyneScreen) {
 				startAfreshPlayButton(screen)
 				return
 			}
-			if !screen.ExternalMediaURL.Checked {
+			if !screen.ExternalMediaURL.Checked && !torrentMediaSelected(screen) {
 				screen.resolveCurrentMobileGUIArtwork(screen.mediafile, mediaType, mediaFile)
 			}
 		}
@@ -588,6 +598,10 @@ func playAction(screen *FyneScreen) {
 }
 
 func clearmediaAction(screen *FyneScreen) {
+	if torrentMediaSelected(screen) {
+		cancelTorrent(screen)
+		return
+	}
 	screen.MediaText.SetText("")
 	screen.mediafile = nil
 	screen.setCurrentArtwork(nil)
@@ -973,6 +987,11 @@ func volumeAction(screen *FyneScreen, up bool) {
 // cleanup in stopAction) and returns that path.
 func seekableMediaForCasting(screen *FyneScreen) (any, error) {
 	uri := screen.mediafile
+	if uri != nil {
+		if _, ok := mediasource.Lookup(uri.Path()); ok {
+			return uri.Path(), nil
+		}
+	}
 
 	// Fast path: a real seekable handle is available. Probe once, then open a
 	// fresh reader per request (each HTTP request needs its own read offset).
@@ -1214,15 +1233,8 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 		// http.ServeContent needs an io.ReadSeeker for range requests; we serve
 		// a seekable reader directly when available and fall back to a temp file
 		// copy otherwise (see seekableMediaForCasting).
-		mediaReader, err := storage.Reader(screen.mediafile)
-		if err != nil {
-			check(w, err)
-			startAfreshPlayButton(screen)
-			return
-		}
-
-		mediaType, err = utils.GetMimeDetailsFromStream(mediaReader)
-		mediaReader.Close()
+		var err error
+		mediaType, err = mobileMediaMIME(screen.mediafile)
 		if err != nil {
 			check(w, err)
 			startAfreshPlayButton(screen)
@@ -1254,7 +1266,9 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64) {
 			startAfreshPlayButton(screen)
 			return
 		}
-		artworkAsset = screen.resolveCurrentMobileGUIArtwork(screen.mediafile, mediaType, media)
+		if !torrentMediaSelected(screen) {
+			artworkAsset = screen.resolveCurrentMobileGUIArtwork(screen.mediafile, mediaType, media)
+		}
 
 		var tcOpts *utils.TranscodeOptions
 		if transcode {

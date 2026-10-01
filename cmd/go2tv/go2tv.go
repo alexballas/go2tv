@@ -33,19 +33,21 @@ import (
 	"go2tv.app/go2tv/v2/internal/interactive"
 	"go2tv.app/go2tv/v2/internal/playback"
 	"go2tv.app/go2tv/v2/internal/servermode"
+	"go2tv.app/go2tv/v2/internal/torrentstream"
 	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
 )
 
 var (
-	version      = buildinfo.Version()
-	mediaArg     = flag.String("v", "", "Path to video/audio file (triggers CLI mode).")
-	urlArg       = flag.String("u", "", "URL to media file (triggers CLI mode).")
-	subsArg      = flag.String("s", "", "Path to subtitles file (.srt or .vtt).")
-	targetPtr    = flag.String("t", "", "Device URL to cast to (from -l output).")
-	transcodePtr = flag.Bool("tc", false, "Force transcoding with ffmpeg.")
-	listPtr      = flag.Bool("l", false, "List available devices (Smart TVs and Chromecasts).")
+	version        = buildinfo.Version()
+	mediaArg       = flag.String("v", "", "Path to media or .torrent file (triggers CLI mode).")
+	urlArg         = flag.String("u", "", "Media URL or magnet link (triggers CLI mode).")
+	torrentFileArg = flag.Int("torrent-file", -1, "Media file index within torrent; omitted for single-media torrents.")
+	subsArg        = flag.String("s", "", "Path to subtitles file (.srt or .vtt).")
+	targetPtr      = flag.String("t", "", "Device URL to cast to (from -l output).")
+	transcodePtr   = flag.Bool("tc", false, "Force transcoding with ffmpeg.")
+	listPtr        = flag.Bool("l", false, "List available devices (Smart TVs and Chromecasts).")
 
 	versionPtr    = flag.Bool("version", false, "Print version.")
 	serverOptions = servermode.RegisterCLIFlags(flag.CommandLine)
@@ -112,6 +114,7 @@ func run(crash *crashlog.Session) error {
 
 	isChromecastTarget := devices.IsChromecastURL(flagRes.targetURL)
 	transcode = *transcodePtr
+	torrentInput := strings.EqualFold(filepath.Ext(*mediaArg), ".torrent") || strings.HasPrefix(strings.ToLower(*urlArg), "magnet:")
 
 	if *mediaArg != "" {
 		mediaFile = *mediaArg
@@ -145,7 +148,25 @@ func run(crash *crashlog.Session) error {
 		absMediaFile = "stdin.stream"
 	}
 
-	if *mediaArg == "" && *urlArg != "" {
+	if torrentInput {
+		input := *mediaArg
+		if input == "" {
+			input = *urlArg
+		}
+		session, err := torrentstream.Open(exitCTX, input)
+		if err != nil {
+			return err
+		}
+		defer session.Close()
+		metadataCTX, stopMetadata := context.WithTimeout(exitCTX, 2*time.Minute)
+		mediaFile, err = session.SelectMedia(metadataCTX, *torrentFileArg)
+		stopMetadata()
+		if err != nil {
+			return err
+		}
+	}
+
+	if *mediaArg == "" && *urlArg != "" && !torrentInput {
 		if isChromecastTarget {
 			mediaURL, inferredMediaType, err := utils.StreamURLWithMime(context.Background(), *urlArg)
 			if err != nil {
@@ -173,7 +194,7 @@ func run(crash *crashlog.Session) error {
 		}
 	}
 
-	if isChromecastTarget && *mediaArg == "" && *urlArg != "" {
+	if isChromecastTarget && *mediaArg == "" && *urlArg != "" && !torrentInput {
 		transcode = playback.ChromecastTranscodeEnabled(transcode, *urlArg, mediaType)
 	}
 
@@ -225,7 +246,7 @@ func run(crash *crashlog.Session) error {
 
 	// Branch based on device type
 	if isChromecastTarget {
-		return runChromecastCLI(exitCTX, cancel, flagRes.targetURL, absMediaFile, mediaFile, mediaType, absSubtitlesFile, ffmpegPath, transcode, *mediaArg == "" && *urlArg != "")
+		return runChromecastCLI(exitCTX, cancel, flagRes.targetURL, absMediaFile, mediaFile, mediaType, absSubtitlesFile, ffmpegPath, transcode, *mediaArg == "" && *urlArg != "" && !torrentInput)
 	}
 
 	scr, err := interactive.InitTcellNewScreen(cancel)

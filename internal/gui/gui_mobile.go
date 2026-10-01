@@ -40,6 +40,7 @@ type FyneScreen struct {
 	CurrentPos             binding.String
 	EndPos                 binding.String
 	tvdata                 *soapcalls.TVPayload
+	torrent                torrentUIState
 	chromecastClient       *castprotocol.CastClient
 	chromecastActionID     uint64
 	Stop                   *widget.Button
@@ -98,6 +99,7 @@ type devType struct {
 
 // Start .
 func Start(ctx context.Context, s *FyneScreen) {
+	s.torrent.ctx = ctx
 	w := s.Current
 
 	// Clean up orphaned temp files from previous crashes
@@ -127,6 +129,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 			fyne.Do(refreshMobileSettings)
 		})
 		app.Lifecycle().SetOnStopped(func() {
+			go s.shutdownTorrents()
 			if s.Crash != nil {
 				_ = s.Crash.CloseClean()
 			}
@@ -140,6 +143,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	go func() {
 		<-ctx.Done()
+		s.shutdownTorrents()
 		if s.Crash != nil {
 			_ = s.Crash.CloseClean()
 		}

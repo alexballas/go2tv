@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-viper/mapstructure/v2"
 )
@@ -32,7 +34,7 @@ var ErrNoSubs = errors.New("no subs")
 
 // GetSubs - List all subs in our video file.
 func GetSubs(ffmpeg string, f string) ([]string, error) {
-	_, err := os.Stat(f)
+	f, err := mediaInput(f)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +50,9 @@ func GetSubs(ffmpeg string, f string) ([]string, error) {
 		return nil, err
 	}
 
-	cmd := exec.Command(
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx,
 		ffprobePath,
 		"-loglevel", "error",
 		"-show_streams",
@@ -131,7 +135,7 @@ func subtitleNames(streams []streams) ([]string, error) {
 // ExtractSub - Save the extracted sub into a temp file.
 // Return the path of that file.
 func ExtractSub(ffmpeg string, n int, f string) (string, error) {
-	_, err := os.Stat(f)
+	f, err := mediaInput(f)
 	if err != nil {
 		return "", err
 	}

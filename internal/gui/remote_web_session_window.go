@@ -49,6 +49,7 @@ func (s *FyneScreen) beginGUIShutdown() <-chan struct{} {
 		}
 		go func() {
 			defer close(s.shutdownDone)
+			defer s.shutdownTorrents()
 			ctx, cancel := context.WithTimeout(context.Background(), remoteShutdownGrace)
 			_ = s.remoteSession.Shutdown(ctx)
 			cancel()

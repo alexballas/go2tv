@@ -14,6 +14,8 @@ import (
 	"github.com/alexballas/refyne/v2/storage"
 	"github.com/alexballas/refyne/v2/test"
 	"github.com/alexballas/refyne/v2/widget"
+
+	"go2tv.app/go2tv/v2/internal/mediasource"
 )
 
 func newMediaCardTestScreen(t *testing.T) (*FyneScreen, *mediaSelectionCard) {
@@ -54,6 +56,56 @@ func TestMediaCardSourceSwitchAndClear(t *testing.T) {
 	test.Tap(s.ClearMedia)
 	if s.mediafile != "" || !c.media.Visible() || !s.MediaBrowse.Visible() {
 		t.Fatal("Clear should restore the empty state")
+	}
+}
+
+func TestMediaCardSwitchFromTorrent(t *testing.T) {
+	tt := []struct {
+		name   string
+		source string
+	}{
+		{"local file", "Local File"},
+		{"URL", "URL"},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			s, c := newMediaCardTestScreen(t)
+			path := filepath.Join(t.TempDir(), "torrent", "movie.mp4")
+			// Only source identity matters to the selection UI; no readers open.
+			source := &struct{ mediasource.Source }{}
+			t.Cleanup(mediasource.Register(path, source))
+			s.mediafile = path
+			c.refresh()
+			if c.source.Selected != lang.L("Torrent") {
+				t.Fatal("torrent selection should show Torrent")
+			}
+
+			c.source.SetSelected(lang.L(tc.source))
+			c.refresh()
+			if c.source.Selected != lang.L(tc.source) || s.mediafile != "" {
+				t.Fatal("switching source must release the torrent selection without Clear")
+			}
+			if tc.source == "URL" {
+				if !s.MediaText.Visible() || s.MediaText.Disabled() {
+					t.Fatal("URL source must show editable input")
+				}
+				c.source.SetSelected(lang.L("Local File"))
+				if s.mediafile != "" {
+					t.Fatal("returning from URL must not restore the released torrent")
+				}
+			}
+			if !s.MediaBrowse.Visible() || s.MediaBrowse.Disabled() {
+				t.Fatal("local source must enable Browse")
+			}
+			local := filepath.Join(t.TempDir(), "local.mp4")
+			if err := selectMediaPaths(s, []string{local}); err != nil {
+				t.Fatal(err)
+			}
+			c.refresh()
+			if s.mediafile != local || c.media.path.Text != local || c.source.Selected != lang.L("Local File") {
+				t.Fatal("local file must replace the torrent selection")
+			}
+		})
 	}
 }
 

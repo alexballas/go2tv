@@ -288,6 +288,7 @@ android: android-fyne
 	esac; \
 	cd cmd/go2tv; \
 	rm -f ./*.apk; \
+	GOFLAGS="$${GOFLAGS:-} -toolexec='$(CURDIR)/scripts/android-go-tool.sh'" \
 	ANDROID_NDK_HOME="$$ANDROID_NDK_HOME" $(FYNE) package \
 		--os android/arm64 \
 		--name Go2TV \

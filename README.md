@@ -38,6 +38,7 @@ No need to copy files to a USB drive or set up a media server. Just select your 
 - **Transcoding** - Converts incompatible video formats on-the-fly (requires FFmpeg)
 - **Subtitles** - Supports external SRT/VTT files and embedded MKV subtitles
 - **Seek support** - Jump to any position in the video
+- **Torrent playback** - Paste a magnet link or open a .torrent, choose a media file, and cast while downloading. Missing ranges download on demand, including FFmpeg input seeks.
 - **Playlist playback** - Single-file and multi-file playlists with add/remove/reorder/select support
 - **Loop and auto-play** - Loop the current file or auto-play through the playlist
 - **Gapless playback** - Supported for DLNA devices
@@ -112,6 +113,11 @@ When transcoding is enabled, Go2TV probes available GPU H.264 encoders first and
 
 Select a media file (or drag and drop it onto the main window), pick a device from the list, and click **Play**.
 
+For torrents, click **Torrent…**, paste a magnet link or open a `.torrent`, and choose
+**Use file**. Pick a device and cast immediately. Seeks fetch missing pieces first;
+FFmpeg transcoding uses the same seekable source. **Cancel download** stops playback
+and removes the temporary cache. Loading another torrent or quitting also removes it.
+
 #### Playlist
 
 The **Playlist** window lets you add, remove, reorder, and select files. Dragging files onto
@@ -135,12 +141,19 @@ go2tv -v movie.mkv -s movie.srt -tc -t http://192.168.1.100:8060/
 # Play a remote file
 go2tv -u https://example.com/movie.mp4 -t http://192.168.1.50:8009
 
+# Cast a torrent before download completes (also supported by go2tv-lite)
+go2tv -v movie.torrent -torrent-file 0 -t http://192.168.1.100:8060/
+go2tv -u 'magnet:?xt=urn:btih:...' -torrent-file 0 -tc -t http://192.168.1.50:8009
+
 # Stream from another command
 yt-dlp -o - "https://youtu.be/..." | go2tv -t http://192.168.1.50:8009
 
 # Transcode with a custom FFmpeg binary
 go2tv -tc -ffmpeg /path/to/ffmpeg -v movie.mkv -t http://192.168.1.50:8009
 ```
+
+Omit `-torrent-file` for torrents containing one media file. For multiple media
+files, omitting it lists their indexes. Torrent playback currently uses GUI/CLI.
 
 ### Web UI (Server Mode)
 

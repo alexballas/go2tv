@@ -261,6 +261,10 @@ func selectMediaFile(screen *FyneScreen, f fyne.URI) {
 }
 
 func selectMediaPaths(screen *FyneScreen, paths []string) error {
+	if len(paths) == 1 && strings.EqualFold(filepath.Ext(paths[0]), ".torrent") {
+		fyne.Do(func() { showTorrentDialog(screen, paths[0]) })
+		return nil
+	}
 	items := screen.buildQueueItems(paths)
 	if len(items) == 0 {
 		return errors.New(lang.L("please select a media file"))
@@ -444,7 +448,7 @@ func openMediaPickerForWindow(screen *FyneScreen, w fyne.Window, onPaths func(*F
 	}, w, true)
 
 	if f, ok := fd.(xfilepicker.FilePicker); ok {
-		f.SetFilter(storage.NewExtensionFileFilter(screen.mediaFormats))
+		f.SetFilter(storage.NewExtensionFileFilter(append(append([]string(nil), screen.mediaFormats...), ".torrent")))
 	}
 
 	if screen.currentmfolder != "" {
@@ -807,7 +811,9 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 					startAfreshPlayButton(screen)
 					return
 				}
-				screen.resolveCurrentGUIArtwork(screen.mediafile, mediaType, true)
+				if !torrentMediaSelected(screen) {
+					screen.resolveCurrentGUIArtwork(screen.mediafile, mediaType, true)
+				}
 
 				// Set casting media type
 				screen.SetMediaType(mediaType)
@@ -1587,7 +1593,9 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 			return
 		}
 		mediaType = detectedMediaType
-		artworkAsset = screen.resolveCurrentGUIArtwork(screen.mediafile, mediaType, true)
+		if !torrentMediaSelected(screen) {
+			artworkAsset = screen.resolveCurrentGUIArtwork(screen.mediafile, mediaType, true)
+		}
 
 		// Chromecast handles images and audio natively - never transcode these
 		mediaTypeSlice := strings.Split(mediaType, "/")
@@ -2232,6 +2240,10 @@ out:
 }
 
 func clearmediaAction(screen *FyneScreen) {
+	if torrentMediaSelected(screen) {
+		cancelTorrent(screen)
+		return
+	}
 	clearCurrentMediaSelection(screen)
 }
 
@@ -2527,7 +2539,7 @@ func previewmedia(screen *FyneScreen) {
 		})
 	default:
 		go func() {
-			err := open.Run(screen.mediafile)
+			err := open.Run(mediaPreviewInput(screen.mediafile))
 			check(screen, err)
 		}()
 	}

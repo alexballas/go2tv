@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/h2non/filetype"
+
+	"go2tv.app/go2tv/v2/internal/mediasource"
 )
 
 var (
@@ -85,6 +87,9 @@ func BuildContentFeatures(_ string, seek string, transcode bool) (string, error)
 
 // GetMimeDetailsFromPath returns the media mime details from a local file path.
 func GetMimeDetailsFromPath(path string) (string, error) {
+	if source, ok := mediasource.Lookup(path); ok {
+		return source.MIME(), nil
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("getMimeDetailsFromPath: %w", err)
