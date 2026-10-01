@@ -1,3 +1,5 @@
+import { torrentControls } from "./torrent.js";
+
 const protocolVersion = 1;
 const maxConflictRetries = 2;
 
@@ -84,6 +86,8 @@ export function startClient(env) {
       "player.pause",
       "player.resume",
       "player.stop",
+      "torrent.select",
+      "torrent.cancel",
     ]),
     playbackPendingTypes = new Set([
       ...queuePendingTypes,
@@ -94,6 +98,13 @@ export function startClient(env) {
       "player.transcode",
     ]),
     devicePendingTypes = new Set(["devices.select", "devices.refresh"]);
+  const torrents = torrentControls(
+    env,
+    (...args) => send(...args),
+    () => connected && !shuttingDown && !queueLocked(),
+    () => hasPending("torrent.select") || hasPending("torrent.cancel"),
+    (...args) => showToast(...args),
+  );
   const svgNS = "http://www.w3.org/2000/svg";
   const option = (value, label) => {
     const node = document.createElement("option");
@@ -307,6 +318,7 @@ export function startClient(env) {
     return thumbnail;
   }
   function renderPending(request) {
+    torrents.render();
     pendingNode.textContent = pending.size ? `${pending.size} working` : "";
     const type = request?.type;
     if (!type) {
@@ -876,6 +888,7 @@ export function startClient(env) {
         if (request?.type === "queue.add_many")
           bulkAddToast(p, request.truncated || 0);
         renderPending(request);
+        if (request?.type?.startsWith("torrent.")) torrents.refresh();
         break;
       }
       case "error": {
@@ -915,6 +928,7 @@ export function startClient(env) {
       case "server.shutdown":
         shuttingDown = true;
         connected = false;
+        torrents.connection(false);
         pending.clear();
         connection("Server stopped", "error");
         renderPending();
@@ -933,11 +947,13 @@ export function startClient(env) {
     );
     ws.addEventListener("open", () => {
       connected = true;
+      torrents.connection(true);
       connection("Connected", "connected");
       renderPending();
     });
     ws.addEventListener("close", () => {
       connected = false;
+      torrents.connection(false);
       pending.clear();
       queueFocus = null;
       renderPending();
@@ -971,6 +987,11 @@ export function startClient(env) {
         return;
       }
       transcodeAvailable = !!bootstrap.features?.transcode;
+      torrents.configure(
+        bootstrap.features,
+        bootstrap.torrent,
+        bootstrap.limits?.torrent_bytes,
+      );
       if (instanceID !== (bootstrap.instance_id || ""))
         await refreshLibrary(bootstrap);
       shuttingDown = false;
@@ -1257,6 +1278,11 @@ export function startClient(env) {
     assetsHash = bootstrap.assets_hash || "";
     instanceID = bootstrap.instance_id || "";
     transcodeAvailable = !!bootstrap.features?.transcode;
+    torrents.configure(
+      bootstrap.features,
+      bootstrap.torrent,
+      bootstrap.limits?.torrent_bytes,
+    );
     queueLimit = bootstrap.limits?.queue_items || queueLimit;
     mergeSnapshot(bootstrap.snapshot);
     roots.replaceChildren();

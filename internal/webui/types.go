@@ -52,6 +52,7 @@ type bootstrapDTO struct {
 	Roots           []rootDTO       `json:"roots"`
 	Limits          map[string]int  `json:"limits"`
 	Features        map[string]bool `json:"features"`
+	Torrent         torrentDTO      `json:"torrent"`
 }
 
 type deviceDTO struct {

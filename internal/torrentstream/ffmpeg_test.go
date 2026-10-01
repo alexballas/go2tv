@@ -19,6 +19,7 @@ import (
 	"github.com/anacrolix/torrent/storage"
 	"golang.org/x/time/rate"
 
+	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/utils"
 )
 
@@ -87,9 +88,12 @@ func TestFFmpegSeeksBeforeTorrentCompletes(t *testing.T) {
 	tt := []struct {
 		name, extension string
 		chromecast      bool
+		readerInput     bool
 	}{
 		{name: "DLNA", extension: ".ts"},
 		{name: "Chromecast", extension: ".mp4", chromecast: true},
+		{name: "WebUI DLNA reader", extension: ".ts", readerInput: true},
+		{name: "WebUI Chromecast reader", extension: ".mp4", chromecast: true, readerInput: true},
 	}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
@@ -104,14 +108,27 @@ func TestFFmpegSeeksBeforeTorrentCompletes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			var input any = path
+			if tc.readerInput {
+				source, ok := mediasource.Lookup(path)
+				if !ok {
+					t.Fatal("torrent source missing")
+				}
+				reader, err := source.Open(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer reader.Close()
+				input = reader
+			}
 			var output bytes.Buffer
 			result := make(chan error, 1)
 			go func() {
 				var command exec.Cmd
 				if tc.chromecast {
-					result <- utils.ServeChromecastTranscodedStream(ctx, &output, path, &command, &utils.TranscodeOptions{FFmpegPath: ffmpeg, SeekSeconds: 7})
+					result <- utils.ServeChromecastTranscodedStream(ctx, &output, input, &command, &utils.TranscodeOptions{FFmpegPath: ffmpeg, SeekSeconds: 7})
 				} else {
-					result <- utils.ServeTranscodedStream(ctx, &output, path, &command, ffmpeg, "", 7, utils.SubtitleSizeMedium)
+					result <- utils.ServeTranscodedStream(ctx, &output, input, &command, ffmpeg, "", 7, utils.SubtitleSizeMedium)
 				}
 			}()
 			select {
@@ -130,6 +147,12 @@ func TestFFmpegSeeksBeforeTorrentCompletes(t *testing.T) {
 			}
 			if completed, total := session.Progress(); completed >= total {
 				t.Fatalf("transcode waited for whole file: %d/%d", completed, total)
+			}
+			if tc.readerInput {
+				duration, err := utils.DurationForMediaReaderSeconds(ctx, ffmpeg, input.(io.ReadSeekCloser))
+				if err != nil || duration != 12 {
+					t.Fatalf("torrent reader duration = %v, err=%v", duration, err)
+				}
 			}
 			transcoded := filepath.Join(t.TempDir(), "transcoded"+tc.extension)
 			if err := os.WriteFile(transcoded, output.Bytes(), 0o600); err != nil {

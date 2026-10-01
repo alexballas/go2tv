@@ -30,6 +30,9 @@ const (
 // to our io.Writer. The context is used to kill ffmpeg when the HTTP request is cancelled.
 // An optional logger records pipeline attempts and startup fallback reasons.
 func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec.Cmd, ffmpegPath, subs string, seekSeconds int, subSize SubtitleSize, loggers ...*slog.Logger) error {
+	if url := progressiveReaderURL(input); url != "" {
+		input = url
+	}
 	// Pipe streaming is not great as explained here
 	// https://video.stackexchange.com/questions/34087/ffmpeg-fails-on-pipe-to-pipe-video-decoding.
 	// That's why if we have the option to pass the file directly to ffmpeg, we should.

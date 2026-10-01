@@ -274,19 +274,52 @@ func (f *fileSource) Open(ctx context.Context) (io.ReadSeekCloser, error) {
 	reader := f.file.NewReader()
 	reader.SetContext(ctx)
 	reader.SetReadahead(readahead)
-	return &sourceReader{Reader: reader, cancel: cancel, stop: stop}, nil
+	return &sourceReader{Reader: reader, cancel: cancel, stop: stop, url: f.url}, nil
 }
 
 type sourceReader struct {
 	torrent.Reader
 	cancel context.CancelFunc
 	stop   func() bool
+	url    string
+	mu     sync.Mutex
+	closed bool
+	err    error
+}
+
+// URL lets reader-based playback pipelines preserve FFmpeg input seeking.
+func (r *sourceReader) URL() string { return r.url }
+
+func (r *sourceReader) Read(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return 0, io.ErrClosedPipe
+	}
+	return r.Reader.Read(p)
+}
+
+func (r *sourceReader) Seek(offset int64, whence int) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return 0, io.ErrClosedPipe
+	}
+	return r.Reader.Seek(offset, whence)
 }
 
 func (r *sourceReader) Close() error {
+	// Interrupt a missing-piece read before waiting for exclusive reader access.
+	// The torrent reader's storage state does not support concurrent Read/Close.
 	r.cancel()
 	r.stop()
-	return r.Reader.Close()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.closed {
+		r.closed = true
+		r.err = r.Reader.Close()
+	}
+	return r.err
 }
 
 // MediaMIME deliberately excludes archives, playlists and torrent metadata.

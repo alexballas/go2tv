@@ -60,6 +60,8 @@ func routeTemplate(path string) string {
 		return "/api/bootstrap"
 	case path == "/api/library":
 		return "/api/library"
+	case path == "/api/torrent":
+		return "/api/torrent"
 	case path == "/api/thumbnail":
 		return "/api/thumbnail"
 	case path == "/api/media-artwork":

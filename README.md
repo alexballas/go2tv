@@ -160,6 +160,13 @@ files, omitting it lists their indexes. Torrent playback currently uses GUI/CLI.
 Run Go2TV as a web server to browse selected media folders and control casting from a
 browser. The Web UI has separate device, playlist, and playback state from the desktop GUI.
 
+Open **Torrent…** in the library to paste a magnet or upload a `.torrent` (up to
+4 MiB). Choose a media file, click **Use file**, then **Play** to cast while it
+downloads. Progress and **Cancel download** are shared across browsers. Cancel
+stops torrent playback and removes its queue item and temporary cache. Loading
+metadata leaves the current stream intact; choosing another torrent replaces it.
+Server shutdown removes torrent caches. FFmpeg transcoding supports input seeks.
+
 From the GUI, open **Settings → Remote Web Session…**, add media folders, choose local or
 LAN access, and start the session.
 

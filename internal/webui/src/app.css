@@ -123,6 +123,7 @@
   }
   button,
   select,
+  input[type="text"],
   input[type="number"],
   input[type="search"] {
     @apply min-h-10 rounded-[10px] border border-[#d2ccdf] bg-[#f5f3fa] px-3 text-sm text-[#231e30] outline-none transition duration-150 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 dark:border-[#2b2838] dark:bg-[#1d1a26] dark:text-[#eae7f2] dark:focus:border-brand-400/70 dark:focus:ring-brand-400/15;
@@ -433,6 +434,36 @@
   }
   .selection-status {
     @apply mb-3 rounded-xl border border-[#ddd8e8] bg-[#f5f3fa] px-4 py-3 dark:border-[#26232f] dark:bg-[#17151f];
+  }
+  .torrent-panel {
+    @apply mb-3 rounded-xl border border-[#ddd8e8] bg-[#f5f3fa] p-4 dark:border-[#26232f] dark:bg-[#17151f];
+  }
+  .torrent-panel summary {
+    @apply cursor-pointer font-semibold;
+  }
+  .torrent-panel p {
+    @apply my-2 break-words text-sm;
+  }
+  .torrent-controls {
+    @apply my-2 flex flex-wrap items-center gap-2;
+  }
+  .torrent-controls input,
+  .torrent-controls select {
+    @apply min-w-0 flex-1;
+  }
+  .torrent-panel progress {
+    @apply mb-2 h-2 w-full overflow-hidden rounded-full;
+    appearance: none;
+    accent-color: var(--color-brand-500);
+  }
+  .torrent-panel progress::-webkit-progress-bar {
+    @apply rounded-full bg-[#ddd8e8] dark:bg-[#2b2838];
+  }
+  .torrent-panel progress::-webkit-progress-value {
+    @apply rounded-full bg-brand-500;
+  }
+  .torrent-panel progress::-moz-progress-bar {
+    @apply rounded-full bg-brand-500;
   }
   .selection-status > summary,
   .selection-details {

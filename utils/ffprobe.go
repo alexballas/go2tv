@@ -110,7 +110,9 @@ func DurationForMediaReaderSeconds(ctx context.Context, ffmpeg string, media io.
 
 	input := io.Reader(media)
 	inputURL := "pipe:0"
-	if file, ok := underlyingOSFile(media); ok {
+	if url := progressiveReaderURL(media); url != "" {
+		input, inputURL = nil, url
+	} else if file, ok := underlyingOSFile(media); ok {
 		input = file
 		inputURL = ffmpegInputForFile(ffmpeg, file)
 	}

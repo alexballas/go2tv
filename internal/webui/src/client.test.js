@@ -157,9 +157,25 @@ function fixture() {
     "stop-button",
     "theme-toggle",
     "back-to-top",
+    "torrent-panel",
+    "torrent-input",
+    "torrent-form",
+    "torrent-magnet",
+    "torrent-load",
+    "torrent-upload",
+    "torrent-status",
+    "torrent-choices",
+    "torrent-files",
+    "torrent-select",
+    "torrent-cancel-pending",
+    "torrent-download",
+    "torrent-progress-text",
+    "torrent-progress",
+    "torrent-cancel",
   ])
     ids[id] = new Node();
   ids.roots.tag = "select";
+  ids["torrent-files"].tag = "select";
   ids["play-toggle"].dataset.command = "player.play";
   ids["stop-button"].dataset.command = "player.stop";
   commands.push(ids["play-toggle"], ids["stop-button"]);
@@ -1887,4 +1903,129 @@ test("normalizes image duration to desktop limits", async () => {
     assert.equal(ws.sent.at(-1).payload.policy.ImageDurationSeconds, want);
     assert.equal(ids["image-duration"].value, String(want));
   }
+});
+
+test("torrent upload, choices, progress and cancellation use shared IDs", async () => {
+  const { ids, env, timers } = fixture(),
+    originalFetch = env.fetch,
+    calls = [];
+  let torrent = {};
+  env.fetch = async (url, options = {}) => {
+    if (url === "/api/bootstrap") {
+      const response = await originalFetch(url),
+        body = await response.json();
+      return {
+        ok: true,
+        json: async () => ({
+          ...body,
+          features: { ...body.features, torrent: true },
+          torrent,
+        }),
+      };
+    }
+    if (url === "/api/torrent") {
+      calls.push({ url, ...options });
+      if (options.method === "POST")
+        torrent = {
+          pending: { id: "pending-1", status: "loading", files: [] },
+        };
+      return { ok: true, json: async () => torrent };
+    }
+    return originalFetch(url, options);
+  };
+  const client = startClient(env);
+  await settle();
+  const ws = FakeSocket.instances[0];
+  ws.emit("open");
+  await settle();
+  assert.equal(ids["torrent-panel"].hidden, false);
+  ids["torrent-magnet"].value = "https://example.com/movie";
+  ids["torrent-form"].emit("submit");
+  assert.equal(
+    calls.some((request) => request.method === "POST"),
+    false,
+  );
+  ids["torrent-magnet"].value = "magnet:?xt=urn:btih:abc";
+  ids["torrent-form"].emit("submit");
+  await settle();
+  assert.deepEqual(
+    JSON.parse(calls.find((request) => request.method === "POST").body),
+    { magnet: "magnet:?xt=urn:btih:abc" },
+  );
+  assert.match(ids["torrent-status"].textContent, /Fetching/);
+  torrent = {
+    pending: {
+      id: "pending-1",
+      status: "ready",
+      files: [
+        { index: 3, name: "<movie>.mp4", size: 10 << 20 },
+        { index: 7, name: "song.opus", size: 1 << 20 },
+      ],
+    },
+  };
+  await timers.at(-1)();
+  assert.equal(
+    ids["torrent-files"].children[0].textContent,
+    "<movie>.mp4 (10.0 MiB)",
+  );
+  ids["torrent-files"].value = "7";
+  await timers.at(-1)();
+  assert.equal(
+    ids["torrent-files"].value,
+    "7",
+    "polling preserves file choice",
+  );
+  ids["torrent-select"].emit("click");
+  const selection = ws.sent.at(-1);
+  assert.equal(selection.type, "torrent.select");
+  assert.equal(selection.payload.index, 7);
+  assert.equal(selection.payload.torrent_id, "pending-1");
+  assert.equal(ids["torrent-select"].disabled, true);
+  torrent = {
+    active: {
+      id: "pending-1",
+      name: "song.opus",
+      completed: 5 << 20,
+      total: 10 << 20,
+    },
+  };
+  client.handle({
+    protocol_version: 1,
+    type: "ack",
+    id: selection.id,
+    payload: { revision: 4 },
+  });
+  await settle();
+  assert.equal(ids["torrent-download"].hidden, false);
+  assert.equal(ids["torrent-progress"].value, 0.5);
+  assert.match(ids["torrent-progress-text"].textContent, /50.0%/);
+  ids["torrent-cancel"].emit("click");
+  const cancellation = ws.sent.at(-1);
+  assert.equal(cancellation.type, "torrent.cancel");
+  assert.equal(cancellation.payload.torrent_id, "pending-1");
+  torrent = {};
+  client.handle({
+    protocol_version: 1,
+    type: "ack",
+    id: cancellation.id,
+    payload: { revision: 5 },
+  });
+  await settle();
+  assert.equal(ids["torrent-download"].hidden, true);
+  const file = { name: "local.torrent", size: 100 };
+  ids["torrent-upload"].files = [file];
+  ids["torrent-upload"].emit("change");
+  await settle();
+  const upload = calls.filter((request) => request.method === "POST").at(-1);
+  assert.equal(upload.body, file);
+  assert.equal(upload.headers["Content-Type"], "application/x-bittorrent");
+  ids["torrent-upload"].files = [
+    { name: "large.torrent", size: (4 << 20) + 1 },
+  ];
+  const count = calls.length;
+  ids["torrent-upload"].emit("change");
+  assert.equal(calls.length, count);
+  assert.match(ids.toast.children.at(-1).textContent, /exceeds 4 MiB/);
+  ws.close();
+  assert.equal(ids["torrent-cancel-pending"].disabled, true);
 });

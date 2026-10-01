@@ -46,6 +46,11 @@ func ServeChromecastTranscodedStream(
 	}
 
 	isRawInput := opts.RawInput != nil
+	if !isRawInput {
+		if url := progressiveReaderURL(input); url != "" {
+			input = url
+		}
+	}
 
 	// Readers backed by a real file (e.g. Android content:// descriptors) are
 	// handed to ffmpeg as a seekable fd rather than an unseekable pipe.

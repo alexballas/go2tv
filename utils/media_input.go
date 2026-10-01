@@ -16,3 +16,10 @@ func mediaInput(path string) (string, error) {
 	}
 	return path, nil
 }
+
+func progressiveReaderURL(input any) string {
+	if source, ok := input.(interface{ URL() string }); ok {
+		return source.URL()
+	}
+	return ""
+}
