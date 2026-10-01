@@ -254,6 +254,10 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			// keep old values
 			mediafileOld = s.mediafile
 			mediafileOldText = s.MediaText.Text
+			if torrentMediaSelected(s) {
+				mediafileOld = nil
+				mediafileOldText = ""
+			}
 
 			// Clear the Media Text Area
 			clearmediaAction(s)
@@ -269,7 +273,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		mfile.Enable()
 		mediafilelabel.Text = lang.L("Media File") + ":"
 		mfiletext.SetPlaceHolder("")
-		s.MediaText.Text = mediafileOldText
+		s.MediaText.SetText(mediafileOldText)
 		s.mediafile = mediafileOld
 		resolveSelectedMobileArtwork(s, mediafileOld)
 		mediafilelabel.Refresh()

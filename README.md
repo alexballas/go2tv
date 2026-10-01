@@ -118,6 +118,10 @@ For torrents, click **Torrent…**, paste a magnet link or open a `.torrent`, an
 FFmpeg transcoding uses the same seekable source. **Cancel download** stops playback
 and removes the temporary cache. Loading another torrent or quitting also removes it.
 
+On Android, the same **Torrent…** flow supports magnets and provider-backed
+`.torrent` documents. Torrent files can also be shared or opened from other apps.
+Downloads continue in the background until **Cancel download**, even after **Stop**.
+
 #### Playlist
 
 The **Playlist** window lets you add, remove, reorder, and select files. Dragging files onto

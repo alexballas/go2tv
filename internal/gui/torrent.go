@@ -34,6 +34,12 @@ type torrentUIState struct {
 	dialog        dialog.Dialog
 }
 
+func (s *FyneScreen) hasTorrentSession() bool {
+	s.torrent.mu.Lock()
+	defer s.torrent.mu.Unlock()
+	return s.torrent.session != nil
+}
+
 func fileSourceName(path string) string { return filepath.Base(path) }
 
 func newTorrentButton(s *FyneScreen) *widget.Button {
@@ -93,6 +99,7 @@ func (s *FyneScreen) closeTorrent() {
 		if s.torrent.cancelButton != nil {
 			s.torrent.cancelButton.Hide()
 		}
+		syncTorrentBackgroundSession(s)
 	})
 }
 
@@ -112,13 +119,14 @@ func (s *FyneScreen) shutdownTorrents() {
 func (s *FyneScreen) useTorrent(session *torrentstream.Session, cancel context.CancelFunc, index int) error {
 	s.torrent.operationMu.Lock()
 	defer s.torrent.operationMu.Unlock()
-	// Casting must release readers before removing the preceding cache.
-	stopActionSync(s)
-	s.closeTorrent()
 	path, err := session.Select(index)
 	if err != nil {
 		return err
 	}
+	// Validate the new selection before interrupting existing playback.
+	// Casting must release readers before removing the preceding cache.
+	stopActionSync(s)
+	s.closeTorrent()
 	s.torrent.mu.Lock()
 	s.torrent.session, s.torrent.cancel = session, cancel
 	s.torrent.path = path
@@ -189,6 +197,14 @@ func showTorrentInputDialog(s *FyneScreen, initialReader io.ReadCloser, initial 
 	var labels []string
 	var committed bool
 	var d dialog.Dialog
+	var content *container.Scroll
+	setStatus := func(text string) {
+		status.SetText(text)
+		if content != nil {
+			content.Content.Refresh()
+			resizeTorrentDialog(s, d, content)
+		}
+	}
 	loadMagnet := widget.NewButton(lang.L("Load magnet"), nil)
 	openFile := widget.NewButton(lang.L("Open .torrent"), nil)
 	load := func(input string, reader io.ReadCloser) {
@@ -197,7 +213,7 @@ func showTorrentInputDialog(s *FyneScreen, initialReader io.ReadCloser, initial 
 			if reader != nil {
 				_ = reader.Close()
 			}
-			status.SetText(err.Error())
+			setStatus(err.Error())
 			return
 		}
 		if cancel != nil {
@@ -221,7 +237,7 @@ func showTorrentInputDialog(s *FyneScreen, initialReader io.ReadCloser, initial 
 		openFile.Disable()
 		choose.Disable()
 		files.Disable()
-		status.SetText(lang.L("Fetching torrent metadata…"))
+		setStatus(lang.L("Fetching torrent metadata…"))
 		go func() {
 			var session *torrentstream.Session
 			var err error
@@ -250,7 +266,7 @@ func showTorrentInputDialog(s *FyneScreen, initialReader io.ReadCloser, initial 
 				loadMagnet.Enable()
 				openFile.Enable()
 				if err != nil {
-					status.SetText(err.Error())
+					setStatus(err.Error())
 					return
 				}
 				pending, choices = session, found
@@ -262,13 +278,13 @@ func showTorrentInputDialog(s *FyneScreen, initialReader io.ReadCloser, initial 
 				files.Enable()
 				files.SetSelectedIndex(0)
 				choose.Enable()
-				status.SetText(lang.L("Choose a file, then cast. Missing pieces buffer automatically."))
+				setStatus(lang.L("Choose a file, then cast. Missing pieces buffer automatically."))
 			})
 		}()
 	}
 	loadMagnet.OnTapped = func() {
 		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(entry.Text)), "magnet:") {
-			status.SetText(lang.L("Enter a magnet link."))
+			setStatus(lang.L("Enter a magnet link."))
 			return
 		}
 		load(entry.Text, nil)
@@ -279,7 +295,7 @@ func showTorrentInputDialog(s *FyneScreen, initialReader io.ReadCloser, initial 
 		picker := xfilepicker.NewFileOpen(func(readers []fyne.URIReadCloser, err error) {
 			defer resumeHotkeys()
 			if err != nil {
-				status.SetText(err.Error())
+				setStatus(err.Error())
 				return
 			}
 			if len(readers) > 0 {
@@ -310,7 +326,8 @@ func showTorrentInputDialog(s *FyneScreen, initialReader io.ReadCloser, initial 
 			}
 		}()
 	}
-	d = dialog.NewCustom(lang.L("Torrent"), lang.L("Cancel"), container.NewVBox(entry, container.NewGridWithColumns(2, loadMagnet, openFile), status, files, choose), s.Current)
+	content = newTorrentDialogContent(entry, container.NewGridWithColumns(2, loadMagnet, openFile), status, files, choose)
+	d = dialog.NewCustom(lang.L("Torrent"), lang.L("Cancel"), content, s.Current)
 	s.torrent.dialog = d
 	d.SetOnClosed(func() {
 		s.torrent.dialog = nil
@@ -324,7 +341,7 @@ func showTorrentInputDialog(s *FyneScreen, initialReader io.ReadCloser, initial 
 			go pending.Close()
 		}
 	})
-	d.Resize(fyne.NewSize(520, 300))
+	resizeTorrentDialog(s, d, content)
 	d.Show()
 	if initialReader != nil {
 		load("", initialReader)

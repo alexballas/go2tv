@@ -182,7 +182,7 @@ func mediaAction(screen *FyneScreen) {
 			return
 		}
 
-		if strings.EqualFold(filepath.Ext(reader.URI().Name()), ".torrent") {
+		if isTorrentDocument(reader.URI(), "") {
 			// The torrent dialog's picker supports provider-backed documents.
 			showTorrentDocument(screen, reader)
 			return
@@ -201,18 +201,12 @@ func mediaAction(screen *FyneScreen) {
 // the file picker above and a share from another app - go through here so they
 // cannot drift apart. Must be called on the Fyne goroutine.
 func setMobileMediaURI(screen *FyneScreen, uri fyne.URI) {
-	if strings.EqualFold(filepath.Ext(uri.Name()), ".torrent") {
-		go func() {
-			reader, err := storage.Reader(uri)
-			fyne.Do(func() {
-				if err != nil {
-					dialog.ShowError(err, screen.Current)
-					return
-				}
-				showTorrentDocument(screen, reader)
-			})
-		}()
+	if isTorrentDocument(uri, "") {
+		openMobileTorrentDocument(screen, uri)
 		return
+	}
+	if torrentMediaSelected(screen) {
+		cancelTorrent(screen)
 	}
 	screen.MediaText.Text = uri.Name()
 	screen.mediafile = uri
@@ -600,7 +594,6 @@ func playAction(screen *FyneScreen) {
 func clearmediaAction(screen *FyneScreen) {
 	if torrentMediaSelected(screen) {
 		cancelTorrent(screen)
-		return
 	}
 	screen.MediaText.SetText("")
 	screen.mediafile = nil
@@ -847,7 +840,7 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 		screen.chromecastClient = nil
 		screen.httpserver = nil
 
-		go func() {
+		teardown := func() {
 			if client.IsConnected() {
 				_ = client.Stop()
 			}
@@ -855,7 +848,12 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 			if server != nil {
 				server.StopServer()
 			}
-		}()
+		}
+		if wait {
+			teardown()
+		} else {
+			go teardown()
+		}
 		return
 	}
 

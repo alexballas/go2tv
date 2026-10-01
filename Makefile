@@ -81,6 +81,8 @@ ANDROID_X264_SOURCE_DIR?=
 ANDROID_FFMPEG_SOURCE_OUT?=$(BUILD_DIR)/ffmpeg-android-source
 ANDROID_APK_LIBS=$(BUILD_DIR)/apk-libs
 ANDROID_ABI?=arm64-v8a
+# Torrent's libutp uses C++; Android does not provide this NDK runtime.
+ANDROID_LIBCXX_BIN?=$(ANDROID_NDK_HOME)/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so
 ANDROID_SIGN?=true
 # Kept out of BUILD_DIR so `make clean` cannot delete it: a regenerated key does
 # not match what is already installed, and Android then rejects the update until
@@ -266,6 +268,7 @@ android: android-fyne
 	set -e; \
 	if [ -z "$$ANDROID_NDK_HOME" ]; then echo "ANDROID_NDK_HOME is required"; exit 1; fi; \
 	if [ -z "$$ANDROID_HOME" ]; then echo "ANDROID_HOME is required"; exit 1; fi; \
+	if [ ! -f "$(ANDROID_LIBCXX_BIN)" ]; then echo "Android C++ runtime missing: $(ANDROID_LIBCXX_BIN)"; exit 1; fi; \
 	if [ -z "$(ANDROID_BUILD_TOOLS)" ]; then echo "Android build-tools not found under ANDROID_HOME"; exit 1; fi; \
 	if [ ! -x "$(ANDROID_BUILD_TOOLS)/aapt" ]; then echo "aapt missing in $(ANDROID_BUILD_TOOLS)"; exit 1; fi; \
 	if [ ! -x "$(ANDROID_BUILD_TOOLS)/zipalign" ]; then echo "zipalign missing in $(ANDROID_BUILD_TOOLS)"; exit 1; fi; \
@@ -311,8 +314,9 @@ android: android-fyne
 	mkdir -p $(ANDROID_APK_LIBS)/lib/$(ANDROID_ABI); \
 	cp $(ANDROID_FFMPEG_BIN) $(ANDROID_APK_LIBS)/lib/$(ANDROID_ABI)/libffmpeg.so; \
 	cp $(ANDROID_FFPROBE_BIN) $(ANDROID_APK_LIBS)/lib/$(ANDROID_ABI)/libffprobe.so; \
-	chmod 755 $(ANDROID_APK_LIBS)/lib/$(ANDROID_ABI)/libffmpeg.so $(ANDROID_APK_LIBS)/lib/$(ANDROID_ABI)/libffprobe.so; \
-	( cd $(ANDROID_APK_LIBS) && zip -q -g ../$(notdir $(APK_OUT)) lib/$(ANDROID_ABI)/libffmpeg.so lib/$(ANDROID_ABI)/libffprobe.so ); \
+	cp "$(ANDROID_LIBCXX_BIN)" $(ANDROID_APK_LIBS)/lib/$(ANDROID_ABI)/libc++_shared.so; \
+	chmod 755 $(ANDROID_APK_LIBS)/lib/$(ANDROID_ABI)/*.so; \
+	( cd $(ANDROID_APK_LIBS) && zip -q -g ../$(notdir $(APK_OUT)) lib/$(ANDROID_ABI)/*.so ); \
 	if [ "$(ANDROID_FFMPEG_MODE)" = local ]; then \
 		NOTICE_SOURCE="$$(dirname "$(ANDROID_FFMPEG_BIN)")"; \
 		mkdir -p $(ANDROID_APK_LIBS)/assets/licenses; \
@@ -333,6 +337,7 @@ android: android-fyne
 	check_manifest "launchMode singleTask" 'launchMode.*0x2'; \
 	check_manifest "SEND filter" 'android.intent.action.SEND'; \
 	check_manifest "VIEW filter" 'android.intent.action.VIEW'; \
+	check_manifest "torrent document filter" 'application/x-bittorrent'; \
 	check_manifest "not debuggable" 'debuggable.*)0x0$$'; \
 	check_manifest "foreground service declared" 'org.golang.app.FyneForegroundService'; \
 	if echo "$$MANIFEST_DUMP" | grep -q 'foregroundServiceType'; then \
@@ -355,7 +360,7 @@ android: android-fyne
 	if [ ! -x "$$READELF" ]; then READELF="$$(command -v llvm-readelf || command -v readelf || true)"; fi; \
 	if [ -n "$$READELF" ]; then \
 		ELF_TMP="$(BUILD_DIR)/pagesize-check.so"; \
-		for lib in libGo2TV.so libffmpeg.so libffprobe.so; do \
+		for lib in libGo2TV.so libffmpeg.so libffprobe.so libc++_shared.so; do \
 			unzip -p $(APK_OUT) lib/$(ANDROID_ABI)/$$lib > "$$ELF_TMP"; \
 			if "$$READELF" -lW "$$ELF_TMP" | awk '$$1 == "LOAD" && $$NF != "$(ANDROID_ELF_ALIGN)" { bad = 1 } END { exit !bad }'; then \
 				echo "$$lib has LOAD segments that are not 16 KB aligned"; \

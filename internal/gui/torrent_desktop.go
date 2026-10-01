@@ -4,11 +4,19 @@ package gui
 
 import (
 	"github.com/alexballas/refyne/v2"
+	"github.com/alexballas/refyne/v2/container"
+	"github.com/alexballas/refyne/v2/dialog"
 
 	"go2tv.app/go2tv/v2/internal/mediasource"
 )
 
 func torrentCacheDir() (string, error) { return "", nil }
+
+func resizeTorrentDialog(_ *FyneScreen, d dialog.Dialog, _ *container.Scroll) {
+	d.Resize(fyne.NewSize(520, 300))
+}
+
+func syncTorrentBackgroundSession(_ *FyneScreen) {}
 
 func mediaPreviewInput(path string) string { return mediasource.Input(path) }
 
