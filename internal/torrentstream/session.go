@@ -202,6 +202,21 @@ func (s *Session) Select(index int) (string, error) {
 	return path, nil
 }
 
+// Deselect stops background downloading and releases sources for an unplayed
+// selection. Metadata remains available so the caller can retry selection.
+func (s *Session) Deselect() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.selected != nil && s.ctx.Err() == nil {
+		s.selected.SetPriority(torrent.PiecePriorityNone)
+	}
+	s.selected = nil
+	for _, unregister := range s.unregister {
+		unregister()
+	}
+	s.unregister = nil
+}
+
 func (s *Session) Progress() (completed, total int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

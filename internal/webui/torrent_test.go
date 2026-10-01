@@ -20,6 +20,7 @@ import (
 
 	"go2tv.app/go2tv/v2/internal/controller"
 	"go2tv.app/go2tv/v2/internal/library"
+	"go2tv.app/go2tv/v2/internal/mediamodel"
 	"go2tv.app/go2tv/v2/internal/mediaserver"
 	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/internal/playback"
@@ -337,6 +338,134 @@ func TestTorrentRendererHEADAndCancelBlockedRange(t *testing.T) {
 			snapshot, _ := control.Snapshot(ctx)
 			if snapshot.HasSession || len(snapshot.Queue) != 0 || snapshot.SelectedMedia != "" {
 				t.Fatalf("cancelled state = %#v", snapshot)
+			}
+		})
+	}
+}
+
+func torrentTestLocalMedia(t *testing.T) controller.MediaRef {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "local.mp4")
+	if err := os.WriteFile(path, []byte("media"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return controller.MediaRef{RootID: "local", ID: "local", Name: "local.mp4", Kind: mediamodel.MediaKindVideo, MIMEType: "video/mp4", OpenDirect: func(context.Context) (io.ReadSeekCloser, time.Time, error) {
+		file, err := os.Open(path)
+		return file, time.Time{}, err
+	}}
+}
+
+func TestTorrentQueueLimitRollsBackDownloadAndAllowsRetry(t *testing.T) {
+	h, _, control, _ := testHandler(t)
+	ctx := context.Background()
+	media := torrentTestLocalMedia(t)
+	items := make([]controller.MediaRef, controller.MaxQueueItems)
+	for i := range items {
+		items[i] = media
+		items[i].ID = fmt.Sprint(i)
+	}
+	if result := control.AddQueueItems(ctx, controller.QueueAddManyRequest{Items: items}); !result.OK() {
+		t.Fatal(result)
+	}
+	pending := loadWebTorrent(t, h)
+	index := 1
+	if result := webTorrentCommand(h, "torrent.select", pending.ID, &index); result.Code != controller.CodeQueueLimit {
+		t.Fatalf("selection = %#v", result)
+	}
+	state := h.torrentSnapshot()
+	if state.Active != nil || state.Pending == nil || state.Pending.ID != pending.ID || state.Pending.Status != "ready" {
+		t.Fatalf("rejected selection = %#v", state)
+	}
+	if completed, total := h.torrents.pending.session.Progress(); completed != 0 || total != 0 {
+		t.Fatalf("rejected selection still downloading: %d/%d", completed, total)
+	}
+	if result := control.ClearQueue(ctx, controller.Mutation{}); !result.OK() {
+		t.Fatal(result)
+	}
+	if result := webTorrentCommand(h, "torrent.select", pending.ID, &index); !result.OK() {
+		t.Fatal(result)
+	}
+	snapshot, err := control.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Queue) != 1 || snapshot.SelectedMedia != "movie.ts" || h.torrentSnapshot().Active == nil {
+		t.Fatalf("retry did not queue torrent: %#v", snapshot)
+	}
+}
+
+func TestTorrentCancellationPreservesUnrelatedPlayback(t *testing.T) {
+	tt := []struct {
+		name, protocol string
+		paused         bool
+	}{
+		{name: "playing DLNA", protocol: "DLNA"},
+		{name: "paused DLNA", protocol: "DLNA", paused: true},
+		{name: "playing Chromecast", protocol: "Chromecast"},
+		{name: "paused Chromecast", protocol: "Chromecast", paused: true},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			lib, err := library.Open(library.Config{Roots: []string{t.TempDir()}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			transport := &torrentTransport{}
+			server := mediaserver.New(mediaserver.Config{ListenAddr: "127.0.0.1:0"})
+			control := controller.New(controller.Config{Discovery: torrentDiscovery{playback.Device{ID: "renderer", Protocol: tc.protocol, Endpoint: "http://127.0.0.1:8009"}}, TransportFactory: transport, MediaServer: server})
+			h, err := New(Config{Controller: control, Library: lib})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { h.Close(); control.Close(); _ = lib.Close() }()
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			for {
+				snapshot, err := control.Snapshot(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(snapshot.Devices) > 0 {
+					break
+				}
+				time.Sleep(time.Millisecond)
+			}
+			if result := control.SelectDevice(ctx, controller.Mutation{}, "renderer"); !result.OK() {
+				t.Fatal(result)
+			}
+			local := control.AddQueueItem(ctx, controller.QueueAddRequest{Media: torrentTestLocalMedia(t), Select: true})
+			if !local.OK() {
+				t.Fatal(local)
+			}
+			if result := control.Play(ctx, controller.PlayRequest{}); !result.OK() {
+				t.Fatal(result)
+			}
+			if tc.paused {
+				if result := control.Pause(ctx, controller.Mutation{}); !result.OK() {
+					t.Fatal(result)
+				}
+			}
+			pending := loadWebTorrent(t, h)
+			index := 1
+			if result := webTorrentCommand(h, "torrent.select", pending.ID, &index); !result.OK() {
+				t.Fatal(result)
+			}
+			before, err := control.Snapshot(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result := webTorrentCommand(h, "torrent.cancel", pending.ID, nil); !result.OK() {
+				t.Fatal(result)
+			}
+			after, err := control.Snapshot(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !after.HasSession || after.PlaybackState != before.PlaybackState || after.ActiveMediaName != "local.mp4" || after.Generation != before.Generation || transport.stops.Load() != 0 {
+				t.Fatalf("torrent cancellation interrupted playback: %#v", after)
+			}
+			if len(after.Queue) != 1 || after.Queue[0].ID != local.ItemID || !after.Queue[0].IsSelected || !after.Queue[0].IsActive || h.torrentSnapshot().Active != nil {
+				t.Fatalf("torrent cancellation did not restore local selection: %#v", after)
 			}
 		})
 	}

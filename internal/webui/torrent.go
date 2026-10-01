@@ -276,6 +276,12 @@ func (h *Handler) torrentCommand(ctx context.Context, message envelope) controll
 	if err != nil {
 		return invalid(message.ID)
 	}
+	queued := false
+	defer func() {
+		if !queued {
+			pending.session.Deselect()
+		}
+	}()
 	source, ok := mediasource.Lookup(path)
 	if !ok {
 		return invalid(message.ID)
@@ -294,6 +300,7 @@ func (h *Handler) torrentCommand(ctx context.Context, message envelope) controll
 	if !result.OK() {
 		return result.Result
 	}
+	queued = true
 	h.torrents.mu.Lock()
 	pending.itemID, pending.name = result.ItemID, name
 	h.torrents.active, h.torrents.pending = pending, nil
@@ -312,7 +319,23 @@ func (h *Handler) releaseActiveTorrent(ctx context.Context, active *webTorrent) 
 			continue
 		}
 		revision := snapshot.Revision
-		if item.IsActive || (item.IsSelected && snapshot.PlaybackState != "STOPPED") {
+		selected := item.IsSelected
+		if selected && !item.IsActive {
+			// Selecting a torrent does not replace playback. Restore selection
+			// to the playing item so removing this torrent leaves it running.
+			for _, playing := range snapshot.Queue {
+				if !playing.IsActive {
+					continue
+				}
+				result := h.cfg.Controller.SelectQueueItem(ctx, controller.Mutation{ExpectedRevision: &revision}, playing.ID)
+				if !result.OK() {
+					return result
+				}
+				revision, selected = result.Revision, false
+				break
+			}
+		}
+		if item.IsActive || (selected && snapshot.PlaybackState != "STOPPED") {
 			result := h.cfg.Controller.Stop(ctx, controller.Mutation{ExpectedRevision: &revision})
 			if !result.OK() {
 				return result

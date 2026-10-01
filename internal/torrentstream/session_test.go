@@ -179,6 +179,36 @@ func TestProgressiveRangeSeek(t *testing.T) {
 	}
 }
 
+func TestDeselectStopsDownloadAndReleasesSource(t *testing.T) {
+	mi, _, _ := torrentFixture(t)
+	session, err := openWithConfig(context.Background(), "", mi, localConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	path, err := session.Select(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.Deselect()
+	if priority := session.torrent.Files()[0].Priority(); priority != torrent.PiecePriorityNone {
+		t.Fatalf("deselected file still scheduled for download: %v", priority)
+	}
+	if _, ok := mediasource.Lookup(path); ok {
+		t.Fatal("deselected source remains registered")
+	}
+	path, err = session.Select(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := mediasource.Lookup(path); !ok {
+		t.Fatal("retry source unavailable")
+	}
+	if priority := session.torrent.Files()[0].Priority(); priority == torrent.PiecePriorityNone {
+		t.Fatal("retry did not resume downloading")
+	}
+}
+
 func TestMissingPieceCancellation(t *testing.T) {
 	mi, _, _ := torrentFixture(t)
 	session, err := openWithConfig(context.Background(), "", mi, localConfig())
