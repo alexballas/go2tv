@@ -87,6 +87,7 @@ type FyneScreen struct {
 	SkipNextButton           *widget.Button
 	tvdata                   *soapcalls.TVPayload
 	torrent                  torrentUIState
+	torrentPlayPending       chan struct{}
 	tabs                     *container.AppTabs
 	CheckVersion             *widget.Button
 	CustomSubsCheck          *widget.Check
@@ -288,10 +289,10 @@ var translations embed.FS
 
 // Start .
 func Start(ctx context.Context, s *FyneScreen) {
-	s.torrent.ctx = ctx
 	if s == nil {
 		return
 	}
+	s.torrent.ctx = ctx
 
 	if s.tempFiles == nil {
 		s.tempFiles = make([]string, 0)
@@ -613,9 +614,7 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 			screen.mediaSelection.refresh()
 		}
 	})
-	if screen.cancelEnablePlay != nil {
-		screen.cancelEnablePlay()
-	}
+	screen.cancelPlayTimer()
 
 	if screen.renderGate.remoteLeaseHeld() {
 		// Renderer controls stay locked while the remote session runs; the
@@ -664,6 +663,9 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 			}
 		}
 		screen.refreshPlaybackReadiness()
+		if screen.torrentPlaybackPending() {
+			screen.PlayPause.Disable()
+		}
 		screen.PlayPause.Refresh()
 		screen.refreshTraversalControls()
 	})

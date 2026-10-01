@@ -44,6 +44,7 @@ const (
 // before RTMP/screencast teardown completes.
 func (s *FyneScreen) beginGUIShutdown() <-chan struct{} {
 	s.shutdownOnce.Do(func() {
+		s.cancelPendingTorrentPlayback()
 		if s.remoteSessionUpdatesDone != nil {
 			s.remoteSessionUpdatesDone()
 		}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -14,7 +13,6 @@ import (
 	"github.com/alexballas/refyne/v2/dialog"
 	"github.com/alexballas/refyne/v2/lang"
 	"github.com/alexballas/refyne/v2/storage"
-	"github.com/alexballas/refyne/v2/theme"
 	"github.com/alexballas/refyne/v2/widget"
 	xfilepicker "github.com/alexballas/xfilepicker/dialog"
 
@@ -26,7 +24,10 @@ type torrentUIState struct {
 	mu            sync.Mutex
 	session       *torrentstream.Session
 	cancel        context.CancelFunc
+	cancelDone    chan struct{}
 	pendingCancel context.CancelFunc
+	startup       *torrentPlaybackStartup
+	playback      *torrentstream.Session
 	ctx           context.Context
 	status        *widget.Label
 	cancelButton  *widget.Button
@@ -40,22 +41,11 @@ func (s *FyneScreen) hasTorrentSession() bool {
 	return s.torrent.session != nil
 }
 
-func fileSourceName(path string) string { return filepath.Base(path) }
-
-func newTorrentButton(s *FyneScreen) *widget.Button {
-	return widget.NewButtonWithIcon(lang.L("Torrent…"), theme.DownloadIcon(), func() { showTorrentDialog(s) })
-}
-
-func newTorrentStatus(s *FyneScreen) *widget.Label {
-	label := widget.NewLabel("")
-	label.Wrapping = fyne.TextWrapWord
-	label.Hide()
-	s.torrent.status = label
-	return label
-}
-
 func newTorrentControls(s *FyneScreen) *fyne.Container {
-	status := newTorrentStatus(s)
+	status := widget.NewLabel("")
+	status.Wrapping = fyne.TextWrapWord
+	status.Hide()
+	s.torrent.status = status
 	button := widget.NewButton(lang.L("Cancel download"), func() { cancelTorrent(s) })
 	button.Hide()
 	s.torrent.cancelButton = button
@@ -65,8 +55,27 @@ func newTorrentControls(s *FyneScreen) *fyne.Container {
 func cancelTorrent(s *FyneScreen) {
 	s.torrent.mu.Lock()
 	session, path := s.torrent.session, s.torrent.path
+	previous := s.torrent.cancelDone
+	done := make(chan struct{})
+	s.torrent.cancelDone = done
+	// Signal the running worker before queued teardown can race with startup.
+	startup := s.torrent.startup
+	if startup != nil && startup.session == session {
+		startup.cancel()
+	} else {
+		startup = nil
+	}
 	s.torrent.mu.Unlock()
 	go func() {
+		defer s.finishTorrentCancellation(done)
+		// Preserve request order so waiting for the latest cancellation also
+		// waits for every preceding teardown.
+		if previous != nil {
+			<-previous
+		}
+		if startup != nil {
+			<-startup.done
+		}
 		s.torrent.operationMu.Lock()
 		defer s.torrent.operationMu.Unlock()
 		s.torrent.mu.Lock()
@@ -75,16 +84,41 @@ func cancelTorrent(s *FyneScreen) {
 		if !current {
 			return
 		}
-		stopActionSync(s)
+		if s.torrentOwnsPlayback(session, path) {
+			stopActionSync(s)
+		}
 		s.closeTorrent()
-		fyne.Do(func() { clearTorrentSelection(s, path) })
+		// Include UI cleanup (including closeTorrent's queued service sync)
+		// before publishing cancellation completion.
+		fyne.DoAndWait(func() { clearTorrentSelection(s, path) })
 	}()
 }
 
+func (s *FyneScreen) finishTorrentCancellation(done chan struct{}) {
+	s.torrent.mu.Lock()
+	defer s.torrent.mu.Unlock()
+	if s.torrent.cancelDone == done {
+		s.torrent.cancelDone = nil
+	}
+	close(done)
+}
+
+func (s *FyneScreen) torrentCancellationDone() <-chan struct{} {
+	s.torrent.mu.Lock()
+	defer s.torrent.mu.Unlock()
+	return s.torrent.cancelDone
+}
+
 func (s *FyneScreen) closeTorrent() {
+	if done := s.cancelTorrentStartup(); done != nil {
+		<-done
+	}
 	s.torrent.mu.Lock()
 	session, cancel := s.torrent.session, s.torrent.cancel
 	s.torrent.session, s.torrent.cancel = nil, nil
+	if s.torrent.playback == session {
+		s.torrent.playback = nil
+	}
 	s.torrent.mu.Unlock()
 	if cancel != nil {
 		cancel()
@@ -170,10 +204,6 @@ func showTorrentDialog(s *FyneScreen, initial ...string) {
 	showTorrentInputDialog(s, nil, initial...)
 }
 
-func showTorrentDocument(s *FyneScreen, reader io.ReadCloser) {
-	showTorrentInputDialog(s, reader)
-}
-
 func showTorrentInputDialog(s *FyneScreen, initialReader io.ReadCloser, initial ...string) {
 	if s.torrent.dialog != nil {
 		if initialReader != nil {
@@ -194,7 +224,6 @@ func showTorrentInputDialog(s *FyneScreen, initialReader io.ReadCloser, initial 
 	var pending *torrentstream.Session
 	var cancel context.CancelFunc
 	var choices []torrentstream.File
-	var labels []string
 	var committed bool
 	var d dialog.Dialog
 	var content *container.Scroll
@@ -270,7 +299,7 @@ func showTorrentInputDialog(s *FyneScreen, initialReader io.ReadCloser, initial 
 					return
 				}
 				pending, choices = session, found
-				labels = make([]string, len(found))
+				labels := make([]string, len(found))
 				for i, file := range found {
 					labels[i] = fmt.Sprintf("%s (%.1f MiB)", file.Name, float64(file.Size)/(1<<20))
 				}

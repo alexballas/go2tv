@@ -3,17 +3,29 @@
 package gui
 
 import (
+	"io"
+	"path/filepath"
+
 	"github.com/alexballas/refyne/v2"
-	"github.com/alexballas/refyne/v2/container"
 	"github.com/alexballas/refyne/v2/dialog"
+	"github.com/alexballas/refyne/v2/lang"
 	"github.com/alexballas/refyne/v2/storage"
 	"github.com/alexballas/refyne/v2/theme"
+	"github.com/alexballas/refyne/v2/widget"
 
 	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/utils"
 )
 
 func torrentCacheDir() (string, error) { return mobileCacheDir() }
+
+func newTorrentButton(s *FyneScreen) *widget.Button {
+	return widget.NewButtonWithIcon(lang.L("Torrent…"), theme.DownloadIcon(), func() { showTorrentDialog(s) })
+}
+
+func showTorrentDocument(s *FyneScreen, reader io.ReadCloser) {
+	showTorrentInputDialog(s, reader)
+}
 
 func selectTorrentMedia(s *FyneScreen, path string) {
 	fyne.DoAndWait(func() {
@@ -23,7 +35,7 @@ func selectTorrentMedia(s *FyneScreen, path string) {
 		s.mediafile = storage.NewFileURI(path)
 		clearsubsAction(s)
 		s.setCurrentArtwork(nil)
-		s.MediaText.SetText(fileSourceName(path))
+		s.MediaText.SetText(filepath.Base(path))
 		setPlayPauseView("", s)
 		syncBackgroundSession(s, s.getScreenState())
 	})
@@ -40,22 +52,6 @@ func openMobileTorrentDocument(s *FyneScreen, uri fyne.URI) {
 			showTorrentDocument(s, reader)
 		})
 	}()
-}
-
-func resizeTorrentDialog(s *FyneScreen, d dialog.Dialog, content *container.Scroll) {
-	size := s.Current.Canvas().Size()
-	if canvas, ok := s.Current.Canvas().(interface {
-		PopUpArea() (fyne.Position, fyne.Size)
-	}); ok {
-		_, size = canvas.PopUpArea()
-	}
-	width := min(float32(520), size.Width-2*theme.Padding())
-	// Dialog chrome adds 32 points of horizontal padding, plus popup padding.
-	content.Content.Resize(fyne.NewSize(width-32-2*theme.Padding(), content.Content.MinSize().Height))
-	chromeHeight := d.MinSize().Height - content.MinSize().Height
-	height := min(content.Content.MinSize().Height, max(float32(32), size.Height*0.8-chromeHeight))
-	content.SetMinSize(fyne.NewSize(0, height))
-	d.Resize(fyne.NewSize(width, height+chromeHeight))
 }
 
 func syncTorrentBackgroundSession(s *FyneScreen) {

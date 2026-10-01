@@ -26,6 +26,7 @@ import (
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
 	"go2tv.app/go2tv/v2/internal/mediamodel"
+	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/internal/playback"
 	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/rtmp"
@@ -333,6 +334,9 @@ func setCurrentMediaPath(screen *FyneScreen, mediaPath string) error {
 	if err != nil {
 		return err
 	}
+	if torrentMediaSelected(screen) && screen.mediafile != absMediaFile {
+		cancelTorrent(screen)
+	}
 
 	if screen.ExternalMediaURL != nil && screen.ExternalMediaURL.Checked {
 		fyne.DoAndWait(func() {
@@ -626,6 +630,9 @@ func playAction(screen *FyneScreen) {
 }
 
 func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
+	if screen.deferTorrentPlayback(target) {
+		return
+	}
 	releasePermit, permitted := screen.rendererPermit(true)
 	if !permitted {
 		return
@@ -729,28 +736,43 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 
 	// Branch based on device type - MUST be first, before any DLNA-specific logic
 	// Chromecast has its own status watcher, doesn't need the DLNA timeout mechanism
+	mediaPath := screen.mediafile
+	startupPath := mediaPath
+	if screen.Screencast || screen.ExternalMediaURL.Checked {
+		startupPath = ""
+	}
+	startupCtx, finishStartup, starting := screen.beginTorrentPlayback(startupPath)
+	if !starting {
+		screen.deferTorrentPlayback(target)
+		return
+	}
 	if target.device.deviceType == devices.DeviceTypeChromecast {
 		actionID := screen.nextChromecastActionID()
 		permitHandedOff = true
 		go func() {
+			defer finishStartup()
 			defer releasePermit()
-			chromecastPlayAction(screen, actionID, target.device)
+			chromecastPlayAction(screen, actionID, target.device, startupCtx)
 		}()
 		return
 	}
 
 	// DLNA timeout mechanism - re-enable play button if no response after 3 seconds
-	if screen.cancelEnablePlay != nil {
-		screen.cancelEnablePlay()
-	}
+	screen.cancelPlayTimer()
 	sessionDevice := target.device
 
 	ctx, cancelEnablePlay := context.WithTimeout(context.Background(), 3*time.Second)
+	screen.mu.Lock()
 	screen.cancelEnablePlay = cancelEnablePlay
+	screen.mu.Unlock()
 
 	permitHandedOff = true
 	go func() {
+		defer finishStartup()
 		defer releasePermit()
+		if startupCtx.Err() != nil {
+			return
+		}
 		// DLNA desktop mirroring (Cast Desktop) uses its own pipeline.
 		if screen.Screencast {
 			dlnaScreencastPlayAction(screen, target)
@@ -805,14 +827,14 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 				mediaType = "application/vnd.apple.mpegurl"
 				screen.SetMediaType(mediaType)
 			} else {
-				mediaType, err = utils.GetMimeDetailsFromPath(screen.mediafile)
+				mediaType, err = utils.GetMimeDetailsFromPath(mediaPath)
 				check(screen, err)
 				if err != nil {
 					startAfreshPlayButton(screen)
 					return
 				}
 				if !torrentMediaSelected(screen) {
-					screen.resolveCurrentGUIArtwork(screen.mediafile, mediaType, true)
+					screen.resolveCurrentGUIArtwork(mediaPath, mediaType, true)
 				}
 
 				// Set casting media type
@@ -833,20 +855,21 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 			return
 		}
 
-		mediaFile = screen.mediafile
+		mediaFile = mediaPath
 
 		if screen.ExternalMediaURL.Checked {
 			screen.setCurrentArtwork(nil)
-			// We need to define the screen.mediafile
+			// We need to define the mediaPath
 			// as this is the core item in our structure
 			// that defines that something is being streamed.
 			// We use its value for many checks in our code.
-			screen.mediafile = screen.MediaText.Text
+			mediaPath = screen.MediaText.Text
+			screen.mediafile = mediaPath
 
 			if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
 				mediaType = "application/vnd.apple.mpegurl"
 				screen.SetMediaType(mediaType)
-				mediaFile = screen.mediafile
+				mediaFile = mediaPath
 			} else {
 				// We're not using any context here. The reason is
 				// that when the webserver shuts down it causes the
@@ -893,7 +916,7 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 						screen.PlayPause.Text = lang.L("Extracting Subtitles") + "   "
 						screen.PlayPause.Refresh()
 					})
-					tempSubsPath, err := utils.ExtractSub(screen.ffmpegPath, n, screen.mediafile)
+					tempSubsPath, err := utils.ExtractSub(screen.ffmpegPath, n, mediaPath)
 					fyne.Do(func() {
 						screen.PlayPause.Text = lang.L("Play") + "   "
 						screen.PlayPause.Refresh()
@@ -911,9 +934,12 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 		}
 		mediaDuration := 0.0
 		if transcodeEnabled {
-			if duration, probeErr := utils.DurationForMediaSeconds(screen.ffmpegPath, screen.mediafile); probeErr == nil && duration > 0 {
+			if duration, probeErr := utils.DurationForMediaSecondsContext(startupCtx, screen.ffmpegPath, mediaPath); probeErr == nil && duration > 0 {
 				mediaDuration = duration
 			}
+		}
+		if startupCtx.Err() != nil {
+			return
 		}
 		screen.mediaDuration = mediaDuration
 		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
@@ -926,7 +952,7 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 				SubtitlesURL:                "http://" + whereToListen + "/rtmp/subs.srt",
 				CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
 				MediaType:                   mediaType,
-				MediaPath:                   screen.mediafile,
+				MediaPath:                   mediaPath,
 				CurrentTimers:               make(map[string]*time.Timer),
 				MediaRenderersStates:        make(map[string]*soapcalls.States),
 				InitialMediaRenderersStates: make(map[string]bool),
@@ -941,11 +967,11 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 				EventURL:                    target.eventURL,
 				RenderingControlURL:         target.renderingControlURL,
 				ConnectionManagerURL:        target.connectionManagerURL,
-				MediaURL:                    "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile),
+				MediaURL:                    "http://" + whereToListen + "/" + utils.ConvertFilename(mediaPath),
 				SubtitlesURL:                "http://" + whereToListen + "/" + utils.ConvertFilename(screen.subsfile),
 				CallbackURL:                 "http://" + whereToListen + "/" + callbackPath,
 				MediaType:                   mediaType,
-				MediaPath:                   screen.mediafile,
+				MediaPath:                   mediaPath,
 				CurrentTimers:               make(map[string]*time.Timer),
 				MediaRenderersStates:        make(map[string]*soapcalls.States),
 				InitialMediaRenderersStates: make(map[string]bool),
@@ -986,8 +1012,14 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 		// Wait for the HTTP server to properly initialize.
 		err = <-serverStarted
 		check(screen, err)
+		if startupCtx.Err() != nil {
+			return
+		}
 
 		err = screen.tvdata.SendtoTV("Play1")
+		if startupCtx.Err() != nil {
+			return
+		}
 		check(screen, err)
 		if err != nil {
 			// Something failed when sent Play1 to the TV.
@@ -1013,7 +1045,7 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 			screen.updateScreenState("Playing")
 			setPlayPauseView("Pause", screen)
 		}
-		screen.configureImageAutoSkipTimer(mediaType, screen.mediafile)
+		screen.configureImageAutoSkipTimer(mediaType, mediaPath)
 
 		gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
 		if screen.NextMediaCheck.Checked && gaplessOption == "Enabled" {
@@ -1033,7 +1065,7 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 	go func() {
 		<-ctx.Done()
 
-		defer func() { screen.cancelEnablePlay = nil }()
+		defer cancelEnablePlay()
 
 		if errors.Is(ctx.Err(), context.Canceled) {
 			return
@@ -1277,7 +1309,7 @@ func stopScreencastSession(screen *FyneScreen) {
 
 // chromecastPlayAction handles playback on Chromecast devices.
 // Supports both local files (via internal HTTP server) and external URLs (direct).
-func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice devType) {
+func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice devType, startupCtx context.Context) {
 	if !screen.isChromecastActionCurrent(actionID) {
 		return
 	}
@@ -1642,8 +1674,11 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 		var tcOpts *utils.TranscodeOptions
 		if transcode {
 			// Get actual media duration from ffprobe (Chromecast can't report it for transcoded streams)
-			if duration, err := utils.DurationForMediaSeconds(screen.ffmpegPath, screen.mediafile); err == nil {
+			if duration, err := utils.DurationForMediaSecondsContext(startupCtx, screen.ffmpegPath, screen.mediafile); err == nil {
 				screen.mediaDuration = duration
+			}
+			if startupCtx.Err() != nil {
+				return
 			}
 
 			tcOpts = &utils.TranscodeOptions{
@@ -1690,6 +1725,9 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 	}
 
 	// Load media and update UI on success
+	if startupCtx.Err() != nil {
+		return
+	}
 	go func() {
 		// Use LIVE stream type for URL streams (DMR shows LIVE badge, but buffer unchanged)
 		live := screen.ExternalMediaURL.Checked
@@ -2110,9 +2148,7 @@ func startAfreshPlayButton(screen *FyneScreen) {
 	// Prevent late Chromecast goroutines from restoring playback UI after reset.
 	screen.nextChromecastActionID()
 
-	if screen.cancelEnablePlay != nil {
-		screen.cancelEnablePlay()
-	}
+	screen.cancelPlayTimer()
 	screen.cancelImageAutoSkipTimer()
 	screen.clearActiveDevice()
 
@@ -2319,6 +2355,9 @@ func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target 
 
 	if err := setCurrentMediaPath(screen, mediaPath); err != nil {
 		check(screen, err)
+		return
+	}
+	if screen.deferTorrentPlayback(target) {
 		return
 	}
 	targetMediaPath := screen.mediafile
@@ -2539,21 +2578,25 @@ func previewmedia(screen *FyneScreen) {
 		})
 	default:
 		go func() {
-			err := open.Run(mediaPreviewInput(screen.mediafile))
+			err := open.Run(mediasource.Input(screen.mediafile))
 			check(screen, err)
 		}()
 	}
 }
 
 func stopAction(screen *FyneScreen) {
+	screen.cancelPendingTorrentPlayback()
+	if screen.stopTorrentStartup() {
+		return
+	}
 	stopActionInternal(screen, false)
 }
 
-// stopActionSync behaves like stopAction but waits for the DLNA network
-// teardown (Stop call and HTTP server shutdown) to complete before returning.
-// The transcoded seek restart needs this ordering: a Stop that races with the
-// next session's SetAVTransportURI/Play makes renderers drop the new session.
+// Finish renderer and HTTP teardown before starting replacement playback.
 func stopActionSync(screen *FyneScreen) {
+	if done := screen.cancelTorrentStartup(); done != nil {
+		<-done
+	}
 	stopActionInternal(screen, true)
 }
 
@@ -2610,10 +2653,7 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 		screen.ffmpegSeek = 0
 		screen.mediaDuration = 0
 
-		// Run blocking network operations in background
-		permitHandedOff = true
-		go func() {
-			defer releasePermit()
+		teardown := func() {
 			if chromecastClient.IsConnected() {
 				_ = chromecastClient.Stop()
 			}
@@ -2622,7 +2662,16 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 				server.StopServer()
 			}
 			stopScreencastSession(screen)
-		}()
+		}
+		if wait {
+			teardown()
+		} else {
+			permitHandedOff = true
+			go func() {
+				defer releasePermit()
+				teardown()
+			}()
+		}
 		return
 	}
 

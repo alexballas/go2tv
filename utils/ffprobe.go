@@ -50,6 +50,17 @@ func DurationForMedia(ffmpeg string, f string) (string, error) {
 // DurationForMediaSeconds returns the media duration in seconds.
 // Transcoded streams use it to expose the source timeline.
 func DurationForMediaSeconds(ffmpeg string, f string) (float64, error) {
+	return DurationForMediaSecondsContext(context.Background(), ffmpeg, f)
+}
+
+// DurationForMediaSecondsContext allows pending media probes to be cancelled.
+func DurationForMediaSecondsContext(ctx context.Context, ffmpeg string, f string) (float64, error) {
+	if ctx == nil {
+		return 0, errors.New("ffprobe context required")
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	f, err := mediaInput(f)
 	if err != nil {
 		return 0, err
@@ -64,7 +75,7 @@ func DurationForMediaSeconds(ffmpeg string, f string) (float64, error) {
 		return 0, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx,
 		ffprobePath,

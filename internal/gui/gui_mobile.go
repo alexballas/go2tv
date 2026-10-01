@@ -43,6 +43,7 @@ type FyneScreen struct {
 	torrent                torrentUIState
 	chromecastClient       *castprotocol.CastClient
 	chromecastActionID     uint64
+	playbackStarting       bool
 	Stop                   *widget.Button
 	MuteUnmute             *widget.Button
 	CheckVersion           *widget.Button
@@ -244,9 +245,7 @@ func (p *FyneScreen) isChromecastActionCurrent(actionID uint64) bool {
 }
 
 func setPlayPauseView(s string, screen *FyneScreen) {
-	if screen.cancelEnablePlay != nil {
-		screen.cancelEnablePlay()
-	}
+	screen.cancelPlayTimer()
 
 	fyne.Do(func() {
 		// Check if we are casting an image
@@ -262,7 +261,11 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 			screen.PlayPause.SetIcon(theme.FileImageIcon())
 			screen.PlayPause.SetText("Image")
 		} else {
-			screen.PlayPause.Enable()
+			if screen.mobilePlaybackStarting() {
+				screen.PlayPause.Disable()
+			} else {
+				screen.PlayPause.Enable()
+			}
 			switch s {
 			case "Play":
 				screen.PlayPause.Text = lang.L("Play")

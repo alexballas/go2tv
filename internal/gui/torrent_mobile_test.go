@@ -5,18 +5,22 @@ package gui
 import (
 	"context"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
-	"github.com/alexballas/refyne/v2"
-	"github.com/alexballas/refyne/v2/container"
 	"github.com/alexballas/refyne/v2/data/binding"
-	"github.com/alexballas/refyne/v2/dialog"
 	"github.com/alexballas/refyne/v2/storage"
 	"github.com/alexballas/refyne/v2/test"
 	"github.com/alexballas/refyne/v2/widget"
 
+	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/internal/mediasource"
 )
 
@@ -37,7 +41,164 @@ func newMobileTorrentTestScreen(t *testing.T) *FyneScreen {
 		PlayPause:        widget.NewButton("Play", nil),
 		ExternalMediaURL: widget.NewCheck("", nil),
 		CurrentPos:       binding.NewString(), EndPos: binding.NewString(),
-		SlideBar: &tappedSlider{},
+		SlideBar: &tappedSlider{Slider: widget.NewSlider(0, 100)},
+	}
+}
+
+func selectMobileTestTorrent(t *testing.T, s *FyneScreen) {
+	t.Helper()
+	session, path := newTestTorrentSession(t)
+	s.torrent.session, s.torrent.path = session, path
+	s.mediafile = storage.NewFileURI(path)
+}
+
+func TestMobileReplacementWaitsForTorrentCancellation(t *testing.T) {
+	s := newMobileTorrentTestScreen(t)
+	selectMobileTestTorrent(t, s)
+
+	played := make(chan struct{}, 1)
+	releaseLoad := make(chan struct{})
+	finishLoad := sync.OnceFunc(func() { close(releaseLoad) })
+	defer finishLoad()
+	renderer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "SUBSCRIBE" {
+			w.Header().Set("SID", "uuid:replacement")
+			w.Header().Set("TIMEOUT", "Second-300")
+		}
+		if strings.Contains(r.Header.Get("SOAPAction"), "#Play\"") {
+			played <- struct{}{}
+			<-releaseLoad
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(renderer.Close)
+	s.controlURL, s.eventlURL = renderer.URL, renderer.URL
+
+	replacement := torrentTestReplacementImage(t)
+	// Hold cancellation until Play has had a chance to run. A second cancel
+	// must not let playback bypass the first queued teardown.
+	s.torrent.operationMu.Lock()
+	setMobileMediaURI(s, storage.NewFileURI(replacement))
+	cancelTorrent(s)
+	if !claimMobilePlayback(s) {
+		t.Fatal("first Play rejected")
+	}
+	for range 3 {
+		if claimMobilePlayback(s) {
+			t.Fatal("duplicate Play accepted during cancellation")
+		}
+	}
+	setPlayPauseView("Play", s)
+	if !s.PlayPause.Disabled() {
+		t.Fatal("teardown re-enabled Play during pending startup")
+	}
+	playDone := make(chan struct{})
+	go func() {
+		playMobileAction(s)
+		close(playDone)
+	}()
+	premature := false
+	select {
+	case <-playDone:
+		premature = true
+	case <-time.After(100 * time.Millisecond):
+	}
+	s.torrent.operationMu.Unlock()
+	select {
+	case <-played:
+		if claimMobilePlayback(s) {
+			t.Fatal("duplicate Play accepted while renderer load was pending")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("replacement did not reach renderer after cancellation")
+	}
+	finishLoad()
+	select {
+	case <-playDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("replacement playback blocked after cancellation")
+	}
+	if done := s.torrentCancellationDone(); done != nil {
+		<-done
+	}
+	t.Cleanup(func() { stopActionSync(s) })
+	if premature {
+		t.Fatal("replacement playback ran before torrent cancellation")
+	}
+	if s.tvdata == nil || s.httpserver == nil || s.hasTorrentSession() {
+		t.Fatal("torrent cancellation removed the replacement cast or retained the torrent")
+	}
+	if s.mediafile == nil || s.mediafile.Path() != replacement {
+		t.Fatal("torrent cancellation cleared replacement media")
+	}
+	if s.mobilePlaybackStarting() {
+		t.Fatal("completed playback retained startup guard")
+	}
+}
+
+func TestMobileTorrentCancelDuringDLNAStartup(t *testing.T) {
+	tt := []struct {
+		name string
+		stop bool
+	}{
+		{name: "Cancel download"},
+		{name: "Stop keeps downloading", stop: true},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newMobileTorrentTestScreen(t)
+			selectMobileTestTorrent(t, s)
+			s.State, s.Transcode = "Stopped", true
+			var plays atomic.Int32
+			renderer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == "SUBSCRIBE" {
+					w.Header().Set("SID", "uuid:cancel")
+					w.Header().Set("TIMEOUT", "Second-300")
+				}
+				if strings.Contains(r.Header.Get("SOAPAction"), "#Play\"") {
+					plays.Add(1)
+				}
+				w.WriteHeader(http.StatusOK)
+			}))
+			t.Cleanup(renderer.Close)
+			s.controlURL, s.eventlURL = renderer.URL, renderer.URL
+			s.selectedDevice = devType{addr: renderer.URL, deviceType: devices.DeviceTypeDLNA}
+			t.Cleanup(func() { stopActionSync(s) })
+			var entered string
+			var release func()
+			s.ffmpegPath, entered, release = torrentTestBlockedProbe(t)
+			if !claimMobilePlayback(s) {
+				t.Fatal("first Play rejected")
+			}
+			playDone := make(chan struct{})
+			go func() { playMobileAction(s); close(playDone) }()
+			waitForTorrentTestProbe(t, entered)
+			if tc.stop {
+				stopAction(s)
+			} else {
+				cancelTorrent(s)
+			}
+			if done := s.torrentCancellationDone(); done != nil {
+				select {
+				case <-done:
+				case <-time.After(5 * time.Second):
+					t.Fatal("cancel did not interrupt startup")
+				}
+			}
+			release()
+			select {
+			case <-playDone:
+			case <-time.After(5 * time.Second):
+				t.Fatal("cancelled playback worker remains running")
+			}
+			if plays.Load() != 0 || s.httpserver != nil || s.tvdata != nil || s.mobilePlaybackStarting() {
+				t.Fatal("cancelled startup recreated a cast or retained startup/download state")
+			}
+
+			if s.hasTorrentSession() != tc.stop {
+				t.Fatal("Stop must retain the download; Cancel must close it")
+			}
+		})
 	}
 }
 
@@ -98,33 +259,5 @@ func TestMobileClearTorrentSelection(t *testing.T) {
 	clearTorrentSelection(s, path)
 	if s.MediaText.Text != "replacement.mp4" {
 		t.Fatal("torrent cleanup cleared replacement media")
-	}
-}
-
-func TestMobileTorrentDialogFitsContent(t *testing.T) {
-	s := newMobileTorrentTestScreen(t)
-	s.Current.Resize(fyne.NewSize(360, 760))
-	status := widget.NewLabel("Choose a file, then cast. Missing pieces buffer automatically.")
-	status.Wrapping = fyne.TextWrapWord
-	files := widget.NewSelect([]string{"Sintel.mp4 (123.3 MiB)"}, nil)
-	files.SetSelectedIndex(0)
-	choose := widget.NewButton("Use file", nil)
-	content := newTorrentDialogContent(
-		widget.NewEntry(),
-		container.NewGridWithColumns(2, widget.NewButton("Load magnet", nil), widget.NewButton("Open .torrent", nil)),
-		status, files, choose,
-	)
-	d := dialog.NewCustom("Torrent", "Cancel", content, s.Current)
-	resizeTorrentDialog(s, d, content)
-	d.Show()
-	t.Cleanup(d.Hide)
-	if content.Size().Height > s.Current.Canvas().Size().Height/2 {
-		t.Fatalf("short torrent form expanded to %v in %v canvas", content.Size(), s.Current.Canvas().Size())
-	}
-	if content.Size().Height < content.Content.MinSize().Height {
-		t.Fatal("short torrent form requires scrolling")
-	}
-	if files.Position().Y < status.Position().Y+status.Size().Height {
-		t.Fatal("file selector overlaps wrapped status")
 	}
 }

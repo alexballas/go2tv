@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"reflect"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -18,6 +20,7 @@ import (
 	"github.com/alexballas/refyne/v2/widget"
 
 	"go2tv.app/go2tv/v2/castprotocol"
+	"go2tv.app/go2tv/v2/castprotocol/v2/cast"
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/httphandlers"
 )
@@ -94,6 +97,98 @@ func TestChromecastStartupReconnectsBeforeReportingFailure(t *testing.T) {
 			}
 			if !errors.Is(err, tt.wantError) || (tt.wantError == nil && err != nil) {
 				t.Fatalf("error = %v, want %v", err, tt.wantError)
+			}
+		})
+	}
+}
+
+type blockingStopConn struct {
+	cast.Conn
+	entered, release, closed chan struct{}
+	err                      error
+}
+
+func (c *blockingStopConn) Send(_ int, _ cast.Payload, _, _, _ string) error {
+	close(c.entered)
+	<-c.release
+	return c.err
+}
+
+func (c *blockingStopConn) Close() error {
+	close(c.closed)
+	return nil
+}
+
+func TestChromecastStopTeardownOrdering(t *testing.T) {
+	tt := []struct {
+		name string
+		wait bool
+		err  error
+	}{
+		{name: "synchronous Stop", wait: true},
+		{name: "synchronous Stop failure", wait: true, err: net.ErrClosed},
+		{name: "asynchronous Stop"},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _ := newMediaCardTestScreen(t)
+			s.SlideBar = &tappedSlider{Slider: widget.NewSlider(0, 100)}
+			s.CurrentPos, s.EndPos = binding.NewString(), binding.NewString()
+			client := newConnectedCastClientForTest(t, "http://living-room:8009")
+			s.chromecastClient = client
+			s.activeDevice = devType{addr: "http://living-room:8009", deviceType: devices.DeviceTypeChromecast}
+			server := httphandlers.NewServer("127.0.0.1:0")
+			s.httpserver = server
+			started, serverStopped := make(chan error, 1), make(chan struct{})
+			go func() {
+				server.StartServing(started)
+				close(serverStopped)
+			}()
+			if err := <-started; err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(server.StopServer)
+			conn := &blockingStopConn{entered: make(chan struct{}), release: make(chan struct{}), closed: make(chan struct{}), err: tc.err}
+			release := sync.OnceFunc(func() { close(conn.release) })
+			t.Cleanup(release)
+			// Replace the already-closed test client's connection with a Stop
+			// that stays in flight, reproducing a slow renderer without hardware.
+			app := reflectNewAtField(reflectValueElem(t, client).FieldByName("app")).Elem()
+			reflectNewAtField(app.FieldByName("conn")).Set(reflect.ValueOf(conn))
+			done := make(chan struct{})
+			go func() {
+				if tc.wait {
+					stopActionSync(s)
+				} else {
+					stopAction(s)
+				}
+				close(done)
+			}()
+			select {
+			case <-conn.entered:
+			case <-time.After(5 * time.Second):
+				t.Fatal("Stop was not sent")
+			}
+			if tc.wait {
+				select {
+				case <-done:
+					t.Fatal("synchronous Stop returned before teardown")
+				case <-time.After(100 * time.Millisecond):
+				}
+			} else {
+				select {
+				case <-done:
+				case <-time.After(5 * time.Second):
+					t.Fatal("asynchronous Stop blocked on the renderer")
+				}
+			}
+			release()
+			for _, completed := range []<-chan struct{}{done, conn.closed, serverStopped} {
+				select {
+				case <-completed:
+				case <-time.After(5 * time.Second):
+					t.Fatal("Stop did not close its connection and HTTP server")
+				}
 			}
 		})
 	}
