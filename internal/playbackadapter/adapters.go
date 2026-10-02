@@ -690,12 +690,12 @@ func (c *Chromecast) statusCall(ctx context.Context, fn func() (playback.CastSta
 func (c *Chromecast) Connect(ctx context.Context) error { return c.call(ctx, c.client.Connect) }
 func (c *Chromecast) Load(ctx context.Context, req playback.LoadRequest) error {
 	return c.call(ctx, func() error {
-		return c.client.LoadMedia(castprotocol.LoadRequest{MediaURL: req.MediaURL, ContentType: req.MediaType, Metadata: req.Metadata, StartTime: req.Start, Duration: float64(req.Duration), SubtitleURL: req.SubtitleURL})
+		return c.client.LoadMedia(castprotocol.LoadRequest{MediaURL: req.MediaURL, ContentType: req.MediaType, Metadata: req.Metadata, StartTime: req.Start, Duration: float64(req.Duration), SubtitleURL: req.SubtitleURL, TorrentSubtitleURL: req.TorrentSubtitleURL})
 	})
 }
 func (c *Chromecast) LoadOnExisting(ctx context.Context, req playback.LoadRequest) error {
 	return c.call(ctx, func() error {
-		return c.client.LoadMediaOnExisting(castprotocol.LoadRequest{MediaURL: req.MediaURL, ContentType: req.MediaType, Metadata: req.Metadata, StartTime: req.Start, Duration: float64(req.Duration), SubtitleURL: req.SubtitleURL})
+		return c.client.LoadMediaOnExisting(castprotocol.LoadRequest{MediaURL: req.MediaURL, ContentType: req.MediaType, Metadata: req.Metadata, StartTime: req.Start, Duration: float64(req.Duration), SubtitleURL: req.SubtitleURL, TorrentSubtitleURL: req.TorrentSubtitleURL})
 	})
 }
 func (c *Chromecast) Play(ctx context.Context) error  { return c.call(ctx, c.client.Play) }

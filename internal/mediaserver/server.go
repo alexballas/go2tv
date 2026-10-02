@@ -18,6 +18,7 @@ import (
 	"time"
 	"unicode"
 
+	"go2tv.app/go2tv/v2/internal/mkvsubs"
 	"go2tv.app/go2tv/v2/internal/playback"
 	"go2tv.app/go2tv/v2/utils"
 )
@@ -55,6 +56,7 @@ type route struct {
 	contents  []byte
 	request   playback.ServerRequest
 	artwork   bool
+	handler   http.Handler
 }
 
 // Server owns one renderer-facing listener and one playback session at a time.
@@ -150,6 +152,13 @@ func (s *Server) Start(ctx context.Context, request playback.ServerRequest) (pla
 			return playback.MediaRoute{}, err
 		}
 	}
+	torrentSubtitleRoute, err := s.newTorrentSubtitleRouteLocked(request)
+	if err != nil {
+		s.resetLocked()
+		_ = listener.Close()
+		s.mu.Unlock()
+		return playback.MediaRoute{}, err
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.serveHTTP)
 	if s.cfg.Callback != nil {
@@ -199,6 +208,10 @@ func (s *Server) Start(ctx context.Context, request playback.ServerRequest) (pla
 		if subtitleRoute.path != "" {
 			result.SubtitleURL = base + subtitleRoute.path
 			result.SubtitleID = subtitleRoute.id
+		}
+		if torrentSubtitleRoute.path != "" {
+			result.TorrentSubtitleURL = base + torrentSubtitleRoute.path
+			result.TorrentSubtitleID = torrentSubtitleRoute.id
 		}
 		return result, nil
 	case <-ctx.Done():
@@ -277,13 +290,42 @@ func (s *Server) AddMedia(_ context.Context, request playback.ServerRequest) (pl
 			return playback.MediaRoute{}, err
 		}
 	}
+	torrentSubtitle, err := s.newTorrentSubtitleRouteLocked(request)
+	if err != nil {
+		for _, owned := range []route{r, subtitle} {
+			delete(s.routes, owned.path)
+			delete(s.byID, owned.id)
+		}
+		return playback.MediaRoute{}, err
+	}
 	base := "http://" + s.listener.Addr().String()
 	result := playback.MediaRoute{URL: base + r.path, ID: r.id}
 	if subtitle.path != "" {
 		result.SubtitleURL = base + subtitle.path
 		result.SubtitleID = subtitle.id
 	}
+	if torrentSubtitle.path != "" {
+		result.TorrentSubtitleURL = base + torrentSubtitle.path
+		result.TorrentSubtitleID = torrentSubtitle.id
+	}
 	return result, nil
+}
+
+func (s *Server) newTorrentSubtitleRouteLocked(request playback.ServerRequest) (route, error) {
+	if request.TorrentSource == nil || request.Target.Protocol != "Chromecast" || request.Subtitle != nil {
+		return route{}, nil
+	}
+	r, err := s.newSourceRouteLocked("torrent-subtitles", request.Media, ".json", "application/json", request)
+	if err != nil {
+		return route{}, err
+	}
+	offset := 0
+	if request.Transcode {
+		offset = request.SeekOffset
+	}
+	r.handler = mkvsubs.Handler(mkvsubs.New(request.TorrentSource), float64(offset))
+	s.routes[r.path] = r
+	return r, nil
 }
 
 // AddArtwork registers content-addressed immutable renderer artwork.
@@ -411,6 +453,10 @@ func (s *Server) serveHTTP(w http.ResponseWriter, request *http.Request) {
 		s.mu.Unlock()
 	}()
 
+	if r.handler != nil {
+		r.handler.ServeHTTP(w, request.WithContext(ctx))
+		return
+	}
 	switch request.Method {
 	case http.MethodGet, http.MethodHead:
 	default:

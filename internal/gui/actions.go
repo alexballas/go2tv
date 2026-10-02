@@ -1359,6 +1359,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 	screen.ffmpegSeek = 0
 	screen.clearResumeSession()
 
+	screen.captureChromecastSubtitleSettings()
 	transcode := screen.Transcode
 	ffmpegSeek := screen.ffmpegSeek
 
@@ -1519,11 +1520,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 				}
 			}
 
-			tcOpts := &utils.TranscodeOptions{
-				FFmpegPath:  screen.ffmpegPath,
-				SeekSeconds: 0,
-				LogOutput:   screen.Debug,
-			}
+			tcOpts := desktopChromecastTranscodeOptions(screen, 0)
 
 			screen.mediaDuration = 0
 			mediaFilename := "/" + utils.ConvertFilename(mediaURL)
@@ -1665,11 +1662,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 				return
 			}
 
-			tcOpts = &utils.TranscodeOptions{
-				FFmpegPath:  screen.ffmpegPath,
-				SeekSeconds: ffmpegSeek,
-				LogOutput:   screen.Debug,
-			}
+			tcOpts = desktopChromecastTranscodeOptions(screen, ffmpegSeek)
 			// Update content type for transcoded output
 			mediaType = "video/mp4"
 		} else {
@@ -1701,14 +1694,14 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 	if transcode {
 		subtitleOffset = ffmpegSeek
 	}
-	subtitleURL, err := registerChromecastSubtitles(screen.httpserver, subtitleHost, screen.subsfile, subtitleOffset)
+	subtitleURL, err := registerDesktopChromecastSubtitles(screen, screen.httpserver, subtitleHost, subtitleOffset, transcode)
 	if err != nil {
 		check(screen, err)
 		startAfreshPlayButton(screen)
 		return
 	}
 	torrentSubtitleURL := registerTorrentSubtitles(screen.httpserver, subtitleHost, screen.mediafile,
-		!screen.CustomSubsCheck.Checked && subtitleURL == "" && !screen.Screencast &&
+		!screen.CustomSubsCheck.Checked && subtitleURL == "" && screen.chromecastSubtitleBurnPath(transcode) == "" && !screen.Screencast &&
 			!screen.ExternalMediaURL.Checked && (screen.rtmpServerCheck == nil || !screen.rtmpServerCheck.Checked), subtitleOffset)
 	playbackStart := ffmpegSeek
 	if transcode && torrentMediaSelected(screen) {
@@ -1803,11 +1796,7 @@ func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
 		serverStoppedCTX, serverCTXStop := context.WithCancel(context.Background())
 		screen.serverStopCTX = serverStoppedCTX
 		screen.cancelServerStop = serverCTXStop
-		tcOpts := &utils.TranscodeOptions{
-			FFmpegPath:  screen.ffmpegPath,
-			SeekSeconds: seekPos,
-			LogOutput:   screen.Debug,
-		}
+		tcOpts := desktopChromecastTranscodeOptions(screen, seekPos)
 		go func() {
 			screen.httpserver.StartSimpleServerWithTranscode(serverStarted, screen.mediafile, tcOpts)
 			serverCTXStop()
@@ -1819,13 +1808,13 @@ func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
 		}
 		mediaURL := "http://" + whereToListen + "/" + utils.ConvertFilename(screen.mediafile)
 		// Load media on existing connection (skips 2-second receiver launch delay)
-		subtitleURL, err := registerChromecastSubtitles(screen.httpserver, whereToListen, screen.subsfile, seekPos)
+		subtitleURL, err := registerDesktopChromecastSubtitles(screen, screen.httpserver, whereToListen, seekPos, true)
 		if err != nil {
 			check(screen, err)
 			return
 		}
 		torrentSubtitleURL := registerTorrentSubtitles(screen.httpserver, whereToListen, screen.mediafile,
-			!screen.CustomSubsCheck.Checked && subtitleURL == "", seekPos)
+			!screen.CustomSubsCheck.Checked && subtitleURL == "" && screen.chromecastSubtitleBurnPath(true) == "", seekPos)
 		// live=false because this is local file playback (seeking)
 		if err := client.LoadMediaOnExisting(castprotocol.LoadRequest{
 			MediaURL:           mediaURL,
@@ -2378,6 +2367,7 @@ func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target 
 				return
 			}
 			// Determine if transcoding is enabled
+			screen.captureChromecastSubtitleSettings()
 			transcode := screen.Transcode
 			ffmpegSeek := 0
 			var serverStoppedCTX context.Context
@@ -2418,11 +2408,7 @@ func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target 
 					screen.mediaDuration = duration
 				}
 
-				tcOpts := &utils.TranscodeOptions{
-					FFmpegPath:  screen.ffmpegPath,
-					SeekSeconds: ffmpegSeek,
-					LogOutput:   screen.Debug,
-				}
+				tcOpts := desktopChromecastTranscodeOptions(screen, ffmpegSeek)
 
 				// Create new HTTP server with transcoding
 				server = httphandlers.NewServer(whereToListen)
@@ -2471,7 +2457,7 @@ func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target 
 			if transcode {
 				subtitleOffset = ffmpegSeek
 			}
-			subtitleURL, err = registerChromecastSubtitles(server, whereToListen, screen.subsfile, subtitleOffset)
+			subtitleURL, err = registerDesktopChromecastSubtitles(screen, server, whereToListen, subtitleOffset, transcode)
 			if err != nil {
 				check(screen, err)
 				return

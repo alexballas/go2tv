@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	fynetooltip "github.com/alexballas/fyne-tooltip"
 	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/app"
 	"github.com/alexballas/refyne/v2/container"
@@ -47,7 +48,9 @@ type FyneScreen struct {
 	Stop                   *widget.Button
 	MuteUnmute             *widget.Button
 	CheckVersion           *widget.Button
-	CustomSubsCheck        *widget.Check
+	burnSubtitlesCheck     *wrappingCheck
+	castBurnSubtitles      bool
+	TorrentSubsCheck       *widget.Check
 	ExternalMediaURL       *widget.Check
 	cancelEnablePlay       context.CancelFunc
 	serverStopCTX          context.Context
@@ -121,6 +124,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 	)
 	tabs.OnSelected = func(tab *container.TabItem) {
 		if tab == settingsTab {
+			s.updateChromecastSubtitleAvailability(s.ffmpegStatus())
 			refreshMobileSettings()
 		}
 	}
@@ -137,7 +141,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 		})
 	}
 
-	w.SetContent(tabs)
+	w.SetContent(fynetooltip.AddWindowToolTipLayer(tabs, w.Canvas()))
 	w.CenterOnScreen()
 
 	registerShareHandler(s)
@@ -322,4 +326,8 @@ func check(win fyne.Window, err error) {
 			dialog.ShowError(errors.New(cleanErr), win)
 		})
 	}
+}
+
+func (s *FyneScreen) ffmpegStatus() error {
+	return utils.CheckFFmpeg(s.ffmpegPath)
 }

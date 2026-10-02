@@ -731,7 +731,7 @@ func copySubsToTempFile(screen *FyneScreen) (string, error) {
 
 func mobileTranscodeOptions(screen *FyneScreen) (*utils.TranscodeOptions, error) {
 	subsPath := ""
-	if screen.subsfile != nil {
+	if screen.subsfile != nil && screen.castBurnSubtitles {
 		var err error
 		subsPath, err = copySubsToTempFile(screen)
 		if err != nil {
@@ -1203,6 +1203,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx contex
 	screen.clearResumeSession()
 	screen.ffmpegSeek = 0
 	screen.mediaDuration = 0
+	screen.captureChromecastSubtitleSettings()
 
 	if screen.ExternalMediaURL.Checked {
 		screen.setCurrentArtwork(nil)
@@ -1366,40 +1367,20 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx contex
 		mediaURL = servedURL
 	}
 
-	// Handle subtitles
-	var subtitleURL string
-	if hasChromecastMobileSubtitles(screen) && screen.httpserver != nil && !transcode {
-		if subtitleHost == "" {
-			mediaURLParsed, err := url.Parse(mediaURL)
-			if err == nil {
-				subtitleHost = mediaURLParsed.Host
-			}
+	if subtitleHost == "" {
+		if parsed, parseErr := url.Parse(mediaURL); parseErr == nil {
+			subtitleHost = parsed.Host
 		}
-		if subtitleHost != "" {
-			ext := strings.ToLower(filepath.Ext(screen.SubsText.Text))
-			switch ext {
-			case ".srt":
-				subsReader, err := storage.Reader(screen.subsfile)
-				if err == nil {
-					webvttData, err := utils.ConvertSRTReaderToWebVTT(subsReader)
-					subsReader.Close()
-					if err == nil {
-						screen.httpserver.AddHandler("/subtitles.vtt", nil, nil, webvttData)
-						subtitleURL = "http://" + subtitleHost + "/subtitles.vtt"
-					}
-				}
-			case ".vtt":
-				subsReader, err := storage.Reader(screen.subsfile)
-				if err == nil {
-					subsData, err := io.ReadAll(subsReader)
-					subsReader.Close()
-					if err == nil {
-						screen.httpserver.AddHandler("/subtitles.vtt", nil, nil, subsData)
-						subtitleURL = "http://" + subtitleHost + "/subtitles.vtt"
-					}
-				}
-			}
-		}
+	}
+	offset := 0
+	if transcode {
+		offset = screen.ffmpegSeek
+	}
+	subtitleURL, err := registerMobileChromecastSubtitles(screen, subtitleHost, offset, transcode)
+	if err != nil {
+		check(w, err)
+		startAfreshPlayButton(screen)
+		return
 	}
 
 	// Use LIVE stream type for URL streams (DMR shows LIVE badge, but buffer unchanged)
@@ -1414,13 +1395,12 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx contex
 		if transcode {
 			offset = screen.ffmpegSeek
 		}
-		torrentSubtitleURL = registerTorrentSubtitles(screen.httpserver, listenAddress, screen.mediafile.Path(),
-			!screen.CustomSubsCheck.Checked && subtitleURL == "" && !screen.ExternalMediaURL.Checked, offset)
+		torrentSubtitleURL = registerMobileTorrentSubtitles(screen, listenAddress, offset)
 	}
 	if startupCtx.Err() != nil {
 		return
 	}
-	_, err := loadChromecastForAction(screen, actionID, sessionDevice, client, castprotocol.LoadRequest{
+	_, err = loadChromecastForAction(screen, actionID, sessionDevice, client, castprotocol.LoadRequest{
 		MediaURL:           mediaURL,
 		ContentType:        mediaType,
 		Metadata:           guiMediaMetadata(chromecastMediaTitle(screen, mediaURL), listenAddress, artworkAsset),
@@ -1506,14 +1486,19 @@ func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
 		if parsedMediaURL, parseErr := url.Parse(mediaURL); parseErr == nil {
 			listenAddress = parsedMediaURL.Host
 		}
+		subtitleURL, err := registerMobileChromecastSubtitles(screen, listenAddress, seekPos, true)
+		if err != nil {
+			check(screen.Current, err)
+			return
+		}
 		torrentSubtitleURL := ""
 		if screen.mediafile != nil {
-			torrentSubtitleURL = registerTorrentSubtitles(screen.httpserver, listenAddress, screen.mediafile.Path(),
-				!screen.CustomSubsCheck.Checked, seekPos)
+			torrentSubtitleURL = registerMobileTorrentSubtitles(screen, listenAddress, seekPos)
 		}
 		if err := client.LoadMediaOnExisting(castprotocol.LoadRequest{
 			MediaURL:           mediaURL,
 			ContentType:        "video/mp4",
+			SubtitleURL:        subtitleURL,
 			TorrentSubtitleURL: torrentSubtitleURL,
 			Metadata:           guiMediaMetadata(chromecastMediaTitle(screen, mediaURL), listenAddress, artworkAsset),
 			Duration:           screen.mediaDuration,

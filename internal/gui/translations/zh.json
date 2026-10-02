@@ -19,6 +19,7 @@
     "Select Subtitles File": "选择字幕文件",
     "URL": "网址",
     "Subtitles": "字幕",
+    "Automatic Torrent Subtitles": "自动显示种子内嵌字幕",
     "Enter URL here": "在此输入网址",
     "Open": "打开",
     "Cancel": "取消",
@@ -35,13 +36,13 @@
     "Transcode": "转码",
     "Settings": "设置",
     "Theme": "主题",
-    "Gapless Playback": "无缝播放",
+    "DLNA Gapless Playback": "DLNA 无缝播放",
     "Remember Playback Position": "记住播放位置",
     "Debug logs are empty": "调试日志为空",
     "Debug": "调试",
     "Path": "路径",
     "Export Debug Logs": "导出调试日志",
-    "Some devices don't support gapless playback. If 'Auto-Play Next File' isn't working properly, try turning it off.": "一些设备不支持无缝播放。如果“自动播放下一个文件”无法正常工作，请尝试关闭它。",
+    "Some DLNA devices don't support gapless playback. If 'Auto-Play Next File' isn't working properly, try turning it off.": "一些 DLNA 设备不支持无缝播放。如果“自动播放下一个文件”无法正常工作，请尝试关闭它。",
     "About": "关于",
     "Version": "版本",
     "Author": "作者",
@@ -225,5 +226,6 @@
     "Setup needed": "需要设置",
     "Casting is less likely to be interrupted when your screen is off.": "屏幕关闭时，投屏不易中断。",
     "Android may interrupt casting when your screen is off. Open battery settings and set Go2TV to Unrestricted.": "屏幕关闭时，Android 可能会中断投屏。请打开电池设置并将 Go2TV 设为“不受限制”。",
-    "Open battery settings": "打开电池设置"
+    "Open battery settings": "打开电池设置",
+    "Burn Chromecast Subtitles (Compatibility Fallback)": "烧录 Chromecast 字幕（兼容性备选）"
 }

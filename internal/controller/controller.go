@@ -1115,8 +1115,10 @@ func (s *actorState) beginPlay(request PlayRequest, response chan<- Result) {
 	operation := &playOperation{generation: generation, cancel: cancel, done: make(chan struct{})}
 	s.pending = operation
 	gapless := s.desiredGapless(item.ID(), target)
+	automaticTorrentSubtitles := !s.policy.DisableTorrentSubtitles
+	burnChromecastSubtitles := s.policy.BurnChromecastSubtitles
 	s.controller.goOwned(func() {
-		s.controller.playIO(opCtx, operation, target, item, media, old, request, response, s.transcode, s.subtitle, gapless)
+		s.controller.playIO(opCtx, operation, target, item, media, old, request, response, s.transcode, s.subtitle, gapless, automaticTorrentSubtitles, burnChromecastSubtitles)
 	})
 }
 
@@ -1145,7 +1147,7 @@ type callbackStopSuppressor interface {
 	SuppressCallbackStops(uint64, bool) error
 }
 
-func (c *Controller) playIO(ctx context.Context, operation *playOperation, target playback.Device, item mediamodel.QueueItem, media MediaRef, old *activeSession, request PlayRequest, response chan<- Result, transcode bool, subtitle SubtitleRef, gapless *gaplessCandidate) {
+func (c *Controller) playIO(ctx context.Context, operation *playOperation, target playback.Device, item mediamodel.QueueItem, media MediaRef, old *activeSession, request PlayRequest, response chan<- Result, transcode bool, subtitle SubtitleRef, gapless *gaplessCandidate, automaticTorrentSubtitles, burnChromecastSubtitles bool) {
 	generation := operation.generation
 	ioCtx, timeoutCancel := operationContext(ctx, request.ctx, c.cfg.OperationTimeout)
 	defer timeoutCancel()
@@ -1217,6 +1219,13 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 	}
 	if subtitle.valid() {
 		serverRequest.Subtitle, serverRequest.SubtitleExt = subtitle.Open, subtitle.extension()
+		serverRequest.BurnSubtitle = transcode && target.Protocol == "Chromecast" && burnChromecastSubtitles
+	}
+	if target.Protocol == "Chromecast" && !subtitle.valid() && automaticTorrentSubtitles {
+		switch strings.ToLower(media.extension()) {
+		case ".mkv", ".webm":
+			serverRequest.TorrentSource = media.TorrentSource
+		}
 	}
 	duration := 0.0
 	if transcode && c.cfg.DurationProbe != nil {
@@ -1241,14 +1250,18 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 	if route.SubtitleID != "" {
 		routeIDs = append(routeIDs, route.SubtitleID)
 	}
+	if route.TorrentSubtitleID != "" {
+		routeIDs = append(routeIDs, route.TorrentSubtitleID)
+	}
 	loadRequest := playback.LoadRequest{
-		MediaURL:    route.URL,
-		MediaType:   serverRequest.MediaType,
-		SubtitleURL: route.SubtitleURL,
-		Duration:    duration,
-		Seekable:    !transcode,
-		Transcode:   transcode,
-		Metadata:    metadata.Media{Title: item.BaseName()},
+		MediaURL:           route.URL,
+		MediaType:          serverRequest.MediaType,
+		SubtitleURL:        route.SubtitleURL,
+		TorrentSubtitleURL: route.TorrentSubtitleURL,
+		Duration:           duration,
+		Seekable:           !transcode,
+		Transcode:          transcode,
+		Metadata:           metadata.Media{Title: item.BaseName()},
 	}
 	c.attachArtwork(ioCtx, item.ID(), &media, &loadRequest, &routeIDs)
 	if err == nil && target.Protocol == "DLNA" {
@@ -1301,8 +1314,8 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 		queued, queueErr := c.queueGapless(ioCtx, session, gapless)
 		if queueErr != nil {
 			if c.cfg.Logger != nil {
-				c.cfg.Logger.Warning("Gapless queue unavailable; using ordinary autoplay")
-				c.cfg.Logger.Debug("Gapless queue failure detail: " + queueErr.Error())
+				c.cfg.Logger.Warning("DLNA gapless playback unavailable; using ordinary autoplay")
+				c.cfg.Logger.Debug("DLNA gapless playback failure detail: " + queueErr.Error())
 			}
 		} else {
 			session.queued = queued
@@ -1493,8 +1506,8 @@ func (s *actorState) reconcileGapless() {
 			}
 			active.gaplessActive.Store(active.queued != nil)
 			if err != nil && current.controller.cfg.Logger != nil {
-				current.controller.cfg.Logger.Warning("Gapless queue update failed; using ordinary autoplay")
-				current.controller.cfg.Logger.Debug("Gapless queue update detail: " + err.Error())
+				current.controller.cfg.Logger.Warning("DLNA gapless playback update failed; using ordinary autoplay")
+				current.controller.cfg.Logger.Debug("DLNA gapless playback update detail: " + err.Error())
 			}
 			now := current.desiredGapless(active.itemID, active.target)
 			if queued != nil && !gaplessMatches(now, queued) || err != nil && !sameGaplessCandidate(now, desired) {
@@ -2185,7 +2198,7 @@ func (s *actorState) disableGapless() {
 	active.queued = nil
 	active.gaplessActive.Store(false)
 	if newlyMarked && s.controller.cfg.Logger != nil {
-		s.controller.cfg.Logger.Info("Renderer does not support gapless playback; using ordinary autoplay")
+		s.controller.cfg.Logger.Info("Renderer does not support DLNA gapless playback; using ordinary autoplay")
 	}
 	if queued == nil {
 		return
@@ -2231,7 +2244,7 @@ func (s *actorState) promoteGapless() bool {
 	s.state, s.terminal = PlaybackStatePlaying, ""
 	s.syncImageTimer()
 	if s.controller.cfg.Logger != nil {
-		s.controller.cfg.Logger.Info("Gapless playback started: " + queued.media.Name)
+		s.controller.cfg.Logger.Info("DLNA gapless playback started: " + queued.media.Name)
 	}
 	s.controller.goOwned(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), s.controller.cfg.OperationTimeout)

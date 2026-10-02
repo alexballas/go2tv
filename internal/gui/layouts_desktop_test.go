@@ -18,7 +18,7 @@ func TestSettingsControlsKeepWidthAndReflow(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
-	label := widget.NewLabel("Gapless Playback")
+	label := widget.NewLabel("DLNA Gapless Playback")
 	control := widget.NewSelect([]string{"Enabled", "Disabled"}, nil)
 	row := newSettingsRow(label, control)
 	tt := []struct {

@@ -145,6 +145,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		updatingFFmpegEntry = false
 		s.ffmpegPath, _ = utils.ResolveFFmpegPath("")
 		s.markFFmpegPathChanged()
+		s.updateChromecastSubtitleAvailability(s.ffmpegStatus())
 	})
 
 	ffmpegFolderSelect := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
@@ -201,6 +202,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		}
 		fyne.CurrentApp().Preferences().SetString("ffmpeg", update)
 		s.markFFmpegPathChanged()
+		s.updateChromecastSubtitleAvailability(s.ffmpegStatus())
 	}
 
 	debugExport := widget.NewButton(lang.L("Export Diagnostics"), func() {
@@ -218,7 +220,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		}
 
 		if selection == "Enabled" && fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled") == "Disabled" {
-			fynedialog.ShowInformation(lang.L("Gapless Playback"), lang.L(`Some devices don't support gapless playback. If 'Auto-Play Next File' isn't working properly, try turning it off.`), w)
+			fynedialog.ShowInformation(lang.L("DLNA Gapless Playback"), lang.L(`Some DLNA devices don't support gapless playback. If 'Auto-Play Next File' isn't working properly, try turning it off.`), w)
 		}
 
 		fyne.CurrentApp().Preferences().SetString("Gapless", selection)
@@ -337,11 +339,12 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 	)
 
 	playbackSettings := container.NewVBox(
+		newChromecastSubtitleSettings(s),
 		newSettingsRow(
 			rememberPlaybackPositionCheck,
 			container.NewHBox(clearPlaybackHistoryButton),
 		),
-		newSettingsField(lang.L("Gapless Playback"), gaplessdropdown),
+		newSettingsField(lang.L("DLNA Gapless Playback"), gaplessdropdown),
 		sameTypeAutoNextCheck,
 		newSettingsField(lang.L("Image Auto-Skip Timeout"), imageAutoSkipControls),
 	)

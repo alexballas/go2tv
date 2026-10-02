@@ -42,6 +42,8 @@ export function startClient(env) {
       AutoPlaySameType: false,
       GaplessEnabled: false,
       ImageDurationSeconds: 10,
+      DisableTorrentSubtitles: false,
+      BurnChromecastSubtitles: false,
     },
     selected_device_id: "",
     selected_media: false,
@@ -318,6 +320,14 @@ export function startClient(env) {
     return thumbnail;
   }
   function renderPending(request) {
+    byID("burn-subtitles").disabled =
+      !connected || !transcodeAvailable || hasPending("playback.policy");
+    byID("burn-subtitles").title = transcodeAvailable
+      ? ""
+      : "FFmpeg unavailable";
+    if (!transcodeAvailable) byID("burn-subtitles").checked = false;
+    byID("torrent-subtitles").disabled =
+      !connected || hasPending("playback.policy");
     torrents.render();
     pendingNode.textContent = pending.size ? `${pending.size} working` : "";
     const type = request?.type;
@@ -748,6 +758,9 @@ export function startClient(env) {
     byID("autoplay").checked = !!p.AutoPlayNext;
     byID("same-type").checked = !!p.AutoPlaySameType;
     byID("gapless").checked = !!p.GaplessEnabled;
+    byID("torrent-subtitles").checked = !p.DisableTorrentSubtitles;
+    byID("burn-subtitles").checked =
+      transcodeAvailable && !!p.BurnChromecastSubtitles;
     byID("image-duration").value = String(
       normalizeImageDuration(p.ImageDurationSeconds ?? 10),
     );
@@ -1261,6 +1274,8 @@ export function startClient(env) {
         AutoPlaySameType: auto && byID("same-type").checked,
         GaplessEnabled: auto && byID("gapless").checked,
         ImageDurationSeconds: duration,
+        DisableTorrentSubtitles: !byID("torrent-subtitles").checked,
+        BurnChromecastSubtitles: byID("burn-subtitles").checked,
       },
     });
   }
@@ -1395,6 +1410,8 @@ export function startClient(env) {
     "same-type",
     "gapless",
     "image-duration",
+    "torrent-subtitles",
+    "burn-subtitles",
   ])
     byID(id).addEventListener("change", () => sendPolicy(id));
   byID("theme-toggle").addEventListener("click", () => {

@@ -41,7 +41,7 @@ func mobileSettingsWindow(s *FyneScreen) (fyne.CanvasObject, func()) {
 	themeName := prefs.StringWithFallback("Theme", "System Default")
 	themeSelect.SetSelected(lang.L(themeName))
 
-	rememberPlayback := widget.NewCheck(lang.L("Remember Playback Position"), func(enabled bool) {
+	rememberPlayback := newWrappingCheck(lang.L("Remember Playback Position"), func(enabled bool) {
 		prefs.SetBool(rememberPlaybackPositionPref, enabled)
 	})
 	rememberPlayback.SetChecked(prefs.BoolWithFallback(rememberPlaybackPositionPref, false))
@@ -60,7 +60,7 @@ func mobileSettingsWindow(s *FyneScreen) (fyne.CanvasObject, func()) {
 		dialog.ShowInformation(lang.L("Playback History"), lang.L("Playback history cleared"), s.Current)
 	})
 
-	disableUpdates := widget.NewCheck(lang.L("Disable Future Version Notifications"), func(disabled bool) {
+	disableUpdates := newWrappingCheck(lang.L("Disable Future Version Notifications"), func(disabled bool) {
 		prefs.SetBool(disableVersionNotificationsPref, disabled)
 	})
 	disableUpdates.SetChecked(prefs.BoolWithFallback(disableVersionNotificationsPref, false))
@@ -70,6 +70,7 @@ func mobileSettingsWindow(s *FyneScreen) (fyne.CanvasObject, func()) {
 		disableUpdates,
 	)
 	playbackSettings := container.NewVBox(
+		newChromecastSubtitleSettings(s),
 		rememberPlayback,
 		container.NewHBox(clearPlaybackHistory),
 	)

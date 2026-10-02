@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"strings"
 	"time"
 
 	"go2tv.app/go2tv/v2/internal/controller"
@@ -116,18 +116,26 @@ func (s *runtimeMediaServer) AddMedia(ctx context.Context, request playback.Serv
 }
 
 func (s *runtimeMediaServer) prepareRequest(request playback.ServerRequest) playback.ServerRequest {
-	if request.Subtitle != nil && request.Transcode {
+	if request.Subtitle != nil && request.Transcode && request.Target.Protocol == "DLNA" {
 		request.BurnSubtitle = true
 	}
-	if request.Subtitle != nil && request.Target.Protocol == "Chromecast" && !request.Transcode && filepath.Ext(request.SubtitleExt) == ".srt" {
+	// Burn-in is meaningful only for a transcoded stream.
+	request.BurnSubtitle = request.BurnSubtitle && request.Transcode
+	if request.Subtitle != nil && request.Target.Protocol == "Chromecast" && !request.BurnSubtitle &&
+		(strings.EqualFold(request.SubtitleExt, ".srt") || strings.EqualFold(request.SubtitleExt, ".vtt")) {
 		original := request.Subtitle
+		extension := request.SubtitleExt
+		offset := 0
+		if request.Transcode {
+			offset = request.SeekOffset
+		}
 		request.Subtitle = func(ctx context.Context) (io.ReadSeekCloser, time.Time, error) {
 			source, mod, err := original(ctx)
 			if err != nil {
 				return nil, time.Time{}, err
 			}
 			defer source.Close()
-			converted, err := utils.ConvertSRTReaderToWebVTT(source)
+			converted, err := utils.SubtitlesReaderForPlayback(source, extension, offset)
 			if err != nil {
 				return nil, time.Time{}, err
 			}

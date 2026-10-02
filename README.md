@@ -41,7 +41,7 @@ No need to copy files to a USB drive or set up a media server. Just select your 
 - **Torrent playback** - Paste a magnet link or open a .torrent, choose a media file, and cast while downloading. Missing ranges download on demand, including FFmpeg input seeks.
 - **Playlist playback** - Single-file and multi-file playlists with add/remove/reorder/select support
 - **Loop and auto-play** - Loop the current file or auto-play through the playlist
-- **Gapless playback** - Supported for DLNA devices
+- **DLNA Gapless Playback** - Supported for DLNA devices
 - **RTMP Server** - Cast live streams from OBS directly to Chromecast (requires FFmpeg)
 - **Cast Desktop (experimental)** - Cast desktop as live stream to Chromecast (requires FFmpeg)
 - **Web UI (server mode)** - Browse media roots and control casting from any browser on your network
@@ -149,6 +149,9 @@ go2tv -u https://example.com/movie.mp4 -t http://192.168.1.50:8009
 go2tv -v movie.torrent -torrent-file 0 -t http://192.168.1.100:8060/
 go2tv -u 'magnet:?xt=urn:btih:...' -torrent-file 0 -tc -t http://192.168.1.50:8009
 
+# Chromecast compatibility fallback for external captions (requires -tc)
+go2tv -v movie.mkv -s movie.srt -tc -burn-subtitles -t http://192.168.1.50:8009
+
 # Stream from another command
 yt-dlp -o - "https://youtu.be/..." | go2tv -t http://192.168.1.50:8009
 
@@ -157,7 +160,11 @@ go2tv -tc -ffmpeg /path/to/ffmpeg -v movie.mkv -t http://192.168.1.50:8009
 ```
 
 Omit `-torrent-file` for torrents containing one media file. For multiple media
-files, omitting it lists their indexes. Torrent playback currently uses GUI/CLI.
+files, omitting it lists their indexes. Torrents work in desktop GUI, mobile,
+CLI/TUI, and Web UI. Chromecast automatically renders embedded text captions in
+MKV/WebM torrents while downloading; external `-s` captions take precedence.
+Use `-no-torrent-subtitles` to disable automatic torrent captions. These flags
+also work with `go2tv-lite`.
 
 ### Web UI (Server Mode)
 
@@ -170,6 +177,13 @@ downloads. Progress and **Cancel download** are shared across browsers. Cancel
 stops torrent playback and removes its queue item and temporary cache. Loading
 metadata leaves the current stream intact; choosing another torrent replaces it.
 Server shutdown removes torrent caches. FFmpeg transcoding supports input seeks.
+
+**Automatic torrent subtitles** controls embedded Chromecast text captions.
+External SRT/VTT captions use the Chromecast receiver during direct and transcoded
+playback; transcoded seeks shift captions to the new stream start. Enable
+**Playback → Burn Chromecast Subtitles (Compatibility Fallback)** for a compatibility fallback requiring
+transcoding. Desktop GUI and mobile offer the same fallback in **Settings → Playback**. DLNA
+continues to burn selected subtitles during transcoding.
 
 From the GUI, open **Settings → Remote Web Session…**, add media folders, choose local or
 LAN access, and start the session.
@@ -248,7 +262,7 @@ If you're behind a firewall, allow inbound traffic from devices on your local ne
 
 **Chromecast receiver**
 
-Go2TV uses a custom Chromecast receiver hosted at https://cast-receiver.go2tv.app/. It is not part of this open-source repository and is not currently published. Functionality matches the default receiver, with minor branding differences.
+Go2TV uses a custom Chromecast receiver hosted at https://cast-receiver.go2tv.app/. It is not part of this open-source repository and is not currently published. It renders external WebVTT captions and progressive embedded text captions from MKV/WebM torrents, alongside Go2TV branding.
 
 ---
 

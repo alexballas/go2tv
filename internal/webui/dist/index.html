@@ -334,6 +334,13 @@
                   />
                 </div>
                 <p id="torrent-status" role="status"></p>
+                <label>
+                  <input id="torrent-subtitles" type="checkbox" checked />
+                  Automatic torrent subtitles
+                </label>
+                <p>
+                  Embedded text captions on Chromecast. Applies on next load.
+                </p>
                 <div id="torrent-choices" class="torrent-controls" hidden>
                   <select
                     id="torrent-files"
@@ -503,10 +510,18 @@
               >
               <label
                 ><input id="gapless" type="checkbox" /><span
-                  ><strong>Gapless</strong
+                  ><strong>DLNA Gapless Playback</strong
                   ><small>Queue next URI on DLNA renderers</small></span
                 ></label
               >
+              <label>
+                <input id="burn-subtitles" type="checkbox" />
+                <span
+                  ><strong
+                    >Burn Chromecast Subtitles (Compatibility Fallback)</strong
+                  ></span
+                >
+              </label>
               <label class="image-duration"
                 ><span
                   ><strong>Image duration</strong
@@ -551,6 +566,6 @@
         <p id="artwork-modal-title"></p>
       </div>
     </dialog>
-    <script type="module" src="/assets/app.bf0f3f8f.js"></script>
+    <script type="module" src="/assets/app.8c97db16.js"></script>
   </body>
 </html>

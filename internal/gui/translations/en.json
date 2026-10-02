@@ -19,6 +19,7 @@
     "Select Subtitles File": "Select Subtitles File",
     "URL": "URL",
     "Subtitles": "Subtitles",
+    "Automatic Torrent Subtitles": "Automatic Torrent Subtitles",
     "Enter URL here": "Enter URL here",
     "Open": "Open",
     "Cancel": "Cancel",
@@ -35,13 +36,13 @@
     "Transcode": "Transcode",
     "Settings": "Settings",
     "Theme": "Theme",
-    "Gapless Playback": "Gapless Playback",
+    "DLNA Gapless Playback": "DLNA Gapless Playback",
     "Remember Playback Position": "Remember Playback Position",
     "Debug logs are empty": "Debug logs are empty",
     "Debug": "Debug",
     "Path": "Path",
     "Export Debug Logs": "Export Debug Logs",
-    "Some devices don't support gapless playback. If 'Auto-Play Next File' isn't working properly, try turning it off.": "Some devices don't support gapless playback. If 'Auto-Play Next File' isn't working properly, try turning it off.",
+    "Some DLNA devices don't support gapless playback. If 'Auto-Play Next File' isn't working properly, try turning it off.": "Some DLNA devices don't support gapless playback. If 'Auto-Play Next File' isn't working properly, try turning it off.",
     "About": "About",
     "Version": "Version",
     "Author": "Author",
@@ -228,5 +229,6 @@
     "Setup needed": "Setup needed",
     "Casting is less likely to be interrupted when your screen is off.": "Casting is less likely to be interrupted when your screen is off.",
     "Android may interrupt casting when your screen is off. Open battery settings and set Go2TV to Unrestricted.": "Android may interrupt casting when your screen is off. Open battery settings and set Go2TV to Unrestricted.",
-    "Open battery settings": "Open battery settings"
+    "Open battery settings": "Open battery settings",
+    "Burn Chromecast Subtitles (Compatibility Fallback)": "Burn Chromecast Subtitles (Compatibility Fallback)"
 }

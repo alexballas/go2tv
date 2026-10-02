@@ -295,7 +295,7 @@ func (h *Handler) torrentCommand(ctx context.Context, message envelope) controll
 	if strings.HasPrefix(source.MIME(), "audio/") {
 		kind = mediamodel.MediaKindAudio
 	}
-	ref := controller.MediaRef{RootID: "torrent", ID: pending.id, AbsolutePath: path, Name: name, Kind: kind, MIMEType: source.MIME(), OpenDirect: open, OpenTranscode: open}
+	ref := controller.MediaRef{RootID: "torrent", ID: pending.id, AbsolutePath: path, Name: name, Kind: kind, MIMEType: source.MIME(), OpenDirect: open, OpenTranscode: open, TorrentSource: source}
 	result := h.cfg.Controller.AddQueueItem(ctx, controller.QueueAddRequest{Mutation: mutation, Media: ref, Select: true})
 	if !result.OK() {
 		return result.Result

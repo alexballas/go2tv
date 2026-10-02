@@ -158,6 +158,8 @@ function fixture() {
     "theme-toggle",
     "back-to-top",
     "torrent-panel",
+    "torrent-subtitles",
+    "burn-subtitles",
     "torrent-input",
     "torrent-form",
     "torrent-magnet",
@@ -312,7 +314,17 @@ test("disables transcoding when FFmpeg is unavailable", async () => {
     return url === "/api/bootstrap"
       ? {
           ok: true,
-          json: async () => ({ ...body, features: { transcode: false } }),
+          json: async () => ({
+            ...body,
+            features: { transcode: false },
+            snapshot: {
+              ...body.snapshot,
+              policy: {
+                ...body.snapshot.policy,
+                BurnChromecastSubtitles: true,
+              },
+            },
+          }),
         }
       : response;
   };
@@ -321,6 +333,9 @@ test("disables transcoding when FFmpeg is unavailable", async () => {
   FakeSocket.instances[0].emit("open");
   assert.equal(ids.transcode.disabled, true);
   assert.equal(ids.transcode.title, "FFmpeg unavailable");
+  assert.equal(ids["burn-subtitles"].disabled, true);
+  assert.equal(ids["burn-subtitles"].checked, false);
+  assert.equal(ids["burn-subtitles"].title, "FFmpeg unavailable");
 });
 
 test("renders safe labels and sends playlist/play payloads", async () => {
@@ -708,6 +723,8 @@ test("control interactions emit typed payloads and subtitle selection", async ()
             AutoPlaySameType: true,
             GaplessEnabled: true,
             ImageDurationSeconds: 12,
+            DisableTorrentSubtitles: false,
+            BurnChromecastSubtitles: false,
           },
           expected_revision: 3,
         },
@@ -1877,11 +1894,39 @@ test("loop and autoplay remain mutually exclusive", async () => {
     AutoPlaySameType: false,
     GaplessEnabled: false,
     ImageDurationSeconds: 10,
+    DisableTorrentSubtitles: false,
+    BurnChromecastSubtitles: false,
   });
   ids.autoplay.checked = true;
   ids.autoplay.emit("change");
   assert.equal(ids.loop.checked, false);
   assert.equal(ws.sent.at(-1).payload.policy.AutoPlayNext, true);
+});
+
+test("torrent subtitles default automatic, can be disabled, and follow server policy", async () => {
+  const { ids, env } = fixture();
+  const client = startClient(env);
+  await settle();
+  const ws = FakeSocket.instances[0];
+  assert.equal(ids["torrent-subtitles"].checked, true);
+  ids["torrent-subtitles"].checked = false;
+  ids["torrent-subtitles"].emit("change");
+  assert.equal(ws.sent.at(-1).type, "playback.policy");
+  assert.equal(ws.sent.at(-1).payload.policy.DisableTorrentSubtitles, true);
+  client.handle({
+    protocol_version: 1,
+    type: "state.policy",
+    payload: { revision: 4, policy: { DisableTorrentSubtitles: true } },
+  });
+  assert.equal(ids["torrent-subtitles"].checked, false);
+  client.handle({
+    protocol_version: 1,
+    type: "state.policy",
+    payload: { revision: 5, policy: {} },
+  });
+  assert.equal(ids["torrent-subtitles"].checked, true);
+  ws.emit("close");
+  assert.equal(ids["torrent-subtitles"].disabled, true);
 });
 
 test("normalizes image duration to desktop limits", async () => {
@@ -2028,4 +2073,35 @@ test("torrent upload, choices, progress and cancellation use shared IDs", async 
   assert.match(ids.toast.children.at(-1).textContent, /exceeds 4 MiB/);
   ws.close();
   assert.equal(ids["torrent-cancel-pending"].disabled, true);
+});
+
+test("Chromecast burn fallback defaults off, sends policy, and follows updates", async () => {
+  const { ids, env } = fixture();
+  const client = startClient(env);
+  await settle();
+  const ws = FakeSocket.instances[0];
+  ws.emit("open");
+  assert.equal(ids["burn-subtitles"].checked, false);
+  assert.equal(ids["burn-subtitles"].disabled, false);
+  ids["burn-subtitles"].checked = true;
+  ids["burn-subtitles"].emit("change");
+  const request = ws.sent.at(-1);
+  assert.equal(request.type, "playback.policy");
+  assert.equal(request.payload.policy.BurnChromecastSubtitles, true);
+  assert.equal(request.payload.policy.DisableTorrentSubtitles, false);
+  assert.equal(ids["burn-subtitles"].disabled, true);
+  client.handle({
+    protocol_version: 1,
+    type: "state.policy",
+    payload: { revision: 4, policy: { BurnChromecastSubtitles: true } },
+  });
+  assert.equal(ids["burn-subtitles"].checked, true);
+  client.handle({
+    protocol_version: 1,
+    type: "state.policy",
+    payload: { revision: 5, policy: {} },
+  });
+  assert.equal(ids["burn-subtitles"].checked, false);
+  ws.emit("close");
+  assert.equal(ids["burn-subtitles"].disabled, true);
 });

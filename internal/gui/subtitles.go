@@ -74,3 +74,35 @@ func registerChromecastSubtitles(server *httphandlers.HTTPserver, host, path str
 	server.AddHandler("/subtitles.vtt", nil, nil, data)
 	return "http://" + host + "/subtitles.vtt", nil
 }
+
+func (screen *FyneScreen) chromecastSubtitleBurnPath(transcoded bool) string {
+	// RTMP serves existing HLS segments rather than this FFmpeg pipeline.
+	if !transcoded || !screen.castBurnSubtitles || (screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked) {
+		return ""
+	}
+	path, _ := playback.ChromecastSubtitlePath(screen.subsfile)
+	return path
+}
+
+func desktopChromecastTranscodeOptions(screen *FyneScreen, seekSeconds int) *utils.TranscodeOptions {
+	return &utils.TranscodeOptions{
+		FFmpegPath:   screen.ffmpegPath,
+		SubsPath:     screen.chromecastSubtitleBurnPath(true),
+		SeekSeconds:  seekSeconds,
+		SubtitleSize: utils.SubtitleSizeMedium,
+		LogOutput:    screen.Debug,
+	}
+}
+
+func registerDesktopChromecastSubtitles(screen *FyneScreen, server *httphandlers.HTTPserver, host string, seekSeconds int, transcoded bool) (string, error) {
+	if screen.chromecastSubtitleBurnPath(transcoded) != "" {
+		if server != nil {
+			server.RemoveHandler("/subtitles.vtt")
+		}
+		return "", nil
+	}
+	if !transcoded {
+		seekSeconds = 0
+	}
+	return registerChromecastSubtitles(server, host, screen.subsfile, seekSeconds)
+}

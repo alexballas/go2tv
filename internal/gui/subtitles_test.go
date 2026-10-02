@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/alexballas/refyne/v2/lang"
+	"github.com/alexballas/refyne/v2/test"
+	"github.com/alexballas/refyne/v2/widget"
 
 	"go2tv.app/go2tv/v2/httphandlers"
 )
@@ -193,5 +195,75 @@ func TestChromecastSubtitlesAcrossServerRestarts(t *testing.T) {
 				t.Fatalf("stale captions still served: %d", recorder.Code)
 			}
 		})
+	}
+}
+
+func TestDesktopChromecastSubtitleRenderingModes(t *testing.T) {
+	app := test.NewApp()
+	t.Cleanup(app.Quit)
+	path := filepath.Join(t.TempDir(), "captions.srt")
+	if err := os.WriteFile(path, []byte("1\n00:00:05,000 --> 00:00:10,000\nFirst\n\n2\n00:00:35,000 --> 00:00:40,000\nSecond\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	screen := &FyneScreen{subsfile: path}
+	server := httphandlers.NewServer("")
+	tt := []struct {
+		name                         string
+		transcoded, preference, rtmp bool
+		offset                       int
+	}{
+		{name: "receiver default", transcoded: true},
+		{name: "receiver seek", transcoded: true, offset: 30},
+		{name: "burn selected captions", transcoded: true, preference: true},
+		{name: "burn seek keeps original captions", transcoded: true, preference: true, offset: 30},
+		{name: "RTMP uses receiver", transcoded: true, preference: true, rtmp: true},
+		{name: "direct ignores fallback", preference: true, offset: 30},
+		{name: "receiver restored", transcoded: true, offset: 30},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			app.Preferences().SetBool(chromecastBurnSubtitlesPref, tc.preference)
+			screen.captureChromecastSubtitleSettings()
+			screen.rtmpServerCheck = widget.NewCheck("", nil)
+			screen.rtmpServerCheck.SetChecked(tc.rtmp)
+			endpoint, err := registerDesktopChromecastSubtitles(screen, server, "host:1234", tc.offset, tc.transcoded)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := httptest.NewRecorder()
+			server.ServeMediaHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "http://host:1234/subtitles.vtt", nil))
+			if tc.transcoded {
+				opts := desktopChromecastTranscodeOptions(screen, tc.offset)
+				if opts.SeekSeconds != tc.offset {
+					t.Fatalf("transcode seek=%d want %d", opts.SeekSeconds, tc.offset)
+				}
+				if tc.preference && !tc.rtmp {
+					if endpoint != "" || response.Code != http.StatusNotFound || opts.SubsPath != path {
+						t.Fatalf("burn fallback: URL=%q status=%d subtitles=%q", endpoint, response.Code, opts.SubsPath)
+					}
+					return
+				}
+				if opts.SubsPath != "" {
+					t.Fatalf("receiver captions also burned: %q", opts.SubsPath)
+				}
+			}
+			text := response.Body.String()
+			if endpoint == "" || response.Code != http.StatusOK {
+				t.Fatalf("receiver captions: %q %d", endpoint, response.Code)
+			}
+			if tc.transcoded && tc.offset == 30 {
+				if strings.Contains(text, "First") || !strings.Contains(text, "00:00:05.000 --> 00:00:10.000\nSecond") {
+					t.Fatalf("shifted captions: %q", text)
+				}
+			} else if !strings.Contains(text, "First") || !strings.Contains(text, "00:00:35.000 --> 00:00:40.000") {
+				t.Fatalf("original captions: %q", text)
+			}
+		})
+	}
+	app.Preferences().SetBool(chromecastBurnSubtitlesPref, true)
+	screen.captureChromecastSubtitleSettings()
+	screen.subsfile = ""
+	if opts := desktopChromecastTranscodeOptions(screen, 30); opts.SubsPath != "" {
+		t.Fatalf("fallback without captions tried burn-in: %q", opts.SubsPath)
 	}
 }

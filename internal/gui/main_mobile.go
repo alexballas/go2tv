@@ -152,6 +152,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	externalmedia := widget.NewCheck(lang.L("Media from URL"), func(b bool) {})
 	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
+	s.TorrentSubsCheck = widget.NewCheck(lang.L("Automatic Torrent Subtitles"), nil)
+	s.TorrentSubsCheck.SetChecked(true)
 	transcode := widget.NewCheck(lang.L("Transcode"), func(b bool) {
 		s.Transcode = b
 	})
@@ -194,7 +196,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
 	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearmedia), clearmedia, mfiletext)
 	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
-	buttons := container.NewVBox(mediasubsbuttons, newTorrentButton(s), newTorrentControls(s), viewfilescont, checklists, sliderArea, actionbuttons, container.NewPadded(deviceHeader))
+	buttons := container.NewVBox(mediasubsbuttons, newTorrentButton(s), newTorrentControls(s), s.TorrentSubsCheck, viewfilescont, checklists, sliderArea, actionbuttons, container.NewPadded(deviceHeader))
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
 
 	// Widgets actions

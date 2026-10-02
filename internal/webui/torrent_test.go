@@ -26,11 +26,15 @@ import (
 	"go2tv.app/go2tv/v2/internal/playback"
 )
 
-func webTorrentFixture(t *testing.T) []byte {
+func webTorrentFixture(t *testing.T, movieName ...string) []byte {
 	t.Helper()
+	name := "movie.ts"
+	if len(movieName) > 0 {
+		name = movieName[0]
+	}
 	info := metainfo.Info{Name: "Bundle", PieceLength: 16384, Pieces: make([]byte, 20), Files: []metainfo.FileInfo{
 		{Length: 10, Path: []string{"notes.txt"}},
-		{Length: 10, Path: []string{"movie.ts"}},
+		{Length: 10, Path: []string{name}},
 		{Length: 10, Path: []string{"song.opus"}},
 	}}
 	encoded, err := bencode.Marshal(info)
@@ -44,9 +48,9 @@ func webTorrentFixture(t *testing.T) []byte {
 	return body.Bytes()
 }
 
-func loadWebTorrent(t *testing.T, h *Handler) *torrentPendingDTO {
+func loadWebTorrent(t *testing.T, h *Handler, movieName ...string) *torrentPendingDTO {
 	t.Helper()
-	r := httptest.NewRequest(http.MethodPost, "/api/torrent", bytes.NewReader(webTorrentFixture(t)))
+	r := httptest.NewRequest(http.MethodPost, "/api/torrent", bytes.NewReader(webTorrentFixture(t, movieName...)))
 	r.Header.Set("Content-Type", "application/x-bittorrent")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)

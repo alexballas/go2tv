@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go2tv.app/go2tv/v2/internal/mediamodel"
+	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/internal/playback"
 	"go2tv.app/go2tv/v2/metadata"
 )
@@ -202,8 +203,8 @@ func errorForCode(code ErrorCode) error {
 	}
 }
 
-// Policy controls automatic queue traversal. The zero value is valid and
-// disables all automatic behavior. A zero ImageDurationSeconds disables timed
+// Policy controls queue traversal and subtitle rendering. The zero value is valid
+// and disables automatic queue traversal. A zero ImageDurationSeconds disables timed
 // image advance; DefaultPolicy supplies the recommended duration.
 type Policy struct {
 	LoopSelected         bool `json:"LoopSelected"`
@@ -211,6 +212,10 @@ type Policy struct {
 	AutoPlaySameType     bool `json:"AutoPlaySameType"`
 	GaplessEnabled       bool `json:"GaplessEnabled"`
 	ImageDurationSeconds int  `json:"ImageDurationSeconds"`
+	// Torrent captions default to automatic; external subtitles take precedence.
+	DisableTorrentSubtitles bool `json:"DisableTorrentSubtitles,omitempty"`
+	// Optional compatibility fallback for external captions on transcoded Chromecast video.
+	BurnChromecastSubtitles bool `json:"BurnChromecastSubtitles,omitempty"`
 }
 
 // DefaultPolicy returns the policy used by a new Controller.
@@ -303,6 +308,8 @@ type MediaRef struct {
 	OpenDirect    playback.SourceOpener
 	OpenTranscode playback.SourceOpener
 	LoadArtwork   MediaArtworkLoader
+	// TorrentSource is a verified progressive source, supplied only by torrent selection.
+	TorrentSource mediasource.Source
 
 	artwork          *metadata.ArtworkAsset
 	artworkAttempted bool

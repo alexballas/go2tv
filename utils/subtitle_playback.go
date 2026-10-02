@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -14,15 +15,30 @@ var webVTTCueTiming = regexp.MustCompile(`(?m)^((?:\d{2,}:)?\d{2}:\d{2}\.\d{3})[
 // SubtitlesForPlayback returns WebVTT with cues relative to the start of a
 // transcoded stream. Native playback uses a zero seek offset.
 func SubtitlesForPlayback(path string, seekSeconds int) ([]byte, error) {
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext != ".srt" && ext != ".vtt" {
+		return nil, fmt.Errorf("unsupported subtitle format: %s", ext)
+	}
+	source, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer source.Close()
+	return SubtitlesReaderForPlayback(source, filepath.Ext(path), seekSeconds)
+}
+
+// SubtitlesReaderForPlayback supports files and mobile document providers.
+// Each call reads the original captions, so repeated seeks never compound offsets.
+func SubtitlesReaderForPlayback(source io.Reader, extension string, seekSeconds int) ([]byte, error) {
 	var data []byte
 	var err error
-	switch strings.ToLower(filepath.Ext(path)) {
+	switch strings.ToLower(extension) {
 	case ".srt":
-		data, err = ConvertSRTtoWebVTT(path)
+		data, err = ConvertSRTReaderToWebVTT(source)
 	case ".vtt":
-		data, err = os.ReadFile(path)
+		data, err = io.ReadAll(source)
 	default:
-		return nil, fmt.Errorf("unsupported subtitle format: %s", filepath.Ext(path))
+		return nil, fmt.Errorf("unsupported subtitle format: %s", extension)
 	}
 	if err != nil || seekSeconds <= 0 {
 		return data, err
