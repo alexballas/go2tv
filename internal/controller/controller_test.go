@@ -839,7 +839,8 @@ func TestLoopSelectedReplaysMediaOutsideQueue(t *testing.T) {
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
 		after, _ := c.Snapshot(context.Background())
-		if after.HasSession && after.Generation > playing.Generation {
+		// Generation advances before the replacement load completes; the old session remains meanwhile.
+		if after.HasSession && after.Generation > playing.Generation && after.PlaybackState == PlaybackStatePlaying {
 			if after.SelectedMedia != "standalone.mp3" || len(factory.opened) != 1 || count(log.snapshot(), "load-existing:cast") != 1 {
 				t.Fatalf("loop did not reuse active media: %#v %v", after, log.snapshot())
 			}
@@ -867,7 +868,7 @@ func TestLoopSelectedPreservesQueueIdentity(t *testing.T) {
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
 		after, _ := c.Snapshot(context.Background())
-		if after.Generation > playing.Generation && after.HasSession {
+		if after.Generation > playing.Generation && after.HasSession && after.PlaybackState == PlaybackStatePlaying {
 			if len(after.Queue) != 1 || after.Queue[0].ID != id || !after.Queue[0].IsActive || !after.Queue[0].IsSelected {
 				t.Fatalf("queue identity changed: %#v", after.Queue)
 			}
