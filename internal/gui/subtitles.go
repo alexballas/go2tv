@@ -4,11 +4,57 @@ package gui
 
 import (
 	"fmt"
+	"slices"
+
+	"github.com/alexballas/refyne/v2"
+	"github.com/alexballas/refyne/v2/lang"
 
 	"go2tv.app/go2tv/v2/httphandlers"
 	"go2tv.app/go2tv/v2/internal/playback"
 	"go2tv.app/go2tv/v2/utils"
 )
+
+func extractChromecastSubtitles(screen *FyneScreen) error {
+	if screen.Screencast || torrentMediaSelected(screen) {
+		return nil
+	}
+	track := -1
+	automatic := false
+	fyne.DoAndWait(func() {
+		selected := screen.SelectInternalSubs.Selected
+		switch {
+		case selected != "":
+			track = slices.Index(screen.SelectInternalSubs.Options, selected)
+		case !screen.CustomSubsCheck.Checked && screen.subsfile == "" &&
+			!screen.ExternalMediaURL.Checked && screen.mediaKindForPath(screen.mediafile) == "video" &&
+			len(screen.SelectInternalSubs.Options) > 0:
+			// Automatic prefers a sidecar, then the first embedded track.
+			track = 0
+			automatic = true
+		}
+		if track >= 0 {
+			screen.PlayPause.SetText(lang.L("Extracting Subtitles") + "   ")
+		}
+	})
+	if track < 0 {
+		return nil
+	}
+	path, err := utils.ExtractSub(screen.ffmpegPath, track, screen.mediafile)
+	fyne.Do(func() {
+		screen.PlayPause.SetText(lang.L("Play") + "   ")
+	})
+	if err != nil {
+		if automatic {
+			// Optional captions must not prevent video playback (e.g. bitmap
+			// tracks cannot be converted to SRT). Explicit selections report errors.
+			return nil
+		}
+		return err
+	}
+	screen.tempFiles = append(screen.tempFiles, path)
+	screen.subsfile = path
+	return nil
+}
 
 // registerChromecastSubtitles uses the receiver's text renderer for both direct
 // and transcoded playback, keeping styling identical without requiring libass.

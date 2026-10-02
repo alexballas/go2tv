@@ -1408,17 +1408,27 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx contex
 	if parsedMediaURL, err := url.Parse(mediaURL); err == nil {
 		listenAddress = parsedMediaURL.Host
 	}
+	torrentSubtitleURL := ""
+	if screen.mediafile != nil {
+		offset := 0
+		if transcode {
+			offset = screen.ffmpegSeek
+		}
+		torrentSubtitleURL = registerTorrentSubtitles(screen.httpserver, listenAddress, screen.mediafile.Path(),
+			!screen.CustomSubsCheck.Checked && subtitleURL == "" && !screen.ExternalMediaURL.Checked, offset)
+	}
 	if startupCtx.Err() != nil {
 		return
 	}
 	_, err := loadChromecastForAction(screen, actionID, sessionDevice, client, castprotocol.LoadRequest{
-		MediaURL:    mediaURL,
-		ContentType: mediaType,
-		Metadata:    guiMediaMetadata(chromecastMediaTitle(screen, mediaURL), listenAddress, artworkAsset),
-		StartTime:   playbackStart,
-		Duration:    screen.mediaDuration,
-		SubtitleURL: subtitleURL,
-		Live:        live,
+		MediaURL:           mediaURL,
+		ContentType:        mediaType,
+		Metadata:           guiMediaMetadata(chromecastMediaTitle(screen, mediaURL), listenAddress, artworkAsset),
+		StartTime:          playbackStart,
+		Duration:           screen.mediaDuration,
+		SubtitleURL:        subtitleURL,
+		TorrentSubtitleURL: torrentSubtitleURL,
+		Live:               live,
 	})
 	if err != nil {
 		if !screen.isChromecastActionCurrent(actionID) {
@@ -1496,11 +1506,17 @@ func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
 		if parsedMediaURL, parseErr := url.Parse(mediaURL); parseErr == nil {
 			listenAddress = parsedMediaURL.Host
 		}
+		torrentSubtitleURL := ""
+		if screen.mediafile != nil {
+			torrentSubtitleURL = registerTorrentSubtitles(screen.httpserver, listenAddress, screen.mediafile.Path(),
+				!screen.CustomSubsCheck.Checked, seekPos)
+		}
 		if err := client.LoadMediaOnExisting(castprotocol.LoadRequest{
-			MediaURL:    mediaURL,
-			ContentType: "video/mp4",
-			Metadata:    guiMediaMetadata(chromecastMediaTitle(screen, mediaURL), listenAddress, artworkAsset),
-			Duration:    screen.mediaDuration,
+			MediaURL:           mediaURL,
+			ContentType:        "video/mp4",
+			TorrentSubtitleURL: torrentSubtitleURL,
+			Metadata:           guiMediaMetadata(chromecastMediaTitle(screen, mediaURL), listenAddress, artworkAsset),
+			Duration:           screen.mediaDuration,
 		}); err != nil {
 			check(screen.Current, fmt.Errorf("chromecast seek load: %w", err))
 			return

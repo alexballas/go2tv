@@ -5,13 +5,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
+
+	"go2tv.app/go2tv/v2/internal/mkvsubs"
 )
 
 type ffprobeInfoforSubs struct {
@@ -140,11 +145,6 @@ func ExtractSub(ffmpeg string, n int, f string) (string, error) {
 		return "", err
 	}
 
-	resolvedFFmpeg, err := ResolveFFmpegPath(ffmpeg)
-	if err != nil {
-		return "", err
-	}
-
 	tempSub, err := os.CreateTemp("", "go2tv-sub-*.srt")
 	if err != nil {
 		return "", err
@@ -156,8 +156,18 @@ func ExtractSub(ffmpeg string, n int, f string) (string, error) {
 			_ = os.Remove(subPath)
 		}
 	}()
+	nativeErr := extractNativeSub(ffmpeg, n, f, tempSub)
 	if err := tempSub.Close(); err != nil {
 		return "", fmt.Errorf("close subtitle file: %w", err)
+	}
+	if nativeErr == nil {
+		success = true
+		return subPath, nil
+	}
+
+	resolvedFFmpeg, err := ResolveFFmpegPath(ffmpeg)
+	if err != nil {
+		return "", err
 	}
 
 	cmd := exec.Command(
@@ -177,4 +187,60 @@ func ExtractSub(ffmpeg string, n int, f string) (string, error) {
 
 	success = true
 	return subPath, nil
+}
+
+func extractNativeSub(ffmpeg string, index int, path string, out io.Writer) error {
+	// Progressive sources keep their existing extraction path. Local files
+	// with other extensions also retain FFmpeg's broader container support.
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext != ".mkv" && ext != ".webm" {
+		return mkvsubs.ErrNoSubtitles
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return mkvsubs.ErrNoSubtitles
+	}
+	ffprobe, err := ResolveFFprobePath(ffmpeg)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	// FFmpeg normalizes subtitles to the media start time. Also confirm the
+	// selected codec using the same stream selector as the fallback command.
+	cmd := exec.CommandContext(ctx, ffprobe, "-v", "error", "-select_streams", "s:"+strconv.Itoa(index),
+		"-show_entries", "stream=codec_name:format=format_name,start_time", "-of", "json", path)
+	setSysProcAttr(cmd)
+	data, err := cmd.Output()
+	if err != nil {
+		return err
+	}
+	var probe struct {
+		Streams []struct {
+			CodecName string `json:"codec_name"`
+		} `json:"streams"`
+		Format struct {
+			Name      string `json:"format_name"`
+			StartTime string `json:"start_time"`
+		} `json:"format"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return err
+	}
+	formats := strings.Split(probe.Format.Name, ",")
+	if len(probe.Streams) != 1 || probe.Streams[0].CodecName != "subrip" ||
+		(!slices.Contains(formats, "matroska") && !slices.Contains(formats, "webm")) {
+		return mkvsubs.ErrNoSubtitles
+	}
+	startTime := 0.0
+	if probe.Format.StartTime != "" {
+		startTime, err = strconv.ParseFloat(probe.Format.StartTime, 64)
+		if err != nil {
+			return err
+		}
+	}
+	return mkvsubs.ExtractFile(ctx, path, index, startTime, out)
 }

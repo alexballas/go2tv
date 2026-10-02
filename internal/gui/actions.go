@@ -371,9 +371,7 @@ func setCurrentMediaPath(screen *FyneScreen, mediaPath string) error {
 
 	updateInternalSubsDropdown(screen, absMediaFile)
 
-	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
-		screen.checkChromecastCompatibility()
-	}
+	screen.checkChromecastCompatibility()
 
 	screen.refreshQueueStateUI()
 	setPlayPauseView("", screen)
@@ -386,6 +384,7 @@ func clearCurrentMediaSelection(screen *FyneScreen) {
 		screen.MediaText.SetText("")
 	}
 	screen.mediafile = ""
+	screen.checkChromecastCompatibility()
 	if screen.mpris != nil {
 		screen.mpris.refresh()
 	}
@@ -630,6 +629,10 @@ func playAction(screen *FyneScreen) {
 }
 
 func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
+	state := screen.getScreenState()
+	if screen.chromecastProbePending.Load() && state != "Playing" && state != "Paused" {
+		return
+	}
 	if screen.deferTorrentPlayback(target) {
 		return
 	}
@@ -1359,29 +1362,10 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 	transcode := screen.Transcode
 	ffmpegSeek := screen.ffmpegSeek
 
-	// Handle internal (embedded) subtitles extraction
-	if !screen.Screencast && screen.SelectInternalSubs.Selected != "" {
-		for n, opt := range screen.SelectInternalSubs.Options {
-			if opt == screen.SelectInternalSubs.Selected {
-				fyne.Do(func() {
-					screen.PlayPause.Text = lang.L("Extracting Subtitles") + "   "
-					screen.PlayPause.Refresh()
-				})
-				tempSubsPath, err := utils.ExtractSub(screen.ffmpegPath, n, screen.mediafile)
-				fyne.Do(func() {
-					screen.PlayPause.Text = lang.L("Play") + "   "
-					screen.PlayPause.Refresh()
-				})
-				if err != nil {
-					check(screen, err)
-					startAfreshPlayButton(screen)
-					return
-				}
-
-				screen.tempFiles = append(screen.tempFiles, tempSubsPath)
-				screen.subsfile = tempSubsPath
-			}
-		}
+	if err := extractChromecastSubtitles(screen); err != nil {
+		check(screen, err)
+		startAfreshPlayButton(screen)
+		return
 	}
 
 	// Reuse an existing client only for the target Chromecast device.
@@ -1723,6 +1707,14 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 		startAfreshPlayButton(screen)
 		return
 	}
+	torrentSubtitleURL := registerTorrentSubtitles(screen.httpserver, subtitleHost, screen.mediafile,
+		!screen.CustomSubsCheck.Checked && subtitleURL == "" && !screen.Screencast &&
+			!screen.ExternalMediaURL.Checked && (screen.rtmpServerCheck == nil || !screen.rtmpServerCheck.Checked), subtitleOffset)
+	playbackStart := ffmpegSeek
+	if transcode && torrentMediaSelected(screen) {
+		// FFmpeg already seeks the source; the new receiver stream starts at zero.
+		playbackStart = 0
+	}
 
 	// Load media and update UI on success
 	if startupCtx.Err() != nil {
@@ -1736,13 +1728,14 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 			listenAddress = parsedMediaURL.Host
 		}
 		loadedClient, err := loadChromecastForAction(screen, actionID, sessionDevice, client, castprotocol.LoadRequest{
-			MediaURL:    mediaURL,
-			ContentType: mediaType,
-			Metadata:    guiMediaMetadata(chromecastMediaTitle(screen, mediaURL), listenAddress, artworkAsset),
-			StartTime:   ffmpegSeek,
-			Duration:    screen.mediaDuration,
-			SubtitleURL: subtitleURL,
-			Live:        live,
+			MediaURL:           mediaURL,
+			ContentType:        mediaType,
+			Metadata:           guiMediaMetadata(chromecastMediaTitle(screen, mediaURL), listenAddress, artworkAsset),
+			StartTime:          playbackStart,
+			Duration:           screen.mediaDuration,
+			SubtitleURL:        subtitleURL,
+			TorrentSubtitleURL: torrentSubtitleURL,
+			Live:               live,
 		})
 		if err != nil {
 			if !screen.isChromecastActionCurrent(actionID) {
@@ -1831,13 +1824,16 @@ func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
 			check(screen, err)
 			return
 		}
+		torrentSubtitleURL := registerTorrentSubtitles(screen.httpserver, whereToListen, screen.mediafile,
+			!screen.CustomSubsCheck.Checked && subtitleURL == "", seekPos)
 		// live=false because this is local file playback (seeking)
 		if err := client.LoadMediaOnExisting(castprotocol.LoadRequest{
-			MediaURL:    mediaURL,
-			SubtitleURL: subtitleURL,
-			ContentType: mediaType,
-			Metadata:    guiMediaMetadata(chromecastMediaTitle(screen, mediaURL), whereToListen, artworkAsset),
-			Duration:    screen.mediaDuration,
+			MediaURL:           mediaURL,
+			SubtitleURL:        subtitleURL,
+			TorrentSubtitleURL: torrentSubtitleURL,
+			ContentType:        mediaType,
+			Metadata:           guiMediaMetadata(chromecastMediaTitle(screen, mediaURL), whereToListen, artworkAsset),
+			Duration:           screen.mediaDuration,
 		}); err != nil {
 			check(screen, fmt.Errorf("chromecast seek load: %w", err))
 			return

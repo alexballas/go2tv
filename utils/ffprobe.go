@@ -172,6 +172,17 @@ func DurationForMediaReaderSeconds(ctx context.Context, ffmpeg string, media io.
 }
 
 func GetMediaCodecInfo(ffmpeg string, f string) (*MediaCodecInfo, error) {
+	return GetMediaCodecInfoContext(context.Background(), ffmpeg, f)
+}
+
+// GetMediaCodecInfoContext lets selection changes interrupt progressive probes.
+func GetMediaCodecInfoContext(ctx context.Context, ffmpeg string, f string) (*MediaCodecInfo, error) {
+	if ctx == nil {
+		return nil, errors.New("ffprobe context required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	f, err := mediaInput(f)
 	if err != nil {
 		return nil, err
@@ -186,7 +197,7 @@ func GetMediaCodecInfo(ffmpeg string, f string) (*MediaCodecInfo, error) {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx,
 		ffprobePath,

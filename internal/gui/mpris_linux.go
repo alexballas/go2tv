@@ -109,7 +109,8 @@ func (m *guiMPRIS) refresh() {
 		}
 		v := mpris.Snapshot{Status: state, Path: path, PositionUS: current * 1_000_000, LengthUS: duration * 1_000_000}
 		v.CanPlay = s.getScreenState() != "Waiting" && path != "" &&
-			(s.selectedDevice.addr != "" || s.getActiveDevice().addr != "") && !s.renderGate.remoteLeaseHeld()
+			(s.selectedDevice.addr != "" || s.getActiveDevice().addr != "") && !s.renderGate.remoteLeaseHeld() &&
+			(active || !s.chromecastProbePending.Load())
 		v.CanPause = active && !strings.HasPrefix(s.castingMediaType, "image/") && !s.Screencast
 		v.CanSeek = active && duration > 0 && !strings.HasPrefix(s.castingMediaType, "image/") && !s.Screencast
 		v.CanNext = active && s.SkipNextButton != nil && !s.SkipNextButton.Disabled() && !s.renderGate.remoteLeaseHeld()

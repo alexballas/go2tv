@@ -77,6 +77,8 @@ func selectTorrentMedia(s *FyneScreen, path string) {
 	s.subsfile = ""
 	s.setCurrentArtwork(nil)
 	fyne.Do(func() {
+		s.selectArtwork("")
+		s.checkChromecastCompatibility()
 		if s.NextMediaCheck != nil {
 			s.NextMediaCheck.SetChecked(false)
 		}

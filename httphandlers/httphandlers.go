@@ -286,6 +286,9 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 		}
 
 		switch f := out.media.(type) {
+		case http.Handler:
+			f.ServeHTTP(w, r)
+			return
 		case string:
 			if source, ok := mediasource.Lookup(f); ok {
 				reader, err := source.Open(r.Context())

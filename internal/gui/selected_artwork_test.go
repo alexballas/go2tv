@@ -70,6 +70,34 @@ func TestSelectedArtworkClearRejectsLateResult(t *testing.T) {
 	}
 }
 
+func TestTorrentSelectionClearsSelectedArtwork(t *testing.T) {
+	screen, _ := newMediaCardTestScreen(t)
+	card := newSelectedArtwork()
+	screen.selectedArtwork = card
+	screen.mediafile = filepath.Join(t.TempDir(), "track.mp3")
+	old, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	card.cancel = cancel
+	cover := image.NewNRGBA(image.Rect(0, 0, 20, 20))
+	card.applyArtwork(old, cover)
+	if !card.picture.Visible() {
+		t.Fatal("local artwork not displayed")
+	}
+
+	path := filepath.Join(t.TempDir(), "movie.mp4")
+	selectTorrentMedia(screen, path)
+	if screen.mediafile != path {
+		t.Fatal("torrent media not selected")
+	}
+	if card.picture.Visible() || card.picture.Image != nil || !card.placeholder.Visible() {
+		t.Fatal("torrent selection retained local artwork")
+	}
+	card.applyArtwork(old, cover)
+	if card.picture.Visible() || card.picture.Image != nil || !card.placeholder.Visible() {
+		t.Fatal("late local artwork restored after torrent selection")
+	}
+}
+
 func TestArtworkPlaybackRowKeepsSquareAndSpace(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()

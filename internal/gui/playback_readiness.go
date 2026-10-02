@@ -51,6 +51,9 @@ func (s *FyneScreen) refreshPlaybackReadiness() {
 		status = lang.L("Select a device")
 		toolTip = status
 		s.PlayPause.Disable()
+	case s.chromecastCompatibilityPending():
+		status = lang.L("Checking media compatibility…")
+		toolTip = status
 	case s.mediafile == "" && s.MediaText.Text == "" && !s.Screencast && !(s.rtmpServerCheck != nil && s.rtmpServerCheck.Checked):
 		status = lang.L("Choose media to cast")
 		toolTip = status

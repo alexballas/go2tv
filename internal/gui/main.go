@@ -474,9 +474,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		}
 
 		// Auto-enable transcoding for incompatible Chromecast media
-		if data[id].deviceType == devices.DeviceTypeChromecast && s.mediafile != "" {
-			s.checkChromecastCompatibility()
-		}
+		s.checkChromecastCompatibility()
 		setPlayPauseView("", s)
 		list.Refresh()
 	}

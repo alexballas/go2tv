@@ -9,9 +9,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	fynetooltip "github.com/alexballas/fyne-tooltip"
@@ -131,7 +131,9 @@ type FyneScreen struct {
 	queuedArtwork            *metadata.ArtworkAsset
 	queuedArtworkIdentity    string
 	artworkCache             map[string]artworkCacheEntry
-	chromecastCheckedFile    string // Tracks which file was already auto-checked for Chromecast compatibility
+	chromecastCheckedFile    string                        // Tracks which file was already auto-checked for Chromecast compatibility
+	chromecastProbe          *chromecastCompatibilityProbe // UI-thread owned
+	chromecastProbePending   atomic.Bool
 	mediaFormats             []string
 	videoFormats             []string
 	muError                  sync.RWMutex
@@ -663,7 +665,8 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 			}
 		}
 		screen.refreshPlaybackReadiness()
-		if screen.torrentPlaybackPending() {
+		state := screen.getScreenState()
+		if screen.torrentPlaybackPending() || screen.chromecastCompatibilityPending() && state != "Playing" && state != "Paused" {
 			screen.PlayPause.Disable()
 		}
 		screen.PlayPause.Refresh()
@@ -889,47 +892,6 @@ func (p *FyneScreen) reusableChromecastClientForDevice(device devType) *castprot
 	}
 
 	return client
-}
-
-// checkChromecastCompatibility checks if loaded media needs transcoding for Chromecast.
-// Auto-enables transcode checkbox if media is incompatible and FFmpeg is available.
-// Only auto-enables once per file - tracks checked file to respect user's manual disable.
-func (p *FyneScreen) checkChromecastCompatibility() {
-	if p.selectedDeviceType != devices.DeviceTypeChromecast {
-		return
-	}
-	if p.mediafile == "" {
-		return
-	}
-	// Skip if we've already auto-checked this file (prevents re-enabling after user disables)
-	if p.chromecastCheckedFile == p.mediafile {
-		return
-	}
-	if err := p.ffmpegStatus(); err != nil {
-		return // Can't transcode anyway
-	}
-
-	// Only auto-enable transcoding for video files
-	// Images and audio are natively supported by Chromecast
-	ext := strings.ToLower(filepath.Ext(p.mediafile))
-	if !slices.Contains(p.videoFormats, ext) {
-		return // Not a video file, no need to check compatibility
-	}
-
-	info, err := utils.GetMediaCodecInfo(p.ffmpegPath, p.mediafile)
-	if err != nil {
-		return // Can't determine, let user decide
-	}
-
-	// Mark this file as checked (even if compatible) to avoid rechecking
-	p.chromecastCheckedFile = p.mediafile
-
-	if !utils.IsChromecastCompatible(info) {
-		fyne.Do(func() {
-			p.TranscodeCheckBox.SetChecked(true)
-		})
-		p.Transcode = true
-	}
 }
 
 // NewFyneScreen creates and initializes a new FyneScreen instance with the provided version string.

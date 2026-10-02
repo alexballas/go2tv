@@ -425,10 +425,10 @@ func (a *Application) update(attempts int) error {
 	}
 	a.volumeReceiver = &recvStatus.Status.Volume
 
-	if a.application == nil || a.application.IsIdleScreen {
-		// No app (or just the idle screen) means our media session is
-		// gone. Clear the cached snapshot so callers see IDLE instead
-		// of a stale last-known PLAYING state.
+	if a.application == nil || a.application.IsIdleScreen || a.application.TransportId == "" {
+		// Native TV apps (e.g. Netflix) can be active without a Cast transport.
+		// They cannot answer media queries; clear the old session and let
+		// startup proceed to launching our receiver.
 		a.media = nil
 		return nil
 	}

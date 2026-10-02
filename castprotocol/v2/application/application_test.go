@@ -164,38 +164,45 @@ func TestApplicationStartConnectsBeforeQueryingStatus(t *testing.T) {
 	}
 }
 
-// An idle screen means the receiver tore the media session down. Reconnecting to
-// one must drop the cached snapshot, otherwise callers keep reporting the last
-// known PLAYING state for media that is gone.
-func TestApplicationStartIdleScreenClearsStaleMedia(t *testing.T) {
-	h := newStartHarness(t, nil)
-	h.status.Status.Applications = []cast.Application{
-		{AppId: "CC1AD845", DisplayName: "Default Media Receiver", TransportId: "transport-1"},
+// Idle screens and TV apps without a Cast transport have no media session.
+// Reconnecting must succeed without querying media or retaining stale playback.
+func TestApplicationStartWithoutMediaTransportClearsStaleMedia(t *testing.T) {
+	tt := []struct {
+		name string
+		app  cast.Application
+	}{
+		{name: "idle screen", app: cast.Application{AppId: "E8C28D3C", DisplayName: "Backdrop", IsIdleScreen: true, TransportId: "transport-idle"}},
+		{name: "Netflix without Cast transport", app: cast.Application{AppId: "Netflix", DisplayName: "Netflix"}},
 	}
-	h.media.Status = []cast.Media{{MediaSessionId: 7, PlayerState: "PLAYING"}}
-
-	app := h.app()
-	if err := app.Start(mockAddr, mockPort); err != nil {
-		t.Fatalf("Start() error = %v", err)
-	}
-	if app.Media() == nil {
-		t.Fatal("Media() = nil, want the PLAYING session before the receiver goes idle")
-	}
-
-	// The receiver drops back to the backdrop and we reconnect.
-	h.status.Status.Applications = []cast.Application{
-		{AppId: "E8C28D3C", DisplayName: "Backdrop", IsIdleScreen: true, TransportId: "transport-idle"},
-	}
-	if err := app.Start(mockAddr, mockPort); err != nil {
-		t.Fatalf("Start() after idle error = %v", err)
-	}
-	if media := app.Media(); media != nil {
-		t.Fatalf("Media() = %+v, want nil for an idle screen", media)
-	}
-	for _, frame := range h.frames() {
-		if frame.destination == "transport-idle" {
-			t.Fatalf("Start() opened a media session against the idle screen: %+v", frame)
-		}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newStartHarness(t, nil)
+			h.status.Status.Applications = []cast.Application{
+				{AppId: "CC1AD845", DisplayName: "Default Media Receiver", TransportId: "transport-1"},
+			}
+			h.media.Status = []cast.Media{{MediaSessionId: 7, PlayerState: "PLAYING"}}
+			app := h.app()
+			if err := app.Start(mockAddr, mockPort); err != nil {
+				t.Fatalf("Start() error = %v", err)
+			}
+			if app.Media() == nil {
+				t.Fatal("Media() = nil, want the initial PLAYING session")
+			}
+			previousFrames := len(h.frames())
+			h.status.Status.Applications = []cast.Application{tc.app}
+			h.mediaUnreadable = true
+			if err := app.Start(mockAddr, mockPort); err != nil {
+				t.Fatalf("Start() with non-media app error = %v", err)
+			}
+			if media := app.Media(); media != nil {
+				t.Fatalf("Media() = %+v, want nil without a media transport", media)
+			}
+			for _, frame := range h.frames()[previousFrames:] {
+				if frame.namespace == namespaceMedia || frame.destination == "" || frame.destination == "transport-idle" {
+					t.Fatalf("Start() queried an unavailable media transport: %+v", frame)
+				}
+			}
+		})
 	}
 }
 

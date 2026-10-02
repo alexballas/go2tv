@@ -370,7 +370,7 @@ func (c *CastClient) LoadMedia(req LoadRequest) error {
 }
 
 func requiresCustomLoad(req LoadRequest) bool {
-	return req.SubtitleURL != "" || req.Duration != 0 || hasMediaMetadata(req.Metadata) || req.Live
+	return req.SubtitleURL != "" || req.TorrentSubtitleURL != "" || req.Duration != 0 || hasMediaMetadata(req.Metadata) || req.Live
 }
 
 // LoadOnExisting loads media on an already-running receiver (for seek operations).
