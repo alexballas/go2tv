@@ -283,10 +283,21 @@ make appimage          # Without FFmpeg
 make appimage-ffmpeg   # With FFmpeg
 ```
 
+Release AppImages are built on Ubuntu 22.04 (glibc 2.35) for compatibility with
+older systems and named `Go2TV-vX.Y.Z-x86_64.AppImage`. Build on Ubuntu 22.04
+when distributing local AppImages; building on a newer system can require a
+newer glibc.
+
+Standalone Linux amd64 and arm64 releases use the same Ubuntu 22.04 baseline.
+ARMv6 releases use a pinned Raspberry Pi OS Bookworm image (glibc 2.36), which
+provides the Wayland and PipeWire headers required by current dependencies.
+CI tests Go packages on both Ubuntu 22.04 and the latest Ubuntu runner.
+
 For the FFmpeg build, `APPIMAGE_FFMPEG_MODE` supports `auto` (default), `system`,
-`download`, or `none`. Downloaded builds pin FFmpeg 8.1.2 for Pascal/NVENC
-compatibility. Override binary paths with `APPIMAGE_FFMPEG_BIN` and
-`APPIMAGE_FFPROBE_BIN`, or override the archive with `APPIMAGE_FFMPEG_URL` and
+`download`, or `none`. Downloaded builds pin a month-end FFmpeg 8.1.2 build for
+Pascal/NVENC compatibility. BtbN retains month-end builds for two years; daily
+builds expire after 14 releases. Override binary paths with `APPIMAGE_FFMPEG_BIN`
+and `APPIMAGE_FFPROBE_BIN`, or override the archive with `APPIMAGE_FFMPEG_URL` and
 `APPIMAGE_FFMPEG_SHA256`.
 
 Release AppImages include update information for AppImageUpdate and a matching

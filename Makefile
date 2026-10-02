@@ -29,19 +29,21 @@ APPDATA_SRC=assets/linux/app.go2tv.go2tv.appdata.xml
 APPDATA_APPDIR=$(APPDIR)/usr/share/metainfo
 APPIMAGETOOL=$(BUILD_DIR)/appimagetool
 ARCH:=$(shell uname -m)
-APPIMAGE_OUT=$(BUILD_DIR)/Go2TV-$(ARCH).AppImage
+APPIMAGE_OUT=$(BUILD_DIR)/Go2TV-$(VERSION)-$(ARCH).AppImage
 APPIMAGE_UPDATE_INFO?=
 FFMPEG_STATIC_ARCHIVE=$(BUILD_DIR)/ffmpeg-static.tar.xz
 FFMPEG_STATIC_DIR=$(BUILD_DIR)/ffmpeg-static
 FFMPEG_APP_LIBDIR=$(APPDIR)/usr/lib/ffmpeg
 APPIMAGE_FFMPEG_MODE?=auto
 # FFmpeg 8.1.2 is the last stable branch confirmed compatible with Pascal
-# NVENC on NVIDIA 580xx drivers. Pin the exact BtbN build for reproducible
-# AppImages; override URL and SHA256 together when testing another build.
-APPIMAGE_FFMPEG_RELEASE?=autobuild-2026-09-17-13-19
-APPIMAGE_FFMPEG_BUILD?=n8.1.2-54-gc573a95381
-APPIMAGE_FFMPEG_SHA256_X86_64?=7b170fc2bf3d015ff346c186b77d22cf2bc97eb2868bd442ca0e61ee93b144ed
-APPIMAGE_FFMPEG_SHA256_AARCH64?=e58da59c8b0d92531a0fd6f308f902d572c2e9e9ec6bca98ae9ba7e85f7cd2c1
+# NVENC on NVIDIA 580xx drivers. Pin a BtbN month-end build for reproducible
+# AppImages: daily builds expire after 14 releases, month-end builds after two
+# years. Refresh this pin before August 2028; override URL and SHA256 together
+# when testing another build.
+APPIMAGE_FFMPEG_RELEASE?=autobuild-2026-08-31-13-27
+APPIMAGE_FFMPEG_BUILD?=n8.1.2-50-g1a748fe2cd
+APPIMAGE_FFMPEG_SHA256_X86_64?=c733b4b2951e5957e15505f788b2c65a7a41b6da4b289e295852cc38079b4d2b
+APPIMAGE_FFMPEG_SHA256_AARCH64?=ae5da4f51b9052390f414005f8ab26c1eed1268f327cce7cb79aa076b29bd66e
 WINDOWS_FYNE?=$(CURDIR)/$(BUILD_DIR)/tools/fyne
 ANDROID_FYNE=$(CURDIR)/$(BUILD_DIR)/tools/fyne
 # The CLI that packages the APK. Defaults to the one android-fyne provisions;

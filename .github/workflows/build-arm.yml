@@ -16,7 +16,11 @@ jobs:
         copy_repository_path: /go2tv_dir
         copy_artifact_path: go2tv
         image_additional_mb: 4096
-        base_image: raspios_lite:latest
+        # Ubuntu doesn't target ARMv6. Bookworm (glibc 2.36) provides the
+        # Wayland/PipeWire headers this app needs; Bullseye's are too old.
+        # Pin the dated image so Raspberry Pi OS updates don't raise the ABI.
+        base_image: https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2025-05-13/2025-05-13-raspios-bookworm-armhf-lite.img.xz
+        cpu: arm1176
         commands: |
             cd /
             df -h
@@ -34,7 +38,7 @@ jobs:
             # commands run inside the emulated image, which that would not reach.
             export CGO_CFLAGS_ALLOW=-fno-strict-overflow
             cd /go2tv_dir
-            /go/bin/go build -tags migrated_fynedo -ldflags "-s -w" -o go2tv ./cmd/go2tv
+            GOARM=6 /go/bin/go build -tags migrated_fynedo -ldflags "-s -w" -o go2tv ./cmd/go2tv
 
     - uses: actions/upload-artifact@v6
       with:
