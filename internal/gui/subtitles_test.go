@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -201,21 +202,36 @@ func TestChromecastSubtitlesAcrossServerRestarts(t *testing.T) {
 func TestDesktopChromecastSubtitleRenderingModes(t *testing.T) {
 	app := test.NewApp()
 	t.Cleanup(app.Quit)
-	path := filepath.Join(t.TempDir(), "captions.srt")
+	dir := t.TempDir()
+	// This test routes captions without transcoding; only FFmpeg's availability
+	// check needs to succeed, independently of the host's installed tools.
+	ffmpeg := filepath.Join(dir, "ffmpeg")
+	script := "#!/bin/sh\nexit 0\n"
+	if runtime.GOOS == "windows" {
+		ffmpeg += ".cmd"
+		script = "@echo off\r\nexit /b 0\r\n"
+	}
+	if err := os.WriteFile(ffmpeg, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "captions.srt")
 	if err := os.WriteFile(path, []byte("1\n00:00:05,000 --> 00:00:10,000\nFirst\n\n2\n00:00:35,000 --> 00:00:40,000\nSecond\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	screen := &FyneScreen{subsfile: path}
+	screen := &FyneScreen{subsfile: path, ffmpegPath: ffmpeg}
 	server := httphandlers.NewServer("")
 	tt := []struct {
 		name                         string
 		transcoded, preference, rtmp bool
+		missingFFmpeg                bool
 		offset                       int
 	}{
 		{name: "receiver default", transcoded: true},
 		{name: "receiver seek", transcoded: true, offset: 30},
 		{name: "burn selected captions", transcoded: true, preference: true},
 		{name: "burn seek keeps original captions", transcoded: true, preference: true, offset: 30},
+		{name: "missing FFmpeg uses receiver", transcoded: true, preference: true, missingFFmpeg: true},
+		{name: "missing FFmpeg keeps receiver seek", transcoded: true, preference: true, missingFFmpeg: true, offset: 30},
 		{name: "RTMP uses receiver", transcoded: true, preference: true, rtmp: true},
 		{name: "direct ignores fallback", preference: true, offset: 30},
 		{name: "receiver restored", transcoded: true, offset: 30},
@@ -223,6 +239,10 @@ func TestDesktopChromecastSubtitleRenderingModes(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			app.Preferences().SetBool(chromecastBurnSubtitlesPref, tc.preference)
+			screen.ffmpegPath = ffmpeg
+			if tc.missingFFmpeg {
+				screen.ffmpegPath = filepath.Join(dir, "missing-ffmpeg")
+			}
 			screen.captureChromecastSubtitleSettings()
 			screen.rtmpServerCheck = widget.NewCheck("", nil)
 			screen.rtmpServerCheck.SetChecked(tc.rtmp)
@@ -237,7 +257,7 @@ func TestDesktopChromecastSubtitleRenderingModes(t *testing.T) {
 				if opts.SeekSeconds != tc.offset {
 					t.Fatalf("transcode seek=%d want %d", opts.SeekSeconds, tc.offset)
 				}
-				if tc.preference && !tc.rtmp {
+				if tc.preference && !tc.rtmp && !tc.missingFFmpeg {
 					if endpoint != "" || response.Code != http.StatusNotFound || opts.SubsPath != path {
 						t.Fatalf("burn fallback: URL=%q status=%d subtitles=%q", endpoint, response.Code, opts.SubsPath)
 					}
