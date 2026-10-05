@@ -9,10 +9,9 @@ on:
       target_branch:
         description: "Source branch for artifacts"
         required: true
-        default: devel
+        default: main
         type: choice
         options:
-          - devel
           - main
       release_target:
         description: "Target branch for the draft release tag"
