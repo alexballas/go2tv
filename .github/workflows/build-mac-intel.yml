@@ -35,3 +35,87 @@ jobs:
           README.md
           go2tv.app/
         retention-days: 2
+
+  # Signs and notarizes the build on main only; devel and forks stay unsigned.
+  # Replaces the build artifact under the same name, so release-draft picks up
+  # the signed app. Secrets are repository secrets (MACOS_*, APPLE_API_*).
+  sign:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.repository == 'alexballas/go2tv'
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Set env
+      run: if grep -Fxq "devel" version.txt;then echo "GO2TV_VERSION=$(cat version.txt)";else echo "GO2TV_VERSION=v$(cat version.txt)";fi  >> $GITHUB_ENV
+
+    - uses: actions/download-artifact@v7
+      with:
+        name: go2tv_${{ env.GO2TV_VERSION }}_macOS_amd64
+        path: signed
+
+    - name: Sign, notarize, staple
+      env:
+        CERT_P12: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+        CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        API_KEY: ${{ secrets.APPLE_API_KEY_BASE64 }}
+        API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        API_ISSUER: ${{ secrets.APPLE_API_ISSUER_ID }}
+      run: |
+        set -euo pipefail
+        KC="$RUNNER_TEMP/signing.keychain-db"
+        KEY="$RUNNER_TEMP/api_key.p8"
+        echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+        echo "$API_KEY" | base64 --decode > "$KEY"
+
+        security create-keychain -p "$KEYCHAIN_PASSWORD" "$KC"
+        security set-keychain-settings -lut 21600 "$KC"
+        security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KC"
+        security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+        security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KC" > /dev/null
+        security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+
+        cd signed
+        # Artifacts drop the exec bit.
+        chmod +x go2tv.app/Contents/MacOS/go2tv
+        codesign --force --options runtime --timestamp --keychain "$KC" --sign "$SIGN_IDENTITY" go2tv.app
+        codesign --verify --strict --verbose=2 go2tv.app
+
+        ditto -c -k --keepParent go2tv.app "$RUNNER_TEMP/notarize.zip"
+        xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+          --key "$KEY" --key-id "$API_KEY_ID" --issuer "$API_ISSUER" \
+          --wait --timeout 30m --output-format json > "$RUNNER_TEMP/notary.json" || true
+        cat "$RUNNER_TEMP/notary.json"
+        id="$(plutil -extract id raw -o - "$RUNNER_TEMP/notary.json" 2>/dev/null || true)"
+        status="$(plutil -extract status raw -o - "$RUNNER_TEMP/notary.json" 2>/dev/null || true)"
+        if [ "$status" != "Accepted" ]; then
+          echo "notarization failed: id=${id:-none} status=${status:-none}"
+          if [ -n "$id" ]; then
+            xcrun notarytool log "$id" --key "$KEY" --key-id "$API_KEY_ID" --issuer "$API_ISSUER" || true
+          fi
+          exit 1
+        fi
+
+        xcrun stapler staple go2tv.app
+        xcrun stapler validate go2tv.app
+        spctl -a -vv --type execute go2tv.app
+
+    - name: Clean up signing material
+      if: always()
+      run: |
+        security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+        rm -f "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/api_key.p8" "$RUNNER_TEMP/notarize.zip" "$RUNNER_TEMP/notary.json"
+
+    - uses: actions/upload-artifact@v6
+      with:
+        name: go2tv_${{ env.GO2TV_VERSION }}_macOS_amd64
+        path: |
+          signed/LICENSE
+          signed/README.md
+          signed/go2tv.app/
+        retention-days: 2
+        overwrite: true

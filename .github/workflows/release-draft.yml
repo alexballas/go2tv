@@ -164,6 +164,12 @@ jobs:
             chmod +x "$workdir/go2tv"
           fi
 
+          # The stapled notarization ticket only exists on signed builds from main.
+          if [[ "$name" == *"_macOS_"* ]] && [ ! -f "$workdir/go2tv.app/Contents/CodeResources" ]; then
+            echo "$name is not notarized; draft the release from main"
+            exit 1
+          fi
+
           if [[ "$name" == *"_macOS_"* ]] && [ -f "$workdir/go2tv.app/Contents/MacOS/go2tv" ]; then
             chmod +x "$workdir/go2tv.app/Contents/MacOS/go2tv"
           fi
