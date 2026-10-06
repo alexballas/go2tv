@@ -178,12 +178,20 @@ stops torrent playback and removes its queue item and temporary cache. Loading
 metadata leaves the current stream intact; choosing another torrent replaces it.
 Server shutdown removes torrent caches. FFmpeg transcoding supports input seeks.
 
-**Automatic torrent subtitles** controls embedded Chromecast text captions.
+**Automatic torrent subtitles** controls embedded torrent text subtitles.
 External SRT/VTT captions use the Chromecast receiver during direct and transcoded
 playback; transcoded seeks shift captions to the new stream start. Enable
 **Playback → Burn Chromecast Subtitles (Compatibility Fallback)** for a compatibility fallback requiring
-transcoding. Desktop GUI and mobile offer the same fallback in **Settings → Playback**. DLNA
-continues to burn selected subtitles during transcoding.
+transcoding, including automatic embedded MKV/WebM torrent captions. Desktop GUI
+and mobile offer the same fallback in **Settings → Playback**. DLNA burns selected
+subtitles and automatic embedded torrent text subtitles during transcoding.
+Embedded torrent burning renders captions in short windows as playback advances,
+so startup does not require the entire track or video. The current caption window
+and its timing lookahead still need verified torrent pieces; missing pieces can
+delay playback. External subtitles take priority. Embedded torrent captions use
+fixed styling; bitmap subtitles are not supported by this text path. FFmpeg must
+include the `subtitles`, `overlay`, and `scale2ref` filters and PNG support for
+embedded torrent burn-in.
 
 From the GUI, open **Settings → Remote Web Session…**, add media folders, choose local or
 LAN access, and start the session.

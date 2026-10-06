@@ -44,10 +44,12 @@ func TestCLICaptionSelectionAndTranscode(t *testing.T) {
 		external, transcode, burn, automatic bool
 		offset                               int
 		wantExternal, wantTorrent, wantBurn  bool
+		wantBurnSource                       bool
 	}{
 		{name: "torrent direct", automatic: true, wantTorrent: true},
 		{name: "torrent transcoded seek", transcode: true, automatic: true, offset: 30, wantTorrent: true},
-		{name: "torrent ignores external burn flag", transcode: true, burn: true, automatic: true, wantTorrent: true},
+		{name: "torrent burn fallback", transcode: true, burn: true, automatic: true, wantBurnSource: true},
+		{name: "torrent burn disabled", transcode: true, burn: true},
 		{name: "external direct overrides torrent", external: true, automatic: true, wantExternal: true},
 		{name: "external transcode receiver", external: true, transcode: true, automatic: true, wantExternal: true},
 		{name: "external transcode seek", external: true, transcode: true, automatic: true, offset: 30, wantExternal: true},
@@ -62,11 +64,11 @@ func TestCLICaptionSelectionAndTranscode(t *testing.T) {
 			if tc.external {
 				path = subtitlePath
 			}
-			captions, err := Register(server, "host:1234", mediaPath, path, Options{Transcoded: tc.transcode, BurnExternal: tc.burn, AutomaticTorrent: tc.automatic, SeekSeconds: tc.offset})
+			captions, err := Register(server, "host:1234", mediaPath, path, Options{Transcoded: tc.transcode, BurnSubtitles: tc.burn, AutomaticTorrent: tc.automatic, SeekSeconds: tc.offset})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if (captions.SubtitleURL != "") != tc.wantExternal || (captions.TorrentSubtitleURL != "") != tc.wantTorrent || (captions.BurnPath != "") != tc.wantBurn {
+			if (captions.SubtitleURL != "") != tc.wantExternal || (captions.TorrentSubtitleURL != "") != tc.wantTorrent || (captions.BurnPath != "") != tc.wantBurn || (captions.BurnSource != nil) != tc.wantBurnSource {
 				t.Fatalf("caption selection: %+v", captions)
 			}
 			for _, endpoint := range []string{"/subtitles.vtt", "/torrent-subtitles.json?time=0"} {

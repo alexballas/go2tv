@@ -6,10 +6,11 @@ import (
 	"sync"
 
 	"go2tv.app/go2tv/v2/internal/logging"
+	"go2tv.app/go2tv/v2/internal/mediasource"
 )
 
-// TranscodeOptions holds FFmpeg transcoding configuration for Chromecast.
-// Used by StartSimpleServerWithTranscode() which doesn't use TVPayload.
+// TranscodeOptions holds shared FFmpeg transcoding configuration for both
+// protocols. DLNA's legacy TVPayload is adapted by the HTTP handler.
 //
 // Field descriptions:
 //
@@ -20,8 +21,7 @@ import (
 //	SubsPath: Path to subtitle file to burn into the video stream.
 //	          Supports SRT and VTT formats. When set, subtitles are
 //	          embedded via ffmpeg's -vf subtitles filter.
-//	          Empty string means no subtitle burning.
-//	          Only used when user explicitly selects subtitles.
+//	          Empty string uses TorrentSource when provided.
 //
 //	SeekSeconds: Starting position in seconds for transcoding.
 //	             Used with ffmpeg's -ss flag for seeking.
@@ -30,7 +30,7 @@ import (
 //
 //	SubtitleSize: Font size for burned-in subtitles.
 //	              Use SubtitleSizeSmall (20), SubtitleSizeMedium (24),
-//	              or SubtitleSizeLarge (30). Ignored if SubsPath is empty.
+//	              or SubtitleSizeLarge (30).
 //
 //	LogOutput: io.Writer for debug logging (same pattern as TVPayload).
 //	           Pass screen.Debug to enable export from settings menu.
@@ -43,6 +43,9 @@ type TranscodeOptions struct {
 	SubtitleSize SubtitleSize
 	LogOutput    io.Writer
 	RawInput     *RawVideoInput
+	// TorrentSource burns the first supported embedded text track when SubsPath
+	// is empty. Callers select this only for automatic torrent captions.
+	TorrentSource mediasource.Source
 
 	initLogOnce sync.Once
 	logger      *slog.Logger

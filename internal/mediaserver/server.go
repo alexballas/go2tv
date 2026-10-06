@@ -312,7 +312,7 @@ func (s *Server) AddMedia(_ context.Context, request playback.ServerRequest) (pl
 }
 
 func (s *Server) newTorrentSubtitleRouteLocked(request playback.ServerRequest) (route, error) {
-	if request.TorrentSource == nil || request.Target.Protocol != "Chromecast" || request.Subtitle != nil {
+	if request.TorrentSource == nil || request.Target.Protocol != "Chromecast" || request.Subtitle != nil || (request.Transcode && request.BurnSubtitle) {
 		return route{}, nil
 	}
 	r, err := s.newSourceRouteLocked("torrent-subtitles", request.Media, ".json", "application/json", request)

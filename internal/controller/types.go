@@ -212,9 +212,9 @@ type Policy struct {
 	AutoPlaySameType     bool `json:"AutoPlaySameType"`
 	GaplessEnabled       bool `json:"GaplessEnabled"`
 	ImageDurationSeconds int  `json:"ImageDurationSeconds"`
-	// Torrent captions default to automatic; external subtitles take precedence.
+	// Torrent subtitles default to automatic; external subtitles take precedence.
 	DisableTorrentSubtitles bool `json:"DisableTorrentSubtitles,omitempty"`
-	// Optional compatibility fallback for external captions on transcoded Chromecast video.
+	// Optional burn-in for selected and automatic torrent Chromecast subtitles.
 	BurnChromecastSubtitles bool `json:"BurnChromecastSubtitles,omitempty"`
 }
 

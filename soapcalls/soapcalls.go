@@ -7,6 +7,7 @@ import (
 	"slices"
 	"time"
 
+	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/utils"
 )
@@ -25,6 +26,7 @@ type Options struct {
 	Seek           bool
 	FFmpegSeek     int
 	Metadata       metadata.Media
+	TorrentSource  mediasource.Source
 }
 
 // NewTVPayload creates a new TVPayload based on the provided options.
@@ -70,6 +72,7 @@ func NewTVPayload(o *Options) (*TVPayload, error) {
 		Transcode:                   o.Transcode,
 		FFmpegPath:                  o.FFmpegPath,
 		FFmpegSubsPath:              o.FFmpegSubsPath,
+		TorrentSource:               o.TorrentSource,
 		FFmpegSeek:                  o.FFmpegSeek,
 		Seekable:                    o.Seek,
 		LogOutput:                   o.LogOutput,

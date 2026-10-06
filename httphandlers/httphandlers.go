@@ -553,6 +553,14 @@ func serveContentBytes(w http.ResponseWriter, r *http.Request, mediaType string,
 	http.ServeContent(w, r, name, time.Now(), bReader)
 }
 
+func dlnaTranscodeOptions(tv *soapcalls.TVPayload) *utils.TranscodeOptions {
+	return &utils.TranscodeOptions{
+		FFmpegPath: tv.FFmpegPath, SubsPath: tv.FFmpegSubsPath,
+		SeekSeconds: tv.FFmpegSeek, SubtitleSize: utils.SubtitleSizeMedium,
+		TorrentSource: tv.TorrentSource, LogOutput: tv.LogOutput,
+	}
+}
+
 func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode bool, f io.ReadCloser, ff *exec.Cmd) {
 	defer f.Close()
 
@@ -578,7 +586,7 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 		case tv != nil:
 			// DLNA transcoding (MPEGTS)
 			var command exec.Cmd
-			err := utils.ServeTranscodedStream(r.Context(), w, f, &command, tv.FFmpegPath, tv.FFmpegSubsPath, tv.FFmpegSeek, utils.SubtitleSizeMedium, tv.Log())
+			err := utils.ServeDLNATranscodedStream(r.Context(), w, f, &command, dlnaTranscodeOptions(tv))
 			if err != nil {
 				tv.Log().Error("", "function", "serveContentReadClose", "Action", "Transcode", "error", err)
 			}
@@ -655,7 +663,7 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcall
 		case tv != nil:
 			// DLNA transcoding (MPEGTS)
 			var command exec.Cmd
-			err := utils.ServeTranscodedStream(r.Context(), w, input, &command, tv.FFmpegPath, tv.FFmpegSubsPath, tv.FFmpegSeek, utils.SubtitleSizeMedium, tv.Log())
+			err := utils.ServeDLNATranscodedStream(r.Context(), w, input, &command, dlnaTranscodeOptions(tv))
 			if err != nil {
 				tv.Log().Error("", "function", "serveContentCustomType", "Action", "Transcode", "error", err)
 			}

@@ -17,17 +17,30 @@ func RegisterTorrent(server *httphandlers.HTTPserver, host, path string, automat
 	}
 	const endpoint = "/torrent-subtitles.json"
 	server.RemoveHandler(endpoint)
-	if !automatic || host == "" {
+	if host == "" {
 		return ""
 	}
-	ext := strings.ToLower(filepath.Ext(path))
-	if ext != ".mkv" && ext != ".webm" {
-		return ""
-	}
-	source, ok := mediasource.Lookup(path)
-	if !ok {
+	source := TorrentSource(path, automatic)
+	if source == nil {
 		return ""
 	}
 	server.AddHandler(endpoint, nil, nil, mkvsubs.Handler(mkvsubs.New(source), float64(offset)))
 	return "http://" + host + endpoint
+}
+
+// TorrentSource selects embedded text captions only for registered Matroska
+// torrents. The caller decides whether to burn them or use receiver captions.
+func TorrentSource(path string, automatic bool) mediasource.Source {
+	if !automatic {
+		return nil
+	}
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext != ".mkv" && ext != ".webm" {
+		return nil
+	}
+	source, ok := mediasource.Lookup(path)
+	if !ok {
+		return nil
+	}
+	return source
 }

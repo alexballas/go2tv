@@ -10,6 +10,7 @@ import (
 	"github.com/alexballas/refyne/v2/lang"
 
 	"go2tv.app/go2tv/v2/httphandlers"
+	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/internal/playback"
 	"go2tv.app/go2tv/v2/utils"
 )
@@ -86,12 +87,22 @@ func (screen *FyneScreen) chromecastSubtitleBurnPath(transcoded bool) string {
 
 func desktopChromecastTranscodeOptions(screen *FyneScreen, seekSeconds int) *utils.TranscodeOptions {
 	return &utils.TranscodeOptions{
-		FFmpegPath:   screen.ffmpegPath,
-		SubsPath:     screen.chromecastSubtitleBurnPath(true),
-		SeekSeconds:  seekSeconds,
-		SubtitleSize: utils.SubtitleSizeMedium,
-		LogOutput:    screen.Debug,
+		FFmpegPath:    screen.ffmpegPath,
+		SubsPath:      screen.chromecastSubtitleBurnPath(true),
+		SeekSeconds:   seekSeconds,
+		SubtitleSize:  utils.SubtitleSizeMedium,
+		LogOutput:     screen.Debug,
+		TorrentSource: screen.chromecastTorrentBurnSource(true),
 	}
+}
+
+func (screen *FyneScreen) chromecastTorrentBurnSource(transcoded bool) mediasource.Source {
+	if !transcoded || !screen.castBurnSubtitles || screen.subsfile != "" || screen.Screencast ||
+		(screen.CustomSubsCheck != nil && screen.CustomSubsCheck.Checked) ||
+		(screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked) {
+		return nil
+	}
+	return torrentSubtitleSource(screen.mediafile, true)
 }
 
 func registerDesktopChromecastSubtitles(screen *FyneScreen, server *httphandlers.HTTPserver, host string, seekSeconds int, transcoded bool) (string, error) {

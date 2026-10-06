@@ -4,13 +4,14 @@ import (
 	"fmt"
 
 	"go2tv.app/go2tv/v2/httphandlers"
+	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/internal/playback"
 	"go2tv.app/go2tv/v2/utils"
 )
 
 type Options struct {
 	Transcoded       bool
-	BurnExternal     bool
+	BurnSubtitles    bool
 	AutomaticTorrent bool
 	SeekSeconds      int
 }
@@ -19,10 +20,11 @@ type Captions struct {
 	SubtitleURL        string
 	TorrentSubtitleURL string
 	BurnPath           string
+	BurnSource         mediasource.Source
 }
 
 // Register prepares CLI captions from the selected source. External captions
-// take precedence; burn-in applies only to external captions on transcoded video.
+// take precedence over embedded torrent captions, including during burn-in.
 func Register(server *httphandlers.HTTPserver, host, mediaPath, subtitlePath string, opts Options) (Captions, error) {
 	var captions Captions
 	if server == nil || host == "" {
@@ -34,11 +36,13 @@ func Register(server *httphandlers.HTTPserver, host, mediaPath, subtitlePath str
 	if opts.Transcoded {
 		offset = opts.SeekSeconds
 	}
-	captions.TorrentSubtitleURL = RegisterTorrent(server, host, mediaPath, opts.AutomaticTorrent && !external, offset)
+	burn := opts.Transcoded && opts.BurnSubtitles
+	captions.BurnSource = TorrentSource(mediaPath, opts.AutomaticTorrent && !external && burn)
+	captions.TorrentSubtitleURL = RegisterTorrent(server, host, mediaPath, opts.AutomaticTorrent && !external && captions.BurnSource == nil, offset)
 	if !external {
 		return captions, nil
 	}
-	if opts.Transcoded && opts.BurnExternal {
+	if burn {
 		captions.BurnPath = subtitlePath
 		return captions, nil
 	}

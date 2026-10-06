@@ -27,6 +27,17 @@ func subtitleBurnFilter(ffmpegPath, subsPath string, size SubtitleSize) (string,
 		return "", err
 	}
 
+	forceStyle := subtitleBurnStyle(size)
+	escapedPath := escapeFFmpegPath(subsPath)
+
+	if charenc == "UTF-8" {
+		return fmt.Sprintf("subtitles='%s'%s", escapedPath, forceStyle), nil
+	}
+
+	return fmt.Sprintf("subtitles='%s':charenc=%s%s", escapedPath, charenc, forceStyle), nil
+}
+
+func subtitleBurnStyle(size SubtitleSize) string {
 	fontSize := 24
 	switch size {
 	case SubtitleSizeSmall:
@@ -35,14 +46,7 @@ func subtitleBurnFilter(ffmpegPath, subsPath string, size SubtitleSize) (string,
 		fontSize = 30
 	}
 
-	forceStyle := fmt.Sprintf(":force_style='FontSize=%d,Outline=1'", fontSize)
-	escapedPath := escapeFFmpegPath(subsPath)
-
-	if charenc == "UTF-8" {
-		return fmt.Sprintf("subtitles='%s'%s", escapedPath, forceStyle), nil
-	}
-
-	return fmt.Sprintf("subtitles='%s':charenc=%s%s", escapedPath, charenc, forceStyle), nil
+	return fmt.Sprintf(":force_style='FontSize=%d,Outline=1'", fontSize)
 }
 
 func ffmpegFilterAvailable(ffmpegPath, name string) bool {

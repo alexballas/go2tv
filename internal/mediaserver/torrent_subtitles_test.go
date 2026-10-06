@@ -128,16 +128,18 @@ func TestTorrentCaptionsRoutesAndTranscodedSeek(t *testing.T) {
 func TestTorrentCaptionsRespectProtocolAndExternalSubtitles(t *testing.T) {
 	tt := []struct {
 		name, protocol string
-		external       bool
+		external, burn bool
 	}{
 		{name: "DLNA", protocol: "DLNA"},
 		{name: "external Chromecast", protocol: "Chromecast", external: true},
+		{name: "burned Chromecast has no duplicate overlay", protocol: "Chromecast", burn: true},
 	}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			server := New(Config{ListenAddr: "127.0.0.1:0"})
 			request := mediaRequest([]byte("media"), ".mkv", "video/x-matroska")
 			request.Target.Protocol, request.TorrentSource = tc.protocol, captionSource{}
+			request.Transcode, request.BurnSubtitle = tc.burn, tc.burn
 			if tc.external {
 				request.Subtitle, request.SubtitleExt = byteOpener([]byte("WEBVTT\n")), ".vtt"
 			}

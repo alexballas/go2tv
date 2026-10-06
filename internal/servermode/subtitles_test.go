@@ -12,12 +12,48 @@ import (
 	"time"
 
 	"go2tv.app/go2tv/v2/internal/mediaserver"
+	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/internal/playback"
 )
 
 func subtitleTestOpener(text string) playback.SourceOpener {
 	return func(context.Context) (io.ReadSeekCloser, time.Time, error) {
 		return &memoryFile{Reader: *bytes.NewReader([]byte(text))}, time.Time{}, nil
+	}
+}
+
+func TestTorrentSubtitleRenderingPolicy(t *testing.T) {
+	tt := []struct {
+		name, protocol                     string
+		transcode, fallback, burn, overlay bool
+	}{
+		{"DLNA transcode burns", "DLNA", true, false, true, false},
+		{"DLNA direct", "DLNA", false, false, false, false},
+		{"Chromecast receiver", "Chromecast", true, false, false, true},
+		{"Chromecast burn", "Chromecast", true, true, true, false},
+		{"Chromecast direct ignores burn", "Chromecast", false, true, false, true},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			server := &runtimeMediaServer{mediaserver.New(mediaserver.Config{ListenAddr: "127.0.0.1:0"})}
+			ctx := context.Background()
+			t.Cleanup(func() {
+				if err := server.Stop(ctx); err != nil {
+					t.Error(err)
+				}
+			})
+			request := playback.ServerRequest{Media: subtitleTestOpener("video"), MediaExt: ".mkv", MediaType: "video/x-matroska", Target: playback.Device{Protocol: tc.protocol}, Transcode: tc.transcode, BurnSubtitle: tc.fallback, TorrentSource: &struct{ mediasource.Source }{}}
+			if prepared := server.prepareRequest(request); prepared.BurnSubtitle != tc.burn {
+				t.Fatalf("burn=%v want %v", prepared.BurnSubtitle, tc.burn)
+			}
+			route, err := server.Start(ctx, request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (route.TorrentSubtitleURL != "") != tc.overlay || route.SubtitleURL != "" {
+				t.Fatalf("unexpected duplicate/missing receiver captions: %+v", route)
+			}
+		})
 	}
 }
 

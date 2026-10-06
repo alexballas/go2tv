@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/alexballas/refyne/v2/test"
@@ -83,7 +84,7 @@ func TestChromecastSubtitleFallbackDisabledWithoutFFmpeg(t *testing.T) {
 			}
 			screen.ffmpegPath = ffmpeg
 			screen.updateChromecastSubtitleAvailability(screen.ffmpegStatus())
-			if toggle.Disabled() || toggle.Checked || toggle.ToolTip() != "" {
+			if toggle.Disabled() || toggle.Checked || strings.Contains(toggle.ToolTip(), "ffmpeg is required") {
 				t.Fatalf("restored FFmpeg: disabled=%v checked=%v tooltip=%q", toggle.Disabled(), toggle.Checked, toggle.ToolTip())
 			}
 			test.Tap(toggle)

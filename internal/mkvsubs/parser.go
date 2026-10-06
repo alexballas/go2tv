@@ -66,6 +66,51 @@ func New(source mediasource.Source) *Parser {
 	return &Parser{source: source, gate: make(chan struct{}, 1), scale: 1e-3, subtitleIndex: -1}
 }
 
+// PrepareBurn selects a text track and reads only the first cluster's timeline
+// origin. Window supplies the captions later, as the encoder needs them.
+func (p *Parser) PrepareBurn(ctx context.Context) (float64, error) {
+	r, err := p.source.Open(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer r.Close()
+	if reader, ok := r.(interface{ SetReadahead(int64) }); ok {
+		reader.SetReadahead(4 << 10)
+	}
+	p.strict = true
+	if err := p.metadata(ctx, r); err != nil {
+		return 0, err
+	}
+	if p.track == 0 {
+		return 0, ErrNoSubtitles
+	}
+	p.ready = true
+	// metadata leaves the reader immediately after the cluster header.
+	if _, err := r.Seek(p.first, io.SeekStart); err != nil {
+		return 0, err
+	}
+	parent, err := next(r, p.end)
+	if err != nil {
+		return 0, err
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		e, err := next(r, parent.end)
+		if err != nil {
+			return 0, err
+		}
+		if e.id == 0xe7 {
+			ticks, err := uintValue(r, e)
+			return float64(ticks) * p.scale, err
+		}
+		if err := skip(r, e); err != nil {
+			return 0, err
+		}
+	}
+}
+
 func (p *Parser) Window(ctx context.Context, start, end float64) ([]Cue, error) {
 	select {
 	case p.gate <- struct{}{}:

@@ -48,8 +48,8 @@ var (
 	subsArg               = flag.String("s", "", "Path to subtitles file (.srt or .vtt).")
 	targetPtr             = flag.String("t", "", "Device URL to cast to (from -l output).")
 	transcodePtr          = flag.Bool("tc", false, "Force transcoding with ffmpeg.")
-	burnSubtitlesPtr      = flag.Bool("burn-subtitles", false, "Burn external Chromecast subtitles when transcoding (compatibility fallback).")
-	noTorrentSubtitlesPtr = flag.Bool("no-torrent-subtitles", false, "Disable automatic embedded Chromecast torrent captions.")
+	burnSubtitlesPtr      = flag.Bool("burn-subtitles", false, "Burn Chromecast subtitles when transcoding (compatibility fallback).")
+	noTorrentSubtitlesPtr = flag.Bool("no-torrent-subtitles", false, "Disable automatic embedded torrent subtitles.")
 	listPtr               = flag.Bool("l", false, "List available devices (Smart TVs and Chromecasts).")
 
 	versionPtr    = flag.Bool("version", false, "Print version.")
@@ -235,6 +235,9 @@ func run(crash *crashlog.Session) error {
 	if err != nil {
 		return err
 	}
+	if *subsArg == "" {
+		absSubtitlesFile = ""
+	}
 
 	// Get ffmpeg path for transcoding
 	ffmpegPath, ffmpegErr := utils.ResolveFFmpegPath(serverOptions.FFmpegPath)
@@ -267,6 +270,7 @@ func run(crash *crashlog.Session) error {
 		Seek:           isSeek,
 		FFmpegPath:     ffmpegPath,
 		FFmpegSubsPath: absSubtitlesFile,
+		TorrentSource:  castsubtitles.TorrentSource(absMediaFile, !*noTorrentSubtitlesPtr),
 		FFmpegSeek:     0,
 	})
 	if err != nil {
@@ -362,7 +366,7 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 		mediaMetadata.Artwork = cliartwork.Prepare(httpServer, mediaPath, whereToListen, localMedia)
 
 		captions, err := castsubtitles.Register(httpServer, whereToListen, mediaPath, subtitlesPath, castsubtitles.Options{
-			Transcoded: transcode, BurnExternal: *burnSubtitlesPtr,
+			Transcoded: transcode, BurnSubtitles: *burnSubtitlesPtr,
 			AutomaticTorrent: !externalURL && !*noTorrentSubtitlesPtr,
 		})
 		if err != nil {
@@ -371,6 +375,7 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 		subtitleURL, torrentSubtitleURL = captions.SubtitleURL, captions.TorrentSubtitleURL
 		if tcOpts != nil {
 			tcOpts.SubsPath = captions.BurnPath
+			tcOpts.TorrentSource = captions.BurnSource
 		}
 
 		serverStarted := make(chan error)

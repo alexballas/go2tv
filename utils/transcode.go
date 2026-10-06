@@ -30,6 +30,23 @@ const (
 // to our io.Writer. The context is used to kill ffmpeg when the HTTP request is cancelled.
 // An optional logger records pipeline attempts and startup fallback reasons.
 func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec.Cmd, ffmpegPath, subs string, seekSeconds int, subSize SubtitleSize, loggers ...*slog.Logger) error {
+	var logger *slog.Logger
+	if len(loggers) > 0 {
+		logger = loggers[0]
+	}
+	return serveDLNATranscodedStream(ctx, w, input, ff, &TranscodeOptions{FFmpegPath: ffmpegPath, SubsPath: subs, SeekSeconds: seekSeconds, SubtitleSize: subSize}, logger)
+}
+
+// ServeDLNATranscodedStream also supports automatic embedded torrent captions.
+func ServeDLNATranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec.Cmd, opts *TranscodeOptions) error {
+	if opts == nil || opts.FFmpegPath == "" {
+		return ErrInvalidInput
+	}
+	return serveDLNATranscodedStream(ctx, w, input, ff, opts, opts.Log())
+}
+
+func serveDLNATranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec.Cmd, opts *TranscodeOptions, logger *slog.Logger) error {
+	ffmpegPath, seekSeconds := opts.FFmpegPath, opts.SeekSeconds
 	if url := progressiveReaderURL(input); url != "" {
 		input = url
 	}
@@ -61,8 +78,16 @@ func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec
 		_ = ff.Process.Kill()
 	}
 
-	// Stream without subtitles when the filter can't be built.
-	subFilter, _ := subtitleBurnFilter(ffmpegPath, subs, subSize)
+	burn, err := prepareSubtitleBurn(ctx, opts)
+	defer burn.cleanup()
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
+		if logger != nil {
+			logger.WarnContext(ctx, "subtitle burn-in skipped", "error", err)
+		}
+	}
 
 	encoderPlan := selectTranscodeVideoEncoder(ffmpegPath, videoEncoderProfileDLNA)
 	buildArgs := func(plan videoEncoderPlan, hw string) []string {
@@ -76,21 +101,25 @@ func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec
 		default:
 			vf = joinVideoFilters(
 				softwareTranscodeScaleFilter,
-				subFilter,
+				burn.filter,
 				plan.filterTail,
 			)
 		}
 		args = append(args, transcodeInputArgs(plan, hw)...)
 
 		if in != "pipe:0" && seekSeconds > 0 {
-			args = append(args, "-ss", strconv.Itoa(seekSeconds), "-copyts")
+			args = append(args, "-ss", strconv.Itoa(seekSeconds))
+		}
+		if (in != "pipe:0" && seekSeconds > 0) || burn.overlay != "" {
+			args = append(args, "-copyts")
 		}
 
-		args = append(
-			args,
-			"-i", in,
-			"-vf", vf,
-		)
+		args = append(args, "-i", in)
+		if burn.overlay != "" {
+			args = append(args, burn.videoArgs(softwareTranscodeScaleFilter, plan.filterTail)...)
+		} else {
+			args = append(args, "-vf", vf)
+		}
 		args = append(args, plan.codecArgs...)
 		args = append(
 			args,
@@ -105,10 +134,6 @@ func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec
 		return args
 	}
 
-	var logger *slog.Logger
-	if len(loggers) > 0 {
-		logger = loggers[0]
-	}
-	hw := selectTranscodeVideoDecoder(ffmpegPath, encoderPlan, subFilter, in, false)
+	hw := selectTranscodeVideoDecoder(ffmpegPath, encoderPlan, burn.enabled(), in, false)
 	return runTranscodeWithFallback(ctx, ff, input, in, w, encoderPlan, videoEncoderProfileDLNA, hw, buildArgs, logger)
 }

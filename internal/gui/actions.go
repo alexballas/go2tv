@@ -985,6 +985,7 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 				FFmpegPath:                  screen.ffmpegPath,
 				FFmpegSeek:                  screen.ffmpegSeek,
 				FFmpegSubsPath:              screen.subsfile,
+				TorrentSource:               torrentSubtitleSource(screen.mediafile, transcodeEnabled && !screen.CustomSubsCheck.Checked),
 			}
 		}
 		showDLNATranscodeTimeline(screen, screen.tvdata)
@@ -1701,7 +1702,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 		return
 	}
 	torrentSubtitleURL := registerTorrentSubtitles(screen.httpserver, subtitleHost, screen.mediafile,
-		!screen.CustomSubsCheck.Checked && subtitleURL == "" && screen.chromecastSubtitleBurnPath(transcode) == "" && !screen.Screencast &&
+		!screen.CustomSubsCheck.Checked && subtitleURL == "" && screen.chromecastSubtitleBurnPath(transcode) == "" && screen.chromecastTorrentBurnSource(transcode) == nil && !screen.Screencast &&
 			!screen.ExternalMediaURL.Checked && (screen.rtmpServerCheck == nil || !screen.rtmpServerCheck.Checked), subtitleOffset)
 	playbackStart := ffmpegSeek
 	if transcode && torrentMediaSelected(screen) {
@@ -1814,7 +1815,7 @@ func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
 			return
 		}
 		torrentSubtitleURL := registerTorrentSubtitles(screen.httpserver, whereToListen, screen.mediafile,
-			!screen.CustomSubsCheck.Checked && subtitleURL == "" && screen.chromecastSubtitleBurnPath(true) == "", seekPos)
+			!screen.CustomSubsCheck.Checked && subtitleURL == "" && screen.chromecastSubtitleBurnPath(true) == "" && screen.chromecastTorrentBurnSource(true) == nil, seekPos)
 		// live=false because this is local file playback (seeking)
 		if err := client.LoadMediaOnExisting(castprotocol.LoadRequest{
 			MediaURL:           mediaURL,

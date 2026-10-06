@@ -43,11 +43,14 @@ func TestMobileTorrentCaptionsSelectionAndSeek(t *testing.T) {
 	tt := []struct {
 		name                       string
 		disabled, external, remote bool
+		burn, transcode            bool
 		offset                     int
 		text                       string
 	}{
 		{name: "automatic without desktop checkbox", text: "First caption"},
 		{name: "transcoded seek", offset: 30, text: "Second caption"},
+		{name: "burning removes receiver captions", burn: true, transcode: true},
+		{name: "direct playback ignores burn", burn: true, text: "First caption"},
 		{name: "disabled", disabled: true},
 		{name: "external also overrides burn-in", external: true},
 		{name: "remote media", remote: true},
@@ -64,7 +67,8 @@ func TestMobileTorrentCaptionsSelectionAndSeek(t *testing.T) {
 				s.subsfile = storage.NewFileURI("/external.srt")
 			}
 			s.ExternalMediaURL.SetChecked(tc.remote)
-			endpoint := registerMobileTorrentSubtitles(s, "host:1234", tc.offset)
+			s.castBurnSubtitles = tc.burn
+			endpoint := registerMobileTorrentSubtitles(s, "host:1234", tc.offset, tc.transcode || tc.offset > 0)
 			response := httptest.NewRecorder()
 			s.httpserver.ServeMediaHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "http://host:1234/torrent-subtitles.json?time=0", nil))
 			if tc.text == "" {
@@ -83,7 +87,7 @@ func TestMobileTorrentCaptionsSelectionAndSeek(t *testing.T) {
 		})
 	}
 	s.mediafile = nil
-	if endpoint := registerMobileTorrentSubtitles(s, "host:1234", 0); endpoint != "" {
+	if endpoint := registerMobileTorrentSubtitles(s, "host:1234", 0, false); endpoint != "" {
 		t.Fatalf("cleared media retained captions: %s", endpoint)
 	}
 }

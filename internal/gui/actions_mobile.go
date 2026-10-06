@@ -603,6 +603,7 @@ func playMobileAction(screen *FyneScreen) {
 		FFmpegPath:                  screen.ffmpegPath,
 		FFmpegSeek:                  screen.ffmpegSeek,
 		FFmpegSubsPath:              ffmpegSubsPath,
+		TorrentSource:               mobileTorrentSubtitleSource(screen),
 	}
 	showDLNATranscodeTimeline(screen, screen.tvdata)
 
@@ -739,12 +740,16 @@ func mobileTranscodeOptions(screen *FyneScreen) (*utils.TranscodeOptions, error)
 		}
 	}
 
-	return &utils.TranscodeOptions{
+	opts := &utils.TranscodeOptions{
 		FFmpegPath:   screen.ffmpegPath,
 		SubsPath:     subsPath,
 		SubtitleSize: utils.SubtitleSizeMedium,
 		LogOutput:    screen.Debug,
-	}, nil
+	}
+	if screen.castBurnSubtitles {
+		opts.TorrentSource = mobileTorrentSubtitleSource(screen)
+	}
+	return opts, nil
 }
 
 // startChromecastMediaServer (re)starts the local HTTP server that serves the
@@ -1395,7 +1400,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx contex
 		if transcode {
 			offset = screen.ffmpegSeek
 		}
-		torrentSubtitleURL = registerMobileTorrentSubtitles(screen, listenAddress, offset)
+		torrentSubtitleURL = registerMobileTorrentSubtitles(screen, listenAddress, offset, transcode)
 	}
 	if startupCtx.Err() != nil {
 		return
@@ -1493,7 +1498,7 @@ func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
 		}
 		torrentSubtitleURL := ""
 		if screen.mediafile != nil {
-			torrentSubtitleURL = registerMobileTorrentSubtitles(screen, listenAddress, seekPos)
+			torrentSubtitleURL = registerMobileTorrentSubtitles(screen, listenAddress, seekPos, true)
 		}
 		if err := client.LoadMediaOnExisting(castprotocol.LoadRequest{
 			MediaURL:           mediaURL,

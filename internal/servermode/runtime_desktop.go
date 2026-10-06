@@ -116,7 +116,7 @@ func (s *runtimeMediaServer) AddMedia(ctx context.Context, request playback.Serv
 }
 
 func (s *runtimeMediaServer) prepareRequest(request playback.ServerRequest) playback.ServerRequest {
-	if request.Subtitle != nil && request.Transcode && request.Target.Protocol == "DLNA" {
+	if (request.Subtitle != nil || request.TorrentSource != nil) && request.Transcode && request.Target.Protocol == "DLNA" {
 		request.BurnSubtitle = true
 	}
 	// Burn-in is meaningful only for a transcoded stream.
@@ -179,13 +179,15 @@ func transcode(ctx context.Context, w http.ResponseWriter, input io.ReadCloser, 
 		}
 	}
 	var command exec.Cmd
-	if isChromecastRequest(request) {
-		return utils.ServeChromecastTranscodedStream(ctx, w, input, &command, &utils.TranscodeOptions{
-			FFmpegPath:   ffmpeg,
-			SubsPath:     subtitlePath,
-			SeekSeconds:  request.SeekOffset,
-			SubtitleSize: utils.SubtitleSizeMedium,
-		})
+	opts := &utils.TranscodeOptions{
+		FFmpegPath: ffmpeg, SubsPath: subtitlePath,
+		SeekSeconds: request.SeekOffset, SubtitleSize: utils.SubtitleSizeMedium,
 	}
-	return utils.ServeTranscodedStream(ctx, w, input, &command, ffmpeg, subtitlePath, request.SeekOffset, utils.SubtitleSizeMedium)
+	if request.BurnSubtitle && request.Subtitle == nil {
+		opts.TorrentSource = request.TorrentSource
+	}
+	if isChromecastRequest(request) {
+		return utils.ServeChromecastTranscodedStream(ctx, w, input, &command, opts)
+	}
+	return utils.ServeDLNATranscodedStream(ctx, w, input, &command, opts)
 }

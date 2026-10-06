@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -82,10 +83,14 @@ func ServeChromecastTranscodedStream(
 
 	// Build video filter chain.
 	// Raw screencast input doesn't carry subtitle tracks.
-	subFilter := ""
+	burn := &subtitleBurn{cleanup: func() {}}
 	if !isRawInput {
 		var err error
-		subFilter, err = subtitleBurnFilter(opts.FFmpegPath, opts.SubsPath, opts.SubtitleSize)
+		burn, err = prepareSubtitleBurn(ctx, opts)
+		defer burn.cleanup()
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
 		if err != nil && opts.LogOutput != nil {
 			// Log error but continue without subtitles
 			opts.LogError("ServeChromecastTranscodedStream", "subtitle burn-in skipped", err)
@@ -105,7 +110,7 @@ func ServeChromecastTranscodedStream(
 		case "vaapi":
 			vf = vaapiTranscodeScaleFilter
 		default:
-			vf = joinVideoFilters(subFilter, softwareTranscodeScaleFilter, plan.filterTail)
+			vf = joinVideoFilters(burn.filter, softwareTranscodeScaleFilter, plan.filterTail)
 		}
 
 		// For piped input, skip -ss parameter entirely (even -ss 0) as it can cause issues.
@@ -114,7 +119,10 @@ func ServeChromecastTranscodedStream(
 		args := []string{opts.FFmpegPath}
 
 		if in != "pipe:0" && opts.SeekSeconds > 0 {
-			args = append(args, "-ss", strconv.Itoa(opts.SeekSeconds), "-copyts")
+			args = append(args, "-ss", strconv.Itoa(opts.SeekSeconds))
+		}
+		if (in != "pipe:0" && opts.SeekSeconds > 0) || burn.overlay != "" {
+			args = append(args, "-copyts")
 		}
 		args = append(args, transcodeInputArgs(plan, hw)...)
 
@@ -136,11 +144,12 @@ func ServeChromecastTranscodedStream(
 			)
 		}
 
-		args = append(
-			args,
-			"-i", in,
-			"-vf", vf,
-		)
+		args = append(args, "-i", in)
+		if burn.overlay != "" {
+			args = append(args, burn.videoArgs(softwareTranscodeScaleFilter, plan.filterTail)...)
+		} else {
+			args = append(args, "-vf", vf)
+		}
 		args = append(args, plan.codecArgs...)
 
 		if isRawInput {
@@ -171,6 +180,6 @@ func ServeChromecastTranscodedStream(
 		return ErrInvalidInput
 	}
 
-	hw := selectTranscodeVideoDecoder(opts.FFmpegPath, encoderPlan, subFilter, in, isRawInput)
+	hw := selectTranscodeVideoDecoder(opts.FFmpegPath, encoderPlan, burn.enabled(), in, isRawInput)
 	return runTranscodeWithFallback(ctx, ff, input, in, w, encoderPlan, profile, hw, buildArgs, opts.Log())
 }

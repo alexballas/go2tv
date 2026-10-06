@@ -1221,10 +1221,11 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 		serverRequest.Subtitle, serverRequest.SubtitleExt = subtitle.Open, subtitle.extension()
 		serverRequest.BurnSubtitle = transcode && target.Protocol == "Chromecast" && burnChromecastSubtitles
 	}
-	if target.Protocol == "Chromecast" && !subtitle.valid() && automaticTorrentSubtitles {
+	if !subtitle.valid() && automaticTorrentSubtitles {
 		switch strings.ToLower(media.extension()) {
 		case ".mkv", ".webm":
 			serverRequest.TorrentSource = media.TorrentSource
+			serverRequest.BurnSubtitle = transcode && target.Protocol == "Chromecast" && burnChromecastSubtitles
 		}
 	}
 	duration := 0.0
