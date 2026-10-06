@@ -221,8 +221,11 @@ func (s *Server) Start(ctx context.Context, request playback.ServerRequest) (pla
 }
 
 func subtitleMediaType(extension string) string {
-	if strings.EqualFold(extension, ".srt") {
+	switch strings.ToLower(extension) {
+	case ".srt":
 		return "text/srt; charset=utf-8"
+	case ".ass", ".ssa":
+		return "text/x-ssa; charset=utf-8"
 	}
 	return "text/vtt; charset=utf-8"
 }

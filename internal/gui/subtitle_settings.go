@@ -32,7 +32,7 @@ func (screen *FyneScreen) updateChromecastSubtitleAvailability(ffmpegErr error) 
 		return
 	}
 	burn.Enable()
-	burn.SetToolTip(lang.L("Requires transcoding. Burns selected subtitles and automatic embedded torrent text subtitles."))
+	burn.SetToolTip(lang.L("Requires transcoding. Preserves ASS/SSA styling and embedded fonts, including torrent subtitles."))
 }
 
 // Capture once per load; changing settings must not change a running seek's mode.

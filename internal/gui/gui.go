@@ -117,6 +117,7 @@ type FyneScreen struct {
 	version                  string
 	eventURL                 string
 	subsfile                 string
+	embeddedSubtitle         *utils.EmbeddedSubtitle
 	controlURL               string
 	renderingControlURL      string
 	connectionManagerURL     string
@@ -605,11 +606,11 @@ func autoSelectNextSubs(v string, screen *FyneScreen) {
 }
 
 func getNextPossibleSubs(v string) string {
-	possibleSub := v[0:len(v)-
-		len(filepath.Ext(v))] + ".srt"
-
-	if _, err := os.Stat(possibleSub); err == nil {
-		return possibleSub
+	for _, extension := range mediamodel.SubtitleExtensions() {
+		possibleSub := strings.TrimSuffix(v, filepath.Ext(v)) + extension
+		if _, err := os.Stat(possibleSub); err == nil {
+			return possibleSub
+		}
 	}
 
 	return ""
@@ -1025,7 +1026,7 @@ func splitDroppedFiles(screen *FyneScreen, uris []fyne.URI) ([]fyne.URI, []fyne.
 
 out:
 	for _, f := range uris {
-		if strings.HasSuffix(strings.ToUpper(f.Name()), ".SRT") {
+		if mediamodel.IsSubtitlePath(f.Name()) {
 			sfiles = append(sfiles, f)
 			continue
 		}

@@ -46,7 +46,7 @@ var (
 	urlArg         = flag.String("u", "", "Media URL or magnet link (triggers CLI mode).")
 	torrentFileArg = flag.Int("torrent-file", -1, "Media file index within torrent; omitted for single-media torrents.")
 
-	subsArg               = flag.String("s", "", "Path to subtitles file (.srt or .vtt).")
+	subsArg               = flag.String("s", "", "Path to subtitles file (.srt, .vtt, .ass or .ssa).")
 	targetPtr             = flag.String("t", "", "Device URL to cast to (from -l output).")
 	transcodePtr          = flag.Bool("tc", false, "Force transcoding with ffmpeg.")
 	burnSubtitlesPtr      = flag.Bool("burn-subtitles", false, "Burn Chromecast subtitles when transcoding (compatibility fallback).")
@@ -375,6 +375,7 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 		mediaMetadata.Artwork = cliartwork.Prepare(httpServer, mediaPath, whereToListen, localMedia)
 
 		captions, err := castsubtitles.Register(httpServer, whereToListen, mediaPath, subtitlesPath, castsubtitles.Options{
+			FFmpegPath: ffmpegPath,
 			Transcoded: transcode, BurnSubtitles: *burnSubtitlesPtr,
 			AutomaticTorrent: !externalURL && !*noTorrentSubtitlesPtr,
 		})

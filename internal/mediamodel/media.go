@@ -23,6 +23,7 @@ var (
 	audioExtensions = [...]string{".mp3", ".flac", ".wav", ".m4a"}
 	srtExtensions   = [...]string{".srt"}
 	vttExtensions   = [...]string{".vtt"}
+	assExtensions   = [...]string{".ass", ".ssa"}
 )
 
 func ImageExtensions() []string { return slices.Clone(imageExtensions[:]) }
@@ -32,9 +33,10 @@ func SRTExtensions() []string   { return slices.Clone(srtExtensions[:]) }
 
 // SubtitleExtensions returns subtitle formats supported by playback.
 func SubtitleExtensions() []string {
-	extensions := make([]string, 0, len(srtExtensions)+len(vttExtensions))
+	extensions := make([]string, 0, len(srtExtensions)+len(vttExtensions)+len(assExtensions))
 	extensions = append(extensions, srtExtensions[:]...)
 	extensions = append(extensions, vttExtensions[:]...)
+	extensions = append(extensions, assExtensions[:]...)
 	return extensions
 }
 
@@ -51,6 +53,8 @@ func IsVideoExtension(extension string) bool { return containsExtension(videoExt
 func IsAudioExtension(extension string) bool { return containsExtension(audioExtensions[:], extension) }
 func IsSRTPath(path string) bool             { return containsExtension(srtExtensions[:], filepath.Ext(path)) }
 func IsVTTPath(path string) bool             { return containsExtension(vttExtensions[:], filepath.Ext(path)) }
+func IsASSPath(path string) bool             { return containsExtension(assExtensions[:], filepath.Ext(path)) }
+func IsSubtitlePath(path string) bool        { return IsSRTPath(path) || IsVTTPath(path) || IsASSPath(path) }
 
 func containsExtension(extensions []string, extension string) bool {
 	return slices.Contains(extensions, strings.ToLower(extension))

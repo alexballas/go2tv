@@ -27,7 +27,7 @@ func registerMobileChromecastSubtitles(screen *FyneScreen, host string, offset i
 		return "", fmt.Errorf("open subtitles: %w", err)
 	}
 	defer source.Close()
-	data, err := utils.SubtitlesReaderForPlayback(source, filepath.Ext(screen.SubsText.Text), offset)
+	data, err := utils.SubtitlesReaderForPlayback(source, filepath.Ext(screen.SubsText.Text), offset, screen.ffmpegPath)
 	if err != nil {
 		return "", fmt.Errorf("subtitle conversion: %w", err)
 	}

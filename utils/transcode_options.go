@@ -19,16 +19,17 @@ import (
 //	            Used to spawn the ffmpeg process for transcoding.
 //
 //	SubsPath: Path to subtitle file to burn into the video stream.
-//	          Supports SRT and VTT formats. When set, subtitles are
+//	          Supports SRT, VTT, ASS and SSA formats. When set, subtitles are
 //	          embedded via ffmpeg's -vf subtitles filter.
-//	          Empty string uses TorrentSource when provided.
+//	          Empty string uses EmbeddedSubtitle or TorrentSource when provided.
 //
 //	SeekSeconds: Starting position in seconds for transcoding.
 //	             Used with ffmpeg's -ss flag for seeking.
 //	             Value of 0 starts from the beginning.
 //	             Enables seek support during transcoded playback.
 //
-//	SubtitleSize: Font size for burned-in subtitles.
+//	SubtitleSize: Font size for burned-in plain text subtitles.
+//	              ASS/SSA uses the script's original styles and sizes.
 //	              Use SubtitleSizeSmall (20), SubtitleSizeMedium (24),
 //	              or SubtitleSizeLarge (30).
 //
@@ -41,14 +42,26 @@ type TranscodeOptions struct {
 	SubsPath     string
 	SeekSeconds  int
 	SubtitleSize SubtitleSize
-	LogOutput    io.Writer
-	RawInput     *RawVideoInput
+	// SubtitleFontsDir retains adjacent ASS/SSA fonts when a subtitle source
+	// is copied into a temporary file. Defaults to the subtitle's directory.
+	SubtitleFontsDir string
+	LogOutput        io.Writer
+	RawInput         *RawVideoInput
+	// EmbeddedSubtitle renders the selected local ASS/SSA track directly from
+	// its container, preserving the script and attached fonts. Used when
+	// SubsPath is empty; an external subtitle selection takes priority.
+	EmbeddedSubtitle *EmbeddedSubtitle
 	// TorrentSource burns the first supported embedded text track when SubsPath
 	// is empty. Callers select this only for automatic torrent captions.
 	TorrentSource mediasource.Source
 
 	initLogOnce sync.Once
 	logger      *slog.Logger
+}
+
+type EmbeddedSubtitle struct {
+	Path  string
+	Track int // Zero-based subtitle stream index, as in FFmpeg's 0:s:N selector.
 }
 
 // RawVideoInput describes a raw video stream piped to ffmpeg stdin.

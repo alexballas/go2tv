@@ -13,20 +13,21 @@ import (
 )
 
 type Options struct {
-	LogOutput      io.Writer
-	Ctx            context.Context
-	DMR            string
-	Media          string
-	Subs           string
-	Mtype          string
-	ListenAddr     string
-	FFmpegPath     string
-	FFmpegSubsPath string
-	Transcode      bool
-	Seek           bool
-	FFmpegSeek     int
-	Metadata       metadata.Media
-	TorrentSource  mediasource.Source
+	LogOutput              io.Writer
+	Ctx                    context.Context
+	DMR                    string
+	Media                  string
+	Subs                   string
+	Mtype                  string
+	ListenAddr             string
+	FFmpegPath             string
+	FFmpegSubsPath         string
+	FFmpegEmbeddedSubtitle *utils.EmbeddedSubtitle
+	Transcode              bool
+	Seek                   bool
+	FFmpegSeek             int
+	Metadata               metadata.Media
+	TorrentSource          mediasource.Source
 }
 
 // NewTVPayload creates a new TVPayload based on the provided options.
@@ -72,6 +73,7 @@ func NewTVPayload(o *Options) (*TVPayload, error) {
 		Transcode:                   o.Transcode,
 		FFmpegPath:                  o.FFmpegPath,
 		FFmpegSubsPath:              o.FFmpegSubsPath,
+		FFmpegEmbeddedSubtitle:      o.FFmpegEmbeddedSubtitle,
 		TorrentSource:               o.TorrentSource,
 		FFmpegSeek:                  o.FFmpegSeek,
 		Seekable:                    o.Seek,

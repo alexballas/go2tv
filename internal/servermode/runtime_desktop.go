@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -55,7 +56,7 @@ func newRuntime(cfg Config, log *serverLogger, discovery playback.Discovery) (*r
 		}
 	}
 	base := mediaserver.New(mediaserver.Config{Callback: callbacks, Transcode: transcodeFunc})
-	media := &runtimeMediaServer{Server: base}
+	media := &runtimeMediaServer{Server: base, ffmpeg: ffmpeg}
 	artwork := controller.NewArtworkCache(controller.ArtworkCacheBytes)
 	var durationProbe func(context.Context, playback.SourceOpener) (float64, error)
 	if ffmpeg != "" {
@@ -103,7 +104,10 @@ func (r *runtime) Close() {
 	_ = r.library.Close()
 }
 
-type runtimeMediaServer struct{ *mediaserver.Server }
+type runtimeMediaServer struct {
+	*mediaserver.Server
+	ffmpeg string
+}
 
 func (s *runtimeMediaServer) Start(ctx context.Context, request playback.ServerRequest) (playback.MediaRoute, error) {
 	request = s.prepareRequest(request)
@@ -121,8 +125,7 @@ func (s *runtimeMediaServer) prepareRequest(request playback.ServerRequest) play
 	}
 	// Burn-in is meaningful only for a transcoded stream.
 	request.BurnSubtitle = request.BurnSubtitle && request.Transcode
-	if request.Subtitle != nil && request.Target.Protocol == "Chromecast" && !request.BurnSubtitle &&
-		(strings.EqualFold(request.SubtitleExt, ".srt") || strings.EqualFold(request.SubtitleExt, ".vtt")) {
+	if request.Subtitle != nil && request.Target.Protocol == "Chromecast" && !request.BurnSubtitle {
 		original := request.Subtitle
 		extension := request.SubtitleExt
 		offset := 0
@@ -135,7 +138,7 @@ func (s *runtimeMediaServer) prepareRequest(request playback.ServerRequest) play
 				return nil, time.Time{}, err
 			}
 			defer source.Close()
-			converted, err := utils.SubtitlesReaderForPlayback(source, extension, offset)
+			converted, err := utils.SubtitlesReaderForPlayback(source, extension, offset, s.ffmpeg)
 			if err != nil {
 				return nil, time.Time{}, err
 			}
@@ -156,6 +159,7 @@ func (*memoryFile) Close() error { return nil }
 
 func transcode(ctx context.Context, w http.ResponseWriter, input io.ReadCloser, request playback.ServerRequest, ffmpeg string) error {
 	subtitlePath := ""
+	fontsDir := ""
 	var err error
 	if request.BurnSubtitle && request.Subtitle != nil {
 		subtitle, _, openErr := request.Subtitle(ctx)
@@ -163,7 +167,14 @@ func transcode(ctx context.Context, w http.ResponseWriter, input io.ReadCloser, 
 			return openErr
 		}
 		defer subtitle.Close()
-		temp, createErr := os.CreateTemp("", "go2tv-subtitle-*.srt")
+		if file, ok := subtitle.(*os.File); ok {
+			fontsDir = filepath.Dir(file.Name())
+		}
+		extension := strings.ToLower(request.SubtitleExt)
+		if extension != ".ass" && extension != ".ssa" && extension != ".vtt" {
+			extension = ".srt"
+		}
+		temp, createErr := os.CreateTemp("", "go2tv-subtitle-*"+extension)
 		if createErr != nil {
 			return createErr
 		}
@@ -181,7 +192,8 @@ func transcode(ctx context.Context, w http.ResponseWriter, input io.ReadCloser, 
 	var command exec.Cmd
 	opts := &utils.TranscodeOptions{
 		FFmpegPath: ffmpeg, SubsPath: subtitlePath,
-		SeekSeconds: request.SeekOffset, SubtitleSize: utils.SubtitleSizeMedium,
+		SubtitleFontsDir: fontsDir,
+		SeekSeconds:      request.SeekOffset, SubtitleSize: utils.SubtitleSizeMedium,
 	}
 	if request.BurnSubtitle && request.Subtitle == nil {
 		opts.TorrentSource = request.TorrentSource

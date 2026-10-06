@@ -53,6 +53,9 @@ func TestChromecastEmbeddedSubtitleSelection(t *testing.T) {
 		name, mode, selected, want        string
 		sidecar, url, screencast          bool
 		failExtraction, bitmap, wantError bool
+		burn, transcode, native           bool
+		receiverFirst                     bool
+		track                             int
 	}{
 		{name: "automatic first ASS track", mode: subtitleAutomatic, want: "First caption"},
 		{name: "automatic sidecar takes priority", mode: subtitleAutomatic, sidecar: true, want: "Sidecar caption"},
@@ -67,11 +70,18 @@ func TestChromecastEmbeddedSubtitleSelection(t *testing.T) {
 		{name: "manual extraction failure reported", mode: subtitleEmbedded, selected: "Second", failExtraction: true, wantError: true},
 		{name: "automatic bitmap track allows playback", mode: subtitleAutomatic, bitmap: true},
 		{name: "manual bitmap track failure reported", mode: subtitleEmbedded, selected: "eng", bitmap: true, wantError: true},
+		{name: "automatic ASS burn preserves original", mode: subtitleAutomatic, burn: true, transcode: true, native: true},
+		{name: "switch receiver captions to original ASS burn", mode: subtitleAutomatic, burn: true, transcode: true, native: true, receiverFirst: true},
+		{name: "manual ASS burn preserves selected track", mode: subtitleEmbedded, selected: "Second", burn: true, transcode: true, native: true, track: 1},
+		{name: "burn keeps sidecar priority", mode: subtitleAutomatic, burn: true, transcode: true, sidecar: true, want: "Sidecar caption"},
+		{name: "burn ignored during direct playback", mode: subtitleAutomatic, burn: true, want: "First caption"},
+		{name: "transcode keeps receiver when burn disabled", mode: subtitleAutomatic, transcode: true, want: "First caption"},
 	}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			screen, card := newMediaCardTestScreen(t)
 			screen.ffmpegPath = ffmpeg
+			screen.Transcode, screen.castBurnSubtitles = tc.transcode, tc.burn
 			mediaPath := media
 			if tc.bitmap {
 				// Minimal Matroska with a PGS track exercises FFmpeg's actual
@@ -105,6 +115,15 @@ func TestChromecastEmbeddedSubtitleSelection(t *testing.T) {
 					}
 				}
 			})
+			priorTemps := 0
+			if tc.receiverFirst {
+				screen.castBurnSubtitles = false
+				if err := extractChromecastSubtitles(screen); err != nil || screen.subsfile == "" {
+					t.Fatalf("prepare receiver captions: %v", err)
+				}
+				priorTemps = len(screen.tempFiles)
+				screen.castBurnSubtitles = true
+			}
 			err := extractChromecastSubtitles(screen)
 			if tc.wantError {
 				if err == nil || screen.subsfile != "" || len(screen.tempFiles) != 0 {
@@ -119,6 +138,28 @@ func TestChromecastEmbeddedSubtitleSelection(t *testing.T) {
 				t.Fatal("playback changed subtitle preference")
 			}
 			server := httphandlers.NewServer("127.0.0.1:0")
+			if tc.native {
+				opts := desktopChromecastTranscodeOptions(screen, 30)
+				if opts.EmbeddedSubtitle == nil || opts.EmbeddedSubtitle.Path != media || opts.EmbeddedSubtitle.Track != tc.track || opts.SubsPath != "" || len(screen.tempFiles) != priorTemps {
+					t.Fatalf("original subtitle source lost: %+v, temps=%v", opts.EmbeddedSubtitle, screen.tempFiles)
+				}
+				server.AddHandler("/subtitles.vtt", nil, nil, []byte("stale captions"))
+				url, err := registerDesktopChromecastSubtitles(screen, server, "host:1234", 30, true)
+				response := httptest.NewRecorder()
+				server.ServeMediaHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/subtitles.vtt", nil))
+				if err != nil || url != "" || response.Code != http.StatusNotFound {
+					t.Fatalf("duplicate receiver captions during native burn: %q, %d, %v", url, response.Code, err)
+				}
+				if tc.mode == subtitleAutomatic {
+					if err := setCurrentMediaPath(screen, noSubs); err != nil {
+						t.Fatal(err)
+					}
+					if err := extractChromecastSubtitles(screen); err != nil || screen.embeddedSubtitle != nil {
+						t.Fatalf("queue retained previous subtitle track: %+v, %v", screen.embeddedSubtitle, err)
+					}
+				}
+				return
+			}
 			url, err := registerChromecastSubtitles(server, "192.0.2.1:8080", screen.subsfile, 0)
 			if err != nil {
 				t.Fatal(err)

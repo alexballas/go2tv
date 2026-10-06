@@ -401,7 +401,7 @@ func (l *Library) openRegular(rootID, entryID string) (*os.File, Metadata, error
 
 // OpenSidecar derives a sibling from a signed media entry and returns an already-open file.
 func (l *Library) OpenSidecar(rootID, mediaID, extension string) (*os.File, Metadata, error) {
-	if !strings.EqualFold(extension, ".srt") && !strings.EqualFold(extension, ".vtt") {
+	if !mediamodel.IsSubtitlePath("captions" + extension) {
 		return nil, Metadata{}, ErrUnsupportedExtension
 	}
 	return l.openRelated(rootID, mediaID, extension)
@@ -593,7 +593,7 @@ func hiddenName(name string) bool {
 }
 
 func supportedFile(path string) bool {
-	return mediamodel.KindForPath(path) != mediamodel.MediaKindUnknown || mediamodel.IsSRTPath(path) || mediamodel.IsVTTPath(path)
+	return mediamodel.KindForPath(path) != mediamodel.MediaKindUnknown || mediamodel.IsSubtitlePath(path)
 }
 
 func displayName(raw string) string {

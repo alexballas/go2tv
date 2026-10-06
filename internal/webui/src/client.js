@@ -215,7 +215,7 @@ export function startClient(env) {
       numeric: true,
       sensitivity: "base",
     });
-  const isSubtitle = (name) => /\.(srt|vtt)$/i.test(name);
+  const isSubtitle = (name) => /\.(srt|vtt|ass|ssa)$/i.test(name);
   const filteredEntries = () => {
     const filter = byID("library-filter").value.trim().toLowerCase();
     return filter

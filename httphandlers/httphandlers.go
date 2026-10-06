@@ -558,6 +558,7 @@ func dlnaTranscodeOptions(tv *soapcalls.TVPayload) *utils.TranscodeOptions {
 		FFmpegPath: tv.FFmpegPath, SubsPath: tv.FFmpegSubsPath,
 		SeekSeconds: tv.FFmpegSeek, SubtitleSize: utils.SubtitleSizeMedium,
 		TorrentSource: tv.TorrentSource, LogOutput: tv.LogOutput,
+		EmbeddedSubtitle: tv.FFmpegEmbeddedSubtitle,
 	}
 }
 

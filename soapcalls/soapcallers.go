@@ -49,6 +49,7 @@ type TVPayload struct {
 	MediaDuration               float64
 	FFmpegPath                  string
 	FFmpegSubsPath              string
+	FFmpegEmbeddedSubtitle      *utils.EmbeddedSubtitle
 	TorrentSource               mediasource.Source
 	EventURL                    string
 	ControlURL                  string

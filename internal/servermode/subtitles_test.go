@@ -35,7 +35,7 @@ func TestTorrentSubtitleRenderingPolicy(t *testing.T) {
 	}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			server := &runtimeMediaServer{mediaserver.New(mediaserver.Config{ListenAddr: "127.0.0.1:0"})}
+			server := &runtimeMediaServer{Server: mediaserver.New(mediaserver.Config{ListenAddr: "127.0.0.1:0"})}
 			ctx := context.Background()
 			t.Cleanup(func() {
 				if err := server.Stop(ctx); err != nil {
@@ -75,7 +75,7 @@ func TestReceiverSubtitlesSurviveRepeatedTranscodedSeeks(t *testing.T) {
 	}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			server := &runtimeMediaServer{mediaserver.New(mediaserver.Config{ListenAddr: "127.0.0.1:0"})}
+			server := &runtimeMediaServer{Server: mediaserver.New(mediaserver.Config{ListenAddr: "127.0.0.1:0"})}
 			ctx := context.Background()
 			t.Cleanup(func() {
 				if err := server.Stop(ctx); err != nil {
@@ -138,7 +138,7 @@ func TestSubtitleRenderingPolicy(t *testing.T) {
 	}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			server := &runtimeMediaServer{mediaserver.New(mediaserver.Config{ListenAddr: "127.0.0.1:0"})}
+			server := &runtimeMediaServer{Server: mediaserver.New(mediaserver.Config{ListenAddr: "127.0.0.1:0"})}
 			ctx := context.Background()
 			t.Cleanup(func() {
 				if err := server.Stop(ctx); err != nil {

@@ -38,7 +38,7 @@ func TestSubtitlesForPlayback(t *testing.T) {
 		}
 	})
 	t.Run("unsupported format reports error", func(t *testing.T) {
-		if _, err := SubtitlesForPlayback("captions.ass", 0); err == nil || !strings.Contains(err.Error(), "unsupported") {
+		if _, err := SubtitlesForPlayback("captions.sup", 0); err == nil || !strings.Contains(err.Error(), "unsupported") {
 			t.Fatalf("error = %v", err)
 		}
 	})

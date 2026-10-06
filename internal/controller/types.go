@@ -352,7 +352,7 @@ type SubtitleRef struct {
 
 func (r SubtitleRef) extension() string { return filepath.Ext(r.Name) }
 
-// Validate accepts the zero value and otherwise requires an SRT or VTT source.
+// Validate accepts the zero value and otherwise requires a supported text subtitle source.
 func (r SubtitleRef) Validate() error {
 	if r.RootID == "" && r.ID == "" && r.Name == "" && r.Open == nil {
 		return nil
@@ -366,7 +366,7 @@ func (r SubtitleRef) Validate() error {
 		return fmt.Errorf("name: %w", ErrInvalidSubtitle)
 	case r.Open == nil:
 		return fmt.Errorf("opener: %w", ErrInvalidSubtitle)
-	case !mediamodel.IsSRTPath(r.Name) && !mediamodel.IsVTTPath(r.Name):
+	case !mediamodel.IsSubtitlePath(r.Name):
 		return fmt.Errorf("format: %w", ErrInvalidSubtitle)
 	default:
 		return nil

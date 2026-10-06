@@ -13,11 +13,12 @@ import (
 )
 
 const (
-	segmentID = 0x18538067
-	clusterID = 0x1f43b675
-	cuesID    = 0x1c53bb6b
-	maxText   = 64 << 10
-	maxCues   = 4096
+	segmentID     = 0x18538067
+	clusterID     = 0x1f43b675
+	cuesID        = 0x1c53bb6b
+	attachmentsID = 0x1941a469
+	maxText       = 64 << 10
+	maxCues       = 4096
 )
 
 var ErrNoSubtitles = errors.New("no supported Matroska text subtitles")
@@ -60,6 +61,10 @@ type Parser struct {
 	active                    []Cue
 	subtitleIndex             int  // -1 selects the first supported track.
 	strict                    bool // File export must fail rather than silently omit captions.
+	preserveASS               bool
+	burn                      BurnMetadata
+	attachments               int64
+	seekHeads                 []int64
 }
 
 func New(source mediasource.Source) *Parser {
@@ -78,6 +83,7 @@ func (p *Parser) PrepareBurn(ctx context.Context) (float64, error) {
 		reader.SetReadahead(4 << 10)
 	}
 	p.strict = true
+	p.preserveASS = true
 	if err := p.metadata(ctx, r); err != nil {
 		return 0, err
 	}
@@ -243,6 +249,8 @@ func (p *Parser) remember(c cluster) {
 
 func (p *Parser) metadata(ctx context.Context, r io.ReadSeeker) error {
 	p.track, p.codec, p.first, p.cues = 0, "", 0, 0
+	p.burn = BurnMetadata{}
+	p.attachments, p.seekHeads = 0, nil
 	p.scale = 1e-3
 	for {
 		if err := ctx.Err(); err != nil {
@@ -279,6 +287,8 @@ func (p *Parser) metadata(ctx context.Context, r io.ReadSeeker) error {
 			err = p.tracks(r, e)
 		case 0x114d9b74:
 			err = p.seekHead(r, e)
+		case attachmentsID:
+			p.attachments = e.pos
 		case clusterID:
 			p.first = e.pos
 			return nil
@@ -330,6 +340,7 @@ func (p *Parser) tracks(r io.ReadSeeker, parent element) error {
 		if e.id == 0xae {
 			var number, kind, duration uint64
 			var codec string
+			var private element
 			encoded := false
 			for {
 				c, err := next(r, e.end)
@@ -352,6 +363,14 @@ func (p *Parser) tracks(r io.ReadSeeker, parent element) error {
 					codec = string(b)
 				case 0x6d80:
 					encoded = true
+				case 0x63a2:
+					if p.preserveASS {
+						private = c
+					}
+				case 0xe0:
+					if p.preserveASS && p.burn.Width == 0 {
+						err = p.videoSize(r, c)
+					}
 				case 0x56aa, 0x23314f, 0x537f:
 					// Codec delay, track timestamp scale/offset need FFmpeg's
 					// timing adjustments when exporting a complete subtitle file.
@@ -369,7 +388,22 @@ func (p *Parser) tracks(r io.ReadSeeker, parent element) error {
 			if kind == 17 {
 				selected := p.subtitleIndex < 0 || p.subtitleIndex == subtitleIndex
 				if p.track == 0 && selected && !encoded && (codec == "S_TEXT/ASS" || codec == "S_TEXT/SSA" || codec == "S_TEXT/UTF8") {
+					var header string
+					if p.preserveASS && codec != "S_TEXT/UTF8" && private.size > 0 {
+						if _, err := r.Seek(private.data, io.SeekStart); err != nil {
+							return err
+						}
+						b, err := bytesValue(r, private, 1<<20)
+						if err != nil {
+							return err
+						}
+						if !utf8.Valid(b) {
+							return fmt.Errorf("invalid UTF8 subtitle header")
+						}
+						header = string(b)
+					}
 					p.track, p.codec, p.defaultDuration = number, codec, float64(duration)/1e9
+					p.burn.Codec, p.burn.Header = codec, header
 				}
 				subtitleIndex++
 			}
@@ -414,6 +448,16 @@ func (p *Parser) seekHead(r io.ReadSeeker, parent element) error {
 			}
 			if id == cuesID && pos < uint64(p.end-p.segment) {
 				p.cues = p.segment + int64(pos)
+			}
+			if p.preserveASS && pos < uint64(p.end-p.segment) {
+				switch id {
+				case attachmentsID:
+					p.attachments = p.segment + int64(pos)
+				case 0x114d9b74:
+					if len(p.seekHeads) < 16 {
+						p.seekHeads = append(p.seekHeads, p.segment+int64(pos))
+					}
+				}
 			}
 		}
 		if err := skip(r, e); err != nil {
@@ -532,7 +576,7 @@ func (p *Parser) readCluster(ctx context.Context, r io.ReadSeeker, parent elemen
 			return float64(ticks) * p.scale, captions, err
 		}
 		// Unknown-sized clusters end at the next Segment child.
-		if e.id == clusterID || e.id == cuesID || e.id == 0x1549a966 || e.id == 0x1654ae6b {
+		if e.id == clusterID || e.id == cuesID || e.id == 0x1549a966 || e.id == 0x1654ae6b || e.id == attachmentsID || e.id == 0x114d9b74 || e.id == 0x1254c367 || e.id == 0x1043a770 {
 			_, err = r.Seek(e.pos, io.SeekStart)
 			if err != nil {
 				return float64(ticks) * p.scale, captions, err
@@ -635,7 +679,9 @@ func (p *Parser) block(r io.ReadSeeker, e element) (string, int16, error) {
 		if len(fields) != 9 {
 			return "", 0, fmt.Errorf("invalid ASS subtitle block")
 		}
-		text = assText(fields[8])
+		if !p.preserveASS || p.burn.Header == "" {
+			text = assText(fields[8])
+		}
 	}
 	return text, int16(uint16(header[0])<<8 | uint16(header[1])), nil
 }

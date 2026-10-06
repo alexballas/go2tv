@@ -16,6 +16,7 @@ import (
 	"github.com/anacrolix/torrent/bencode"
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/anacrolix/torrent/storage"
+	"golang.org/x/image/font/gofont/gomono"
 	"golang.org/x/time/rate"
 
 	"go2tv.app/go2tv/v2/internal/mediasource"
@@ -224,9 +225,25 @@ func TestTorrentSubtitleBurnStartsBeforeMediaDownloadCompletes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	seedDir := t.TempDir()
-	captions := filepath.Join(seedDir, "captions.srt")
+	captions := filepath.Join(seedDir, "captions.ass")
 	movie := filepath.Join(seedDir, "movie.mkv")
-	if err := os.WriteFile(captions, []byte("1\n00:00:02,000 --> 00:00:04,000\nFirst caption\n\n2\n00:01:30,000 --> 00:01:34,000\nLate caption\n"), 0600); err != nil {
+	const ass = `[Script Info]
+ScriptType: v4.00+
+PlayResX: 640
+PlayResY: 360
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Go Mono,24,&H0000FF00,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,7,10,10,10,1
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:02.00,0:00:04.00,Default,,0,0,0,,First caption
+Dialogue: 0,0:01:30.00,0:01:34.00,Default,,0,0,0,,Late caption
+`
+	if err := os.WriteFile(captions, []byte(ass), 0600); err != nil {
+		t.Fatal(err)
+	}
+	font := filepath.Join(seedDir, "attached.ttf")
+	if err := os.WriteFile(font, gomono.TTF, 0600); err != nil {
 		t.Fatal(err)
 	}
 	command := exec.CommandContext(ctx, ffmpeg, "-nostdin", "-v", "error",
@@ -234,7 +251,8 @@ func TestTorrentSubtitleBurnStartsBeforeMediaDownloadCompletes(t *testing.T) {
 		"-f", "lavfi", "-i", "sine=frequency=1000:duration=120", "-i", captions,
 		"-map", "0:v", "-map", "1:a", "-map", "2:s", "-c:v", "libx264",
 		"-preset", "ultrafast", "-b:v", "2M", "-minrate", "2M", "-maxrate", "2M", "-bufsize", "2M",
-		"-x264-params", "nal-hrd=cbr", "-g", "25", "-c:a", "aac", "-c:s", "srt", movie)
+		"-x264-params", "nal-hrd=cbr", "-g", "25", "-c:a", "aac", "-c:s", "copy", "-attach", font,
+		"-metadata:s:t", "mimetype=application/x-truetype-font", movie)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("create interleaved fixture: %v: %s", err, output)
 	}

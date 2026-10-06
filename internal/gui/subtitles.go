@@ -16,6 +16,7 @@ import (
 )
 
 func extractChromecastSubtitles(screen *FyneScreen) error {
+	screen.embeddedSubtitle = nil
 	if screen.Screencast || torrentMediaSelected(screen) {
 		return nil
 	}
@@ -26,7 +27,7 @@ func extractChromecastSubtitles(screen *FyneScreen) error {
 		switch {
 		case selected != "":
 			track = slices.Index(screen.SelectInternalSubs.Options, selected)
-		case !screen.CustomSubsCheck.Checked && screen.subsfile == "" &&
+		case !screen.CustomSubsCheck.Checked && (screen.subsfile == "" || slices.Contains(screen.tempFiles, screen.subsfile)) &&
 			!screen.ExternalMediaURL.Checked && screen.mediaKindForPath(screen.mediafile) == "video" &&
 			len(screen.SelectInternalSubs.Options) > 0:
 			// Automatic prefers a sidecar, then the first embedded track.
@@ -39,6 +40,16 @@ func extractChromecastSubtitles(screen *FyneScreen) error {
 	})
 	if track < 0 {
 		return nil
+	}
+	if screen.Transcode && screen.castBurnSubtitles {
+		original, err := utils.EmbeddedSubtitleForBurn(screen.ffmpegPath, screen.mediafile, track)
+		if err == nil && original != nil {
+			screen.embeddedSubtitle = original
+			screen.subsfile = ""
+			fyne.Do(func() { screen.PlayPause.SetText(lang.L("Play") + "   ") })
+			return nil
+		}
+		// Keep extraction's existing error/fallback behavior if probing fails.
 	}
 	path, err := utils.ExtractSub(screen.ffmpegPath, track, screen.mediafile)
 	fyne.Do(func() {
@@ -57,9 +68,9 @@ func extractChromecastSubtitles(screen *FyneScreen) error {
 	return nil
 }
 
-// registerChromecastSubtitles uses the receiver's text renderer for both direct
-// and transcoded playback, keeping styling identical without requiring libass.
-func registerChromecastSubtitles(server *httphandlers.HTTPserver, host, path string, seekSeconds int) (string, error) {
+// registerChromecastSubtitles prepares simplified receiver captions for playback
+// without burn-in. ASS/SSA typesetting is preserved only by the burn-in path.
+func registerChromecastSubtitles(server *httphandlers.HTTPserver, host, path string, seekSeconds int, ffmpegPath ...string) (string, error) {
 	if server == nil || host == "" {
 		return "", nil
 	}
@@ -68,7 +79,7 @@ func registerChromecastSubtitles(server *httphandlers.HTTPserver, host, path str
 	if !ok {
 		return "", nil
 	}
-	data, err := utils.SubtitlesForPlayback(path, seekSeconds)
+	data, err := utils.SubtitlesForPlayback(path, seekSeconds, ffmpegPath...)
 	if err != nil {
 		return "", fmt.Errorf("subtitle conversion: %w", err)
 	}
@@ -87,12 +98,13 @@ func (screen *FyneScreen) chromecastSubtitleBurnPath(transcoded bool) string {
 
 func desktopChromecastTranscodeOptions(screen *FyneScreen, seekSeconds int) *utils.TranscodeOptions {
 	return &utils.TranscodeOptions{
-		FFmpegPath:    screen.ffmpegPath,
-		SubsPath:      screen.chromecastSubtitleBurnPath(true),
-		SeekSeconds:   seekSeconds,
-		SubtitleSize:  utils.SubtitleSizeMedium,
-		LogOutput:     screen.Debug,
-		TorrentSource: screen.chromecastTorrentBurnSource(true),
+		FFmpegPath:       screen.ffmpegPath,
+		SubsPath:         screen.chromecastSubtitleBurnPath(true),
+		SeekSeconds:      seekSeconds,
+		SubtitleSize:     utils.SubtitleSizeMedium,
+		LogOutput:        screen.Debug,
+		TorrentSource:    screen.chromecastTorrentBurnSource(true),
+		EmbeddedSubtitle: screen.embeddedSubtitle,
 	}
 }
 
@@ -106,7 +118,7 @@ func (screen *FyneScreen) chromecastTorrentBurnSource(transcoded bool) mediasour
 }
 
 func registerDesktopChromecastSubtitles(screen *FyneScreen, server *httphandlers.HTTPserver, host string, seekSeconds int, transcoded bool) (string, error) {
-	if screen.chromecastSubtitleBurnPath(transcoded) != "" {
+	if screen.chromecastSubtitleBurnPath(transcoded) != "" || (transcoded && screen.castBurnSubtitles && screen.embeddedSubtitle != nil) {
 		if server != nil {
 			server.RemoveHandler("/subtitles.vtt")
 		}
@@ -115,5 +127,5 @@ func registerDesktopChromecastSubtitles(screen *FyneScreen, server *httphandlers
 	if !transcoded {
 		seekSeconds = 0
 	}
-	return registerChromecastSubtitles(server, host, screen.subsfile, seekSeconds)
+	return registerChromecastSubtitles(server, host, screen.subsfile, seekSeconds, screen.ffmpegPath)
 }

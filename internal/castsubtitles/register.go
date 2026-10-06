@@ -10,6 +10,7 @@ import (
 )
 
 type Options struct {
+	FFmpegPath       string
 	Transcoded       bool
 	BurnSubtitles    bool
 	AutomaticTorrent bool
@@ -46,7 +47,7 @@ func Register(server *httphandlers.HTTPserver, host, mediaPath, subtitlePath str
 		captions.BurnPath = subtitlePath
 		return captions, nil
 	}
-	data, err := utils.SubtitlesForPlayback(subtitlePath, offset)
+	data, err := utils.SubtitlesForPlayback(subtitlePath, offset, opts.FFmpegPath)
 	if err != nil {
 		return captions, fmt.Errorf("subtitle conversion: %w", err)
 	}

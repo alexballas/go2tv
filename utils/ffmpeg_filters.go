@@ -17,7 +17,7 @@ var ffmpegFilterCache sync.Map
 // subtitles into the video. It returns "" when no subtitles are configured or
 // the ffmpeg build lacks the filter, and an error when the subtitle file's
 // charset can't be detected.
-func subtitleBurnFilter(ffmpegPath, subsPath string, size SubtitleSize) (string, error) {
+func subtitleBurnFilter(ffmpegPath, subsPath string, size SubtitleSize, fontsDir ...string) (string, error) {
 	if subsPath == "" || !ffmpegFilterAvailable(ffmpegPath, "subtitles") {
 		return "", nil
 	}
@@ -28,6 +28,12 @@ func subtitleBurnFilter(ffmpegPath, subsPath string, size SubtitleSize) (string,
 	}
 
 	forceStyle := subtitleBurnStyle(size)
+	if styledSubtitlePath(subsPath) {
+		forceStyle = ""
+		if len(fontsDir) > 0 && fontsDir[0] != "" {
+			forceStyle = fmt.Sprintf(":fontsdir='%s'", escapeFFmpegPath(fontsDir[0]))
+		}
+	}
 	escapedPath := escapeFFmpegPath(subsPath)
 
 	if charenc == "UTF-8" {

@@ -832,7 +832,7 @@ func hasChromecastMobileSubtitles(screen *FyneScreen) bool {
 	}
 
 	switch strings.ToLower(filepath.Ext(screen.SubsText.Text)) {
-	case ".srt", ".vtt":
+	case ".srt", ".vtt", ".ass", ".ssa":
 		return true
 	default:
 		return false

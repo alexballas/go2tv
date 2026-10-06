@@ -345,6 +345,7 @@ func setCurrentMediaPath(screen *FyneScreen, mediaPath string) error {
 	}
 
 	screen.mediafile = absMediaFile
+	screen.embeddedSubtitle = nil
 	if screen.mpris != nil {
 		screen.mpris.refresh()
 	}
@@ -384,6 +385,7 @@ func clearCurrentMediaSelection(screen *FyneScreen) {
 		screen.MediaText.SetText("")
 	}
 	screen.mediafile = ""
+	screen.embeddedSubtitle = nil
 	screen.checkChromecastCompatibility()
 	if screen.mpris != nil {
 		screen.mpris.refresh()
@@ -553,7 +555,7 @@ func subsAction(screen *FyneScreen) {
 	}, w, false)
 
 	if f, ok := fd.(xfilepicker.FilePicker); ok {
-		f.SetFilter(storage.NewExtensionFileFilter(mediamodel.SRTExtensions()))
+		f.SetFilter(storage.NewExtensionFileFilter(mediamodel.SubtitleExtensions()))
 	}
 
 	if screen.currentmfolder != "" {
@@ -912,9 +914,18 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 			}
 		}
 
+		var embeddedSubtitle *utils.EmbeddedSubtitle
 		if screen.SelectInternalSubs.Selected != "" {
 			for n, opt := range screen.SelectInternalSubs.Options {
 				if opt == screen.SelectInternalSubs.Selected {
+					if transcodeEnabled {
+						original, err := utils.EmbeddedSubtitleForBurn(screen.ffmpegPath, mediaPath, n)
+						if err == nil && original != nil {
+							embeddedSubtitle = original
+							screen.subsfile = ""
+							break
+						}
+					}
 					fyne.Do(func() {
 						screen.PlayPause.Text = lang.L("Extracting Subtitles") + "   "
 						screen.PlayPause.Refresh()
@@ -985,6 +996,7 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 				FFmpegPath:                  screen.ffmpegPath,
 				FFmpegSeek:                  screen.ffmpegSeek,
 				FFmpegSubsPath:              screen.subsfile,
+				FFmpegEmbeddedSubtitle:      embeddedSubtitle,
 				TorrentSource:               torrentSubtitleSource(screen.mediafile, transcodeEnabled && !screen.CustomSubsCheck.Checked),
 			}
 		}
@@ -2270,6 +2282,7 @@ func clearmediaAction(screen *FyneScreen) {
 }
 
 func clearsubsAction(screen *FyneScreen) {
+	screen.embeddedSubtitle = nil
 	screen.SelectInternalSubs.ClearSelected()
 	screen.subsfile = ""
 	if screen.mediaSelection != nil {

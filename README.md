@@ -36,7 +36,7 @@ No need to copy files to a USB drive or set up a media server. Just select your 
 
 - **Auto-discovery** - Automatically finds Smart TVs and Chromecast devices on your network
 - **Transcoding** - Converts incompatible video formats on-the-fly (requires FFmpeg)
-- **Subtitles** - Supports external SRT/VTT files and embedded MKV subtitles
+- **Subtitles** - Supports external SRT/VTT/ASS/SSA files and embedded MKV subtitles
 - **Seek support** - Jump to any position in the video
 - **Torrent playback** - Paste a magnet link or open a .torrent, choose a media file, and cast while downloading. Missing ranges download on demand, including FFmpeg input seeks.
 - **Playlist playback** - Single-file and multi-file playlists with add/remove/reorder/select support
@@ -179,8 +179,8 @@ metadata leaves the current stream intact; choosing another torrent replaces it.
 Server shutdown removes torrent caches. FFmpeg transcoding supports input seeks.
 
 **Automatic torrent subtitles** controls embedded torrent text subtitles.
-External SRT/VTT captions use the Chromecast receiver during direct and transcoded
-playback; transcoded seeks shift captions to the new stream start. Enable
+External SRT/VTT/ASS/SSA captions use the Chromecast receiver during direct and
+transcoded playback; transcoded seeks shift captions to the new stream start. Enable
 **Playback → Burn Chromecast Subtitles (Compatibility Fallback)** for a compatibility fallback requiring
 transcoding, including automatic embedded MKV/WebM torrent captions. Desktop GUI
 and mobile offer the same fallback in **Settings → Playback**. DLNA burns selected
@@ -189,9 +189,13 @@ Embedded torrent burning renders captions in short windows as playback advances,
 so startup does not require the entire track or video. The current caption window
 and its timing lookahead still need verified torrent pieces; missing pieces can
 delay playback. External subtitles take priority. Embedded torrent captions use
-fixed styling; bitmap subtitles are not supported by this text path. FFmpeg must
-include the `subtitles`, `overlay`, and `scale2ref` filters and PNG support for
-embedded torrent burn-in.
+their original ASS/SSA styles, positioning, animation and attached fonts when
+burned during transcoding. Local embedded ASS/SSA tracks are also burned directly
+from their container, preserving attached fonts. External ASS/SSA files preserve
+their styles and can use font files alongside the subtitle file. Receiver WebVTT
+captions retain simplified formatting. Bitmap subtitles are not supported by
+this text path. FFmpeg must include the `subtitles`, `overlay`, and `scale2ref`
+filters and PNG support for embedded torrent burn-in.
 
 From the GUI, open **Settings → Remote Web Session…**, add media folders, choose local or
 LAN access, and start the session.
