@@ -96,6 +96,16 @@ func (p *TVPayload) SetContext(ctx context.Context) {
 	p.ctx = ctx
 }
 
+// Context returns the current playback context for subtitle preparation.
+func (p *TVPayload) Context() context.Context {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if p.ctx == nil {
+		return context.Background()
+	}
+	return p.ctx
+}
+
 // SetAVTransportURI invokes the fallback-preserving URI load path.
 func (p *TVPayload) SetAVTransportURI() error { return p.setAVTransportSoapCall() }
 

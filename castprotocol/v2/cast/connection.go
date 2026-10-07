@@ -23,6 +23,7 @@ import (
 const (
 	dialerTimeout   = time.Second * 3
 	dialerKeepAlive = time.Second * 30
+	writeTimeout    = time.Second * 2
 )
 
 type Conn interface {
@@ -37,15 +38,20 @@ type Conn interface {
 }
 
 type Connection struct {
-	conn *tls.Conn
+	mu     sync.RWMutex
+	sendMu sync.Mutex
+	conn   *tls.Conn
 
-	recvMsgChan   chan *pb.CastMessage
-	closeChanOnce sync.Once
-	recvMsgMu     sync.RWMutex
-	recvMsgClosed bool
+	recvMsgChan     chan *pb.CastMessage
+	closeChanOnce   sync.Once
+	closeSocketOnce sync.Once
+	closeSocketErr  error
+	recvMsgMu       sync.RWMutex
+	recvMsgClosed   bool
 
 	debug     bool
 	connected bool
+	closed    bool
 
 	cancel context.CancelFunc
 }
@@ -60,52 +66,135 @@ func NewConnection() *Connection {
 
 func (c *Connection) MsgChan() chan *pb.CastMessage { return c.recvMsgChan }
 
+// IsConnected reports whether the current socket can carry a new cast request.
+// An unexpected peer drop leaves the Connection reusable.
+func (c *Connection) IsConnected() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.connected && !c.closed
+}
+
 func (c *Connection) Start(addr string, port int) error {
-	if !c.connected {
-		err := c.connect(addr, port)
-		if err != nil {
-			return err
-		}
-		var ctx context.Context
-		// TODO: Receive context through function params?
-		ctx, c.cancel = context.WithCancel(context.Background())
-		go c.receiveLoop(ctx)
+	return c.StartContext(context.Background(), addr, port)
+}
+
+// StartContext bounds both the TCP dial and TLS handshake and allows Close to
+// interrupt either operation before a socket is installed.
+func (c *Connection) StartContext(ctx context.Context, addr string, port int) error {
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return net.ErrClosed
 	}
+	if c.connected {
+		c.mu.Unlock()
+		return nil
+	}
+	startCtx, cancelSetup := context.WithCancel(ctx)
+	c.cancel = cancelSetup
+	c.mu.Unlock()
+
+	conn, err := c.connect(startCtx, addr, port)
+	if err != nil {
+		cancelSetup()
+		return err
+	}
+	c.mu.Lock()
+	if c.closed || startCtx.Err() != nil {
+		c.mu.Unlock()
+		cancelSetup()
+		_ = conn.Close()
+		return context.Canceled
+	}
+	// The startup context ends when playback preparation completes. Once the
+	// socket is ready, its receive loop belongs to the connection lifecycle.
+	receiveCtx, cancelReceive := context.WithCancel(context.Background())
+	c.cancel = cancelReceive
+	c.conn = conn
+	c.connected = true
+	c.mu.Unlock()
+	cancelSetup()
+	go c.receiveLoop(receiveCtx, conn)
 	return nil
 }
 
 func (c *Connection) Close() error {
-	// TODO: nothing here is concurrent safe, fix?
+	c.mu.Lock()
+	c.closed = true
 	c.connected = false
 	if c.cancel != nil {
 		c.cancel()
 	}
+	conn := c.conn
+	c.mu.Unlock()
 	c.closeChanOnce.Do(func() {
 		c.recvMsgMu.Lock()
 		close(c.recvMsgChan)
 		c.recvMsgClosed = true
 		c.recvMsgMu.Unlock()
 	})
-	if c.conn == nil {
-		return nil
+	c.closeSocketOnce.Do(func() {
+		if conn != nil {
+			// tls.Conn.Close may wait for close_notify to be written. Shut the
+			// underlying socket first so cancellation never waits on that write.
+			c.closeSocketErr = conn.NetConn().Close()
+			_ = conn.Close()
+		}
+	})
+	return c.closeSocketErr
+}
+
+// disconnect releases a failed socket but keeps the receive channel and
+// application listeners alive for a later StartContext call.
+func (c *Connection) disconnect(conn *tls.Conn) {
+	c.mu.Lock()
+	if c.conn != conn || c.closed {
+		c.mu.Unlock()
+		return
 	}
-	return c.conn.Close()
+	c.conn = nil
+	c.connected = false
+	if c.cancel != nil {
+		c.cancel()
+		c.cancel = nil
+	}
+	c.mu.Unlock()
+	_ = conn.NetConn().Close()
+	_ = conn.Close()
 }
 
 func (c *Connection) SetDebug(debug bool) { c.debug = debug }
 
 func (c *Connection) LocalAddr() (addr string, err error) {
-	host, _, err := net.SplitHostPort(c.conn.LocalAddr().String())
+	c.mu.RLock()
+	conn := c.conn
+	c.mu.RUnlock()
+	if conn == nil {
+		return "", net.ErrClosed
+	}
+	host, _, err := net.SplitHostPort(conn.LocalAddr().String())
 	return host, err
 }
 
 func (c *Connection) RemoteAddr() (addr string, err error) {
-	addr, _, err = net.SplitHostPort(c.conn.RemoteAddr().String())
+	c.mu.RLock()
+	conn := c.conn
+	c.mu.RUnlock()
+	if conn == nil {
+		return "", net.ErrClosed
+	}
+	addr, _, err = net.SplitHostPort(conn.RemoteAddr().String())
 	return addr, err
 }
 
 func (c *Connection) RemotePort() (port string, err error) {
-	_, port, err = net.SplitHostPort(c.conn.RemoteAddr().String())
+	c.mu.RLock()
+	conn := c.conn
+	c.mu.RUnlock()
+	if conn == nil {
+		return "", net.ErrClosed
+	}
+	_, port, err = net.SplitHostPort(conn.RemoteAddr().String())
 	return port, err
 }
 
@@ -115,20 +204,24 @@ func (c *Connection) log(message string, args ...any) {
 	}
 }
 
-func (c *Connection) connect(addr string, port int) error {
-	var err error
+func (c *Connection) connect(ctx context.Context, addr string, port int) (*tls.Conn, error) {
+	ctx, cancel := context.WithTimeout(ctx, dialerTimeout)
+	defer cancel()
 	dialer := &net.Dialer{
-		Timeout:   dialerTimeout,
 		KeepAlive: dialerKeepAlive,
 	}
-	c.conn, err = tls.DialWithDialer(dialer, "tcp", fmt.Sprintf("%s:%d", addr, port), &tls.Config{
+	raw, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(addr, fmt.Sprint(port)))
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to connect to chromecast at '%s:%d'", addr, port)
+	}
+	conn := tls.Client(raw, &tls.Config{
 		InsecureSkipVerify: true,
 	})
-	if err != nil {
-		return errors.Wrapf(err, "unable to connect to chromecast at '%s:%d'", addr, port)
+	if err := conn.HandshakeContext(ctx); err != nil {
+		_ = conn.Close()
+		return nil, errors.Wrapf(err, "unable to connect to chromecast at '%s:%d'", addr, port)
 	}
-	c.connected = true
-	return nil
+	return conn, nil
 }
 
 func (c *Connection) Send(requestID int, payload Payload, sourceID, destinationID, namespace string) error {
@@ -153,17 +246,30 @@ func (c *Connection) Send(requestID int, payload Payload, sourceID, destinationI
 
 	c.log("(%d)%s -> %s [%s]: %s", requestID, sourceID, destinationID, namespace, payloadJson)
 
-	if err := binary.Write(c.conn, binary.BigEndian, uint32(len(data))); err != nil {
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	c.mu.RLock()
+	conn := c.conn
+	closed := c.closed
+	c.mu.RUnlock()
+	if closed || conn == nil {
+		return net.ErrClosed
+	}
+	if err := conn.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
+		return err
+	}
+	defer conn.SetWriteDeadline(time.Time{})
+	if err := binary.Write(conn, binary.BigEndian, uint32(len(data))); err != nil {
 		return errors.Wrap(err, "unable to write binary format")
 	}
-	if _, err := c.conn.Write(data); err != nil {
+	if _, err := conn.Write(data); err != nil {
 		return errors.Wrap(err, "unable to send data")
 	}
 
 	return nil
 }
 
-func (c *Connection) receiveLoop(ctx context.Context) {
+func (c *Connection) receiveLoop(ctx context.Context, conn *tls.Conn) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -172,10 +278,7 @@ func (c *Connection) receiveLoop(ctx context.Context) {
 			// Fallthrough if not done
 		}
 		var length uint32
-		if c.conn == nil {
-			continue
-		}
-		if err := binary.Read(c.conn, binary.BigEndian, &length); err != nil {
+		if err := binary.Read(conn, binary.BigEndian, &length); err != nil {
 			select {
 			case <-ctx.Done():
 				return
@@ -186,8 +289,7 @@ func (c *Connection) receiveLoop(ctx context.Context) {
 			// receiver will drop the session anyway. Close the socket so
 			// later writes fail immediately instead of feeding a half-open
 			// connection until a write finally hits a broken pipe.
-			c.connected = false
-			c.conn.Close()
+			c.disconnect(conn)
 			return
 		}
 		if length == 0 {
@@ -196,10 +298,11 @@ func (c *Connection) receiveLoop(ctx context.Context) {
 		}
 
 		payload := make([]byte, length)
-		i, err := io.ReadFull(c.conn, payload)
+		i, err := io.ReadFull(conn, payload)
 		if err != nil {
 			c.log("failed to read payload: %v", err)
-			continue
+			c.disconnect(conn)
+			return
 		}
 
 		if i != int(length) {

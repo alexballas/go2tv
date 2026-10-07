@@ -146,6 +146,25 @@ func (s *runtimeMediaServer) prepareRequest(request playback.ServerRequest) play
 		}
 		request.SubtitleExt = ".vtt"
 	}
+	if request.Subtitle != nil && request.Target.Protocol == "DLNA" && !request.Transcode {
+		extension := strings.ToLower(request.SubtitleExt)
+		if extension == ".ass" || extension == ".ssa" || extension == ".vtt" {
+			original := request.Subtitle
+			request.Subtitle = func(ctx context.Context) (io.ReadSeekCloser, time.Time, error) {
+				source, mod, err := original(ctx)
+				if err != nil {
+					return nil, time.Time{}, err
+				}
+				defer source.Close()
+				converted, err := utils.SubtitlesReaderToSRT(ctx, source, extension, s.ffmpeg)
+				if err != nil {
+					return nil, time.Time{}, err
+				}
+				return &memoryFile{Reader: *bytes.NewReader(converted)}, mod, nil
+			}
+			request.SubtitleExt = ".srt"
+		}
+	}
 	return request
 }
 

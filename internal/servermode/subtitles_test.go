@@ -178,3 +178,34 @@ func TestSubtitleRenderingPolicy(t *testing.T) {
 		})
 	}
 }
+
+func TestDirectDLNAVTTSubtitleRouteServesSRT(t *testing.T) {
+	server := &runtimeMediaServer{Server: mediaserver.New(mediaserver.Config{ListenAddr: "127.0.0.1:0"})}
+	ctx := context.Background()
+	t.Cleanup(func() { _ = server.Stop(ctx) })
+	request := playback.ServerRequest{
+		Media: subtitleTestOpener("video"), MediaExt: ".mp4", MediaType: "video/mp4",
+		Subtitle: subtitleTestOpener("WEBVTT\n\n00:00:01.000 --> 00:00:03.000 align:start\nVisible caption\n"), SubtitleExt: ".vtt",
+		Target: playback.Device{Protocol: "DLNA"},
+	}
+	route, err := server.Start(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(route.SubtitleURL, ".srt") {
+		t.Fatalf("advertised subtitle URL = %q", route.SubtitleURL)
+	}
+	response, err := http.Get(route.SubtitleURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusOK || !strings.HasPrefix(response.Header.Get("Content-Type"), "text/srt") ||
+		!strings.Contains(string(data), "00:00:01,000 --> 00:00:03,000") || !strings.Contains(string(data), "Visible caption") || strings.Contains(string(data), "WEBVTT") {
+		t.Fatalf("receiver captions: status=%d MIME=%q body=%q", response.StatusCode, response.Header.Get("Content-Type"), data)
+	}
+}

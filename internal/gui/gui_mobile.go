@@ -250,7 +250,10 @@ func (p *FyneScreen) isChromecastActionCurrent(actionID uint64) bool {
 
 func setPlayPauseView(s string, screen *FyneScreen) {
 	screen.cancelPlayTimer()
+	refreshPlaybackControls(s, screen)
+}
 
+func refreshPlaybackControls(s string, screen *FyneScreen) {
 	fyne.Do(func() {
 		// Check if we are casting an image
 		isImage := false
@@ -265,7 +268,7 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 			screen.PlayPause.SetIcon(theme.FileImageIcon())
 			screen.PlayPause.SetText("Image")
 		} else {
-			if screen.mobilePlaybackStarting() {
+			if screen.mobilePlaybackStarting() || screen.playbackStartupPending() {
 				screen.PlayPause.Disable()
 			} else {
 				screen.PlayPause.Enable()
@@ -329,5 +332,5 @@ func check(win fyne.Window, err error) {
 }
 
 func (s *FyneScreen) ffmpegStatus() error {
-	return utils.CheckFFmpeg(s.ffmpegPath)
+	return utils.CheckFFmpegContext(s.playbackStartupContext(), s.ffmpegPath)
 }

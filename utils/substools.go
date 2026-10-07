@@ -140,6 +140,15 @@ func subtitleNames(streams []streams) ([]string, error) {
 // ExtractSub - Save the extracted sub into a temp file.
 // Return the path of that file.
 func ExtractSub(ffmpeg string, n int, f string) (string, error) {
+	return ExtractSubContext(context.Background(), ffmpeg, n, f)
+}
+
+// ExtractSubContext cancels both native parsing and FFmpeg fallback, including
+// preparation before the renderer or media server has been created.
+func ExtractSubContext(ctx context.Context, ffmpeg string, n int, f string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	f, err := mediaInput(f)
 	if err != nil {
 		return "", err
@@ -156,13 +165,19 @@ func ExtractSub(ffmpeg string, n int, f string) (string, error) {
 			_ = os.Remove(subPath)
 		}
 	}()
-	nativeErr := extractNativeSub(ffmpeg, n, f, tempSub)
+	nativeErr := extractNativeSub(ctx, ffmpeg, n, f, tempSub)
 	if err := tempSub.Close(); err != nil {
 		return "", fmt.Errorf("close subtitle file: %w", err)
 	}
 	if nativeErr == nil {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 		success = true
 		return subPath, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
 	}
 
 	resolvedFFmpeg, err := ResolveFFmpegPath(ffmpeg)
@@ -170,7 +185,7 @@ func ExtractSub(ffmpeg string, n int, f string) (string, error) {
 		return "", err
 	}
 
-	cmd := exec.Command(
+	cmd := exec.CommandContext(ctx,
 		resolvedFFmpeg,
 		"-nostdin", "-loglevel", "error",
 		"-y",
@@ -179,17 +194,24 @@ func ExtractSub(ffmpeg string, n int, f string) (string, error) {
 		subPath,
 	)
 	setSysProcAttr(cmd)
+	cmd.WaitDelay = time.Second
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
 		return "", fmt.Errorf("extract subtitle track %d: %w: %s", n+1, err, strings.TrimSpace(string(output)))
 	}
 
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	success = true
 	return subPath, nil
 }
 
-func extractNativeSub(ffmpeg string, index int, path string, out io.Writer) error {
+func extractNativeSub(ctx context.Context, ffmpeg string, index int, path string, out io.Writer) error {
 	// Progressive sources keep their existing extraction path. Local files
 	// with other extensions also retain FFmpeg's broader container support.
 	ext := strings.ToLower(filepath.Ext(path))
@@ -207,15 +229,19 @@ func extractNativeSub(ffmpeg string, index int, path string, out io.Writer) erro
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	// FFmpeg normalizes subtitles to the media start time. Also confirm the
 	// selected codec using the same stream selector as the fallback command.
 	cmd := exec.CommandContext(ctx, ffprobe, "-v", "error", "-select_streams", "s:"+strconv.Itoa(index),
 		"-show_entries", "stream=codec_name:format=format_name,start_time", "-of", "json", path)
 	setSysProcAttr(cmd)
+	cmd.WaitDelay = time.Second
 	data, err := cmd.Output()
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return err
 	}
 	var probe struct {

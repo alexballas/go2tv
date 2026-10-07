@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go2tv.app/go2tv/v2/castprotocol/v2/application"
@@ -22,15 +23,16 @@ import (
 
 // CastClient wraps go-chromecast Application for simplified API
 type CastClient struct {
-	app         *application.Application
-	conn        cast.Conn // keep reference to connection for custom commands
-	mu          sync.RWMutex
-	host        string
-	port        int
-	connected   bool
-	Logger      *slog.Logger
-	LogOutput   io.Writer
-	initLogOnce sync.Once
+	app          *application.Application
+	conn         cast.Conn // keep reference to connection for custom commands
+	mu           sync.RWMutex
+	host         string
+	port         int
+	connected    bool
+	forcedClosed atomic.Bool
+	Logger       *slog.Logger
+	LogOutput    io.Writer
+	initLogOnce  sync.Once
 }
 
 // ErrCastDisconnected reports a connection closed before media loading finished.
@@ -82,6 +84,16 @@ func NewCastClient(deviceAddr string) (*CastClient, error) {
 // Connect establishes connection to the Chromecast device.
 // The library handles retries internally with WithConnectionRetries(3).
 func (c *CastClient) Connect() error {
+	return c.ConnectContext(context.Background())
+}
+
+func (c *CastClient) ConnectContext(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c.forcedClosed.Load() {
+		return net.ErrClosed
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -90,9 +102,15 @@ func (c *CastClient) Connect() error {
 	}
 
 	c.Log().Debug("connecting", "Method", "Connect", "Host", c.host, "Port", c.port)
-	if err := c.app.Start(c.host, c.port); err != nil {
+	if err := c.app.StartContext(ctx, c.host, c.port); err != nil {
 		c.Log().Error("connection failed", "Method", "Connect", "error", err)
 		return fmt.Errorf("chromecast connect: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c.forcedClosed.Load() {
+		return net.ErrClosed
 	}
 	c.connected = true
 	c.Log().Debug("connected successfully", "Method", "Connect")
@@ -156,16 +174,23 @@ func deriveMediaTitle(value string) string {
 
 // Ensure the Default Media Receiver is running before custom media commands.
 func (c *CastClient) ensureDefaultReceiverReady() error {
+	return c.ensureDefaultReceiverReadyContext(context.Background())
+}
+
+func (c *CastClient) ensureDefaultReceiverReadyContext(ctx context.Context) error {
 	if c.defaultReceiverReady() {
 		return nil
 	}
 
-	if err := c.app.Update(); err == nil && c.defaultReceiverReady() {
+	if err := c.app.UpdateContext(ctx); err == nil && c.defaultReceiverReady() {
 		return nil
 	}
 
 	var lastErr error
 	for attempt := range 5 {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if !c.IsConnected() {
 			return ErrCastDisconnected
 		}
@@ -178,7 +203,9 @@ func (c *CastClient) ensureDefaultReceiverReady() error {
 				if !c.IsConnected() {
 					return ErrCastDisconnected
 				}
-				time.Sleep(4 * time.Second)
+				if err := waitForContext(ctx, 4*time.Second); err != nil {
+					return err
+				}
 				continue
 			}
 			c.Log().Error("launch receiver failed", "Method", "ensureDefaultReceiverReady", "error", err)
@@ -186,14 +213,19 @@ func (c *CastClient) ensureDefaultReceiverReady() error {
 		}
 
 		for i := range 8 {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if !c.IsConnected() {
 				return ErrCastDisconnected
 			}
 
-			if err := c.app.Update(); err != nil {
+			if err := c.app.UpdateContext(ctx); err != nil {
 				lastErr = err
 				c.Log().Debug("app.Update retry", "Method", "ensureDefaultReceiverReady", "Attempt", i+1, "error", err)
-				time.Sleep(time.Duration(i+1) * 500 * time.Millisecond)
+				if err := waitForContext(ctx, time.Duration(i+1)*500*time.Millisecond); err != nil {
+					return err
+				}
 				continue
 			}
 
@@ -203,7 +235,9 @@ func (c *CastClient) ensureDefaultReceiverReady() error {
 			}
 
 			lastErr = fmt.Errorf("failed to get default receiver transport ID after retries")
-			time.Sleep(time.Duration(i+1) * 500 * time.Millisecond)
+			if err := waitForContext(ctx, time.Duration(i+1)*500*time.Millisecond); err != nil {
+				return err
+			}
 		}
 
 		if attempt < 4 {
@@ -211,7 +245,9 @@ func (c *CastClient) ensureDefaultReceiverReady() error {
 			if !c.IsConnected() {
 				return ErrCastDisconnected
 			}
-			time.Sleep(4 * time.Second)
+			if err := waitForContext(ctx, 4*time.Second); err != nil {
+				return err
+			}
 			continue
 		}
 	}
@@ -243,6 +279,19 @@ func (c *CastClient) Load(mediaURL string, contentType string, title string, sta
 
 // LoadMedia loads media and protocol-neutral metadata onto the Chromecast.
 func (c *CastClient) LoadMedia(req LoadRequest) error {
+	return c.LoadMediaContext(context.Background(), req)
+}
+
+func (c *CastClient) LoadMediaContext(ctx context.Context, req LoadRequest) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// Give the GUI's STOP callback a brief chance to reach the renderer before
+	// forcing the transport closed. This still interrupts blocked I/O promptly.
+	stopClose := context.AfterFunc(ctx, func() {
+		time.AfterFunc(75*time.Millisecond, func() { _ = c.ForceClose() })
+	})
+	defer stopClose()
 	req.Metadata.Title = normalizeMediaTitle(req.Metadata.Title, req.MediaURL)
 	c.Log().Debug("loading media", "Method", "LoadMedia", "URL", req.MediaURL, "ContentType", req.ContentType, "Title", req.Metadata.Title, "StartTime", req.StartTime, "Duration", req.Duration, "HasSubs", req.SubtitleURL != "", "HasArtwork", req.Metadata.Artwork != nil, "Live", req.Live)
 
@@ -250,7 +299,7 @@ func (c *CastClient) LoadMedia(req LoadRequest) error {
 	// This handles cases where Close() was called but the client is being reused
 	if !c.IsConnected() {
 		c.Log().Debug("connection closed, reconnecting", "Method", "Load")
-		if err := c.Connect(); err != nil {
+		if err := c.ConnectContext(ctx); err != nil {
 			return fmt.Errorf("reconnect before load: %w", err)
 		}
 	}
@@ -261,6 +310,9 @@ func (c *CastClient) LoadMedia(req LoadRequest) error {
 		// Retry loop for TV wake-up scenarios (timeout errors)
 		var lastErr error
 		for attempt := range 5 {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if !c.IsConnected() {
 				return ErrCastDisconnected
 			}
@@ -271,7 +323,9 @@ func (c *CastClient) LoadMedia(req LoadRequest) error {
 					if !c.IsConnected() {
 						return ErrCastDisconnected
 					}
-					time.Sleep(4 * time.Second) // Wait for TV to wake up
+					if err := waitForContext(ctx, 4*time.Second); err != nil {
+						return err
+					}
 					continue
 				}
 				c.Log().Error("standard load failed", "Method", "Load", "error", err)
@@ -286,12 +340,15 @@ func (c *CastClient) LoadMedia(req LoadRequest) error {
 	// With subtitles or custom duration: launch the app first WITHOUT loading media, then send custom load
 	// This prevents double playback (first without subs, then with subs queued)
 	// Retry loop for TV wake-up scenarios
-	if err := c.ensureDefaultReceiverReady(); err != nil {
+	if err := c.ensureDefaultReceiverReadyContext(ctx); err != nil {
 		return err
 	}
 
 	var lastErr error
 	for attempt := range 5 {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if !c.IsConnected() {
 			return ErrCastDisconnected
 		}
@@ -309,7 +366,9 @@ func (c *CastClient) LoadMedia(req LoadRequest) error {
 				if !c.IsConnected() {
 					return ErrCastDisconnected
 				}
-				time.Sleep(4 * time.Second)
+				if err := waitForContext(ctx, 4*time.Second); err != nil {
+					return err
+				}
 				continue
 			}
 			c.Log().Error("failed to get transport ID", "Method", "Load", "error", lastErr)
@@ -327,7 +386,9 @@ func (c *CastClient) LoadMedia(req LoadRequest) error {
 				if !c.IsConnected() {
 					return ErrCastDisconnected
 				}
-				time.Sleep(4 * time.Second)
+				if err := waitForContext(ctx, 4*time.Second); err != nil {
+					return err
+				}
 				continue
 			}
 			c.Log().Error("custom LOAD failed", "Method", "LoadMedia", "error", err)
@@ -340,11 +401,16 @@ func (c *CastClient) LoadMedia(req LoadRequest) error {
 			c.Log().Debug("live stream loaded paused, sending immediate PLAY to simulate fast click", "Method", "Load")
 			var playErr error
 			for i := range 3 {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
 				// Refresh app state to get the mediaSessionId from LOAD response.
 				// app.Unpause() needs this.
-				if err := c.app.Update(); err != nil {
+				if err := c.app.UpdateContext(ctx); err != nil {
 					playErr = err
-					time.Sleep(time.Duration(i+1) * 200 * time.Millisecond)
+					if err := waitForContext(ctx, time.Duration(i+1)*200*time.Millisecond); err != nil {
+						return err
+					}
 					continue
 				}
 
@@ -356,7 +422,9 @@ func (c *CastClient) LoadMedia(req LoadRequest) error {
 					c.Log().Debug("play command sent successfully", "Method", "Load", "Attempt", i+1)
 					break
 				}
-				time.Sleep(time.Duration(i+1) * 200 * time.Millisecond)
+				if err := waitForContext(ctx, time.Duration(i+1)*200*time.Millisecond); err != nil {
+					return err
+				}
 			}
 			if playErr != nil {
 				c.Log().Warn("play command failed after retries", "Method", "Load", "error", playErr)
@@ -550,12 +618,59 @@ func (c *CastClient) Close(stopMedia bool) error {
 	return err
 }
 
+// ForceClose interrupts transport I/O without waiting on the client mutex.
+func (c *CastClient) ForceClose() error {
+	c.forcedClosed.Store(true)
+	if c.app == nil {
+		return nil
+	}
+	err := c.app.ForceClose()
+	if c.conn != nil {
+		_ = c.conn.Close()
+	}
+	return err
+}
+
+// StopAndClose gives STOP a short chance to reach the renderer, then closes
+// the socket even if STOP or another client operation is blocked.
+func (c *CastClient) StopAndClose(grace time.Duration) {
+	done := make(chan struct{})
+	go func() { defer close(done); _ = c.Stop() }()
+	timer := time.NewTimer(grace)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-timer.C:
+	}
+	_ = c.ForceClose()
+}
+
 // IsConnected returns whether client is connected.
 // Uses RLock for read-only access to avoid blocking on mutex contention.
 func (c *CastClient) IsConnected() bool {
+	if c.forcedClosed.Load() {
+		return false
+	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.connected
+	if !c.connected {
+		return false
+	}
+	if conn, ok := c.conn.(interface{ IsConnected() bool }); ok {
+		return conn.IsConnected()
+	}
+	return true
+}
+
+func waitForContext(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // Host returns the hostname of the connected Chromecast device.

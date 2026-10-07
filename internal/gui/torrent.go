@@ -26,7 +26,7 @@ type torrentUIState struct {
 	cancel        context.CancelFunc
 	cancelDone    chan struct{}
 	pendingCancel context.CancelFunc
-	startup       *torrentPlaybackStartup
+	startup       *playbackStartup
 	playback      *torrentstream.Session
 	ctx           context.Context
 	status        *widget.Label
@@ -60,12 +60,15 @@ func cancelTorrent(s *FyneScreen) {
 	s.torrent.cancelDone = done
 	// Signal the running worker before queued teardown can race with startup.
 	startup := s.torrent.startup
-	if startup != nil && startup.session == session {
+	if session != nil && startup != nil && startup.session == session {
 		startup.cancel()
 	} else {
 		startup = nil
 	}
 	s.torrent.mu.Unlock()
+	if startup != nil {
+		s.nextChromecastActionID()
+	}
 	go func() {
 		defer s.finishTorrentCancellation(done)
 		// Preserve request order so waiting for the latest cancellation also
@@ -96,10 +99,12 @@ func cancelTorrent(s *FyneScreen) {
 
 func (s *FyneScreen) finishTorrentCancellation(done chan struct{}) {
 	s.torrent.mu.Lock()
-	defer s.torrent.mu.Unlock()
 	if s.torrent.cancelDone == done {
 		s.torrent.cancelDone = nil
 	}
+	s.torrent.mu.Unlock()
+	refreshPlaybackControls("", s)
+	fyne.DoAndWait(func() {})
 	close(done)
 }
 

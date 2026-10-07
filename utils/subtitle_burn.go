@@ -23,6 +23,13 @@ const (
 // EmbeddedSubtitleForBurn identifies tracks whose original typesetting must
 // reach libass without an SRT conversion. Plain text keeps the existing path.
 func EmbeddedSubtitleForBurn(ffmpegPath, path string, track int) (*EmbeddedSubtitle, error) {
+	return EmbeddedSubtitleForBurnContext(context.Background(), ffmpegPath, path, track)
+}
+
+func EmbeddedSubtitleForBurnContext(ctx context.Context, ffmpegPath, path string, track int) (*EmbeddedSubtitle, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if track < 0 {
 		return nil, fmt.Errorf("invalid subtitle track")
 	}
@@ -30,12 +37,16 @@ func EmbeddedSubtitleForBurn(ffmpegPath, path string, track int) (*EmbeddedSubti
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, ffprobe, "-v", "error", "-select_streams", "s:"+strconv.Itoa(track), "-show_entries", "stream=codec_name", "-of", "json", path)
 	setSysProcAttr(command)
+	command.WaitDelay = time.Second
 	data, err := command.Output()
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, fmt.Errorf("probe subtitle track: %w", err)
 	}
 	var result struct {

@@ -284,7 +284,11 @@ func (s *FyneScreen) validateFFmpeg() error {
 		return nil
 	}
 
-	err := utils.CheckFFmpeg(s.ffmpegPath)
+	ctx := s.playbackStartupContext()
+	err := utils.CheckFFmpegContext(ctx, s.ffmpegPath)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	s.ffmpegCheckPath = s.ffmpegPath
 	s.ffmpegCheckErr = err
 	s.ffmpegCheckValid = true
@@ -617,13 +621,16 @@ func getNextPossibleSubs(v string) string {
 }
 
 func setPlayPauseView(s string, screen *FyneScreen) {
+	screen.cancelPlayTimer()
 	fyne.Do(func() {
 		if screen.mediaSelection != nil {
 			screen.mediaSelection.refresh()
 		}
 	})
-	screen.cancelPlayTimer()
+	refreshPlaybackControls(s, screen)
+}
 
+func refreshPlaybackControls(s string, screen *FyneScreen) {
 	if screen.renderGate.remoteLeaseHeld() {
 		// Renderer controls stay locked while the remote session runs; the
 		// lease release recomputes availability.
@@ -672,7 +679,7 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 		}
 		screen.refreshPlaybackReadiness()
 		state := screen.getScreenState()
-		if screen.torrentPlaybackPending() || screen.chromecastCompatibilityPending() && state != "Playing" && state != "Paused" {
+		if screen.torrentPlaybackPending() || screen.playbackStartupPending() || screen.chromecastCompatibilityPending() && state != "Playing" && state != "Paused" {
 			screen.PlayPause.Disable()
 		}
 		screen.PlayPause.Refresh()

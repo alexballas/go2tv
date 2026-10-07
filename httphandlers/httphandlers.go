@@ -155,6 +155,15 @@ func (s *HTTPserver) StartServing(serverStarted chan<- error) {
 func (s *HTTPserver) StartServer(serverStarted chan<- error, media, subtitles any,
 	tvpayload *soapcalls.TVPayload, screen Screen,
 ) {
+	if !tvpayload.Transcode {
+		preparedURL, preparedSubtitles, err := PrepareDLNASubtitles(tvpayload.Context(), tvpayload.SubtitlesURL, subtitles, tvpayload.FFmpegPath)
+		if err != nil {
+			serverStarted <- err
+			return
+		}
+		tvpayload.SubtitlesURL, subtitles = preparedURL, preparedSubtitles
+	}
+
 	mURL, err := url.Parse(tvpayload.MediaURL)
 	if err != nil {
 		serverStarted <- fmt.Errorf("failed to parse MediaURL: %w", err)
@@ -276,7 +285,9 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 
 		// Explicitly set Content-Type for HLS files.
 		if !out.static {
-			if strings.HasSuffix(requestPathLower, ".m3u8") {
+			if strings.HasSuffix(requestPathLower, ".srt") {
+				w.Header().Set("Content-Type", "text/srt; charset=utf-8")
+			} else if strings.HasSuffix(requestPathLower, ".m3u8") {
 				w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 			} else if strings.HasSuffix(requestPathLower, ".ts") {
 				w.Header().Set("Content-Type", "video/mp2t")

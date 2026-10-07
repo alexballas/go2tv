@@ -38,7 +38,11 @@ type MediaCodecInfo struct {
 }
 
 func DurationForMedia(ffmpeg string, f string) (string, error) {
-	seconds, err := DurationForMediaSeconds(ffmpeg, f)
+	return DurationForMediaContext(context.Background(), ffmpeg, f)
+}
+
+func DurationForMediaContext(ctx context.Context, ffmpeg string, f string) (string, error) {
+	seconds, err := DurationForMediaSecondsContext(ctx, ffmpeg, f)
 	if err != nil {
 		return "", err
 	}
@@ -66,7 +70,7 @@ func DurationForMediaSecondsContext(ctx context.Context, ffmpeg string, f string
 		return 0, err
 	}
 
-	if err := CheckFFmpeg(ffmpeg); err != nil {
+	if err := CheckFFmpegContext(ctx, ffmpeg); err != nil {
 		return 0, err
 	}
 
@@ -85,9 +89,13 @@ func DurationForMediaSecondsContext(ctx context.Context, ffmpeg string, f string
 		f,
 	)
 	setSysProcAttr(cmd)
+	cmd.WaitDelay = time.Second
 
 	output, err := cmd.Output()
 	if err != nil {
+		if ctx.Err() != nil {
+			return 0, ctx.Err()
+		}
 		return 0, err
 	}
 
@@ -114,6 +122,8 @@ func DurationForMediaReaderSeconds(ctx context.Context, ffmpeg string, media io.
 		return 0, err
 	}
 
+	stopClosing := context.AfterFunc(ctx, func() { _ = media.Close() })
+	defer stopClosing()
 	ffprobePath, err := ResolveFFprobePath(ffmpeg)
 	if err != nil {
 		return 0, err
@@ -125,7 +135,7 @@ func DurationForMediaReaderSeconds(ctx context.Context, ffmpeg string, media io.
 		input, inputURL = nil, url
 	} else if file, ok := underlyingOSFile(media); ok {
 		input = file
-		inputURL = ffmpegInputForFile(ffmpeg, file)
+		inputURL = ffmpegInputForFileContext(ctx, ffmpeg, file)
 	}
 
 	if seeker, ok := input.(io.Seeker); ok {
@@ -151,6 +161,7 @@ func DurationForMediaReaderSeconds(ctx context.Context, ffmpeg string, media io.
 		inputURL,
 	)
 	setSysProcAttr(cmd)
+	cmd.WaitDelay = time.Second
 	cmd.Stdin = input
 	output, err := cmd.Output()
 	if ctxErr := ctx.Err(); ctxErr != nil {
@@ -188,7 +199,7 @@ func GetMediaCodecInfoContext(ctx context.Context, ffmpeg string, f string) (*Me
 		return nil, err
 	}
 
-	if err := CheckFFmpeg(ffmpeg); err != nil {
+	if err := CheckFFmpegContext(ctx, ffmpeg); err != nil {
 		return nil, err
 	}
 

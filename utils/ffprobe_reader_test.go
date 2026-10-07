@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -155,5 +156,47 @@ func TestDurationForMediaReaderSecondsContext(t *testing.T) {
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("cancellation took %s", elapsed)
+	}
+}
+
+type blockedProbeReader struct {
+	*io.PipeReader
+	started chan struct{}
+	once    sync.Once
+}
+
+func (r *blockedProbeReader) Read(p []byte) (int, error) {
+	r.once.Do(func() { close(r.started) })
+	return r.PipeReader.Read(p)
+}
+
+func (*blockedProbeReader) Seek(int64, int) (int64, error) { return 0, errors.New("not seekable") }
+
+func TestDurationForMediaReaderSecondsCancelsBlockedInput(t *testing.T) {
+	ffmpeg, _, _ := writeDurationProbeTools(t)
+	pipe, writer := io.Pipe()
+	defer writer.Close()
+	media := &blockedProbeReader{PipeReader: pipe, started: make(chan struct{})}
+	defer media.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := DurationForMediaReaderSeconds(ctx, ffmpeg, media)
+		done <- err
+	}()
+	select {
+	case <-media.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("probe did not start reading")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("probe cancellation = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("probe waited for blocked input after cancellation")
 	}
 }

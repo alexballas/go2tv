@@ -43,8 +43,12 @@ func (screen *FyneScreen) installChromecastClientForAction(actionID uint64, clie
 }
 
 func connectChromecastForAction(screen *FyneScreen, actionID uint64, device devType) (*castprotocol.CastClient, error) {
+	ctx := screen.playbackStartupContext()
 	var lastErr error
 	for attempt := range chromecastConnectAttempts {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if !screen.isChromecastActionCurrent(actionID) {
 			return nil, context.Canceled
 		}
@@ -53,7 +57,7 @@ func connectChromecastForAction(screen *FyneScreen, actionID uint64, device devT
 			return nil, fmt.Errorf("chromecast init: %w", err)
 		}
 		client.LogOutput = screen.Debug
-		if err := client.Connect(); err == nil {
+		if err := client.ConnectContext(ctx); err == nil {
 			if !screen.isChromecastActionCurrent(actionID) {
 				_ = client.Close(false)
 				return nil, context.Canceled
@@ -62,9 +66,18 @@ func connectChromecastForAction(screen *FyneScreen, actionID uint64, device devT
 		} else {
 			lastErr = err
 		}
-		_ = client.Close(false)
+		_ = client.ForceClose()
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if attempt+1 < chromecastConnectAttempts {
-			time.Sleep(time.Second)
+			timer := time.NewTimer(time.Second)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil, ctx.Err()
+			case <-timer.C:
+			}
 		}
 	}
 	return nil, fmt.Errorf("chromecast connect: %w", lastErr)
@@ -100,7 +113,7 @@ func loadChromecastForAction(screen *FyneScreen, actionID uint64, device devType
 			return connectChromecastForAction(screen, actionID, device)
 		},
 		func(client *castprotocol.CastClient, req castprotocol.LoadRequest) error {
-			return client.LoadMedia(req)
+			return client.LoadMediaContext(screen.playbackStartupContext(), req)
 		},
 	)
 }
@@ -117,13 +130,32 @@ func loadChromecastForActionWith(
 	if !current() {
 		return client, context.Canceled
 	}
+	loadCurrent := func(client *castprotocol.CastClient) error {
+		ctx := screen.playbackStartupContext()
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		closed := make(chan struct{})
+		cancelLoad := context.AfterFunc(ctx, func() {
+			defer close(closed)
+			client.StopAndClose(50 * time.Millisecond)
+		})
+		err := load(client, req)
+		if !cancelLoad() {
+			<-closed
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return err
+	}
 	err := retryChromecastStartupLoad(
-		func() error { return load(client, req) },
+		func() error { return loadCurrent(client) },
 		current,
 		func() error {
 			client.Log().Warn("cast connection lost during load; reconnecting", "Method", "LoadMedia")
 			if client.IsConnected() && current() {
-				_ = client.Close(false)
+				_ = client.ForceClose()
 			}
 			replacement, err := connect()
 			if err != nil {
@@ -134,7 +166,7 @@ func loadChromecastForActionWith(
 				return context.Canceled
 			}
 			client = replacement
-			return load(client, req)
+			return loadCurrent(client)
 		},
 	)
 	return client, err

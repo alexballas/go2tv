@@ -40,6 +40,9 @@ func (screen *FyneScreen) captureChromecastSubtitleSettings() {
 	prefs := fyne.CurrentApp().Preferences()
 	screen.castBurnSubtitles = prefs.BoolWithFallback(chromecastBurnSubtitlesPref, false)
 	if screen.castBurnSubtitles && screen.ffmpegStatus() != nil {
+		if screen.playbackStartupContext().Err() != nil {
+			return
+		}
 		screen.castBurnSubtitles = false
 		prefs.SetBool(chromecastBurnSubtitlesPref, false)
 	}

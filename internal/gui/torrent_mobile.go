@@ -3,6 +3,7 @@
 package gui
 
 import (
+	"context"
 	"io"
 	"path/filepath"
 
@@ -91,6 +92,13 @@ func clearTorrentSelection(s *FyneScreen, path string) {
 }
 
 func mobileMediaMIME(uri fyne.URI) (string, error) {
+	return mobileMediaMIMEContext(context.Background(), uri)
+}
+
+func mobileMediaMIMEContext(ctx context.Context, uri fyne.URI) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if source, ok := mediasource.Lookup(uri.Path()); ok {
 		return source.MIME(), nil
 	}
@@ -99,5 +107,11 @@ func mobileMediaMIME(uri fyne.URI) (string, error) {
 		return "", err
 	}
 	defer reader.Close()
-	return utils.GetMimeDetailsFromStream(reader)
+	stopClosing := context.AfterFunc(ctx, func() { _ = reader.Close() })
+	defer stopClosing()
+	mime, err := utils.GetMimeDetailsFromStream(reader)
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+	return mime, err
 }

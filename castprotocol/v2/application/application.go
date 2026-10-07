@@ -99,6 +99,7 @@ type Application struct {
 	messageChan   chan *pb.CastMessage
 	recvDone      chan struct{}
 	closeChanOnce sync.Once
+	shutdown      chan struct{}
 	// Functions that will receive messages from 'messageChan'
 	messageFuncs []CastMessageFunc
 
@@ -198,6 +199,7 @@ func NewApplication(opts ...ApplicationOption) *Application {
 		resultChanMap:     map[int]chan *pb.CastMessage{},
 		messageChan:       make(chan *pb.CastMessage),
 		recvDone:          make(chan struct{}),
+		shutdown:          make(chan struct{}),
 		playedItems:       map[string]PlayedItem{},
 		cache:             storage.NewStorage(),
 		connectionRetries: 5,
@@ -273,21 +275,43 @@ func (a *Application) MediaFinished() {
 	if a.mediaFinished == nil {
 		return
 	}
-	a.mediaFinished <- true
+	select {
+	case a.mediaFinished <- true:
+	default:
+	}
 }
 
 func (a *Application) recvMessages() {
 	defer close(a.recvDone)
-	for msg := range a.conn.MsgChan() {
+	defer close(a.messageChan)
+	for {
+		var msg *pb.CastMessage
+		select {
+		case <-a.shutdown:
+			return
+		case received, ok := <-a.conn.MsgChan():
+			if !ok {
+				return
+			}
+			msg = received
+		}
 		requestID, err := jsonparser.GetInt([]byte(*msg.PayloadUtf8), "requestId")
 		if err == nil {
 			a.resultChanMu.RLock()
 			resultChan, ok := a.resultChanMap[int(requestID)]
 			a.resultChanMu.RUnlock()
 			if ok {
-				resultChan <- msg
+				select {
+				case resultChan <- msg:
+				case <-a.shutdown:
+					return
+				}
 				// Relay the event to any user specified message funcs.
-				a.messageChan <- msg
+				select {
+				case a.messageChan <- msg:
+				case <-a.shutdown:
+					return
+				}
 				continue
 			}
 		}
@@ -336,7 +360,11 @@ func (a *Application) recvMessages() {
 			a.application, a.media, a.volumeReceiver = nil, nil, nil
 		}
 		// Relay the event to any user specified message funcs.
-		a.messageChan <- msg
+		select {
+		case a.messageChan <- msg:
+		case <-a.shutdown:
+			return
+		}
 	}
 }
 
@@ -348,17 +376,38 @@ func (a *Application) SetDebug(debug bool) {
 }
 
 func (a *Application) Start(addr string, port int) error {
+	return a.StartContext(context.Background(), addr, port)
+}
+
+// StartContext cancels connection setup, status requests, and retry waits.
+func (a *Application) StartContext(ctx context.Context, addr string, port int) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	stopClose := context.AfterFunc(ctx, func() { _ = a.conn.Close() })
+	defer stopClose()
 	if err := a.loadPlayedItems(); err != nil {
 		a.log("unable to load played items: %v", err)
 	}
 
-	if err := a.conn.Start(addr, port); err != nil {
+	var startErr error
+	if conn, ok := a.conn.(interface {
+		StartContext(context.Context, string, int) error
+	}); ok {
+		startErr = conn.StartContext(ctx, addr, port)
+	} else {
+		startErr = a.conn.Start(addr, port)
+	}
+	if startErr != nil {
+		return startErr
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if err := a.sendDefaultConn(&cast.ConnectHeader); err != nil {
 		return errors.Wrap(err, "unable to connect to chromecast")
 	}
-	return errors.Wrap(a.Update(), "unable to update application")
+	return errors.Wrap(a.UpdateContext(ctx), "unable to update application")
 }
 
 func (a *Application) loadPlayedItems() error {
@@ -383,31 +432,40 @@ func (a *Application) writePlayedItems() error {
 }
 
 func (a *Application) Update() error {
-	return a.update(a.connectionRetries)
+	return a.UpdateContext(context.Background())
+}
+
+func (a *Application) UpdateContext(ctx context.Context) error {
+	return a.update(ctx, a.connectionRetries)
 }
 
 // UpdateOnce refreshes the status with a single attempt and no retry
 // sleeps. Meant for frequent status polls where the caller has its own
 // failure policy and a slow failure is worse than a fast one.
 func (a *Application) UpdateOnce() error {
-	return a.update(1)
+	return a.update(context.Background(), 1)
 }
 
-func (a *Application) update(attempts int) error {
+func (a *Application) update(ctx context.Context, attempts int) error {
 	var recvStatus *cast.ReceiverStatusResponse
 	var err error
 	// Simple retry. We need this for when the device isn't currently
 	// available, but it is likely that it will come up soon. If the device
 	// has switch network addresses the caller is expected to handle that situation.
 	for i := range attempts {
-		recvStatus, err = a.getReceiverStatus()
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		recvStatus, err = a.getReceiverStatusContext(ctx)
 		if err == nil {
 			break
 		}
 		a.log("error getting receiver status: %v", err)
 		if i+1 < attempts {
 			a.log("unable to get status from device; attempt %d/%d, retrying...", i+1, attempts)
-			time.Sleep(time.Second * 2)
+			if err := waitContext(ctx, time.Second*2); err != nil {
+				return err
+			}
 		}
 	}
 	if err != nil {
@@ -439,7 +497,7 @@ func (a *Application) update(attempts int) error {
 	// monitor treats a single IDLE poll as "finished", so clearing would end
 	// playback on one dropped response. An error instead goes through the
 	// monitor's lost-poll tolerance.
-	if err := a.updateMediaStatus(); err != nil {
+	if err := a.updateMediaStatusContext(ctx); err != nil {
 		return errors.Wrap(err, "unable to update media status")
 	}
 
@@ -447,9 +505,13 @@ func (a *Application) update(attempts int) error {
 }
 
 func (a *Application) updateMediaStatus() error {
+	return a.updateMediaStatusContext(context.Background())
+}
+
+func (a *Application) updateMediaStatusContext(ctx context.Context) error {
 	a.sendMediaConn(&cast.ConnectHeader)
 
-	mediaStatus, err := a.getMediaStatus()
+	mediaStatus, err := a.getMediaStatusContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -473,12 +535,15 @@ func (a *Application) Close(stopMedia bool) error {
 		a.sendMediaConn(&cast.CloseHeader)
 		a.sendDefaultConn(&cast.CloseHeader)
 	}
-	err := a.conn.Close()
+	err := a.ForceClose()
 	<-a.recvDone
-	a.closeChanOnce.Do(func() {
-		close(a.messageChan)
-	})
 	return err
+}
+
+// ForceClose interrupts blocked reads and writes without waiting for callbacks.
+func (a *Application) ForceClose() error {
+	a.closeChanOnce.Do(func() { close(a.shutdown) })
+	return a.conn.Close()
 }
 
 func (a *Application) Status() (*cast.Application, *cast.Media, *cast.Volume) {
@@ -724,7 +789,11 @@ func (a *Application) SetMuted(value bool) error {
 }
 
 func (a *Application) getMediaStatus() (*cast.MediaStatusResponse, error) {
-	apiMessage, err := a.sendAndWaitMediaRecv(&cast.GetStatusHeader)
+	return a.getMediaStatusContext(context.Background())
+}
+
+func (a *Application) getMediaStatusContext(ctx context.Context) (*cast.MediaStatusResponse, error) {
+	apiMessage, err := a.sendAndWaitMediaRecvContext(ctx, &cast.GetStatusHeader)
 	if err != nil {
 		return nil, err
 	}
@@ -736,7 +805,11 @@ func (a *Application) getMediaStatus() (*cast.MediaStatusResponse, error) {
 }
 
 func (a *Application) getReceiverStatus() (*cast.ReceiverStatusResponse, error) {
-	apiMessage, err := a.sendAndWaitDefaultRecv(&cast.GetStatusHeader)
+	return a.getReceiverStatusContext(context.Background())
+}
+
+func (a *Application) getReceiverStatusContext(ctx context.Context) (*cast.ReceiverStatusResponse, error) {
+	apiMessage, err := a.sendAndWaitDefaultRecvContext(ctx, &cast.GetStatusHeader)
 	if err != nil {
 		return nil, err
 	}
@@ -1310,6 +1383,10 @@ func (a *Application) send(payload cast.Payload, sourceID, destinationID, namesp
 }
 
 func (a *Application) sendAndWait(payload cast.Payload, sourceID, destinationID, namespace string) (*pb.CastMessage, error) {
+	return a.sendAndWaitContext(context.Background(), payload, sourceID, destinationID, namespace)
+}
+
+func (a *Application) sendAndWaitContext(parent context.Context, payload cast.Payload, sourceID, destinationID, namespace string) (*pb.CastMessage, error) {
 	a.requestMu.Lock()
 	a.requestID += 1
 	requestID := a.requestID
@@ -1317,8 +1394,10 @@ func (a *Application) sendAndWait(payload cast.Payload, sourceID, destinationID,
 	payload.SetRequestId(requestID)
 
 	// Set a timeout to wait for the response
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	ctx, cancel := context.WithTimeout(parent, time.Second*5)
 	defer cancel()
+	stopClose := context.AfterFunc(parent, func() { _ = a.conn.Close() })
+	defer stopClose()
 
 	resultChan := make(chan *pb.CastMessage, 1)
 	a.resultChanMu.Lock()
@@ -1374,11 +1453,33 @@ func (a *Application) sendAndWaitDefaultRecv(payload cast.Payload) (*pb.CastMess
 	return a.sendAndWait(payload, defaultSender, defaultRecv, namespaceRecv)
 }
 
+func (a *Application) sendAndWaitDefaultRecvContext(ctx context.Context, payload cast.Payload) (*pb.CastMessage, error) {
+	return a.sendAndWaitContext(ctx, payload, defaultSender, defaultRecv, namespaceRecv)
+}
+
 func (a *Application) sendAndWaitMediaRecv(payload cast.Payload) (*pb.CastMessage, error) {
 	if a.application == nil {
 		return nil, ErrApplicationNotSet
 	}
 	return a.sendAndWait(payload, defaultSender, a.application.TransportId, namespaceMedia)
+}
+
+func (a *Application) sendAndWaitMediaRecvContext(ctx context.Context, payload cast.Payload) (*pb.CastMessage, error) {
+	if a.application == nil {
+		return nil, ErrApplicationNotSet
+	}
+	return a.sendAndWaitContext(ctx, payload, defaultSender, a.application.TransportId, namespaceMedia)
+}
+
+func waitContext(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (a *Application) startTranscodingServer(command string, args ...string) error {

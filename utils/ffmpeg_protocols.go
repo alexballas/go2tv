@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 )
 
 var ffmpegProtocolCache sync.Map
@@ -18,10 +19,14 @@ var ffmpegProtocolCache sync.Map
 // atom. The fd: protocol does seek, so prefer it and only fall back to pipe:0
 // when the file isn't seekable or the binary lacks the protocol.
 func ffmpegInputForFile(ffmpegPath string, f *os.File) string {
+	return ffmpegInputForFileContext(context.Background(), ffmpegPath, f)
+}
+
+func ffmpegInputForFileContext(ctx context.Context, ffmpegPath string, f *os.File) string {
 	if _, err := f.Seek(0, io.SeekCurrent); err != nil {
 		return "pipe:0"
 	}
-	if !ffmpegInputProtocolAvailable(ffmpegPath, "fd") {
+	if !ffmpegInputProtocolAvailableContext(ctx, ffmpegPath, "fd") {
 		return "pipe:0"
 	}
 
@@ -46,12 +51,16 @@ func underlyingOSFile(r io.Reader) (*os.File, bool) {
 }
 
 func ffmpegInputProtocolAvailable(ffmpegPath, name string) bool {
+	return ffmpegInputProtocolAvailableContext(context.Background(), ffmpegPath, name)
+}
+
+func ffmpegInputProtocolAvailableContext(ctx context.Context, ffmpegPath, name string) bool {
 	key := ffmpegPath + "|" + name
 	if cached, ok := ffmpegProtocolCache.Load(key); ok {
 		return cached.(bool)
 	}
 
-	protocols, err := ffmpegInputProtocolSet(ffmpegPath)
+	protocols, err := ffmpegInputProtocolSetContext(ctx, ffmpegPath)
 	if err != nil {
 		return false
 	}
@@ -62,15 +71,20 @@ func ffmpegInputProtocolAvailable(ffmpegPath, name string) bool {
 }
 
 func ffmpegInputProtocolSet(ffmpegPath string) (map[string]struct{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), transcodeEncoderProbeTimeout)
+	return ffmpegInputProtocolSetContext(context.Background(), ffmpegPath)
+}
+
+func ffmpegInputProtocolSetContext(ctx context.Context, ffmpegPath string) (map[string]struct{}, error) {
+	ctx, cancel := context.WithTimeout(ctx, transcodeEncoderProbeTimeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, ffmpegPath, "-hide_banner", "-protocols")
 	setSysProcAttr(cmd)
+	cmd.WaitDelay = time.Second
 
 	out, err := cmd.Output()
 	if ctx.Err() != nil {
-		return nil, fmt.Errorf("ffmpeg -protocols timeout after %s", transcodeEncoderProbeTimeout)
+		return nil, fmt.Errorf("ffmpeg -protocols: %w", ctx.Err())
 	}
 	if err != nil {
 		return nil, fmt.Errorf("ffmpeg -protocols failed: %w", err)

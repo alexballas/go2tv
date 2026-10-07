@@ -8,8 +8,12 @@ import (
 	"unsafe"
 
 	"go2tv.app/go2tv/v2/castprotocol"
+	"go2tv.app/go2tv/v2/castprotocol/v2/cast"
 	"go2tv.app/go2tv/v2/devices"
 )
+
+// Session tests model a healthy client without opening a renderer socket.
+type sessionTestConn struct{ cast.Conn }
 
 func newConnectedCastClientForTest(t *testing.T, deviceAddr string) *castprotocol.CastClient {
 	t.Helper()
@@ -20,6 +24,9 @@ func newConnectedCastClientForTest(t *testing.T, deviceAddr string) *castprotoco
 	}
 
 	client.Close(false)
+	connField := reflectNewAtField(reflectValueElem(t, client).FieldByName("conn"))
+	conn := connField.Interface().(cast.Conn)
+	connField.Set(reflect.ValueOf(&sessionTestConn{Conn: conn}))
 	clientConnectedFieldSet(t, client, true)
 	return client
 }

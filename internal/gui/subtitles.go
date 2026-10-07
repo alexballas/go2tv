@@ -3,7 +3,9 @@
 package gui
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"slices"
 
 	"github.com/alexballas/refyne/v2"
@@ -16,6 +18,7 @@ import (
 )
 
 func extractChromecastSubtitles(screen *FyneScreen) error {
+	ctx := screen.playbackStartupContext()
 	screen.embeddedSubtitle = nil
 	if screen.Screencast || torrentMediaSelected(screen) {
 		return nil
@@ -42,7 +45,10 @@ func extractChromecastSubtitles(screen *FyneScreen) error {
 		return nil
 	}
 	if screen.Transcode && screen.castBurnSubtitles {
-		original, err := utils.EmbeddedSubtitleForBurn(screen.ffmpegPath, screen.mediafile, track)
+		original, err := utils.EmbeddedSubtitleForBurnContext(ctx, screen.ffmpegPath, screen.mediafile, track)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if err == nil && original != nil {
 			screen.embeddedSubtitle = original
 			screen.subsfile = ""
@@ -51,11 +57,20 @@ func extractChromecastSubtitles(screen *FyneScreen) error {
 		}
 		// Keep extraction's existing error/fallback behavior if probing fails.
 	}
-	path, err := utils.ExtractSub(screen.ffmpegPath, track, screen.mediafile)
+	path, err := utils.ExtractSubContext(ctx, screen.ffmpegPath, track, screen.mediafile)
+	if ctx.Err() != nil {
+		if path != "" {
+			_ = os.Remove(path)
+		}
+		return ctx.Err()
+	}
 	fyne.Do(func() {
 		screen.PlayPause.SetText(lang.L("Play") + "   ")
 	})
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if automatic {
 			// Optional captions must not prevent video playback (e.g. bitmap
 			// tracks cannot be converted to SRT). Explicit selections report errors.
@@ -71,6 +86,10 @@ func extractChromecastSubtitles(screen *FyneScreen) error {
 // registerChromecastSubtitles prepares simplified receiver captions for playback
 // without burn-in. ASS/SSA typesetting is preserved only by the burn-in path.
 func registerChromecastSubtitles(server *httphandlers.HTTPserver, host, path string, seekSeconds int, ffmpegPath ...string) (string, error) {
+	return registerChromecastSubtitlesContext(context.Background(), server, host, path, seekSeconds, ffmpegPath...)
+}
+
+func registerChromecastSubtitlesContext(ctx context.Context, server *httphandlers.HTTPserver, host, path string, seekSeconds int, ffmpegPath ...string) (string, error) {
 	if server == nil || host == "" {
 		return "", nil
 	}
@@ -79,7 +98,7 @@ func registerChromecastSubtitles(server *httphandlers.HTTPserver, host, path str
 	if !ok {
 		return "", nil
 	}
-	data, err := utils.SubtitlesForPlayback(path, seekSeconds, ffmpegPath...)
+	data, err := utils.SubtitlesForPlaybackContext(ctx, path, seekSeconds, ffmpegPath...)
 	if err != nil {
 		return "", fmt.Errorf("subtitle conversion: %w", err)
 	}
@@ -127,5 +146,5 @@ func registerDesktopChromecastSubtitles(screen *FyneScreen, server *httphandlers
 	if !transcoded {
 		seekSeconds = 0
 	}
-	return registerChromecastSubtitles(server, host, screen.subsfile, seekSeconds, screen.ffmpegPath)
+	return registerChromecastSubtitlesContext(screen.playbackStartupContext(), server, host, screen.subsfile, seekSeconds, screen.ffmpegPath)
 }

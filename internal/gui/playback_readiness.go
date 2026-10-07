@@ -47,6 +47,9 @@ func (s *FyneScreen) refreshPlaybackReadiness() {
 	switch {
 	case active:
 		status = lang.L(state)
+	case s.playbackStartupPending() || s.torrentPlaybackPending():
+		status = lang.L("Loading media…")
+		toolTip = status
 	case s.selectedDevice.addr == "":
 		status = lang.L("Select a device")
 		toolTip = status
@@ -79,7 +82,7 @@ func (s *FyneScreen) refreshPlaybackReadiness() {
 	}
 	s.playbackStatus.SetText(status)
 	if !s.renderGate.remoteLeaseHeld() && s.Stop != nil {
-		if active || strings.HasPrefix(s.castingMediaType, "image/") || s.Screencast || s.rtmpServer != nil {
+		if active || s.getActiveDevice().addr != "" || s.playbackStartupPending() || s.torrentPlaybackPending() || strings.HasPrefix(s.castingMediaType, "image/") || s.Screencast || s.rtmpServer != nil {
 			s.Stop.Enable()
 		} else {
 			s.Stop.Disable()

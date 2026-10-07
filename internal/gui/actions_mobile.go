@@ -359,7 +359,7 @@ func playMobileAction(screen *FyneScreen) {
 			mediaPath = screen.mediafile.Path()
 		}
 		var starting bool
-		startupCtx, finishStartup, starting = screen.beginTorrentPlayback(mediaPath)
+		startupCtx, finishStartup, starting = screen.beginPlaybackStartup(mediaPath)
 		if starting {
 			break
 		}
@@ -372,6 +372,9 @@ func playMobileAction(screen *FyneScreen) {
 	if startupCtx.Err() != nil {
 		return
 	}
+	setPlayPauseView("", screen)
+	streamCtx, detachStream := playbackStreamContext(startupCtx)
+	defer detachStream()
 	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
 		actionID := screen.nextChromecastActionID()
 		chromecastPlayAction(screen, actionID, startupCtx)
@@ -413,11 +416,11 @@ func playMobileAction(screen *FyneScreen) {
 
 		switch out[0] {
 		case "PLAYING":
-			setPlayPauseView("Pause", screen)
 			screen.updateScreenState("Playing")
+			setPlayPauseView("Pause", screen)
 		case "PAUSED_PLAYBACK":
-			setPlayPauseView("Play", screen)
 			screen.updateScreenState("Paused")
+			setPlayPauseView("Play", screen)
 		}
 	}()
 
@@ -470,7 +473,10 @@ func playMobileAction(screen *FyneScreen) {
 		// storage.ReaderSeeker first (a real seekable handle, no copy) and fall
 		// back to a temp file copy when the platform can't provide one. See
 		// seekableMediaForCasting.
-		mediaType, err = mobileMediaMIME(screen.mediafile)
+		mediaType, err = mobileMediaMIMEContext(startupCtx, screen.mediafile)
+		if startupCtx.Err() != nil {
+			return
+		}
 		check(w, err)
 		if err != nil {
 			startAfreshPlayButton(screen)
@@ -512,12 +518,13 @@ func playMobileAction(screen *FyneScreen) {
 
 	if screen.ExternalMediaURL.Checked {
 		screen.setCurrentArtwork(nil)
-		// We're not using any context here. The reason is
-		// that when the webserver shuts down it causes the
-		// the io.Copy operation to fail with "broken pipe".
-		// That's good enough for us since right after that
-		// we close the io.ReadCloser.
-		mediaURL, inferredMediaType, err := utils.StreamURLWithMime(context.Background(), screen.MediaText.Text)
+		mediaURL, inferredMediaType, err := utils.StreamURLWithMime(streamCtx, screen.MediaText.Text)
+		if startupCtx.Err() != nil {
+			if mediaURL != nil {
+				_ = mediaURL.Close()
+			}
+			return
+		}
 		check(screen.Current, err)
 		if err != nil {
 			startAfreshPlayButton(screen)
@@ -530,6 +537,9 @@ func playMobileAction(screen *FyneScreen) {
 		if strings.Contains(mediaType, "image") {
 			readerToBytes, err := io.ReadAll(mediaURL)
 			mediaURL.Close()
+			if startupCtx.Err() != nil {
+				return
+			}
 			if err != nil {
 				startAfreshPlayButton(screen)
 				return
@@ -605,6 +615,7 @@ func playMobileAction(screen *FyneScreen) {
 		FFmpegSubsPath:              ffmpegSubsPath,
 		TorrentSource:               mobileTorrentSubtitleSource(screen),
 	}
+	screen.tvdata.SetContext(streamCtx)
 	showDLNATranscodeTimeline(screen, screen.tvdata)
 
 	screen.httpserver = httphandlers.NewServer(whereToListen)
@@ -620,8 +631,12 @@ func playMobileAction(screen *FyneScreen) {
 	}()
 	// Wait for the HTTP server to properly initialize.
 	err = <-serverStarted
-	check(w, err)
 	if startupCtx.Err() != nil {
+		return
+	}
+	check(w, err)
+	if err != nil {
+		stopAction(screen)
 		return
 	}
 
@@ -698,6 +713,10 @@ func disableTranscodeForImage(screen *FyneScreen) {
 }
 
 func copySubsToTempFile(screen *FyneScreen) (string, error) {
+	ctx := screen.playbackStartupContext()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	removeTempFile(&screen.tempSubsFile)
 
 	subsReader, err := storage.Reader(screen.subsfile)
@@ -705,6 +724,8 @@ func copySubsToTempFile(screen *FyneScreen) (string, error) {
 		return "", err
 	}
 	defer subsReader.Close()
+	stopClosing := context.AfterFunc(ctx, func() { _ = subsReader.Close() })
+	defer stopClosing()
 
 	ext := filepath.Ext(screen.SubsText.Text)
 	if ext == "" {
@@ -719,11 +740,18 @@ func copySubsToTempFile(screen *FyneScreen) (string, error) {
 	if _, err := io.Copy(tempFile, subsReader); err != nil {
 		tempFile.Close()
 		os.Remove(tempFile.Name())
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
 		return "", fmt.Errorf("temp subtitle copy: %w", err)
 	}
 	if err := tempFile.Close(); err != nil {
 		os.Remove(tempFile.Name())
 		return "", fmt.Errorf("temp subtitle close: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		os.Remove(tempFile.Name())
+		return "", err
 	}
 
 	screen.tempSubsFile = tempFile.Name()
@@ -849,7 +877,7 @@ func removeTempFile(path *string) {
 }
 
 func stopAction(screen *FyneScreen) {
-	if screen.stopTorrentStartup() {
+	if screen.stopPlaybackStartup() {
 		return
 	}
 	stopActionInternal(screen, false)
@@ -857,7 +885,7 @@ func stopAction(screen *FyneScreen) {
 
 // stopActionSync waits for DLNA teardown before a transcoded seek restart.
 func stopActionSync(screen *FyneScreen) {
-	if done := screen.cancelTorrentStartup(); done != nil {
+	if done := screen.cancelPlaybackStartup(); done != nil {
 		<-done
 	}
 	stopActionInternal(screen, true)
@@ -937,6 +965,7 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 	screen.httpserver = nil
 	teardown := func() {
 		if tvdata != nil && tvdata.ControlURL != "" {
+			tvdata.SetContext(context.Background())
 			_ = tvdata.SendtoTV("Stop")
 		}
 		if server != nil {
@@ -1052,6 +1081,10 @@ func volumeAction(screen *FyneScreen, up bool) {
 // copying the media to a temp file (recorded in screen.tempMediaFile for
 // cleanup in stopAction) and returns that path.
 func seekableMediaForCasting(screen *FyneScreen) (any, error) {
+	ctx := screen.playbackStartupContext()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	uri := screen.mediafile
 	if uri != nil {
 		if _, ok := mediasource.Lookup(uri.Path()); ok {
@@ -1076,6 +1109,8 @@ func seekableMediaForCasting(screen *FyneScreen) (any, error) {
 		return nil, err
 	}
 	defer mediaReader.Close()
+	stopClosing := context.AfterFunc(ctx, func() { _ = mediaReader.Close() })
+	defer stopClosing()
 
 	ext := filepath.Ext(screen.MediaText.Text)
 	tempFile, err := createMobileCacheTemp("go2tv-*" + ext)
@@ -1086,9 +1121,19 @@ func seekableMediaForCasting(screen *FyneScreen) (any, error) {
 	if _, err := io.Copy(tempFile, mediaReader); err != nil {
 		tempFile.Close()
 		os.Remove(tempFile.Name())
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, fmt.Errorf("temp file copy: %w", err)
 	}
-	tempFile.Close()
+	if err := tempFile.Close(); err != nil {
+		os.Remove(tempFile.Name())
+		return nil, fmt.Errorf("temp file close: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		os.Remove(tempFile.Name())
+		return nil, err
+	}
 
 	screen.tempMediaFile = tempFile.Name()
 	return screen.tempMediaFile, nil
@@ -1138,7 +1183,9 @@ func startAfreshPlayButton(screen *FyneScreen) {
 // chromecastPlayAction handles playback on Chromecast devices.
 // Supports both local files (via internal HTTP server) and external URLs (direct).
 func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx context.Context) {
-	if !screen.isChromecastActionCurrent(actionID) {
+	streamCtx, detachStream := playbackStreamContext(startupCtx)
+	defer detachStream()
+	if startupCtx.Err() != nil || !screen.isChromecastActionCurrent(actionID) {
 		return
 	}
 
@@ -1214,7 +1261,13 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx contex
 		screen.setCurrentArtwork(nil)
 		mediaURL = screen.MediaText.Text
 
-		mediaURLinfo, inferredMediaType, err := utils.StreamURLWithMime(context.Background(), mediaURL)
+		mediaURLinfo, inferredMediaType, err := utils.StreamURLWithMime(streamCtx, mediaURL)
+		if startupCtx.Err() != nil {
+			if mediaURLinfo != nil {
+				_ = mediaURLinfo.Close()
+			}
+			return
+		}
 		if err != nil {
 			check(w, err)
 			startAfreshPlayButton(screen)
@@ -1243,7 +1296,13 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx contex
 		}
 
 		if transcode {
-			stream, err := utils.StreamURL(context.Background(), mediaURL)
+			stream, err := utils.StreamURL(streamCtx, mediaURL)
+			if startupCtx.Err() != nil {
+				if stream != nil {
+					_ = stream.Close()
+				}
+				return
+			}
 			if err != nil {
 				check(w, err)
 				startAfreshPlayButton(screen)
@@ -1299,7 +1358,10 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx contex
 		// a seekable reader directly when available and fall back to a temp file
 		// copy otherwise (see seekableMediaForCasting).
 		var err error
-		mediaType, err = mobileMediaMIME(screen.mediafile)
+		mediaType, err = mobileMediaMIMEContext(startupCtx, screen.mediafile)
+		if startupCtx.Err() != nil {
+			return
+		}
 		if err != nil {
 			check(w, err)
 			startAfreshPlayButton(screen)
@@ -1382,6 +1444,9 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx contex
 		offset = screen.ffmpegSeek
 	}
 	subtitleURL, err := registerMobileChromecastSubtitles(screen, subtitleHost, offset, transcode)
+	if startupCtx.Err() != nil {
+		return
+	}
 	if err != nil {
 		check(w, err)
 		startAfreshPlayButton(screen)

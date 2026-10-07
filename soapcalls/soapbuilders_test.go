@@ -1,6 +1,7 @@
 package soapcalls
 
 import (
+	"encoding/xml"
 	"strings"
 	"testing"
 
@@ -120,6 +121,32 @@ func TestBuildDIDLLiteMetadataExact(t *testing.T) {
 	}
 	if string(got) != want {
 		t.Fatalf("DIDL = %s, want %s", got, want)
+	}
+}
+
+func TestBuildDIDLLiteAdvertisesUppercaseSRTSidecar(t *testing.T) {
+	tv := &TVPayload{
+		MediaURL: "http://host/movie.mp4", MediaType: "video/mp4",
+		SubtitlesURL: "http://host/captions.SRT?token=123", MediaDuration: 60,
+	}
+	data, err := buildDIDLLite(tv, tv.MediaURL, metadata.Media{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		Item struct {
+			Caption   string `xml:"CaptionInfo"`
+			Resources []struct {
+				ProtocolInfo string `xml:"protocolInfo,attr"`
+				URL          string `xml:",chardata"`
+			} `xml:"res"`
+		} `xml:"item"`
+	}
+	if err := xml.Unmarshal(data, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Item.Caption != tv.SubtitlesURL || len(result.Item.Resources) != 2 || result.Item.Resources[1].URL != tv.SubtitlesURL || result.Item.Resources[1].ProtocolInfo != "http-get:*:text/srt:*" {
+		t.Fatalf("SRT caption resource missing: %s", data)
 	}
 }
 
