@@ -143,7 +143,7 @@ func TestBurnEmbeddedTorrentSubtitleTiming(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					decode := exec.CommandContext(ctx, ffmpeg, "-v", "error", "-i", "pipe:0", "-map", "0:v", "-pix_fmt", "gray", "-fps_mode", "passthrough", "-f", "rawvideo", "pipe:1")
+					decode := exec.CommandContext(ctx, ffmpeg, "-v", "error", "-i", "pipe:0", "-map", "0:v", "-pix_fmt", "gray", "-vsync", "0", "-threads", "1", "-f", "rawvideo", "pipe:1")
 					decode.Stdin = bytes.NewReader(output.Bytes())
 					frames, err := decode.Output()
 					if err != nil {

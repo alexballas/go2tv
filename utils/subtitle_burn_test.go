@@ -129,7 +129,7 @@ func checkTorrentStyledRendering(t *testing.T, ffmpeg, media string) {
 				t.Fatal(err)
 			}
 			defer burn.cleanup()
-			request := exec.CommandContext(ctx, ffmpeg, "-v", "error", "-f", "image2pipe", "-framerate", "25", "-c:v", "png", "-probesize", "32", "-analyzeduration", "0", "-i", burn.overlay, "-vf", fmt.Sprintf("select='eq(n,%d)'", tc.frame), "-fps_mode", "passthrough", "-frames:v", "1", "-c:v", "png", "-f", "image2pipe", "pipe:1")
+			request := exec.CommandContext(ctx, ffmpeg, "-v", "error", "-f", "image2pipe", "-framerate", "25", "-c:v", "png", "-probesize", "32", "-analyzeduration", "0", "-i", burn.overlay, "-vf", fmt.Sprintf("select='eq(n,%d)'", tc.frame), "-vsync", "0", "-frames:v", "1", "-c:v", "png", "-threads", "1", "-f", "image2pipe", "pipe:1")
 			actualBytes, err := request.Output()
 			if err != nil {
 				t.Fatalf("render caption window: %v", err)

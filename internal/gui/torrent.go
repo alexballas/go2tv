@@ -98,12 +98,14 @@ func cancelTorrent(s *FyneScreen) {
 }
 
 func (s *FyneScreen) finishTorrentCancellation(done chan struct{}) {
-	s.torrent.mu.Lock()
-	if s.torrent.cancelDone == done {
-		s.torrent.cancelDone = nil
-	}
-	s.torrent.mu.Unlock()
-	refreshPlaybackControls("", s)
+	fyne.DoAndWait(func() {
+		s.torrent.mu.Lock()
+		if s.torrent.cancelDone == done {
+			s.torrent.cancelDone = nil
+		}
+		s.torrent.mu.Unlock()
+		refreshPlaybackControls("", s)
+	})
 	fyne.DoAndWait(func() {})
 	close(done)
 }

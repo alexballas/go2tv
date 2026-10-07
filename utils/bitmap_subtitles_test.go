@@ -53,7 +53,8 @@ func bitmapSubtitleFixture(t *testing.T) (string, string) {
 		t.Fatal(err)
 	}
 	media := filepath.Join(dir, "movie.mkv")
-	command := exec.Command(ffmpeg, "-nostdin", "-v", "error",
+	// Older FFmpeg otherwise rebases the SUP input's first cue to zero.
+	command := exec.Command(ffmpeg, "-nostdin", "-v", "error", "-copyts",
 		"-f", "lavfi", "-i", "color=size=160x90:duration=6",
 		"-f", "lavfi", "-i", "sine=frequency=440:duration=6", "-i", text, "-i", path,
 		"-map", "0:v", "-map", "1:a", "-map", "2:s", "-map", "3:s",

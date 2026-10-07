@@ -875,7 +875,7 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 			// that defines that something is being streamed.
 			// We use its value for many checks in our code.
 			mediaPath = screen.MediaText.Text
-			screen.mediafile = mediaPath
+			fyne.DoAndWait(func() { screen.mediafile = mediaPath })
 
 			if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
 				mediaType = "application/vnd.apple.mpegurl"
@@ -1087,11 +1087,14 @@ func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 			return
 		}
 
-		if screen.tvdata == nil {
+		screen.dlnaQueueMu.Lock()
+		payload := screen.tvdata
+		screen.dlnaQueueMu.Unlock()
+		if payload == nil {
 			return
 		}
 
-		out, err := screen.tvdata.GetTransportInfo()
+		out, err := payload.GetTransportInfo()
 		if err != nil {
 			return
 		}

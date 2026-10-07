@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/container"
@@ -22,6 +23,9 @@ func newMediaCardTestScreen(t *testing.T) (*FyneScreen, *mediaSelectionCard) {
 	t.Helper()
 	app := test.NewApp()
 	t.Cleanup(app.Quit)
+	// Fyne's test driver runs callbacks on the caller. Playback tests need
+	// the same serialized UI updates as the real application's event loop.
+	fyne.SetCurrentApp(&queuedUIApp{App: app, driver: &serialUIDriver{Driver: app.Driver()}})
 	s := newQueueMediaSelectionTestScreen()
 	s.ExternalMediaURL = widget.NewCheck("", nil)
 	s.MediaBrowse = widget.NewButton("", nil)
@@ -80,30 +84,41 @@ func TestMediaCardSwitchFromTorrent(t *testing.T) {
 				t.Fatal("torrent selection should show Torrent")
 			}
 
-			c.source.SetSelected(lang.L(tc.source))
-			c.refresh()
-			if c.source.Selected != lang.L(tc.source) || s.mediafile != "" {
-				t.Fatal("switching source must release the torrent selection without Clear")
-			}
-			if tc.source == "URL" {
-				if !s.MediaText.Visible() || s.MediaText.Disabled() {
-					t.Fatal("URL source must show editable input")
+			var done <-chan struct{}
+			fyne.DoAndWait(func() {
+				c.source.SetSelected(lang.L(tc.source))
+				c.refresh()
+				if c.source.Selected != lang.L(tc.source) || s.mediafile != "" {
+					t.Fatal("switching source must release the torrent selection without Clear")
 				}
-				c.source.SetSelected(lang.L("Local File"))
-				if s.mediafile != "" {
-					t.Fatal("returning from URL must not restore the released torrent")
+				if tc.source == "URL" {
+					if !s.MediaText.Visible() || s.MediaText.Disabled() {
+						t.Fatal("URL source must show editable input")
+					}
+					c.source.SetSelected(lang.L("Local File"))
+					if s.mediafile != "" {
+						t.Fatal("returning from URL must not restore the released torrent")
+					}
 				}
-			}
-			if !s.MediaBrowse.Visible() || s.MediaBrowse.Disabled() {
-				t.Fatal("local source must enable Browse")
-			}
-			local := filepath.Join(t.TempDir(), "local.mp4")
-			if err := selectMediaPaths(s, []string{local}); err != nil {
-				t.Fatal(err)
-			}
-			c.refresh()
-			if s.mediafile != local || c.media.path.Text != local || c.source.Selected != lang.L("Local File") {
-				t.Fatal("local file must replace the torrent selection")
+				if !s.MediaBrowse.Visible() || s.MediaBrowse.Disabled() {
+					t.Fatal("local source must enable Browse")
+				}
+				local := filepath.Join(t.TempDir(), "local.mp4")
+				if err := selectMediaPaths(s, []string{local}); err != nil {
+					t.Fatal(err)
+				}
+				c.refresh()
+				if s.mediafile != local || c.media.path.Text != local || c.source.Selected != lang.L("Local File") {
+					t.Fatal("local file must replace the torrent selection")
+				}
+				done = s.torrentCancellationDone()
+			})
+			if done != nil {
+				select {
+				case <-done:
+				case <-time.After(5 * time.Second):
+					t.Fatal("source switch cleanup blocked")
+				}
 			}
 		})
 	}

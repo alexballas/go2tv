@@ -158,6 +158,11 @@ func ServeChromecastTranscodedStream(
 			// Screen capture stream contains video only.
 			args = append(args, "-an")
 		} else {
+			if opts.TorrentSource != nil {
+				// Flush playable fragments before the next keyframe, which may
+				// otherwise require downloading the entire low-frame-rate file.
+				args = append(args, "-frag_duration", "1000000")
+			}
 			args = append(
 				args,
 				"-c:a", "aac",

@@ -8,7 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -118,6 +120,31 @@ type queuedUIApp struct {
 }
 
 func (a *queuedUIApp) Driver() fyne.Driver { return a.driver }
+
+type serialUIDriver struct {
+	fyne.Driver
+	mu     sync.Mutex
+	active atomic.Uint64
+}
+
+func (d *serialUIDriver) DoFromGoroutine(run func(), _ bool) {
+	// Nested fyne.Do calls already run inside the serialized UI callback.
+	var stack [64]byte
+	n := runtime.Stack(stack[:], false)
+	id, err := strconv.ParseUint(string(bytes.Fields(stack[:n])[1]), 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	if d.active.Load() == id {
+		run()
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.active.Store(id)
+	defer d.active.Store(0)
+	run()
+}
 
 func (d *queuedUIDriver) DoFromGoroutine(run func(), wait bool) {
 	request := queuedUIRequest{run: run}
