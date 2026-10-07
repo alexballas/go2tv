@@ -145,7 +145,7 @@ func ServeChromecastTranscodedStream(
 		}
 
 		args = append(args, "-i", in)
-		if burn.overlay != "" {
+		if burn.overlay != "" || burn.bitmap != nil {
 			args = append(args, burn.videoArgs(softwareTranscodeScaleFilter, plan.filterTail)...)
 		} else {
 			args = append(args, "-vf", vf)

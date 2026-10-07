@@ -3,7 +3,7 @@
 package gui
 
 import (
-	"fmt"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,6 +18,7 @@ import (
 	"github.com/alexballas/refyne/v2/widget"
 
 	"go2tv.app/go2tv/v2/httphandlers"
+	"go2tv.app/go2tv/v2/utils"
 )
 
 func TestChromecastEmbeddedSubtitleSelection(t *testing.T) {
@@ -26,20 +27,7 @@ func TestChromecastEmbeddedSubtitleSelection(t *testing.T) {
 		t.Skip("ffmpeg unavailable")
 	}
 	dir := t.TempDir()
-	args := []string{"-nostdin", "-loglevel", "error", "-f", "lavfi", "-i", "color=size=16x16:duration=1"}
-	for i, caption := range []string{"First caption", "Second caption"} {
-		path := filepath.Join(dir, fmt.Sprintf("%d.srt", i))
-		if err := os.WriteFile(path, []byte("1\n00:00:00,000 --> 00:00:01,000\n"+caption+"\n"), 0600); err != nil {
-			t.Fatal(err)
-		}
-		args = append(args, "-i", path)
-	}
-	media := filepath.Join(dir, "embedded.mkv")
-	args = append(args, "-map", "0:v", "-map", "1:s", "-map", "2:s", "-c:v", "mpeg4", "-c:s", "ass",
-		"-metadata:s:s:0", "title=First", "-metadata:s:s:1", "title=Second", media)
-	if output, err := exec.Command(ffmpeg, args...).CombinedOutput(); err != nil {
-		t.Fatalf("create ASS media: %v: %s", err, output)
-	}
+	media := createEmbeddedSubtitleTestMedia(t, ffmpeg, dir, "ass")
 	noSubs := filepath.Join(dir, "no-subs.mkv")
 	if output, err := exec.Command(ffmpeg, "-nostdin", "-loglevel", "error", "-i", media,
 		"-map", "0:v", "-c", "copy", noSubs).CombinedOutput(); err != nil {
@@ -70,6 +58,9 @@ func TestChromecastEmbeddedSubtitleSelection(t *testing.T) {
 		{name: "manual extraction failure reported", mode: subtitleEmbedded, selected: "Second", failExtraction: true, wantError: true},
 		{name: "automatic bitmap track allows playback", mode: subtitleAutomatic, bitmap: true},
 		{name: "manual bitmap track failure reported", mode: subtitleEmbedded, selected: "eng", bitmap: true, wantError: true},
+		{name: "automatic bitmap burn", mode: subtitleAutomatic, bitmap: true, burn: true, transcode: true, native: true},
+		{name: "manual bitmap burn", mode: subtitleEmbedded, selected: "eng", bitmap: true, burn: true, transcode: true, native: true},
+		{name: "bitmap requires burn during transcoding", mode: subtitleEmbedded, selected: "eng", bitmap: true, transcode: true, wantError: true},
 		{name: "automatic ASS burn preserves original", mode: subtitleAutomatic, burn: true, transcode: true, native: true},
 		{name: "switch receiver captions to original ASS burn", mode: subtitleAutomatic, burn: true, transcode: true, native: true, receiverFirst: true},
 		{name: "manual ASS burn preserves selected track", mode: subtitleEmbedded, selected: "Second", burn: true, transcode: true, native: true, track: 1},
@@ -129,6 +120,9 @@ func TestChromecastEmbeddedSubtitleSelection(t *testing.T) {
 				if err == nil || screen.subsfile != "" || len(screen.tempFiles) != 0 {
 					t.Fatalf("failed extraction: error=%v path=%q temp=%v", err, screen.subsfile, screen.tempFiles)
 				}
+				if tc.bitmap && (!errors.Is(err, utils.ErrBitmapSubtitles) || !strings.Contains(err.Error(), "Burn Chromecast Subtitles")) {
+					t.Fatalf("bitmap error lacks recovery instructions: %v", err)
+				}
 				return
 			}
 			if err != nil {
@@ -140,7 +134,7 @@ func TestChromecastEmbeddedSubtitleSelection(t *testing.T) {
 			server := httphandlers.NewServer("127.0.0.1:0")
 			if tc.native {
 				opts := desktopChromecastTranscodeOptions(screen, 30)
-				if opts.EmbeddedSubtitle == nil || opts.EmbeddedSubtitle.Path != media || opts.EmbeddedSubtitle.Track != tc.track || opts.SubsPath != "" || len(screen.tempFiles) != priorTemps {
+				if opts.EmbeddedSubtitle == nil || opts.EmbeddedSubtitle.Path != screen.mediafile || opts.EmbeddedSubtitle.Track != tc.track || opts.EmbeddedSubtitle.Bitmap != tc.bitmap || opts.SubsPath != "" || len(screen.tempFiles) != priorTemps {
 					t.Fatalf("original subtitle source lost: %+v, temps=%v", opts.EmbeddedSubtitle, screen.tempFiles)
 				}
 				server.AddHandler("/subtitles.vtt", nil, nil, []byte("stale captions"))

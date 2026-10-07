@@ -28,10 +28,12 @@ const (
 )
 
 type subtitleBurn struct {
-	filter  string
-	overlay string
-	origin  float64
-	cleanup func()
+	filter     string
+	overlay    string
+	bitmap     *EmbeddedSubtitle
+	bitmapSeek bool
+	origin     float64
+	cleanup    func()
 }
 
 // prepareSubtitleBurn keeps external captions on the existing file-filter path.
@@ -42,6 +44,16 @@ func prepareSubtitleBurn(ctx context.Context, opts *TranscodeOptions) (*subtitle
 	if selected := opts.EmbeddedSubtitle; selected != nil && opts.SubsPath == "" {
 		if selected.Track < 0 || selected.Path == "" {
 			return burn, fmt.Errorf("invalid embedded subtitle source")
+		}
+		if selected.Bitmap {
+			for _, filter := range []string{"overlay", "scale2ref"} {
+				if !ffmpegFilterAvailable(opts.FFmpegPath, filter) {
+					return burn, fmt.Errorf("bitmap subtitles require FFmpeg's %s filter", filter)
+				}
+			}
+			burn.bitmap = selected
+			burn.bitmapSeek = opts.SeekSeconds > 0
+			return burn, nil
 		}
 		if ffmpegFilterAvailable(opts.FFmpegPath, "subtitles") {
 			burn.filter = fmt.Sprintf("subtitles='%s':si=%d", escapeFFmpegPath(selected.Path), selected.Track)
@@ -159,15 +171,31 @@ func prepareSubtitleBurn(ctx context.Context, opts *TranscodeOptions) (*subtitle
 }
 
 func (b *subtitleBurn) enabled() string {
-	if b.overlay != "" {
+	if b.overlay != "" || b.bitmap != nil {
 		return "overlay"
 	}
 	return b.filter
 }
 
-// videoArgs adds the progressive PNG input only for embedded torrent captions.
+// videoArgs overlays local bitmap tracks or adds a progressive torrent PNG input.
 // Preserve input PTS, including nonzero media origins and transcoded seeks.
 func (b *subtitleBurn) videoArgs(base, tail string) []string {
+	if b.bitmap != nil {
+		// Match the subtitle canvas before scaling the composed video. Both
+		// streams use the same input timestamps, including after a seek.
+		input := 0
+		var args []string
+		if b.bitmapSeek {
+			// Input seeking discards bitmap cues that started before the seek.
+			// Read the subtitle track separately to retain an active cue; only
+			// the primary input's video/audio is decoded and encoded.
+			input = 1
+			args = append(args, "-i", b.bitmap.Path)
+		}
+		graph := fmt.Sprintf("[%d:s:%d][0:v:0]scale2ref[sub][video];[video][sub]overlay=eof_action=pass", input, b.bitmap.Track)
+		graph = joinVideoFilters(graph, base, tail) + "[out]"
+		return append(args, "-filter_complex", graph, "-map", "[out]", "-map", "0:a:0?")
+	}
 	graph := fmt.Sprintf("[0:v]%s[base];[1:v]setpts=PTS+%s/TB[sub];[sub][base]scale2ref[scaled][video];[video][scaled]overlay=eof_action=pass", base, strconv.FormatFloat(b.origin, 'f', -1, 64))
 	graph = joinVideoFilters(graph, tail) + "[out]"
 	return []string{

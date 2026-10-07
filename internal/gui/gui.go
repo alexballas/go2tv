@@ -86,6 +86,8 @@ type FyneScreen struct {
 	SkipPreviousButton       *widget.Button
 	SkipNextButton           *widget.Button
 	tvdata                   *soapcalls.TVPayload
+	dlnaQueueMu              sync.Mutex
+	dlnaQueueOperationMu     sync.Mutex
 	torrent                  torrentUIState
 	torrentPlayPending       chan struct{}
 	tabs                     *container.AppTabs

@@ -178,6 +178,14 @@ stops torrent playback and removes its queue item and temporary cache. Loading
 metadata leaves the current stream intact; choosing another torrent replaces it.
 Server shutdown removes torrent caches. FFmpeg transcoding supports input seeks.
 
+Desktop GUI **Automatic** subtitles prefer a matching sidecar (`.srt`, `.vtt`,
+`.ass`, then `.ssa`). Without a sidecar, DLNA leaves embedded subtitles to the
+TV during direct playback; with transcoding, it burns the first supported local
+embedded track. Chromecast selects the first supported embedded text track for
+receiver captions, or the first supported text or bitmap track for burn-in.
+DLNA serves sidecars and explicitly selected embedded text tracks as SRT without
+transcoding. Unreadable automatic tracks never block playback.
+
 **Automatic torrent subtitles** controls embedded torrent text subtitles.
 External SRT/VTT/ASS/SSA captions use the Chromecast receiver during direct and
 transcoded playback; transcoded seeks shift captions to the new stream start. Enable
@@ -193,9 +201,11 @@ their original ASS/SSA styles, positioning, animation and attached fonts when
 burned during transcoding. Local embedded ASS/SSA tracks are also burned directly
 from their container, preserving attached fonts. External ASS/SSA files preserve
 their styles and can use font files alongside the subtitle file. Receiver WebVTT
-captions retain simplified formatting. Bitmap subtitles are not supported by
-this text path. FFmpeg must include the `subtitles`, `overlay`, and `scale2ref`
-filters and PNG support for embedded torrent burn-in.
+captions retain simplified formatting. Local bitmap subtitles (PGS, DVD, DVB,
+XSub) require transcoding and are burned into the video; Chromecast also requires
+**Burn Chromecast Subtitles**. Bitmap captions cannot be served as SRT or WebVTT.
+FFmpeg must include `overlay` and `scale2ref` for bitmap burn-in, and `subtitles`,
+`overlay`, and `scale2ref` filters and PNG support for embedded torrent burn-in.
 
 From the GUI, open **Settings → Remote Web Session…**, add media folders, choose local or
 LAN access, and start the session.

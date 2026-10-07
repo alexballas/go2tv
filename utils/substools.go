@@ -37,8 +37,68 @@ type tags struct {
 // ErrNoSubs - No subs detected
 var ErrNoSubs = errors.New("no subs")
 
+// ErrBitmapSubtitles identifies captions requiring video burn-in, not text extraction.
+var ErrBitmapSubtitles = errors.New("image-based subtitles cannot be converted to text")
+
+type subtitleTrackInfo struct {
+	Streams []struct {
+		CodecName string `json:"codec_name"`
+	} `json:"streams"`
+	Format struct {
+		Name      string `json:"format_name"`
+		StartTime string `json:"start_time"`
+	} `json:"format"`
+}
+
+func bitmapSubtitleCodec(codec string) bool {
+	switch codec {
+	case "hdmv_pgs_subtitle", "dvd_subtitle", "dvb_subtitle", "xsub":
+		return true
+	}
+	return false
+}
+
+func probeSubtitleTrackContext(ctx context.Context, ffmpeg, path string, index int) (subtitleTrackInfo, error) {
+	var info subtitleTrackInfo
+	if err := ctx.Err(); err != nil {
+		return info, err
+	}
+	if index < 0 {
+		return info, fmt.Errorf("invalid subtitle track")
+	}
+	ffprobe, err := ResolveFFprobePath(ffmpeg)
+	if err != nil {
+		return info, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, ffprobe, "-v", "error", "-select_streams", "s:"+strconv.Itoa(index),
+		"-show_entries", "stream=codec_name:format=format_name,start_time", "-of", "json", path)
+	setSysProcAttr(cmd)
+	cmd.WaitDelay = time.Second
+	data, err := cmd.Output()
+	if err != nil {
+		if ctx.Err() != nil {
+			return info, ctx.Err()
+		}
+		return info, fmt.Errorf("probe subtitle track: %w", err)
+	}
+	if err := json.Unmarshal(data, &info); err != nil {
+		return info, fmt.Errorf("decode subtitle track: %w", err)
+	}
+	return info, nil
+}
+
 // GetSubs - List all subs in our video file.
 func GetSubs(ffmpeg string, f string) ([]string, error) {
+	return GetSubsContext(context.Background(), ffmpeg, f)
+}
+
+// GetSubsContext cancels subtitle discovery when playback preparation stops.
+func GetSubsContext(ctx context.Context, ffmpeg string, f string) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	f, err := mediaInput(f)
 	if err != nil {
 		return nil, err
@@ -46,7 +106,7 @@ func GetSubs(ffmpeg string, f string) ([]string, error) {
 
 	// We assume the ffprobe path based on the ffmpeg one.
 	// So we need to ensure that the ffmpeg one exists.
-	if err := CheckFFmpeg(ffmpeg); err != nil {
+	if err := CheckFFmpegContext(ctx, ffmpeg); err != nil {
 		return nil, err
 	}
 
@@ -55,7 +115,7 @@ func GetSubs(ffmpeg string, f string) ([]string, error) {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx,
 		ffprobePath,
@@ -65,9 +125,13 @@ func GetSubs(ffmpeg string, f string) ([]string, error) {
 		f,
 	)
 	setSysProcAttr(cmd)
+	cmd.WaitDelay = time.Second
 
 	output, err := cmd.Output()
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, err
 	}
 
@@ -153,6 +217,13 @@ func ExtractSubContext(ctx context.Context, ffmpeg string, n int, f string) (str
 	if err != nil {
 		return "", err
 	}
+	probe, probeErr := probeSubtitleTrackContext(ctx, ffmpeg, f, n)
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if probeErr == nil && len(probe.Streams) == 1 && bitmapSubtitleCodec(probe.Streams[0].CodecName) {
+		return "", fmt.Errorf("subtitle track %d: %w", n+1, ErrBitmapSubtitles)
+	}
 
 	tempSub, err := os.CreateTemp("", "go2tv-sub-*.srt")
 	if err != nil {
@@ -165,7 +236,10 @@ func ExtractSubContext(ctx context.Context, ffmpeg string, n int, f string) (str
 			_ = os.Remove(subPath)
 		}
 	}()
-	nativeErr := extractNativeSub(ctx, ffmpeg, n, f, tempSub)
+	nativeErr := probeErr
+	if probeErr == nil {
+		nativeErr = extractNativeSub(ctx, n, f, tempSub, probe)
+	}
 	if err := tempSub.Close(); err != nil {
 		return "", fmt.Errorf("close subtitle file: %w", err)
 	}
@@ -211,7 +285,7 @@ func ExtractSubContext(ctx context.Context, ffmpeg string, n int, f string) (str
 	return subPath, nil
 }
 
-func extractNativeSub(ctx context.Context, ffmpeg string, index int, path string, out io.Writer) error {
+func extractNativeSub(ctx context.Context, index int, path string, out io.Writer, probe subtitleTrackInfo) error {
 	// Progressive sources keep their existing extraction path. Local files
 	// with other extensions also retain FFmpeg's broader container support.
 	ext := strings.ToLower(filepath.Ext(path))
@@ -225,37 +299,10 @@ func extractNativeSub(ctx context.Context, ffmpeg string, index int, path string
 	if !info.Mode().IsRegular() {
 		return mkvsubs.ErrNoSubtitles
 	}
-	ffprobe, err := ResolveFFprobePath(ffmpeg)
-	if err != nil {
-		return err
-	}
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	// FFmpeg normalizes subtitles to the media start time. Also confirm the
 	// selected codec using the same stream selector as the fallback command.
-	cmd := exec.CommandContext(ctx, ffprobe, "-v", "error", "-select_streams", "s:"+strconv.Itoa(index),
-		"-show_entries", "stream=codec_name:format=format_name,start_time", "-of", "json", path)
-	setSysProcAttr(cmd)
-	cmd.WaitDelay = time.Second
-	data, err := cmd.Output()
-	if err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		return err
-	}
-	var probe struct {
-		Streams []struct {
-			CodecName string `json:"codec_name"`
-		} `json:"streams"`
-		Format struct {
-			Name      string `json:"format_name"`
-			StartTime string `json:"start_time"`
-		} `json:"format"`
-	}
-	if err := json.Unmarshal(data, &probe); err != nil {
-		return err
-	}
 	formats := strings.Split(probe.Format.Name, ",")
 	if len(probe.Streams) != 1 || probe.Streams[0].CodecName != "subrip" ||
 		(!slices.Contains(formats, "matroska") && !slices.Contains(formats, "webm")) {

@@ -4,6 +4,7 @@ package gui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -18,69 +19,96 @@ import (
 )
 
 func extractChromecastSubtitles(screen *FyneScreen) error {
+	err := prepareDesktopSubtitles(screen, screen.mediafile, screen.Transcode && screen.castBurnSubtitles, true)
+	if errors.Is(err, utils.ErrBitmapSubtitles) {
+		return fmt.Errorf("%w. %s", utils.ErrBitmapSubtitles, lang.L("Enable Transcode and Burn Chromecast Subtitles in Settings → Playback, or select an external text subtitle file."))
+	}
+	return err
+}
+
+// prepareDesktopSubtitles shares local track selection across both protocols.
+// DLNA leaves automatic embedded captions to the TV without transcoding.
+func prepareDesktopSubtitles(screen *FyneScreen, mediaPath string, burn, automaticEmbedded bool) error {
 	ctx := screen.playbackStartupContext()
 	screen.embeddedSubtitle = nil
-	if screen.Screencast || torrentMediaSelected(screen) {
+	if screen.Screencast || torrentMediaSelected(screen) ||
+		(screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked) {
 		return nil
 	}
-	track := -1
+	var tracks []int
 	automatic := false
 	fyne.DoAndWait(func() {
+		if !screen.CustomSubsCheck.Checked && !automaticEmbedded && slices.Contains(screen.tempFiles, screen.subsfile) {
+			// A previous extraction must not override native DLNA captions.
+			screen.subsfile = ""
+		}
 		selected := screen.SelectInternalSubs.Selected
 		switch {
 		case selected != "":
-			track = slices.Index(screen.SelectInternalSubs.Options, selected)
-		case !screen.CustomSubsCheck.Checked && (screen.subsfile == "" || slices.Contains(screen.tempFiles, screen.subsfile)) &&
-			!screen.ExternalMediaURL.Checked && screen.mediaKindForPath(screen.mediafile) == "video" &&
-			len(screen.SelectInternalSubs.Options) > 0:
-			// Automatic prefers a sidecar, then the first embedded track.
-			track = 0
+			if track := slices.Index(screen.SelectInternalSubs.Options, selected); track >= 0 {
+				tracks = append(tracks, track)
+			}
+		case automaticEmbedded && !screen.CustomSubsCheck.Checked && (screen.subsfile == "" || slices.Contains(screen.tempFiles, screen.subsfile)) &&
+			!screen.ExternalMediaURL.Checked && screen.mediaKindForPath(mediaPath) == "video":
+			for track := range screen.SelectInternalSubs.Options {
+				tracks = append(tracks, track)
+			}
 			automatic = true
 		}
-		if track >= 0 {
+		if len(tracks) > 0 {
 			screen.PlayPause.SetText(lang.L("Extracting Subtitles") + "   ")
 		}
 	})
-	if track < 0 {
+	if len(tracks) == 0 {
 		return nil
 	}
-	if screen.Transcode && screen.castBurnSubtitles {
-		original, err := utils.EmbeddedSubtitleForBurnContext(ctx, screen.ffmpegPath, screen.mediafile, track)
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if err == nil && original != nil {
-			screen.embeddedSubtitle = original
-			screen.subsfile = ""
-			fyne.Do(func() { screen.PlayPause.SetText(lang.L("Play") + "   ") })
-			return nil
-		}
-		// Keep extraction's existing error/fallback behavior if probing fails.
-	}
-	path, err := utils.ExtractSubContext(ctx, screen.ffmpegPath, track, screen.mediafile)
-	if ctx.Err() != nil {
-		if path != "" {
-			_ = os.Remove(path)
-		}
-		return ctx.Err()
-	}
-	fyne.Do(func() {
-		screen.PlayPause.SetText(lang.L("Play") + "   ")
-	})
+	// Discard a previous extraction before retrying or switching to direct burn-in.
+	screen.subsfile = ""
+	path, original, err := prepareEmbeddedSubtitles(ctx, screen.ffmpegPath, mediaPath, tracks, burn, automatic)
+	fyne.Do(func() { screen.PlayPause.SetText(lang.L("Play") + "   ") })
 	if err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if automatic {
-			// Optional captions must not prevent video playback (e.g. bitmap
-			// tracks cannot be converted to SRT). Explicit selections report errors.
-			return nil
+		if errors.Is(err, utils.ErrBitmapSubtitles) {
+			return fmt.Errorf("%w. %s", err, lang.L("Enable Transcode to burn these subtitles into the video, or select an external text subtitle file."))
 		}
 		return err
 	}
-	screen.tempFiles = append(screen.tempFiles, path)
+	if path != "" {
+		screen.tempFiles = append(screen.tempFiles, path)
+	}
 	screen.subsfile = path
+	screen.embeddedSubtitle = original
 	return nil
+}
+
+func prepareEmbeddedSubtitles(ctx context.Context, ffmpegPath, mediaPath string, tracks []int, burn, automatic bool) (string, *utils.EmbeddedSubtitle, error) {
+	for _, track := range tracks {
+		if burn {
+			original, err := utils.EmbeddedSubtitleForBurnContext(ctx, ffmpegPath, mediaPath, track)
+			if ctx.Err() != nil {
+				return "", nil, ctx.Err()
+			}
+			if err == nil && original != nil {
+				return "", original, nil
+			}
+			// Fall back to extraction when the direct-render probe fails.
+		}
+		path, err := utils.ExtractSubContext(ctx, ffmpegPath, track, mediaPath)
+		if ctx.Err() != nil {
+			if path != "" {
+				_ = os.Remove(path)
+			}
+			return "", nil, ctx.Err()
+		}
+		if err != nil {
+			if automatic {
+				// Bitmap or unreadable tracks must not block optional captions.
+				continue
+			}
+			return "", nil, err
+		}
+		return path, nil, nil
+	}
+	return "", nil, ctx.Err()
 }
 
 // registerChromecastSubtitles prepares simplified receiver captions for playback

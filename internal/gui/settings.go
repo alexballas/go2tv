@@ -3,6 +3,7 @@
 package gui
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -226,30 +227,36 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		fyne.CurrentApp().Preferences().SetString("Gapless", selection)
 		if s.NextMediaCheck.Checked {
 			target := traversalPlaybackTarget(s)
-			switch selection {
-			case "Enabled":
-				switch s.getScreenState() {
-				case "Playing", "Paused":
+			go func() {
+				switch selection {
+				case "Enabled":
+					switch s.getScreenState() {
+					case "Playing", "Paused":
+						if target.device.deviceType == devices.DeviceTypeDLNA {
+							newTVPayload, err := queueNext(s, false)
+							if err == nil {
+								s.dlnaQueueMu.Lock()
+								if s.serverStopCTX != nil && s.serverStopCTX.Err() == nil && s.GaplessMediaWatcher == nil {
+									s.GaplessMediaWatcher = gaplessMediaWatcher
+									go s.GaplessMediaWatcher(s.serverStopCTX, s, newTVPayload)
+								}
+								s.dlnaQueueMu.Unlock()
+							}
+						}
+					}
+				case "Disabled":
+					// We're disabling gapless playback. If for some reason
+					// we fail to clear the NextURI it would be best to stop and
+					// avoid inconsistencies where gapless playback appears disabled
+					// but in reality it's not.
 					if target.device.deviceType == devices.DeviceTypeDLNA {
-						newTVPayload, err := queueNext(s, false)
-						if err == nil && s.GaplessMediaWatcher == nil {
-							s.GaplessMediaWatcher = gaplessMediaWatcher
-							go s.GaplessMediaWatcher(s.serverStopCTX, s, newTVPayload)
+						_, err := queueNext(s, true)
+						if err != nil && !errors.Is(err, context.Canceled) {
+							stopAction(s)
 						}
 					}
 				}
-			case "Disabled":
-				// We're disabling gapless playback. If for some reason
-				// we fail to clear the NextURI it would be best to stop and
-				// avoid inconsistencies where gapless playback appears disabled
-				// but in reality it's not.
-				if target.device.deviceType == devices.DeviceTypeDLNA && s.tvdata != nil {
-					_, err := queueNext(s, true)
-					if err != nil {
-						stopAction(s)
-					}
-				}
-			}
+			}()
 		}
 	})
 	gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")

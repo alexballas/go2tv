@@ -2,16 +2,12 @@ package utils
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"time"
 )
 
 const (
@@ -20,45 +16,23 @@ const (
 	maxSubtitleFontBytes = 64 << 20
 )
 
-// EmbeddedSubtitleForBurn identifies tracks whose original typesetting must
-// reach libass without an SRT conversion. Plain text keeps the existing path.
+// EmbeddedSubtitleForBurn identifies styled text and bitmap tracks that must
+// be rendered without an SRT conversion. Plain text keeps the existing path.
 func EmbeddedSubtitleForBurn(ffmpegPath, path string, track int) (*EmbeddedSubtitle, error) {
 	return EmbeddedSubtitleForBurnContext(context.Background(), ffmpegPath, path, track)
 }
 
 func EmbeddedSubtitleForBurnContext(ctx context.Context, ffmpegPath, path string, track int) (*EmbeddedSubtitle, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if track < 0 {
-		return nil, fmt.Errorf("invalid subtitle track")
-	}
-	ffprobe, err := ResolveFFprobePath(ffmpegPath)
+	result, err := probeSubtitleTrackContext(ctx, ffmpegPath, path, track)
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
-	defer cancel()
-	command := exec.CommandContext(ctx, ffprobe, "-v", "error", "-select_streams", "s:"+strconv.Itoa(track), "-show_entries", "stream=codec_name", "-of", "json", path)
-	setSysProcAttr(command)
-	command.WaitDelay = time.Second
-	data, err := command.Output()
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
+	if len(result.Streams) == 1 {
+		codec := result.Streams[0].CodecName
+		bitmap := bitmapSubtitleCodec(codec)
+		if codec == "ass" || codec == "ssa" || bitmap {
+			return &EmbeddedSubtitle{Path: path, Track: track, Bitmap: bitmap}, nil
 		}
-		return nil, fmt.Errorf("probe subtitle track: %w", err)
-	}
-	var result struct {
-		Streams []struct {
-			Codec string `json:"codec_name"`
-		} `json:"streams"`
-	}
-	if err := json.Unmarshal(data, &result); err != nil {
-		return nil, fmt.Errorf("decode subtitle track: %w", err)
-	}
-	if len(result.Streams) == 1 && (result.Streams[0].Codec == "ass" || result.Streams[0].Codec == "ssa") {
-		return &EmbeddedSubtitle{Path: path, Track: track}, nil
 	}
 	return nil, nil
 }
