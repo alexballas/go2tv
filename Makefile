@@ -29,11 +29,21 @@ APPDATA_SRC=assets/linux/app.go2tv.go2tv.appdata.xml
 APPDATA_APPDIR=$(APPDIR)/usr/share/metainfo
 APPIMAGETOOL=$(BUILD_DIR)/appimagetool
 ARCH:=$(shell uname -m)
-APPIMAGE_OUT=$(BUILD_DIR)/Go2TV-$(ARCH).AppImage
+APPIMAGE_OUT=$(BUILD_DIR)/Go2TV-$(VERSION)-$(ARCH).AppImage
+APPIMAGE_UPDATE_INFO?=
 FFMPEG_STATIC_ARCHIVE=$(BUILD_DIR)/ffmpeg-static.tar.xz
 FFMPEG_STATIC_DIR=$(BUILD_DIR)/ffmpeg-static
 FFMPEG_APP_LIBDIR=$(APPDIR)/usr/lib/ffmpeg
 APPIMAGE_FFMPEG_MODE?=auto
+# FFmpeg 8.1.2 is the last stable branch confirmed compatible with Pascal
+# NVENC on NVIDIA 580xx drivers. Pin a BtbN month-end build for reproducible
+# AppImages: daily builds expire after 14 releases, month-end builds after two
+# years. Refresh this pin before August 2028; override URL and SHA256 together
+# when testing another build.
+APPIMAGE_FFMPEG_RELEASE?=autobuild-2026-08-31-13-27
+APPIMAGE_FFMPEG_BUILD?=n8.1.2-50-g1a748fe2cd
+APPIMAGE_FFMPEG_SHA256_X86_64?=c733b4b2951e5957e15505f788b2c65a7a41b6da4b289e295852cc38079b4d2b
+APPIMAGE_FFMPEG_SHA256_AARCH64?=ae5da4f51b9052390f414005f8ab26c1eed1268f327cce7cb79aa076b29bd66e
 WINDOWS_FYNE?=$(CURDIR)/$(BUILD_DIR)/tools/fyne
 ANDROID_FYNE=$(CURDIR)/$(BUILD_DIR)/tools/fyne
 # The CLI that packages the APK. Defaults to the one android-fyne provisions;
@@ -42,11 +52,11 @@ FYNE?=$(ANDROID_FYNE)
 # The Android share-target handler lives in Java, which the packaging CLI carries
 # as a pre-compiled dex blob inside its own binary - not in the refyne library the
 # app links against. A CLI from a different revision than go.mod therefore builds a
-# green APK with no handler in it, silently. Resolve both from go.mod so the two
-# cannot drift: a directory replace has no version to install from, so build the
-# CLI out of that checkout instead.
+# green APK with no handler in it, silently. Resolve both from the module graph
+# so they cannot drift: a directory replace or go.work module has no version to
+# install from, so build the CLI out of that checkout instead.
 REFYNE_ANDROID_VERSION?=$(shell go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' github.com/alexballas/refyne/v2 2>/dev/null)
-REFYNE_ANDROID_DIR?=$(shell go list -m -f '{{if .Replace}}{{if not .Replace.Version}}{{.Replace.Dir}}{{end}}{{end}}' github.com/alexballas/refyne/v2 2>/dev/null)
+REFYNE_ANDROID_DIR?=$(shell go list -m -f '{{if .Replace}}{{if not .Replace.Version}}{{.Replace.Dir}}{{end}}{{else if .Main}}{{.Dir}}{{end}}' github.com/alexballas/refyne/v2 2>/dev/null)
 WINDOWS_SYSROOT=$(BUILD_DIR)/windows-sysroot
 WINDOWS_SYSROOT_ABS=$(CURDIR)/$(WINDOWS_SYSROOT)
 WINDOWS_MINGW_URL?=https://mirror.msys2.org/mingw/mingw64
@@ -67,8 +77,15 @@ ANDROID_FFMPEG_URL?=$(ANDROID_FFMPEG_BASE_URL)/ffmpeg
 ANDROID_FFPROBE_URL?=$(ANDROID_FFMPEG_BASE_URL)/ffprobe
 ANDROID_FFMPEG_BIN=$(BUILD_DIR)/ffmpeg-android
 ANDROID_FFPROBE_BIN=$(BUILD_DIR)/ffprobe-android
+ANDROID_FFMPEG_MODE?=download
+ANDROID_FFMPEG_SOURCE_DIR?=
+ANDROID_X264_SOURCE_DIR?=
+ANDROID_FFMPEG_SOURCE_OUT?=$(BUILD_DIR)/ffmpeg-android-source
 ANDROID_APK_LIBS=$(BUILD_DIR)/apk-libs
 ANDROID_ABI?=arm64-v8a
+# Torrent's libutp uses C++; Android does not provide this NDK runtime.
+ANDROID_LIBCXX_BIN?=$(ANDROID_NDK_HOME)/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so
+ANDROID_SIGN?=true
 # Kept out of BUILD_DIR so `make clean` cannot delete it: a regenerated key does
 # not match what is already installed, and Android then rejects the update until
 # the app (and its data) is removed.
@@ -80,7 +97,7 @@ ANDROID_BUILD_TOOLS?=$(shell ls -d $$ANDROID_HOME/build-tools/* 2>/dev/null | so
 # aligned; the android target verifies both, since neither is ours to control.
 ANDROID_ELF_ALIGN=0x4000
 
-.PHONY: webui build build-lite wayland x11 windows windows-check-version windows-sysroot windows-fyne install uninstall clean run test test-wayland-first-render appimage appimage-ffmpeg android android-fyne check-no-replace print-app-version print-app-build
+.PHONY: webui build build-lite wayland x11 windows windows-check-version windows-sysroot windows-fyne install uninstall clean run test test-wayland-first-render appimage appimage-ffmpeg android android-source android-ffmpeg-source android-fyne check-no-replace print-app-version print-app-build
 
 # Packagers driven outside this Makefile (the macOS workflows) read the version
 # metadata from here so the arithmetic lives in one place.
@@ -238,24 +255,45 @@ check-no-replace:
 		exit 1; \
 	fi
 
+android-ffmpeg-source:
+	@if [ -z "$(ANDROID_FFMPEG_SOURCE_DIR)" ]; then echo "ANDROID_FFMPEG_SOURCE_DIR is required"; exit 1; fi
+	@if [ -z "$(ANDROID_X264_SOURCE_DIR)" ]; then echo "ANDROID_X264_SOURCE_DIR is required"; exit 1; fi
+	ANDROID_ABI="$(ANDROID_ABI)" scripts/build-android-ffmpeg.sh "$(ANDROID_FFMPEG_SOURCE_DIR)" "$(ANDROID_X264_SOURCE_DIR)" "$(ANDROID_FFMPEG_SOURCE_OUT)"
+
+android-source: android-ffmpeg-source
+	$(MAKE) android \
+		ANDROID_FFMPEG_MODE=local \
+		ANDROID_FFMPEG_BIN="$(ANDROID_FFMPEG_SOURCE_OUT)/ffmpeg" \
+		ANDROID_FFPROBE_BIN="$(ANDROID_FFMPEG_SOURCE_OUT)/ffprobe"
+
 android: android-fyne
 	set -e; \
 	if [ -z "$$ANDROID_NDK_HOME" ]; then echo "ANDROID_NDK_HOME is required"; exit 1; fi; \
 	if [ -z "$$ANDROID_HOME" ]; then echo "ANDROID_HOME is required"; exit 1; fi; \
+	if [ ! -f "$(ANDROID_LIBCXX_BIN)" ]; then echo "Android C++ runtime missing: $(ANDROID_LIBCXX_BIN)"; exit 1; fi; \
 	if [ -z "$(ANDROID_BUILD_TOOLS)" ]; then echo "Android build-tools not found under ANDROID_HOME"; exit 1; fi; \
 	if [ ! -x "$(ANDROID_BUILD_TOOLS)/aapt" ]; then echo "aapt missing in $(ANDROID_BUILD_TOOLS)"; exit 1; fi; \
 	if [ ! -x "$(ANDROID_BUILD_TOOLS)/zipalign" ]; then echo "zipalign missing in $(ANDROID_BUILD_TOOLS)"; exit 1; fi; \
 	if [ ! -x "$(ANDROID_BUILD_TOOLS)/apksigner" ]; then echo "apksigner missing in $(ANDROID_BUILD_TOOLS)"; exit 1; fi; \
 	if ! command -v zip >/dev/null 2>&1; then echo "zip is required"; exit 1; fi; \
-	if ! command -v keytool >/dev/null 2>&1; then echo "keytool is required"; exit 1; fi; \
+	case "$(ANDROID_SIGN)" in true|false) ;; *) echo "ANDROID_SIGN must be true or false"; exit 1 ;; esac; \
+	if [ "$(ANDROID_SIGN)" = true ] && ! command -v keytool >/dev/null 2>&1; then echo "keytool is required"; exit 1; fi; \
 	FYNEAPP="$(CURDIR)/cmd/go2tv/FyneApp.toml"; \
 	FYNEAPP_BAK="$$(mktemp)"; \
 	cp "$$FYNEAPP" "$$FYNEAPP_BAK"; \
 	trap 'cp "$$FYNEAPP_BAK" "$$FYNEAPP"; rm -f "$$FYNEAPP_BAK"' EXIT; \
 	mkdir -p $(BUILD_DIR); \
-	rm -rf $(ANDROID_APK_LIBS) $(ANDROID_FFMPEG_BIN) $(ANDROID_FFPROBE_BIN) $(APK_OUT) $(APK_ALIGNED); \
+	rm -rf $(ANDROID_APK_LIBS) $(APK_OUT) $(APK_ALIGNED); \
+	case "$(ANDROID_FFMPEG_MODE)" in \
+		download) rm -f $(ANDROID_FFMPEG_BIN) $(ANDROID_FFPROBE_BIN) ;; \
+		local) \
+			if [ ! -x "$(ANDROID_FFMPEG_BIN)" ]; then echo "local ffmpeg missing: $(ANDROID_FFMPEG_BIN)"; exit 1; fi; \
+			if [ ! -x "$(ANDROID_FFPROBE_BIN)" ]; then echo "local ffprobe missing: $(ANDROID_FFPROBE_BIN)"; exit 1; fi ;; \
+		*) echo "invalid ANDROID_FFMPEG_MODE: $(ANDROID_FFMPEG_MODE)"; exit 1 ;; \
+	esac; \
 	cd cmd/go2tv; \
 	rm -f ./*.apk; \
+	GOFLAGS="$${GOFLAGS:-} -toolexec='$(CURDIR)/scripts/android-go-tool.sh'" \
 	ANDROID_NDK_HOME="$$ANDROID_NDK_HOME" $(FYNE) package \
 		--os android/arm64 \
 		--name Go2TV \
@@ -268,16 +306,28 @@ android: android-fyne
 	if [ -z "$$APK_BUILT" ]; then echo "fyne did not create an APK"; exit 1; fi; \
 	mv "$$APK_BUILT" ../../$(APK_OUT); \
 	cd ../..; \
-	echo "Downloading android ffmpeg: $(ANDROID_FFMPEG_URL)"; \
-	curl -fsSL "$(ANDROID_FFMPEG_URL)" -o $(ANDROID_FFMPEG_BIN) || wget -q -O $(ANDROID_FFMPEG_BIN) "$(ANDROID_FFMPEG_URL)"; \
-	echo "Downloading android ffprobe: $(ANDROID_FFPROBE_URL)"; \
-	curl -fsSL "$(ANDROID_FFPROBE_URL)" -o $(ANDROID_FFPROBE_BIN) || wget -q -O $(ANDROID_FFPROBE_BIN) "$(ANDROID_FFPROBE_URL)"; \
-	chmod 755 $(ANDROID_FFMPEG_BIN) $(ANDROID_FFPROBE_BIN); \
+	if [ "$(ANDROID_FFMPEG_MODE)" = download ]; then \
+		echo "Downloading android ffmpeg: $(ANDROID_FFMPEG_URL)"; \
+		curl -fsSL "$(ANDROID_FFMPEG_URL)" -o $(ANDROID_FFMPEG_BIN) || wget -q -O $(ANDROID_FFMPEG_BIN) "$(ANDROID_FFMPEG_URL)"; \
+		echo "Downloading android ffprobe: $(ANDROID_FFPROBE_URL)"; \
+		curl -fsSL "$(ANDROID_FFPROBE_URL)" -o $(ANDROID_FFPROBE_BIN) || wget -q -O $(ANDROID_FFPROBE_BIN) "$(ANDROID_FFPROBE_URL)"; \
+		chmod 755 $(ANDROID_FFMPEG_BIN) $(ANDROID_FFPROBE_BIN); \
+	fi; \
 	mkdir -p $(ANDROID_APK_LIBS)/lib/$(ANDROID_ABI); \
 	cp $(ANDROID_FFMPEG_BIN) $(ANDROID_APK_LIBS)/lib/$(ANDROID_ABI)/libffmpeg.so; \
 	cp $(ANDROID_FFPROBE_BIN) $(ANDROID_APK_LIBS)/lib/$(ANDROID_ABI)/libffprobe.so; \
-	chmod 755 $(ANDROID_APK_LIBS)/lib/$(ANDROID_ABI)/libffmpeg.so $(ANDROID_APK_LIBS)/lib/$(ANDROID_ABI)/libffprobe.so; \
-	( cd $(ANDROID_APK_LIBS) && zip -q -g ../$(notdir $(APK_OUT)) lib/$(ANDROID_ABI)/libffmpeg.so lib/$(ANDROID_ABI)/libffprobe.so ); \
+	cp "$(ANDROID_LIBCXX_BIN)" $(ANDROID_APK_LIBS)/lib/$(ANDROID_ABI)/libc++_shared.so; \
+	chmod 755 $(ANDROID_APK_LIBS)/lib/$(ANDROID_ABI)/*.so; \
+	( cd $(ANDROID_APK_LIBS) && zip -q -g ../$(notdir $(APK_OUT)) lib/$(ANDROID_ABI)/*.so ); \
+	if [ "$(ANDROID_FFMPEG_MODE)" = local ]; then \
+		NOTICE_SOURCE="$$(dirname "$(ANDROID_FFMPEG_BIN)")"; \
+		mkdir -p $(ANDROID_APK_LIBS)/assets/licenses; \
+		for notice in FFmpeg-GPL-2.0.txt x264-GPL-2.0.txt build-info.txt; do \
+			if [ ! -f "$$NOTICE_SOURCE/$$notice" ]; then echo "source-build notice missing: $$NOTICE_SOURCE/$$notice"; exit 1; fi; \
+			cp "$$NOTICE_SOURCE/$$notice" $(ANDROID_APK_LIBS)/assets/licenses/; \
+		done; \
+		( cd $(ANDROID_APK_LIBS) && zip -q -g ../$(notdir $(APK_OUT)) assets/licenses/* ); \
+	fi; \
 	MANIFEST_DUMP="$$($(ANDROID_BUILD_TOOLS)/aapt dump xmltree $(APK_OUT) AndroidManifest.xml || true)"; \
 	if echo "$$MANIFEST_DUMP" | grep -E "extractNativeLibs.*(false|0x0)" >/dev/null; then \
 		echo "AndroidManifest sets extractNativeLibs=false"; \
@@ -289,6 +339,7 @@ android: android-fyne
 	check_manifest "launchMode singleTask" 'launchMode.*0x2'; \
 	check_manifest "SEND filter" 'android.intent.action.SEND'; \
 	check_manifest "VIEW filter" 'android.intent.action.VIEW'; \
+	check_manifest "torrent document filter" 'application/x-bittorrent'; \
 	check_manifest "not debuggable" 'debuggable.*)0x0$$'; \
 	check_manifest "foreground service declared" 'org.golang.app.FyneForegroundService'; \
 	if echo "$$MANIFEST_DUMP" | grep -q 'foregroundServiceType'; then \
@@ -300,15 +351,18 @@ android: android-fyne
 		android.permission.CHANGE_NETWORK_STATE \
 		android.permission.POST_NOTIFICATIONS \
 		android.permission.WAKE_LOCK \
-		android.permission.CHANGE_WIFI_MULTICAST_STATE \
-		android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS; do \
+		android.permission.CHANGE_WIFI_MULTICAST_STATE; do \
 		check_manifest "$$perm" "$$perm"; \
 	done; \
+	if echo "$$MANIFEST_DUMP" | grep -q 'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'; then \
+		echo "manifest must not request direct battery-optimization exemption"; \
+		exit 1; \
+	fi; \
 	READELF="$$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"; \
 	if [ ! -x "$$READELF" ]; then READELF="$$(command -v llvm-readelf || command -v readelf || true)"; fi; \
 	if [ -n "$$READELF" ]; then \
 		ELF_TMP="$(BUILD_DIR)/pagesize-check.so"; \
-		for lib in libGo2TV.so libffmpeg.so libffprobe.so; do \
+		for lib in libGo2TV.so libffmpeg.so libffprobe.so libc++_shared.so; do \
 			unzip -p $(APK_OUT) lib/$(ANDROID_ABI)/$$lib > "$$ELF_TMP"; \
 			if "$$READELF" -lW "$$ELF_TMP" | awk '$$1 == "LOAD" && $$NF != "$(ANDROID_ELF_ALIGN)" { bad = 1 } END { exit !bad }'; then \
 				echo "$$lib has LOAD segments that are not 16 KB aligned"; \
@@ -318,20 +372,31 @@ android: android-fyne
 		done; \
 		rm -f "$$ELF_TMP"; \
 	fi; \
+	if unzip -Z1 $(APK_OUT) | grep -Eq '^META-INF/(MANIFEST\.MF|[^/]+\.(SF|RSA|DSA|EC))$$'; then \
+		zip -q -d $(APK_OUT) 'META-INF/MANIFEST.MF' 'META-INF/*.SF' 'META-INF/*.RSA' 'META-INF/*.DSA' 'META-INF/*.EC'; \
+	fi; \
 	$(ANDROID_BUILD_TOOLS)/zipalign -f -P 16 4 $(APK_OUT) $(APK_ALIGNED); \
 	mv $(APK_ALIGNED) $(APK_OUT); \
-	if [ -n "$${GO2TV_ANDROID_KEYSTORE:-}" ] && [ -z "$${GO2TV_ANDROID_KEYSTORE_PASS:-}" ]; then echo "GO2TV_ANDROID_KEYSTORE_PASS is required with GO2TV_ANDROID_KEYSTORE"; exit 1; fi; \
-	KEYSTORE="$${GO2TV_ANDROID_KEYSTORE:-$(ANDROID_DEBUG_KEYSTORE)}"; \
-	KEY_ALIAS="$${GO2TV_ANDROID_KEY_ALIAS:-go2tv}"; \
-	STOREPASS="$${GO2TV_ANDROID_KEYSTORE_PASS:-android}"; \
-	KEYPASS="$${GO2TV_ANDROID_KEY_PASS:-$$STOREPASS}"; \
-	if [ -z "$${GO2TV_ANDROID_KEYSTORE:-}" ] && [ ! -f "$$KEYSTORE" ]; then \
-		mkdir -p "$$(dirname "$$KEYSTORE")"; \
-		keytool -genkeypair -v -keystore "$$KEYSTORE" -storepass "$$STOREPASS" -keypass "$$KEYPASS" -alias "$$KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Go2TV,O=Go2TV,C=US"; \
+	if [ "$(ANDROID_SIGN)" = true ]; then \
+		if [ -n "$${GO2TV_ANDROID_KEYSTORE:-}" ] && [ -z "$${GO2TV_ANDROID_KEYSTORE_PASS:-}" ]; then echo "GO2TV_ANDROID_KEYSTORE_PASS is required with GO2TV_ANDROID_KEYSTORE"; exit 1; fi; \
+		KEYSTORE="$${GO2TV_ANDROID_KEYSTORE:-$(ANDROID_DEBUG_KEYSTORE)}"; \
+		KEY_ALIAS="$${GO2TV_ANDROID_KEY_ALIAS:-go2tv}"; \
+		STOREPASS="$${GO2TV_ANDROID_KEYSTORE_PASS:-android}"; \
+		KEYPASS="$${GO2TV_ANDROID_KEY_PASS:-$$STOREPASS}"; \
+		if [ -z "$${GO2TV_ANDROID_KEYSTORE:-}" ] && [ ! -f "$$KEYSTORE" ]; then \
+			mkdir -p "$$(dirname "$$KEYSTORE")"; \
+			keytool -genkeypair -v -keystore "$$KEYSTORE" -storepass "$$STOREPASS" -keypass "$$KEYPASS" -alias "$$KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Go2TV,O=Go2TV,C=US"; \
+		fi; \
+		$(ANDROID_BUILD_TOOLS)/apksigner sign --ks "$$KEYSTORE" --ks-key-alias "$$KEY_ALIAS" --ks-pass pass:"$$STOREPASS" --key-pass pass:"$$KEYPASS" $(APK_OUT); \
+		$(ANDROID_BUILD_TOOLS)/apksigner verify --print-certs $(APK_OUT); \
+	elif $(ANDROID_BUILD_TOOLS)/apksigner verify $(APK_OUT) >/dev/null 2>&1; then \
+		echo "unsigned APK unexpectedly contains a valid signature"; \
+		exit 1; \
+	else \
+		echo "Unsigned APK created at $(APK_OUT)"; \
 	fi; \
-	$(ANDROID_BUILD_TOOLS)/apksigner sign --ks "$$KEYSTORE" --ks-key-alias "$$KEY_ALIAS" --ks-pass pass:"$$STOREPASS" --key-pass pass:"$$KEYPASS" $(APK_OUT); \
-	$(ANDROID_BUILD_TOOLS)/apksigner verify --print-certs $(APK_OUT); \
-	rm -rf $(ANDROID_APK_LIBS) $(ANDROID_FFMPEG_BIN) $(ANDROID_FFPROBE_BIN); \
+	rm -rf $(ANDROID_APK_LIBS); \
+	if [ "$(ANDROID_FFMPEG_MODE)" = download ]; then rm -f $(ANDROID_FFMPEG_BIN) $(ANDROID_FFPROBE_BIN); fi; \
 	echo "APK created at $(APK_OUT)"
 
 appimage: build
@@ -372,7 +437,14 @@ appimage: build
 	fi
 
 	# Build the AppImage
-	( cd $(BUILD_DIR) && ./appimagetool AppDir "$(notdir $(APPIMAGE_OUT))" ); \
+	@set -e; \
+	if [ -n "$(APPIMAGE_UPDATE_INFO)" ]; then \
+		command -v zsyncmake >/dev/null || { echo "zsyncmake required for updateable AppImages"; exit 1; }; \
+		( cd $(BUILD_DIR) && ./appimagetool -u "$(APPIMAGE_UPDATE_INFO)" AppDir "$(abspath $(APPIMAGE_OUT))" ); \
+		test -s "$(APPIMAGE_OUT).zsync" || { echo "AppImage zsync file missing: $(APPIMAGE_OUT).zsync"; exit 1; }; \
+	else \
+		( cd $(BUILD_DIR) && ./appimagetool AppDir "$(abspath $(APPIMAGE_OUT))" ); \
+	fi; \
 	echo "AppImage created at $(APPIMAGE_OUT)"
 
 appimage-ffmpeg: build
@@ -411,15 +483,17 @@ appimage-ffmpeg: build
 				exit 1; \
 			fi; \
 			case "$(ARCH)" in \
-				x86_64) FFMPEG_URL="https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz" ;; \
-				aarch64|arm64) FFMPEG_URL="https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz" ;; \
-				armv7l|armhf) FFMPEG_URL="https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarmhf-gpl.tar.xz" ;; \
-				*) echo "Unsupported arch for auto ffmpeg download: $(ARCH)"; exit 1 ;; \
+				x86_64) FFMPEG_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/$(APPIMAGE_FFMPEG_RELEASE)/ffmpeg-$(APPIMAGE_FFMPEG_BUILD)-linux64-gpl-8.1.tar.xz"; FFMPEG_SHA256="$(APPIMAGE_FFMPEG_SHA256_X86_64)" ;; \
+				aarch64|arm64) FFMPEG_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/$(APPIMAGE_FFMPEG_RELEASE)/ffmpeg-$(APPIMAGE_FFMPEG_BUILD)-linuxarm64-gpl-8.1.tar.xz"; FFMPEG_SHA256="$(APPIMAGE_FFMPEG_SHA256_AARCH64)" ;; \
+				armv7l|armhf) if [ -z "$${APPIMAGE_FFMPEG_URL:-}" ]; then echo "Pinned FFmpeg 8.1.2 build unavailable for $(ARCH); set APPIMAGE_FFMPEG_URL and APPIMAGE_FFMPEG_SHA256"; exit 1; fi ;; \
+				*) echo "Unsupported arch for pinned ffmpeg download: $(ARCH)"; exit 1 ;; \
 			esac; \
 			FFMPEG_URL="$${APPIMAGE_FFMPEG_URL:-$$FFMPEG_URL}"; \
+			FFMPEG_SHA256="$${APPIMAGE_FFMPEG_SHA256:-$$FFMPEG_SHA256}"; \
 			rm -rf $(FFMPEG_STATIC_DIR) $(FFMPEG_STATIC_ARCHIVE); \
 			echo "Downloading ffmpeg bundle: $$FFMPEG_URL"; \
 			curl -fsSL "$$FFMPEG_URL" -o $(FFMPEG_STATIC_ARCHIVE) || wget -q -O $(FFMPEG_STATIC_ARCHIVE) "$$FFMPEG_URL"; \
+			if [ -n "$$FFMPEG_SHA256" ]; then echo "$$FFMPEG_SHA256  $(FFMPEG_STATIC_ARCHIVE)" | sha256sum -c -; fi; \
 			mkdir -p $(FFMPEG_STATIC_DIR); \
 			tar -xf $(FFMPEG_STATIC_ARCHIVE) -C $(FFMPEG_STATIC_DIR); \
 			FFMPEG_BIN="$$(find $(FFMPEG_STATIC_DIR) -type f -name ffmpeg | head -n 1)"; \
@@ -481,7 +555,15 @@ appimage-ffmpeg: build
 	if [ "$$(wc -c < $(APPIMAGETOOL))" -lt 1000000 ]; then echo "appimagetool download invalid: $(APPIMAGETOOL)"; exit 1; fi
 
 	# Build the AppImage
-	( cd $(BUILD_DIR) && ./appimagetool AppDir "$(notdir $(APPIMAGE_OUT))" ) && echo "AppImage created at $(APPIMAGE_OUT)"
+	@set -e; \
+	if [ -n "$(APPIMAGE_UPDATE_INFO)" ]; then \
+		command -v zsyncmake >/dev/null || { echo "zsyncmake required for updateable AppImages"; exit 1; }; \
+		( cd $(BUILD_DIR) && ./appimagetool -u "$(APPIMAGE_UPDATE_INFO)" AppDir "$(abspath $(APPIMAGE_OUT))" ); \
+		test -s "$(APPIMAGE_OUT).zsync" || { echo "AppImage zsync file missing: $(APPIMAGE_OUT).zsync"; exit 1; }; \
+	else \
+		( cd $(BUILD_DIR) && ./appimagetool AppDir "$(abspath $(APPIMAGE_OUT))" ); \
+	fi; \
+	echo "AppImage created at $(APPIMAGE_OUT)"
 
 	# Clean up ffmpeg build/download files
 	rm -rf $(FFMPEG_STATIC_DIR) $(FFMPEG_STATIC_ARCHIVE) $(BUILD_DIR)/ffmpeg-src $(BUILD_DIR)/ffmpeg.tar.xz

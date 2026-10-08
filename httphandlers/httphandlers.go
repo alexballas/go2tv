@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
 )
@@ -154,6 +155,15 @@ func (s *HTTPserver) StartServing(serverStarted chan<- error) {
 func (s *HTTPserver) StartServer(serverStarted chan<- error, media, subtitles any,
 	tvpayload *soapcalls.TVPayload, screen Screen,
 ) {
+	if !tvpayload.Transcode {
+		preparedURL, preparedSubtitles, err := PrepareDLNASubtitles(tvpayload.Context(), tvpayload.SubtitlesURL, subtitles, tvpayload.FFmpegPath)
+		if err != nil {
+			serverStarted <- err
+			return
+		}
+		tvpayload.SubtitlesURL, subtitles = preparedURL, preparedSubtitles
+	}
+
 	mURL, err := url.Parse(tvpayload.MediaURL)
 	if err != nil {
 		serverStarted <- fmt.Errorf("failed to parse MediaURL: %w", err)
@@ -275,7 +285,9 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 
 		// Explicitly set Content-Type for HLS files.
 		if !out.static {
-			if strings.HasSuffix(requestPathLower, ".m3u8") {
+			if strings.HasSuffix(requestPathLower, ".srt") {
+				w.Header().Set("Content-Type", "text/srt; charset=utf-8")
+			} else if strings.HasSuffix(requestPathLower, ".m3u8") {
 				w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 			} else if strings.HasSuffix(requestPathLower, ".ts") {
 				w.Header().Set("Content-Type", "video/mp2t")
@@ -285,7 +297,25 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 		}
 
 		switch f := out.media.(type) {
+		case http.Handler:
+			f.ServeHTTP(w, r)
+			return
 		case string:
+			if source, ok := mediasource.Lookup(f); ok {
+				reader, err := source.Open(r.Context())
+				if err != nil {
+					http.Error(w, "media unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				defer reader.Close()
+				if out.transcode == nil && (out.payload == nil || !out.payload.Transcode) {
+					w.Header().Set("Content-Type", source.MIME())
+				}
+				// FFmpeg receives the source URL, never the sparse cache or stdin.
+				// Its range requests then use fresh piece-aware readers too.
+				out.media = osFileType{file: reader, path: source.URL()}
+				break
+			}
 			m, err := os.Open(f)
 			if err != nil {
 				http.NotFound(w, r)
@@ -534,6 +564,15 @@ func serveContentBytes(w http.ResponseWriter, r *http.Request, mediaType string,
 	http.ServeContent(w, r, name, time.Now(), bReader)
 }
 
+func dlnaTranscodeOptions(tv *soapcalls.TVPayload) *utils.TranscodeOptions {
+	return &utils.TranscodeOptions{
+		FFmpegPath: tv.FFmpegPath, SubsPath: tv.FFmpegSubsPath,
+		SeekSeconds: tv.FFmpegSeek, SubtitleSize: utils.SubtitleSizeMedium,
+		TorrentSource: tv.TorrentSource, LogOutput: tv.LogOutput,
+		EmbeddedSubtitle: tv.FFmpegEmbeddedSubtitle,
+	}
+}
+
 func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode bool, f io.ReadCloser, ff *exec.Cmd) {
 	defer f.Close()
 
@@ -559,7 +598,7 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 		case tv != nil:
 			// DLNA transcoding (MPEGTS)
 			var command exec.Cmd
-			err := utils.ServeTranscodedStream(r.Context(), w, f, &command, tv.FFmpegPath, tv.FFmpegSubsPath, tv.FFmpegSeek, utils.SubtitleSizeMedium)
+			err := utils.ServeDLNATranscodedStream(r.Context(), w, f, &command, dlnaTranscodeOptions(tv))
 			if err != nil {
 				tv.Log().Error("", "function", "serveContentReadClose", "Action", "Transcode", "error", err)
 			}
@@ -636,7 +675,7 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcall
 		case tv != nil:
 			// DLNA transcoding (MPEGTS)
 			var command exec.Cmd
-			err := utils.ServeTranscodedStream(r.Context(), w, input, &command, tv.FFmpegPath, tv.FFmpegSubsPath, tv.FFmpegSeek, utils.SubtitleSizeMedium)
+			err := utils.ServeDLNATranscodedStream(r.Context(), w, input, &command, dlnaTranscodeOptions(tv))
 			if err != nil {
 				tv.Log().Error("", "function", "serveContentCustomType", "Action", "Transcode", "error", err)
 			}

@@ -3,12 +3,13 @@ on: [push]
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    # Match the AppImage's oldest supported Ubuntu/glibc baseline.
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
 
     # The pipewire pkg-config exposes -fno-strict-overflow as of PipeWire 1.6.0,
-    # which cgo rejects unless it is explicitly allowed. Inert on 24.04, which
+    # which cgo rejects unless it is explicitly allowed. Inert on 22.04, which
     # predates that; here so bumping the runner pin does not break the build.
     env:
       CGO_CFLAGS_ALLOW: -fno-strict-overflow

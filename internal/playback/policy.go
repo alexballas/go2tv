@@ -48,7 +48,7 @@ func ChromecastSubtitlePath(subtitlesPath string) (string, bool) {
 	}
 
 	switch strings.ToLower(filepath.Ext(subtitlesPath)) {
-	case ".srt", ".vtt":
+	case ".srt", ".vtt", ".ass", ".ssa":
 		return subtitlesPath, true
 	default:
 		return "", false

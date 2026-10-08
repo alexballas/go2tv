@@ -441,11 +441,12 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			s.connectionManagerURL = ""
 			s.tvdata = nil
 
-			if s.chromecastClient != nil && s.chromecastClient.IsConnected() {
+			if s.shouldCloseChromecastClientOnSelectionChange() {
 				client := s.chromecastClient
 				server := s.httpserver
 				s.chromecastClient = nil
 				s.httpserver = nil
+				client.Log().Debug("closing idle Chromecast after device selection", "Method", "DeviceSelection")
 				go func() {
 					_ = client.Close(false)
 					if server != nil {
@@ -473,9 +474,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		}
 
 		// Auto-enable transcoding for incompatible Chromecast media
-		if data[id].deviceType == devices.DeviceTypeChromecast && s.mediafile != "" {
-			s.checkChromecastCompatibility()
-		}
+		s.checkChromecastCompatibility()
 		setPlayPauseView("", s)
 		list.Refresh()
 	}
@@ -579,6 +578,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	medialoop.OnChanged = func(b bool) {
 		s.Medialoop = b
+		if s.mpris != nil {
+			s.mpris.refresh()
+		}
 		if b {
 			nextmedia.SetChecked(false)
 			nextmedia.Disable()
@@ -591,6 +593,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	}
 
 	nextmedia.OnChanged = func(b bool) {
+		if s.mpris != nil {
+			s.mpris.refresh()
+		}
 		switch b {
 		case true:
 			medialoop.SetChecked(false)

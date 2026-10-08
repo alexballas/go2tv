@@ -14,6 +14,20 @@ import (
 
 const transcodeEncoderProbeTimeout = 5 * time.Second
 
+// Transcoding policy reference (target/max/buffer values are Mbps):
+//
+// Platform/codec       Policy
+// NVIDIA NVENC/CUDA    p4, VBR 10/20/40; all profiles
+// AMD AMF              balanced, vbr_peak; file 10/20/40
+// Intel VAAPI          no preset/forced VBR; file 10/20/40; DLNA default
+// Intel QSV             same as VAAPI; Windows
+// VideoToolbox          fixed 5; no VBV
+// MediaCodec            5/10/20
+// V4L2/SBC              5/10/20
+// Chromecast raw        5 max/1 buffer; NVENC 10/20/40
+// Chromecast file       10/20/40 for NVENC/AMF/VAAPI/QSV; 5/10/20 otherwise
+// DLNA                  NVENC 10/20/40; MediaCodec/V4L2 5/10/20; others default
+// Software              CRF 23; raw 5/1 max/buffer; file 10/20 max/buffer; DLNA uncapped
 type videoEncoderProfile string
 
 const (
@@ -122,7 +136,6 @@ func transcodeHardwareEncoderCandidates(profile videoEncoderProfile) []videoEnco
 			}
 		}
 
-		candidates = append(candidates, transcodeHardwareEncoderPlan(profile, "h264_qsv", nil))
 		return candidates
 	}
 }
@@ -146,6 +159,179 @@ func transcodeHardwareFilterTail(codec string) string {
 	default:
 		return "format=yuv420p"
 	}
+}
+
+// Keep CUDA frames on the GPU for decoding, scaling, and encoding.
+const cudaTranscodeScaleFilter = "scale_cuda=w='min(1920,iw)':h='min(1080,ih)':format=yuv420p:force_original_aspect_ratio=decrease:force_divisible_by=2"
+
+var cudaTranscodeCache sync.Map
+
+func cudaTranscodeAvailable(ffmpegPath string) bool {
+	if cached, ok := cudaTranscodeCache.Load(ffmpegPath); ok {
+		return cached.(bool)
+	}
+	ok := probeCudaTranscode(ffmpegPath)
+	cudaTranscodeCache.Store(ffmpegPath, ok)
+	return ok
+}
+
+func probeCudaTranscode(ffmpegPath string) bool {
+	if _, err := exec.LookPath(ffmpegPath); err != nil {
+		return false
+	}
+	if !ffmpegFilterAvailable(ffmpegPath, "scale_cuda") {
+		return false
+	}
+	if !ffmpegFilterAvailable(ffmpegPath, "hwupload_cuda") {
+		return false
+	}
+	if !ffmpegHwaccelAvailable(ffmpegPath, "cuda") {
+		return false
+	}
+	available, err := ffmpegVideoEncoderSet(ffmpegPath)
+	if err != nil {
+		return false
+	}
+	if len(available) > 0 {
+		if _, ok := available["h264_nvenc"]; !ok {
+			return false
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), transcodeEncoderProbeTimeout)
+	defer cancel()
+
+	args := []string{
+		"-v", "error",
+		"-nostdin",
+		"-f", "lavfi",
+		"-i", "color=c=black:s=1280x720:r=30:d=0.5",
+		"-an",
+		"-frames:v", "8",
+		"-r", "30",
+		"-vf", "hwupload_cuda,scale_cuda=640:360:format=yuv420p",
+		"-c:v", "h264_nvenc",
+		"-f", "null", "-",
+	}
+	cmd := exec.CommandContext(ctx, ffmpegPath, args...)
+	setSysProcAttr(cmd)
+
+	if err := cmd.Run(); err != nil {
+		return false
+	}
+	return ctx.Err() == nil
+}
+
+func ffmpegHwaccelAvailable(ffmpegPath, name string) bool {
+	key := ffmpegPath + "|hwaccel|" + name
+	if cached, ok := ffmpegFilterCache.Load(key); ok {
+		return cached.(bool)
+	}
+	set, err := ffmpegHwaccelSet(ffmpegPath)
+	if err != nil {
+		return false
+	}
+	_, ok := set[name]
+	ffmpegFilterCache.Store(key, ok)
+	return ok
+}
+
+func ffmpegHwaccelSet(ffmpegPath string) (map[string]struct{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), transcodeEncoderProbeTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, ffmpegPath, "-hide_banner", "-hwaccels")
+	setSysProcAttr(cmd)
+
+	out, err := cmd.Output()
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("ffmpeg -hwaccels timeout after %s", transcodeEncoderProbeTimeout)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("ffmpeg -hwaccels failed: %w", err)
+	}
+
+	accels := make(map[string]struct{})
+	for line := range strings.SplitSeq(string(out), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.Contains(trimmed, ":") || strings.Contains(trimmed, " ") {
+			continue
+		}
+		accels[trimmed] = struct{}{}
+	}
+	return accels, nil
+}
+
+// Keep VAAPI frames on the GPU for decoding, scaling, and encoding.
+const vaapiTranscodeScaleFilter = "scale_vaapi=w='min(1920,iw)':h='min(1080,ih)':format=nv12:force_original_aspect_ratio=decrease:force_divisible_by=2"
+
+var vaapiTranscodeCache sync.Map
+
+func vaapiDeviceFromPlan(plan videoEncoderPlan) string {
+	for i := 0; i+1 < len(plan.globalArgs); i++ {
+		if plan.globalArgs[i] == "-vaapi_device" {
+			return plan.globalArgs[i+1]
+		}
+	}
+	return ""
+}
+
+func vaapiTranscodeAvailable(ffmpegPath, device string) bool {
+	if device == "" {
+		return false
+	}
+	key := ffmpegPath + "|" + device
+	if cached, ok := vaapiTranscodeCache.Load(key); ok {
+		return cached.(bool)
+	}
+	ok := probeVaapiTranscode(ffmpegPath, device)
+	vaapiTranscodeCache.Store(key, ok)
+	return ok
+}
+
+func probeVaapiTranscode(ffmpegPath, device string) bool {
+	if _, err := exec.LookPath(ffmpegPath); err != nil {
+		return false
+	}
+	if !ffmpegFilterAvailable(ffmpegPath, "scale_vaapi") {
+		return false
+	}
+	if !ffmpegHwaccelAvailable(ffmpegPath, "vaapi") {
+		return false
+	}
+	available, err := ffmpegVideoEncoderSet(ffmpegPath)
+	if err != nil {
+		return false
+	}
+	if len(available) > 0 {
+		if _, ok := available["h264_vaapi"]; !ok {
+			return false
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), transcodeEncoderProbeTimeout)
+	defer cancel()
+
+	args := []string{
+		"-v", "error",
+		"-nostdin",
+		"-vaapi_device", device,
+		"-f", "lavfi",
+		"-i", "color=c=black:s=1280x720:r=30:d=0.5",
+		"-an",
+		"-frames:v", "8",
+		"-r", "30",
+		"-vf", "format=nv12,hwupload,scale_vaapi=640:360",
+		"-c:v", "h264_vaapi",
+		"-f", "null", "-",
+	}
+	cmd := exec.CommandContext(ctx, ffmpegPath, args...)
+	setSysProcAttr(cmd)
+
+	if err := cmd.Run(); err != nil {
+		return false
+	}
+	return ctx.Err() == nil
 }
 
 func transcodeSoftwareCodecArgs(profile videoEncoderProfile) []string {
@@ -189,6 +375,46 @@ func transcodeSoftwareCodecArgs(profile videoEncoderProfile) []string {
 }
 
 func transcodeHardwareCodecArgs(profile videoEncoderProfile, codec string) []string {
+	args := transcodeHardwareBaseCodecArgs(profile, codec)
+	switch codec {
+	case "h264_nvenc":
+		return append(args, "-preset", "p4")
+	case "h264_amf":
+		return append(args, "-quality", "balanced", "-rc", "vbr_peak")
+	case "h264_videotoolbox":
+		// VideoToolbox rate limits can cause slowdowns or encoder hangs.
+		// Use an explicit bitrate on every profile, without VBV constraints.
+		args = []string{"-c:v", codec}
+		if profile != videoEncoderProfileDLNA {
+			args = append(args, "-profile:v", "high")
+		}
+		return append(args, "-g", "30", "-b:v", "5M", "-qmin", "-1", "-qmax", "-1")
+	default:
+		// Do not force VAAPI VBR: Intel i965 can produce pixelated output.
+		return args
+	}
+}
+
+func transcodeHardwareBaseCodecArgs(profile videoEncoderProfile, codec string) []string {
+	if codec == "h264_nvenc" {
+		args := []string{"-c:v", codec}
+		if profile != videoEncoderProfileDLNA {
+			args = append(args, "-profile:v", "high")
+		}
+		return append(args, "-g", "30", "-rc", "vbr", "-b:v", "10M", "-maxrate", "20M", "-bufsize", "40M")
+	}
+	if profile == videoEncoderProfileChromecastFile &&
+		(codec == "h264_amf" || codec == "h264_vaapi" || codec == "h264_qsv") {
+		return []string{
+			"-c:v", codec,
+			"-profile:v", "high",
+			"-g", "30",
+			"-b:v", "10M",
+			"-maxrate", "20M",
+			"-bufsize", "40M",
+		}
+	}
+
 	switch profile {
 	case videoEncoderProfileDLNA:
 		args := []string{

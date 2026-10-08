@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strconv"
+
+	"go2tv.app/go2tv/v2/internal/mediasource"
 )
 
 var (
@@ -25,7 +28,28 @@ const (
 
 // ServeTranscodedStream passes an input file or io.Reader to ffmpeg and writes the output directly
 // to our io.Writer. The context is used to kill ffmpeg when the HTTP request is cancelled.
-func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec.Cmd, ffmpegPath, subs string, seekSeconds int, subSize SubtitleSize) error {
+// An optional logger records pipeline attempts and startup fallback reasons.
+func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec.Cmd, ffmpegPath, subs string, seekSeconds int, subSize SubtitleSize, loggers ...*slog.Logger) error {
+	var logger *slog.Logger
+	if len(loggers) > 0 {
+		logger = loggers[0]
+	}
+	return serveDLNATranscodedStream(ctx, w, input, ff, &TranscodeOptions{FFmpegPath: ffmpegPath, SubsPath: subs, SeekSeconds: seekSeconds, SubtitleSize: subSize}, logger)
+}
+
+// ServeDLNATranscodedStream also supports automatic embedded torrent captions.
+func ServeDLNATranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec.Cmd, opts *TranscodeOptions) error {
+	if opts == nil || opts.FFmpegPath == "" {
+		return ErrInvalidInput
+	}
+	return serveDLNATranscodedStream(ctx, w, input, ff, opts, opts.Log())
+}
+
+func serveDLNATranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec.Cmd, opts *TranscodeOptions, logger *slog.Logger) error {
+	ffmpegPath, seekSeconds := opts.FFmpegPath, opts.SeekSeconds
+	if url := progressiveReaderURL(input); url != "" {
+		input = url
+	}
 	// Pipe streaming is not great as explained here
 	// https://video.stackexchange.com/questions/34087/ffmpeg-fails-on-pipe-to-pipe-video-decoding.
 	// That's why if we have the option to pass the file directly to ffmpeg, we should.
@@ -40,7 +64,8 @@ func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec
 	var in string
 	switch f := input.(type) {
 	case string:
-		in = f
+		in = mediasource.Input(f)
+		input = in
 	case *os.File:
 		in = ffmpegInputForFile(ffmpegPath, f)
 	case io.Reader:
@@ -53,30 +78,48 @@ func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec
 		_ = ff.Process.Kill()
 	}
 
-	// Stream without subtitles when the filter can't be built.
-	subFilter, _ := subtitleBurnFilter(ffmpegPath, subs, subSize)
+	burn, err := prepareSubtitleBurn(ctx, opts)
+	defer burn.cleanup()
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
+		if logger != nil {
+			logger.WarnContext(ctx, "subtitle burn-in skipped", "error", err)
+		}
+	}
 
 	encoderPlan := selectTranscodeVideoEncoder(ffmpegPath, videoEncoderProfileDLNA)
-	buildArgs := func(plan videoEncoderPlan) []string {
-		vf := joinVideoFilters(
-			"scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease",
-			"scale=trunc(iw/2)*2:trunc(ih/2)*2",
-			subFilter,
-			plan.filterTail,
-		)
-
+	buildArgs := func(plan videoEncoderPlan, hw string) []string {
+		var vf string
 		args := []string{ffmpegPath}
-		args = append(args, plan.globalArgs...)
+		switch hw {
+		case "cuda":
+			vf = cudaTranscodeScaleFilter
+		case "vaapi":
+			vf = vaapiTranscodeScaleFilter
+		default:
+			vf = joinVideoFilters(
+				softwareTranscodeScaleFilter,
+				burn.filter,
+				plan.filterTail,
+			)
+		}
+		args = append(args, transcodeInputArgs(plan, hw)...)
 
 		if in != "pipe:0" && seekSeconds > 0 {
-			args = append(args, "-ss", strconv.Itoa(seekSeconds), "-copyts")
+			args = append(args, "-ss", strconv.Itoa(seekSeconds))
+		}
+		if (in != "pipe:0" && seekSeconds > 0) || burn.overlay != "" {
+			args = append(args, "-copyts")
 		}
 
-		args = append(
-			args,
-			"-i", in,
-			"-vf", vf,
-		)
+		args = append(args, "-i", in)
+		if burn.overlay != "" || burn.bitmap != nil {
+			args = append(args, burn.videoArgs(softwareTranscodeScaleFilter, plan.filterTail)...)
+		} else {
+			args = append(args, "-vf", vf)
+		}
 		args = append(args, plan.codecArgs...)
 		args = append(
 			args,
@@ -91,20 +134,6 @@ func ServeTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec
 		return args
 	}
 
-	bytesWritten, err := runFFmpegTranscode(ctx, ff, input, in, w, buildArgs(encoderPlan))
-	if err == nil {
-		return nil
-	}
-
-	// If HW encoder fails before streaming starts, retry once with software for this request.
-	if encoderPlan.hardware && in != "pipe:0" && bytesWritten == 0 && ctx.Err() == nil {
-		software := transcodeSoftwareEncoderPlan(videoEncoderProfileDLNA)
-		_, swErr := runFFmpegTranscode(ctx, ff, input, in, w, buildArgs(software))
-		if swErr == nil {
-			return nil
-		}
-		return swErr
-	}
-
-	return err
+	hw := selectTranscodeVideoDecoder(ffmpegPath, encoderPlan, burn.enabled(), in, false)
+	return runTranscodeWithFallback(ctx, ff, input, in, w, encoderPlan, videoEncoderProfileDLNA, hw, buildArgs, logger)
 }

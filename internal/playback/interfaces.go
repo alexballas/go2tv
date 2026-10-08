@@ -5,6 +5,7 @@ import (
 	"io"
 	"time"
 
+	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/metadata"
 )
 
@@ -107,28 +108,30 @@ type CastStatus struct {
 }
 
 type LoadRequest struct {
-	MediaURL    string
-	MediaType   string
-	SubtitleURL string
-	Start       int
-	Duration    float64
-	Seekable    bool
-	Transcode   bool
-	Metadata    metadata.Media
-	ArtworkData []byte
+	MediaURL           string
+	MediaType          string
+	SubtitleURL        string
+	TorrentSubtitleURL string
+	Start              int
+	Duration           float64
+	Seekable           bool
+	Transcode          bool
+	Metadata           metadata.Media
+	ArtworkData        []byte
 }
 
 type ServerRequest struct {
-	Media        SourceOpener
-	MediaExt     string
-	MediaType    string
-	Subtitle     SourceOpener
-	SubtitleExt  string
-	Transcode    bool
-	SeekOffset   int
-	Duration     float64
-	BurnSubtitle bool
-	Target       Device
+	Media         SourceOpener
+	MediaExt      string
+	MediaType     string
+	Subtitle      SourceOpener
+	SubtitleExt   string
+	Transcode     bool
+	SeekOffset    int
+	Duration      float64
+	BurnSubtitle  bool
+	Target        Device
+	TorrentSource mediasource.Source
 }
 
 type RouteRequest struct {
@@ -140,10 +143,12 @@ type RouteRequest struct {
 }
 
 type MediaRoute struct {
-	URL         string
-	SubtitleURL string
-	ID          string
-	SubtitleID  string
+	URL                string
+	SubtitleURL        string
+	ID                 string
+	SubtitleID         string
+	TorrentSubtitleURL string
+	TorrentSubtitleID  string
 }
 
 type realClock struct{}

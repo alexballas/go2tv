@@ -2,12 +2,15 @@ package utils
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"go2tv.app/go2tv/v2/internal/mediasource"
 )
 
 // escapeFFmpegPath escapes special characters in paths for FFmpeg filtergraph syntax.
@@ -44,6 +47,11 @@ func ServeChromecastTranscodedStream(
 	}
 
 	isRawInput := opts.RawInput != nil
+	if !isRawInput {
+		if url := progressiveReaderURL(input); url != "" {
+			input = url
+		}
+	}
 
 	// Readers backed by a real file (e.g. Android content:// descriptors) are
 	// handed to ffmpeg as a seekable fd rather than an unseekable pipe.
@@ -56,7 +64,8 @@ func ServeChromecastTranscodedStream(
 	var in string
 	switch f := input.(type) {
 	case string:
-		in = f
+		in = mediasource.Input(f)
+		input = in
 	case *os.File:
 		in = ffmpegInputForFile(opts.FFmpegPath, f)
 	case io.Reader:
@@ -74,11 +83,14 @@ func ServeChromecastTranscodedStream(
 
 	// Build video filter chain.
 	// Raw screencast input doesn't carry subtitle tracks.
-	scaleFilter := "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2"
-	subFilter := ""
+	burn := &subtitleBurn{cleanup: func() {}}
 	if !isRawInput {
 		var err error
-		subFilter, err = subtitleBurnFilter(opts.FFmpegPath, opts.SubsPath, opts.SubtitleSize)
+		burn, err = prepareSubtitleBurn(ctx, opts)
+		defer burn.cleanup()
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
 		if err != nil && opts.LogOutput != nil {
 			// Log error but continue without subtitles
 			opts.LogError("ServeChromecastTranscodedStream", "subtitle burn-in skipped", err)
@@ -90,8 +102,16 @@ func ServeChromecastTranscodedStream(
 		profile = videoEncoderProfileChromecastRaw
 	}
 	encoderPlan := selectTranscodeVideoEncoder(opts.FFmpegPath, profile)
-	buildArgs := func(plan videoEncoderPlan) []string {
-		vf := joinVideoFilters(subFilter, scaleFilter, plan.filterTail)
+	buildArgs := func(plan videoEncoderPlan, hw string) []string {
+		var vf string
+		switch hw {
+		case "cuda":
+			vf = cudaTranscodeScaleFilter
+		case "vaapi":
+			vf = vaapiTranscodeScaleFilter
+		default:
+			vf = joinVideoFilters(burn.filter, softwareTranscodeScaleFilter, plan.filterTail)
+		}
 
 		// For piped input, skip -ss parameter entirely (even -ss 0) as it can cause issues.
 		// File transcoding is deliberately unpaced so the renderer can build a
@@ -99,9 +119,12 @@ func ServeChromecastTranscodedStream(
 		args := []string{opts.FFmpegPath}
 
 		if in != "pipe:0" && opts.SeekSeconds > 0 {
-			args = append(args, "-ss", strconv.Itoa(opts.SeekSeconds), "-copyts")
+			args = append(args, "-ss", strconv.Itoa(opts.SeekSeconds))
 		}
-		args = append(args, plan.globalArgs...)
+		if (in != "pipe:0" && opts.SeekSeconds > 0) || burn.overlay != "" {
+			args = append(args, "-copyts")
+		}
+		args = append(args, transcodeInputArgs(plan, hw)...)
 
 		if isRawInput {
 			pixelFormat := strings.ToLower(opts.RawInput.PixelFormat)
@@ -121,11 +144,12 @@ func ServeChromecastTranscodedStream(
 			)
 		}
 
-		args = append(
-			args,
-			"-i", in,
-			"-vf", vf,
-		)
+		args = append(args, "-i", in)
+		if burn.overlay != "" || burn.bitmap != nil {
+			args = append(args, burn.videoArgs(softwareTranscodeScaleFilter, plan.filterTail)...)
+		} else {
+			args = append(args, "-vf", vf)
+		}
 		args = append(args, plan.codecArgs...)
 
 		if isRawInput {
@@ -134,6 +158,11 @@ func ServeChromecastTranscodedStream(
 			// Screen capture stream contains video only.
 			args = append(args, "-an")
 		} else {
+			if opts.TorrentSource != nil {
+				// Flush playable fragments before the next keyframe, which may
+				// otherwise require downloading the entire low-frame-rate file.
+				args = append(args, "-frag_duration", "1000000")
+			}
 			args = append(
 				args,
 				"-c:a", "aac",
@@ -156,20 +185,6 @@ func ServeChromecastTranscodedStream(
 		return ErrInvalidInput
 	}
 
-	bytesWritten, err := runFFmpegTranscode(ctx, ff, input, in, w, buildArgs(encoderPlan))
-	if err == nil {
-		return nil
-	}
-
-	// If HW encoder fails before stream starts, retry file-based transcode with software for this request.
-	if encoderPlan.hardware && in != "pipe:0" && bytesWritten == 0 && ctx.Err() == nil {
-		software := transcodeSoftwareEncoderPlan(profile)
-		_, swErr := runFFmpegTranscode(ctx, ff, input, in, w, buildArgs(software))
-		if swErr == nil {
-			return nil
-		}
-		return swErr
-	}
-
-	return err
+	hw := selectTranscodeVideoDecoder(opts.FFmpegPath, encoderPlan, burn.enabled(), in, isRawInput)
+	return runTranscodeWithFallback(ctx, ff, input, in, w, encoderPlan, profile, hw, buildArgs, opts.Log())
 }

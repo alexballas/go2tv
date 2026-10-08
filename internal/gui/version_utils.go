@@ -11,6 +11,8 @@ import (
 	"golang.org/x/mod/semver"
 )
 
+const disableVersionNotificationsPref = "DisableVersionNotifications"
+
 // getLatestVersion fetches the latest version tag from go2tv.app.
 func getLatestVersion() (string, error) {
 	req, err := http.NewRequest("GET", "https://go2tv.app/latest", nil)
@@ -60,6 +62,10 @@ func parseVersion(version string) ([]int, error) {
 // silentCheckVersion performs a background version check and notifies the user
 // if a new version is available, but only once per version.
 func silentCheckVersion(s *FyneScreen) {
+	if fyne.CurrentApp().Preferences().BoolWithFallback(disableVersionNotificationsPref, false) {
+		return
+	}
+
 	// Parse current version - fail silently if dev or non-compiled
 	if _, err := parseVersion(s.version); err != nil {
 		return

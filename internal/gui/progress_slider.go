@@ -159,6 +159,7 @@ func (t *tappedSlider) DragEnd() {
 			if err := client.Seek(seekPos); err != nil {
 				return
 			}
+			t.screen.notifyMPRISSeek(seekPos)
 			return
 		}
 
@@ -210,6 +211,7 @@ func (t *tappedSlider) Tapped(p *fyne.PointEvent) {
 			if err := client.Seek(seekPos); err != nil {
 				return
 			}
+			t.screen.notifyMPRISSeek(seekPos)
 
 			return
 		}
@@ -279,7 +281,10 @@ func (t *tappedSlider) seekDLNAAsync() {
 			return
 		}
 
-		_ = tvdata.SeekSoapCall(reltime)
+		if err := tvdata.SeekSoapCall(reltime); err != nil {
+			return
+		}
+		t.screen.notifyMPRISSeek(roundedInt)
 	}()
 }
 
@@ -338,6 +343,7 @@ func sliderUpdate(s *FyneScreen) {
 				s.SlideBar.SetValue(valueToSet)
 				s.CurrentPos.Set(currentClock)
 				s.EndPos.Set(end)
+				s.refreshMPRISProgress()
 			})
 			s.persistResumeProgress(current, float64(total), false)
 		}

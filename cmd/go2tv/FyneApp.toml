@@ -8,9 +8,8 @@ Version = "1.19.0"
 Build = 138
 
 [Android]
-ShareMimeTypes = ["video/*", "audio/*", "image/*"]
+ShareMimeTypes = ["video/*", "audio/*", "image/*", "application/x-bittorrent", "application/x-torrent"]
 MulticastDiscovery = true
-BatteryOptimizationExemption = true
 
 [Android.BackgroundService]
 Type = "connectedDevice"

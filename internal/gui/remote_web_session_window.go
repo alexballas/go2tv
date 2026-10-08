@@ -44,11 +44,13 @@ const (
 // before RTMP/screencast teardown completes.
 func (s *FyneScreen) beginGUIShutdown() <-chan struct{} {
 	s.shutdownOnce.Do(func() {
+		s.cancelPendingTorrentPlayback()
 		if s.remoteSessionUpdatesDone != nil {
 			s.remoteSessionUpdatesDone()
 		}
 		go func() {
 			defer close(s.shutdownDone)
+			defer s.shutdownTorrents()
 			ctx, cancel := context.WithTimeout(context.Background(), remoteShutdownGrace)
 			_ = s.remoteSession.Shutdown(ctx)
 			cancel()

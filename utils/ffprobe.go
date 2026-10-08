@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -39,7 +38,11 @@ type MediaCodecInfo struct {
 }
 
 func DurationForMedia(ffmpeg string, f string) (string, error) {
-	seconds, err := DurationForMediaSeconds(ffmpeg, f)
+	return DurationForMediaContext(context.Background(), ffmpeg, f)
+}
+
+func DurationForMediaContext(ctx context.Context, ffmpeg string, f string) (string, error) {
+	seconds, err := DurationForMediaSecondsContext(ctx, ffmpeg, f)
 	if err != nil {
 		return "", err
 	}
@@ -51,12 +54,23 @@ func DurationForMedia(ffmpeg string, f string) (string, error) {
 // DurationForMediaSeconds returns the media duration in seconds.
 // Transcoded streams use it to expose the source timeline.
 func DurationForMediaSeconds(ffmpeg string, f string) (float64, error) {
-	_, err := os.Stat(f)
+	return DurationForMediaSecondsContext(context.Background(), ffmpeg, f)
+}
+
+// DurationForMediaSecondsContext allows pending media probes to be cancelled.
+func DurationForMediaSecondsContext(ctx context.Context, ffmpeg string, f string) (float64, error) {
+	if ctx == nil {
+		return 0, errors.New("ffprobe context required")
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	f, err := mediaInput(f)
 	if err != nil {
 		return 0, err
 	}
 
-	if err := CheckFFmpeg(ffmpeg); err != nil {
+	if err := CheckFFmpegContext(ctx, ffmpeg); err != nil {
 		return 0, err
 	}
 
@@ -65,7 +79,9 @@ func DurationForMediaSeconds(ffmpeg string, f string) (float64, error) {
 		return 0, err
 	}
 
-	cmd := exec.Command(
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx,
 		ffprobePath,
 		"-loglevel", "error",
 		"-show_format",
@@ -73,9 +89,13 @@ func DurationForMediaSeconds(ffmpeg string, f string) (float64, error) {
 		f,
 	)
 	setSysProcAttr(cmd)
+	cmd.WaitDelay = time.Second
 
 	output, err := cmd.Output()
 	if err != nil {
+		if ctx.Err() != nil {
+			return 0, ctx.Err()
+		}
 		return 0, err
 	}
 
@@ -102,6 +122,8 @@ func DurationForMediaReaderSeconds(ctx context.Context, ffmpeg string, media io.
 		return 0, err
 	}
 
+	stopClosing := context.AfterFunc(ctx, func() { _ = media.Close() })
+	defer stopClosing()
 	ffprobePath, err := ResolveFFprobePath(ffmpeg)
 	if err != nil {
 		return 0, err
@@ -109,9 +131,11 @@ func DurationForMediaReaderSeconds(ctx context.Context, ffmpeg string, media io.
 
 	input := io.Reader(media)
 	inputURL := "pipe:0"
-	if file, ok := underlyingOSFile(media); ok {
+	if url := progressiveReaderURL(media); url != "" {
+		input, inputURL = nil, url
+	} else if file, ok := underlyingOSFile(media); ok {
 		input = file
-		inputURL = ffmpegInputForFile(ffmpeg, file)
+		inputURL = ffmpegInputForFileContext(ctx, ffmpeg, file)
 	}
 
 	if seeker, ok := input.(io.Seeker); ok {
@@ -137,6 +161,7 @@ func DurationForMediaReaderSeconds(ctx context.Context, ffmpeg string, media io.
 		inputURL,
 	)
 	setSysProcAttr(cmd)
+	cmd.WaitDelay = time.Second
 	cmd.Stdin = input
 	output, err := cmd.Output()
 	if ctxErr := ctx.Err(); ctxErr != nil {
@@ -158,12 +183,23 @@ func DurationForMediaReaderSeconds(ctx context.Context, ffmpeg string, media io.
 }
 
 func GetMediaCodecInfo(ffmpeg string, f string) (*MediaCodecInfo, error) {
-	_, err := os.Stat(f)
+	return GetMediaCodecInfoContext(context.Background(), ffmpeg, f)
+}
+
+// GetMediaCodecInfoContext lets selection changes interrupt progressive probes.
+func GetMediaCodecInfoContext(ctx context.Context, ffmpeg string, f string) (*MediaCodecInfo, error) {
+	if ctx == nil {
+		return nil, errors.New("ffprobe context required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	f, err := mediaInput(f)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := CheckFFmpeg(ffmpeg); err != nil {
+	if err := CheckFFmpegContext(ctx, ffmpeg); err != nil {
 		return nil, err
 	}
 
@@ -172,7 +208,9 @@ func GetMediaCodecInfo(ffmpeg string, f string) (*MediaCodecInfo, error) {
 		return nil, err
 	}
 
-	cmd := exec.Command(
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx,
 		ffprobePath,
 		"-loglevel", "error",
 		"-show_format",

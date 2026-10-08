@@ -108,11 +108,19 @@ func newMediaSelectionCard(s *FyneScreen, preview, clearSubs *widget.Button) *me
 	c.media = newSelectionRow(preview, s.MediaBrowse, s.ClearMedia)
 	c.media.text.title = c.media.name
 	c.subs = newSelectionRow(s.SubsBrowse, clearSubs)
-	c.source = widget.NewSelect([]string{lang.L("Local File"), lang.L("URL")}, func(value string) {
+	c.source = widget.NewSelect([]string{lang.L("Local File"), lang.L("URL"), lang.L("Torrent")}, func(value string) {
 		if c.syncing {
 			return
 		}
-		s.ExternalMediaURL.SetChecked(value == lang.L("URL"))
+		if value == lang.L("Torrent") {
+			showTorrentDialog(s)
+		} else {
+			if torrentMediaSelected(s) {
+				cancelTorrent(s)
+				clearCurrentMediaSelection(s)
+			}
+			s.ExternalMediaURL.SetChecked(value == lang.L("URL"))
+		}
 		c.refresh()
 	})
 	c.subtitles = ttwidget.NewSelect([]string{lang.L(subtitleAutomatic), lang.L(subtitleEmbedded), lang.L(subtitleExternal), lang.L(subtitleNone)}, func(value string) {
@@ -143,7 +151,7 @@ func newMediaSelectionCard(s *FyneScreen, preview, clearSubs *widget.Button) *me
 	subtitleRow := container.New(selectionFieldLayout{labelWidth: labelWidth}, subtitleLabel, c.subtitles)
 	selectors := container.NewGridWithColumns(2, sourceRow, subtitleRow)
 	mediaArea := container.New(reservedSelectionLayout{}, c.media, s.MediaText)
-	c.content = container.NewVBox(selectors, mediaArea, s.SelectInternalSubs, c.subs)
+	c.content = container.NewVBox(selectors, mediaArea, newTorrentControls(s), s.SelectInternalSubs, c.subs)
 	c.bindSource(preview)
 	c.refresh()
 	return c
@@ -196,11 +204,19 @@ func (c *mediaSelectionCard) refresh() {
 	source := lang.L("Local File")
 	if urlMode {
 		source = lang.L("URL")
+	} else if torrentMediaSelected(s) {
+		source = lang.L("Torrent")
 	}
 	if c.source.Selected != source {
 		c.source.SetSelected(source)
 	}
 	c.media.setPath(s.mediafile, lang.L("No media selected"))
+	if torrentMediaSelected(s) {
+		fyne.Do(func() {
+			c.media.path.Text = lang.L("Torrent media")
+			c.media.text.Refresh()
+		})
+	}
 	if s.mediafile == "" {
 		c.media.path.Text = lang.L("Choose a media file to start casting.")
 		c.media.text.Refresh()

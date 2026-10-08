@@ -7,24 +7,27 @@ import (
 	"slices"
 	"time"
 
+	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/utils"
 )
 
 type Options struct {
-	LogOutput      io.Writer
-	Ctx            context.Context
-	DMR            string
-	Media          string
-	Subs           string
-	Mtype          string
-	ListenAddr     string
-	FFmpegPath     string
-	FFmpegSubsPath string
-	Transcode      bool
-	Seek           bool
-	FFmpegSeek     int
-	Metadata       metadata.Media
+	LogOutput              io.Writer
+	Ctx                    context.Context
+	DMR                    string
+	Media                  string
+	Subs                   string
+	Mtype                  string
+	ListenAddr             string
+	FFmpegPath             string
+	FFmpegSubsPath         string
+	FFmpegEmbeddedSubtitle *utils.EmbeddedSubtitle
+	Transcode              bool
+	Seek                   bool
+	FFmpegSeek             int
+	Metadata               metadata.Media
+	TorrentSource          mediasource.Source
 }
 
 // NewTVPayload creates a new TVPayload based on the provided options.
@@ -70,6 +73,8 @@ func NewTVPayload(o *Options) (*TVPayload, error) {
 		Transcode:                   o.Transcode,
 		FFmpegPath:                  o.FFmpegPath,
 		FFmpegSubsPath:              o.FFmpegSubsPath,
+		FFmpegEmbeddedSubtitle:      o.FFmpegEmbeddedSubtitle,
+		TorrentSource:               o.TorrentSource,
 		FFmpegSeek:                  o.FFmpegSeek,
 		Seekable:                    o.Seek,
 		LogOutput:                   o.LogOutput,
@@ -89,6 +94,16 @@ func (p *TVPayload) SetContext(ctx context.Context) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.ctx = ctx
+}
+
+// Context returns the current playback context for subtitle preparation.
+func (p *TVPayload) Context() context.Context {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if p.ctx == nil {
+		return context.Background()
+	}
+	return p.ctx
 }
 
 // SetAVTransportURI invokes the fallback-preserving URI load path.

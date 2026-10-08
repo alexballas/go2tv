@@ -8,13 +8,16 @@ import (
 	"sync"
 )
 
+// Bound output to 1080p without upscaling, with even dimensions for H.264.
+const softwareTranscodeScaleFilter = "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2"
+
 var ffmpegFilterCache sync.Map
 
 // subtitleBurnFilter builds the ffmpeg "subtitles" filter used to burn
 // subtitles into the video. It returns "" when no subtitles are configured or
 // the ffmpeg build lacks the filter, and an error when the subtitle file's
 // charset can't be detected.
-func subtitleBurnFilter(ffmpegPath, subsPath string, size SubtitleSize) (string, error) {
+func subtitleBurnFilter(ffmpegPath, subsPath string, size SubtitleSize, fontsDir ...string) (string, error) {
 	if subsPath == "" || !ffmpegFilterAvailable(ffmpegPath, "subtitles") {
 		return "", nil
 	}
@@ -24,6 +27,23 @@ func subtitleBurnFilter(ffmpegPath, subsPath string, size SubtitleSize) (string,
 		return "", err
 	}
 
+	forceStyle := subtitleBurnStyle(size)
+	if styledSubtitlePath(subsPath) {
+		forceStyle = ""
+		if len(fontsDir) > 0 && fontsDir[0] != "" {
+			forceStyle = fmt.Sprintf(":fontsdir='%s'", escapeFFmpegPath(fontsDir[0]))
+		}
+	}
+	escapedPath := escapeFFmpegPath(subsPath)
+
+	if charenc == "UTF-8" {
+		return fmt.Sprintf("subtitles='%s'%s", escapedPath, forceStyle), nil
+	}
+
+	return fmt.Sprintf("subtitles='%s':charenc=%s%s", escapedPath, charenc, forceStyle), nil
+}
+
+func subtitleBurnStyle(size SubtitleSize) string {
 	fontSize := 24
 	switch size {
 	case SubtitleSizeSmall:
@@ -32,14 +52,7 @@ func subtitleBurnFilter(ffmpegPath, subsPath string, size SubtitleSize) (string,
 		fontSize = 30
 	}
 
-	forceStyle := fmt.Sprintf(":force_style='FontSize=%d,Outline=1'", fontSize)
-	escapedPath := escapeFFmpegPath(subsPath)
-
-	if charenc == "UTF-8" {
-		return fmt.Sprintf("subtitles='%s'%s", escapedPath, forceStyle), nil
-	}
-
-	return fmt.Sprintf("subtitles='%s':charenc=%s%s", escapedPath, charenc, forceStyle), nil
+	return fmt.Sprintf(":force_style='FontSize=%d,Outline=1'", fontSize)
 }
 
 func ffmpegFilterAvailable(ffmpegPath, name string) bool {

@@ -123,6 +123,8 @@ func (e *SeekEngine) restartDLNA(ctx context.Context, req SeekRequest) error {
 		return fmt.Errorf("restart media server: %w", err)
 	}
 	req.Load.MediaURL, req.Load.Start = route.URL, 0
+	req.Load.SubtitleURL = route.SubtitleURL
+	req.Load.TorrentSubtitleURL = route.TorrentSubtitleURL
 	e.restoreArtwork(ctx, &req.Load)
 	if err := e.dlna.Load(ctx, req.Load); err != nil {
 		return fmt.Errorf("reload DLNA: %w", err)
@@ -146,6 +148,8 @@ func (e *SeekEngine) restartCast(ctx context.Context, req SeekRequest) error {
 		return fmt.Errorf("restart media server: %w", err)
 	}
 	req.Load.MediaURL, req.Load.Start = route.URL, 0
+	req.Load.SubtitleURL = route.SubtitleURL
+	req.Load.TorrentSubtitleURL = route.TorrentSubtitleURL
 	e.restoreArtwork(ctx, &req.Load)
 	if err := e.cast.LoadOnExisting(ctx, req.Load); err != nil {
 		return fmt.Errorf("reload Chromecast: %w", err)

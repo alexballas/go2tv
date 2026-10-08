@@ -39,6 +39,7 @@ type Handler struct {
 	artMu        sync.RWMutex
 	artworkRefs  map[string]controller.ArtworkLoader
 	artworkOrder []string
+	torrents     torrentState
 }
 
 func New(cfg Config) (*Handler, error) {
@@ -55,11 +56,15 @@ func New(cfg Config) (*Handler, error) {
 		return nil, err
 	}
 	h := &Handler{cfg: cfg, instanceID: hex.EncodeToString(instance), artworkRefs: make(map[string]controller.ArtworkLoader)}
+	h.torrents.ctx, h.torrents.cancel = context.WithCancel(context.Background())
 	h.hub = newHub(cfg.Controller, h.command)
 	return h, nil
 }
 
-func (h *Handler) Close()           { h.hub.close() }
+func (h *Handler) Close() {
+	h.hub.close()
+	h.closeTorrents()
+}
 func (h *Handler) ServesBootstrap() {}
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +109,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.bootstrap(w, r)
 	case r.URL.Path == "/api/library":
 		h.browse(w, r)
+	case r.URL.Path == "/api/torrent":
+		h.torrentHTTP(w, r)
 	case r.URL.Path == "/api/thumbnail":
 		h.libraryArtwork(w, r, true)
 	case r.URL.Path == "/api/media-artwork":
@@ -144,7 +151,7 @@ func (h *Handler) bootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	roots := h.cfg.Library.Roots()
-	result := bootstrapDTO{ServerVersion: h.cfg.Version, ProtocolVersion: ProtocolVersion, AssetsHash: assetsHash, InstanceID: h.instanceID, ManagedByGUI: h.cfg.ManagedByGUI, Snapshot: safeSnapshot(snapshot), Limits: map[string]int{"ws_message_bytes": maxMessageBytes, "ws_clients": maxClients, "ws_clients_per_ip": maxClientsPerIP, "queue_items": controller.MaxQueueItems, "library_page": library.MaxLimit}, Features: map[string]bool{"websocket": true, "artwork": true, "transcode": h.cfg.TranscodeAvailable, "gapless": true}}
+	result := bootstrapDTO{ServerVersion: h.cfg.Version, ProtocolVersion: ProtocolVersion, AssetsHash: assetsHash, InstanceID: h.instanceID, ManagedByGUI: h.cfg.ManagedByGUI, Snapshot: safeSnapshot(snapshot), Limits: map[string]int{"ws_message_bytes": maxMessageBytes, "ws_clients": maxClients, "ws_clients_per_ip": maxClientsPerIP, "queue_items": controller.MaxQueueItems, "library_page": library.MaxLimit, "torrent_bytes": maxTorrentBytes}, Features: map[string]bool{"websocket": true, "artwork": true, "transcode": h.cfg.TranscodeAvailable, "gapless": true, "torrent": true}, Torrent: h.torrentSnapshot()}
 	for _, root := range roots {
 		result.Roots = append(result.Roots, rootDTO{ID: root.ID, Name: root.Name})
 	}
@@ -378,7 +385,9 @@ func (h *Handler) command(ctx context.Context, message envelope) (controller.Res
 	var extra map[string]any
 	// queue.add_many is dispatched here, not in executeCommand, because it is
 	// the only command that acknowledges with extra payload fields.
-	if message.Type == "queue.add_many" {
+	if message.Type == "torrent.select" || message.Type == "torrent.cancel" {
+		result = h.torrentCommand(ctx, message)
+	} else if message.Type == "queue.add_many" {
 		result, extra = h.queueAddMany(ctx, message)
 	} else {
 		result = h.executeCommand(ctx, message)
@@ -622,6 +631,7 @@ func (h *Handler) executeCommand(ctx context.Context, message envelope) controll
 func knownAction(kind string) bool {
 	switch kind {
 	case "devices.refresh", "devices.select", "library.play", "library.select_media", "library.select_subtitle", "library.clear_subtitle",
+		"torrent.select", "torrent.cancel",
 		"queue.add", "queue.add_many", "queue.select", "queue.remove", "queue.move", "queue.clear", "player.play", "player.resume",
 		"player.pause", "player.stop", "player.volume", "player.mute", "player.transcode", "playback.policy", "player.seek":
 		return true
@@ -648,6 +658,10 @@ func (h *Handler) logAction(kind string, before, snapshot controller.Snapshot) {
 		}
 	case "library.select_media":
 		message = "Media selected: " + snapshot.SelectedMedia
+	case "torrent.select":
+		message = "Torrent media selected: " + snapshot.SelectedMedia
+	case "torrent.cancel":
+		message = "Torrent cancelled"
 	case "library.play":
 		message = "Media played: " + snapshot.SelectedMedia
 	case "library.select_subtitle":

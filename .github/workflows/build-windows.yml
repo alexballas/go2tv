@@ -43,23 +43,27 @@ jobs:
     - name: Setup MSYS2
       uses: msys2/setup-msys2@v2
       with:
-        msystem: MINGW64
+        msystem: UCRT64
         path-type: inherit
         update: true
         install: >-
-          mingw-w64-x86_64-gcc
-          mingw-w64-x86_64-cppwinrt
-          mingw-w64-x86_64-pkg-config
+          mingw-w64-ucrt-x86_64-gcc
+          mingw-w64-ucrt-x86_64-cppwinrt
+          mingw-w64-ucrt-x86_64-pkg-config
 
     - name: Package (Windows)
       shell: msys2 {0}
       run: |
         cd cmd/go2tv
-        CC_BIN="$(command -v x86_64-w64-mingw32-gcc-win32 || command -v gcc)"
-        CXX_BIN="$(command -v x86_64-w64-mingw32-g++-win32 || command -v g++)"
+        # Keep inherited MINGW64 compilers out of the UCRT64 build.
+        CC_BIN="$(cygpath -m /ucrt64/bin/gcc.exe)"
+        CXX_BIN="$(cygpath -m /ucrt64/bin/g++.exe)"
         CGO_ENABLED=1 CC="$CC_BIN" CXX="$CXX_BIN" CGO_LDFLAGS="-static -static-libgcc -static-libstdc++ -Wl,-Bstatic -l:libstdc++.a -l:libwinpthread.a" GOFLAGS="-ldflags=-linkmode=external -ldflags=-extldflags=-static" go run github.com/alexballas/refyne/v2/cmd/fyne@latest package --release --app-id app.go2tv.go2tv --app-version "$GO2TV_WINDOWS_APP_VERSION" --os windows --icon ../../assets/go2tv-icon-desktop-256.png
         objdump -p go2tv.exe | grep "DLL Name" | tee /tmp/go2tv-imports.txt
-        ! grep -Eq "libwinpthread-1.dll|libstdc\+\+-6.dll" /tmp/go2tv-imports.txt
+        if grep -Eiq 'libwinpthread-1\.dll|libstdc\+\+-6\.dll|libgcc_s_.*\.dll' /tmp/go2tv-imports.txt; then
+          echo "Unexpected MinGW runtime DLL dependency" >&2
+          exit 1
+        fi
         mv go2tv.exe ../../
 
     - name: Build lite (Windows)

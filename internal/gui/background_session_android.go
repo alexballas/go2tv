@@ -30,8 +30,8 @@ var notificationIcon = fyne.NewStaticResource("go2tv-notification.png", notifica
 // RefreshLoopUUIDSoapCall was renewing. Both surface as a dead socket on the
 // next write, once the user unlocks the phone and tries to press pause.
 //
-// A foreground service is what keeps the process out of the cached bucket, so
-// one runs for as long as a cast session does. This is not tied to serving media
+// A foreground service keeps the process out of the cached bucket while a cast
+// or torrent download is active. This is not tied to serving media
 // locally: the control channel exists for every cast, including one where the
 // device is fetching an external URL by itself, and that is the part that dies.
 const batteryPromptShownPref = "AndroidBatteryPromptShown"
@@ -76,19 +76,21 @@ func beginBackgroundSession(screen *FyneScreen) {
 	backgroundSessionState.Lock()
 	defer backgroundSessionState.Unlock()
 
-	d.StartBackgroundSession(lang.L("Casting"), backgroundSessionTarget(screen), notificationIcon)
+	title, target := lang.L("Casting"), backgroundSessionTarget(screen)
+	if state := screen.getScreenState(); state != "Playing" && state != "Paused" && screen.hasTorrentSession() {
+		title, target = lang.L("Torrent"), lang.L("Downloading media")
+	}
+	d.StartBackgroundSession(title, target, notificationIcon)
 	backgroundSessionState.running = true
 }
 
-// syncBackgroundSession stops the foreground service when playback ends and
-// backs up the eager Play-callback start for sessions initiated by another path.
-// Every terminal path funnels through updateScreenState, so Stop, EOF, and a lost
-// device all release the service.
+// syncBackgroundSession keeps the service while casting or downloading. Stop,
+// EOF, and a lost device release it once the torrent session is also closed.
 //
 // A paused cast keeps the session: the renderer is still ours to control, and
 // the connection that carries the resume still has to be maintained.
 func syncBackgroundSession(screen *FyneScreen, state string) {
-	want := state == "Playing" || state == "Paused"
+	want := state == "Playing" || state == "Paused" || screen.hasTorrentSession() || screen.mobilePlaybackStarting()
 	if want {
 		backgroundSessionState.Lock()
 		running := backgroundSessionState.running
@@ -125,7 +127,7 @@ func backgroundSessionTarget(screen *FyneScreen) string {
 	return screen.selectedDevice.name
 }
 
-// maybePromptBatteryOptimization offers the exemption once, ever. The foreground
+// maybePromptBatteryOptimization offers the battery settings once, ever. The foreground
 // service is what actually keeps the cast alive under the platform rules; this
 // only covers vendors whose own task killers go further. It is not worth
 // interrupting anyone twice for, so a dismissal is remembered.
@@ -144,7 +146,7 @@ func maybePromptBatteryOptimization(screen *FyneScreen) {
 	fyne.Do(func() {
 		dialog.ShowConfirm(
 			lang.L("Keep casting in the background"),
-			lang.L("Some phones stop background apps to save battery, which interrupts casting. Exempt Go2TV from battery optimisation?"),
+			lang.L("Some phones stop background apps to save battery, which interrupts casting. Open Android battery settings and set Go2TV to Unrestricted?"),
 			func(exempt bool) {
 				if exempt {
 					power.RequestBatteryOptimizationExemption()

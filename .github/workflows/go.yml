@@ -4,7 +4,11 @@ on: [push]
 jobs:
 
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     # The pipewire pkg-config exposes -fno-strict-overflow, which cgo rejects
     # unless it is explicitly allowed. Every step that compiles cgo needs it,
     # not just the -race test.
@@ -18,7 +22,8 @@ jobs:
         go-version-file: go.mod
 
     - name: Install Linux deps
-      run: sudo apt update && sudo apt install -y xorg-dev libwayland-dev libxkbcommon-dev libegl-dev libpipewire-0.3-dev pkg-config
+      # Subtitle rendering tests exercise FFmpeg's libass support.
+      run: sudo apt update && sudo apt install -y xorg-dev libwayland-dev libxkbcommon-dev libegl-dev libpipewire-0.3-dev pkg-config ffmpeg
 
     - name: Build
       run: go build -v ./...

@@ -14,8 +14,6 @@ func (s *FyneScreen) rendererPermit(bool) (func(), bool) {
 	return func() {}, true
 }
 
-func (s *FyneScreen) persistResumeProgress(int, float64, bool) {}
-
 func chromecastDeviceHost(device devType) string {
 	if device.deviceType != devices.DeviceTypeChromecast || device.addr == "" {
 		return ""

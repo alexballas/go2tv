@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	fynetooltip "github.com/alexballas/fyne-tooltip"
 	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/app"
 	"github.com/alexballas/refyne/v2/container"
@@ -27,6 +28,10 @@ import (
 	"go2tv.app/go2tv/v2/utils"
 )
 
+func (p *FyneScreen) refreshMPRISProgress() {}
+
+func (p *FyneScreen) notifyMPRISSeek(int) {}
+
 // FyneScreen .
 type FyneScreen struct {
 	mu                     sync.RWMutex
@@ -36,12 +41,16 @@ type FyneScreen struct {
 	CurrentPos             binding.String
 	EndPos                 binding.String
 	tvdata                 *soapcalls.TVPayload
+	torrent                torrentUIState
 	chromecastClient       *castprotocol.CastClient
 	chromecastActionID     uint64
+	playbackStarting       bool
 	Stop                   *widget.Button
 	MuteUnmute             *widget.Button
 	CheckVersion           *widget.Button
-	CustomSubsCheck        *widget.Check
+	burnSubtitlesCheck     *wrappingCheck
+	castBurnSubtitles      bool
+	TorrentSubsCheck       *widget.Check
 	ExternalMediaURL       *widget.Check
 	cancelEnablePlay       context.CancelFunc
 	serverStopCTX          context.Context
@@ -79,6 +88,7 @@ type FyneScreen struct {
 	sliderActive           bool
 	dlnaSeekRestart        bool
 	castingMediaType       string // MIME type of currently casting media
+	resumeSession          resumePlaybackSession
 	hotkeysSuspendCount    int32
 	Crash                  *crashlog.Session
 	PendingCrashPath       string
@@ -93,6 +103,7 @@ type devType struct {
 
 // Start .
 func Start(ctx context.Context, s *FyneScreen) {
+	s.torrent.ctx = ctx
 	w := s.Current
 
 	// Clean up orphaned temp files from previous crashes
@@ -103,26 +114,41 @@ func Start(ctx context.Context, s *FyneScreen) {
 	prepareBackgroundSession(s)
 	devices.StartDiscovery(ctx)
 
+	settingsContent, refreshMobileSettings := mobileSettingsWindow(s)
+	settingsTab := container.NewTabItem(lang.L("Settings"), container.NewVScroll(container.NewPadded(settingsContent)))
+
+	tabs := container.NewAppTabs(
+		container.NewTabItem("Go2TV", container.NewVScroll(container.NewPadded(mainWindow(s)))),
+		settingsTab,
+		container.NewTabItem(lang.L("About"), container.NewVScroll(aboutWindow(s))),
+	)
+	tabs.OnSelected = func(tab *container.TabItem) {
+		if tab == settingsTab {
+			s.updateChromecastSubtitleAvailability(s.ffmpegStatus())
+			refreshMobileSettings()
+		}
+	}
+
 	if app := fyne.CurrentApp(); app != nil {
+		app.Lifecycle().SetOnEnteredForeground(func() {
+			fyne.Do(refreshMobileSettings)
+		})
 		app.Lifecycle().SetOnStopped(func() {
+			go s.shutdownTorrents()
 			if s.Crash != nil {
 				_ = s.Crash.CloseClean()
 			}
 		})
 	}
 
-	tabs := container.NewAppTabs(
-		container.NewTabItem("Go2TV", container.NewVScroll(container.NewPadded(mainWindow(s)))),
-		container.NewTabItem("About", container.NewVScroll(aboutWindow(s))),
-	)
-
-	w.SetContent(tabs)
+	w.SetContent(fynetooltip.AddWindowToolTipLayer(tabs, w.Canvas()))
 	w.CenterOnScreen()
 
 	registerShareHandler(s)
 
 	go func() {
 		<-ctx.Done()
+		s.shutdownTorrents()
 		if s.Crash != nil {
 			_ = s.Crash.CloseClean()
 		}
@@ -223,10 +249,11 @@ func (p *FyneScreen) isChromecastActionCurrent(actionID uint64) bool {
 }
 
 func setPlayPauseView(s string, screen *FyneScreen) {
-	if screen.cancelEnablePlay != nil {
-		screen.cancelEnablePlay()
-	}
+	screen.cancelPlayTimer()
+	refreshPlaybackControls(s, screen)
+}
 
+func refreshPlaybackControls(s string, screen *FyneScreen) {
 	fyne.Do(func() {
 		// Check if we are casting an image
 		isImage := false
@@ -241,7 +268,11 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 			screen.PlayPause.SetIcon(theme.FileImageIcon())
 			screen.PlayPause.SetText("Image")
 		} else {
-			screen.PlayPause.Enable()
+			if screen.mobilePlaybackStarting() || screen.playbackStartupPending() {
+				screen.PlayPause.Disable()
+			} else {
+				screen.PlayPause.Enable()
+			}
 			switch s {
 			case "Play":
 				screen.PlayPause.Text = lang.L("Play")
@@ -270,8 +301,8 @@ func setMuteUnmuteView(s string, screen *FyneScreen) {
 // NewFyneScreen .
 func NewFyneScreen(version string, crash *crashlog.Session) *FyneScreen {
 	go2tv := app.NewWithID("app.go2tv.go2tv")
-	go2tv.Settings().SetTheme(go2tvTheme{"Dark"})
-	go2tv.Driver().SetDisableScreenBlanking(true)
+	themeName := go2tv.Preferences().StringWithFallback("Theme", "System Default")
+	go2tv.Settings().SetTheme(go2tvTheme{themeName})
 
 	w := go2tv.NewWindow("Go2TV")
 	dw := newDebugWriter(runtimeDebugRingSize)
@@ -298,4 +329,8 @@ func check(win fyne.Window, err error) {
 			dialog.ShowError(errors.New(cleanErr), win)
 		})
 	}
+}
+
+func (s *FyneScreen) ffmpegStatus() error {
+	return utils.CheckFFmpegContext(s.playbackStartupContext(), s.ffmpegPath)
 }

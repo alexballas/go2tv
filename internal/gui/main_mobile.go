@@ -61,13 +61,18 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	w := s.Current
 	var data []devType
 	list := newDeviceList(&data)
+	discoveryStatus := widget.NewLabel(discoveryStatusText(0, false, nil))
+	discoveryStatus.Alignment = fyne.TextAlignTrailing
 
 	// Avoid parallel execution of getDevices.
 	blockGetDevices := make(chan struct{})
 	go func() {
 		datanew, err := getDevices()
-		if err != nil {
+		searched := err == nil
+		if errors.Is(err, devices.ErrNoDeviceAvailable) {
 			datanew = nil
+			err = nil
+			searched = true
 		}
 
 		// Sort devices alphabetically for consistent ordering
@@ -76,6 +81,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		fyne.DoAndWait(func() {
 			data = datanew
 			list.Refresh()
+			discoveryStatus.SetText(discoveryStatusText(len(datanew), searched, err))
 		})
 
 		blockGetDevices <- struct{}{}
@@ -113,11 +119,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			return
 		}
 
-		// Android only permits starting a foreground service while the app is
-		// visible. Start it directly from the user action, before casting work
-		// moves to a goroutine and the receiver reports its eventual state.
-		beginBackgroundSession(s)
-		go playAction(s)
+		startMobilePlayback(s)
 	})
 
 	stop := widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
@@ -150,6 +152,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	externalmedia := widget.NewCheck(lang.L("Media from URL"), func(b bool) {})
 	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
+	s.TorrentSubsCheck = widget.NewCheck(lang.L("Automatic Torrent Subtitles"), nil)
+	s.TorrentSubsCheck.SetChecked(true)
 	transcode := widget.NewCheck(lang.L("Transcode"), func(b bool) {
 		s.Transcode = b
 	})
@@ -157,6 +161,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	mediafilelabel := widget.NewLabel(lang.L("Media File") + ":")
 	subsfilelabel := widget.NewLabel(lang.L("Subtitles") + ":")
 	devicelabel := widget.NewLabel(lang.L("Select Device") + ":")
+	deviceHeader := container.NewBorder(nil, nil, devicelabel, discoveryStatus)
 
 	s.PlayPause = playpause
 	s.Stop = stop
@@ -191,7 +196,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
 	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearmedia), clearmedia, mfiletext)
 	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
-	buttons := container.NewVBox(mediasubsbuttons, viewfilescont, checklists, sliderArea, actionbuttons, container.NewPadded(devicelabel))
+	buttons := container.NewVBox(mediasubsbuttons, newTorrentButton(s), newTorrentControls(s), s.TorrentSubsCheck, viewfilescont, checklists, sliderArea, actionbuttons, container.NewPadded(deviceHeader))
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
 
 	// Widgets actions
@@ -205,7 +210,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		// so user can still control it while browsing other devices
 		currentState := s.getScreenState()
 		isActivePlayback := currentState == "Playing" || currentState == "Paused"
-		if s.chromecastClient != nil && !isActivePlayback {
+		if !isActivePlayback && s.shouldCloseChromecastClientOnSelectionChange() {
+			s.chromecastClient.Log().Debug("closing idle Chromecast after device selection", "Method", "DeviceSelection")
 			s.chromecastClient.Close(false)
 			s.chromecastClient = nil
 		}
@@ -246,6 +252,10 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			// keep old values
 			mediafileOld = s.mediafile
 			mediafileOldText = s.MediaText.Text
+			if torrentMediaSelected(s) {
+				mediafileOld = nil
+				mediafileOldText = ""
+			}
 
 			// Clear the Media Text Area
 			clearmediaAction(s)
@@ -261,7 +271,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		mfile.Enable()
 		mediafilelabel.Text = lang.L("Media File") + ":"
 		mfiletext.SetPlaceHolder("")
-		s.MediaText.Text = mediafileOldText
+		s.MediaText.SetText(mediafileOldText)
 		s.mediafile = mediafileOld
 		resolveSelectedMobileArtwork(s, mediafileOld)
 		mediafilelabel.Refresh()
@@ -275,7 +285,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	// Device list auto-refresh
 	go func() {
 		<-blockGetDevices
-		refreshDevList(s, &data)
+		refreshDevList(s, &data, discoveryStatus)
 	}()
 
 	// Check mute status for selected device
@@ -287,18 +297,15 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	return content
 }
 
-func refreshDevList(s *FyneScreen, data *[]devType) {
+func refreshDevList(s *FyneScreen, data *[]devType, discoveryStatus *widget.Label) {
 	refreshDevices := time.NewTicker(5 * time.Second)
-
-	w := s.Current
-
-	_, err := getDevices()
-	if err != nil && !errors.Is(err, devices.ErrNoDeviceAvailable) {
-		check(w, err)
-	}
+	defer refreshDevices.Stop()
 
 	for range refreshDevices.C {
-		datanew, _ := getDevices()
+		datanew, discoveryErr := getDevices()
+		if errors.Is(discoveryErr, devices.ErrNoDeviceAvailable) {
+			discoveryErr = nil
+		}
 
 		var oldDevices []devType
 		var selectedAddr string
@@ -363,6 +370,7 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 
 		fyne.DoAndWait(func() {
 			*data = datanew
+			discoveryStatus.SetText(discoveryStatusText(len(datanew), true, discoveryErr))
 
 			if clearSelection {
 				s.controlURL = ""

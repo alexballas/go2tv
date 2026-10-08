@@ -473,7 +473,7 @@ func buildDIDLLite(tvdata *TVPayload, mediaURL string, mediaMetadata metadata.Me
 	}}
 	if tvdata.MediaDuration > 0 {
 		resNodeData[0].Duration = utils.SecondsToClockTime(int(math.Round(tvdata.MediaDuration)))
-	} else if duration, _ := utils.DurationForMedia(tvdata.FFmpegPath, tvdata.MediaPath); duration != "" {
+	} else if duration, _ := utils.DurationForMediaContext(tvdata.Context(), tvdata.FFmpegPath, tvdata.MediaPath); duration != "" {
 		resNodeData[0].Duration = duration
 	}
 
@@ -491,7 +491,8 @@ func buildDIDLLite(tvdata *TVPayload, mediaURL string, mediaMetadata metadata.Me
 		didl.AlbumArtURI = mediaMetadata.Artwork.URL
 	}
 
-	if strings.Contains(tvdata.SubtitlesURL, "srt") {
+	subtitlesURL, _ := url.Parse(tvdata.SubtitlesURL)
+	if subtitlesURL != nil && strings.HasSuffix(strings.ToLower(subtitlesURL.Path), ".srt") {
 		didl.ResNode = append(didl.ResNode, resNode{
 			ProtocolInfo: "http-get:*:text/srt:*",
 			Value:        tvdata.SubtitlesURL,

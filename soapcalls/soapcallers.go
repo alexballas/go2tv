@@ -21,6 +21,7 @@ import (
 	"github.com/pkg/errors"
 
 	"go2tv.app/go2tv/v2/internal/logging"
+	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/utils"
 )
@@ -48,6 +49,8 @@ type TVPayload struct {
 	MediaDuration               float64
 	FFmpegPath                  string
 	FFmpegSubsPath              string
+	FFmpegEmbeddedSubtitle      *utils.EmbeddedSubtitle
+	TorrentSource               mediasource.Source
 	EventURL                    string
 	ControlURL                  string
 	MediaURL                    string

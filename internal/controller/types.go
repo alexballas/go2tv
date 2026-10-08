@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go2tv.app/go2tv/v2/internal/mediamodel"
+	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/internal/playback"
 	"go2tv.app/go2tv/v2/metadata"
 )
@@ -202,8 +203,8 @@ func errorForCode(code ErrorCode) error {
 	}
 }
 
-// Policy controls automatic queue traversal. The zero value is valid and
-// disables all automatic behavior. A zero ImageDurationSeconds disables timed
+// Policy controls queue traversal and subtitle rendering. The zero value is valid
+// and disables automatic queue traversal. A zero ImageDurationSeconds disables timed
 // image advance; DefaultPolicy supplies the recommended duration.
 type Policy struct {
 	LoopSelected         bool `json:"LoopSelected"`
@@ -211,6 +212,10 @@ type Policy struct {
 	AutoPlaySameType     bool `json:"AutoPlaySameType"`
 	GaplessEnabled       bool `json:"GaplessEnabled"`
 	ImageDurationSeconds int  `json:"ImageDurationSeconds"`
+	// Torrent subtitles default to automatic; external subtitles take precedence.
+	DisableTorrentSubtitles bool `json:"DisableTorrentSubtitles,omitempty"`
+	// Optional burn-in for selected and automatic torrent Chromecast subtitles.
+	BurnChromecastSubtitles bool `json:"BurnChromecastSubtitles,omitempty"`
 }
 
 // DefaultPolicy returns the policy used by a new Controller.
@@ -303,6 +308,8 @@ type MediaRef struct {
 	OpenDirect    playback.SourceOpener
 	OpenTranscode playback.SourceOpener
 	LoadArtwork   MediaArtworkLoader
+	// TorrentSource is a verified progressive source, supplied only by torrent selection.
+	TorrentSource mediasource.Source
 
 	artwork          *metadata.ArtworkAsset
 	artworkAttempted bool
@@ -345,7 +352,7 @@ type SubtitleRef struct {
 
 func (r SubtitleRef) extension() string { return filepath.Ext(r.Name) }
 
-// Validate accepts the zero value and otherwise requires an SRT or VTT source.
+// Validate accepts the zero value and otherwise requires a supported text subtitle source.
 func (r SubtitleRef) Validate() error {
 	if r.RootID == "" && r.ID == "" && r.Name == "" && r.Open == nil {
 		return nil
@@ -359,7 +366,7 @@ func (r SubtitleRef) Validate() error {
 		return fmt.Errorf("name: %w", ErrInvalidSubtitle)
 	case r.Open == nil:
 		return fmt.Errorf("opener: %w", ErrInvalidSubtitle)
-	case !mediamodel.IsSRTPath(r.Name) && !mediamodel.IsVTTPath(r.Name):
+	case !mediamodel.IsSubtitlePath(r.Name):
 		return fmt.Errorf("format: %w", ErrInvalidSubtitle)
 	default:
 		return nil

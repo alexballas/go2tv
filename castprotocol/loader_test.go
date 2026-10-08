@@ -123,3 +123,21 @@ func TestRequiresCustomLoadArtworkOnly(t *testing.T) {
 		t.Fatal("artwork should require custom LOAD")
 	}
 }
+
+func TestTorrentSubtitleReceiverConfiguration(t *testing.T) {
+	req := LoadRequest{MediaURL: "http://host/movie.mkv", ContentType: "video/x-matroska", TorrentSubtitleURL: "http://host/torrent-subtitles.json"}
+	if !requiresCustomLoad(req) {
+		t.Fatal("progressive subtitles require custom receiver LOAD")
+	}
+	conn := &payloadCaptureConn{}
+	if err := loadMedia(conn, "transport-1", req, true); err != nil {
+		t.Fatal(err)
+	}
+	var payload CustomLoadPayload
+	if err := json.Unmarshal([]byte(conn.payload), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Media.CustomData == nil || payload.Media.CustomData.TorrentSubtitleURL != req.TorrentSubtitleURL || len(payload.Media.Tracks) != 0 || len(payload.ActiveTrackIds) != 0 {
+		t.Fatalf("progressive subtitles advertised as static track: %+v", payload)
+	}
+}

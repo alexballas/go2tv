@@ -9,9 +9,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	fynetooltip "github.com/alexballas/fyne-tooltip"
@@ -45,8 +45,28 @@ type screencastSession interface {
 	StderrTail(n int) string
 }
 
+type mprisBridge interface {
+	refresh()
+	volume(float64)
+	seeked(int64)
+	close()
+}
+
+func (p *FyneScreen) notifyMPRISSeek(seconds int) {
+	if p.mpris != nil {
+		p.mpris.seeked(int64(seconds) * 1_000_000)
+	}
+}
+
+func (p *FyneScreen) refreshMPRISProgress() {
+	if p.mpris != nil {
+		p.mpris.refresh()
+	}
+}
+
 // FyneScreen .
 type FyneScreen struct {
+	mpris                    mprisBridge
 	mediaSelection           *mediaSelectionCard
 	playbackStatus           *playbackStatusLabel
 	deviceSummary            *widget.Label
@@ -66,6 +86,10 @@ type FyneScreen struct {
 	SkipPreviousButton       *widget.Button
 	SkipNextButton           *widget.Button
 	tvdata                   *soapcalls.TVPayload
+	dlnaQueueMu              sync.Mutex
+	dlnaQueueOperationMu     sync.Mutex
+	torrent                  torrentUIState
+	torrentPlayPending       chan struct{}
 	tabs                     *container.AppTabs
 	CheckVersion             *widget.Button
 	CustomSubsCheck          *widget.Check
@@ -95,12 +119,14 @@ type FyneScreen struct {
 	version                  string
 	eventURL                 string
 	subsfile                 string
+	embeddedSubtitle         *utils.EmbeddedSubtitle
 	controlURL               string
 	renderingControlURL      string
 	connectionManagerURL     string
 	currentmfolder           string
 	ffmpegPath               string
 	ffmpegSeek               int
+	castBurnSubtitles        bool
 	castingMediaType         string  // MIME type of currently casting media (e.g., "image/jpeg", "video/mp4")
 	mediaDuration            float64 // Actual media duration in seconds (from ffprobe, for transcoded streams)
 	selectedArtwork          *selectedArtwork
@@ -109,7 +135,9 @@ type FyneScreen struct {
 	queuedArtwork            *metadata.ArtworkAsset
 	queuedArtworkIdentity    string
 	artworkCache             map[string]artworkCacheEntry
-	chromecastCheckedFile    string // Tracks which file was already auto-checked for Chromecast compatibility
+	chromecastCheckedFile    string                        // Tracks which file was already auto-checked for Chromecast compatibility
+	chromecastProbe          *chromecastCompatibilityProbe // UI-thread owned
+	chromecastProbePending   atomic.Bool
 	mediaFormats             []string
 	videoFormats             []string
 	muError                  sync.RWMutex
@@ -164,6 +192,7 @@ type FyneScreen struct {
 	ActiveDeviceCard         *widget.Card
 	rtmpServer               *rtmp.Server
 	rtmpServerCheck          *widget.Check
+	burnSubtitlesCheck       *wrappingCheck
 	transcodeToolTipCheck    *ttwidget.Check
 	screencastToolTipCheck   *ttwidget.Check
 	rtmpServerToolTipCheck   *ttwidget.Check
@@ -223,6 +252,9 @@ func (s *FyneScreen) updateFFmpegDependentCheckTooltips() {
 		ttCheck.SetToolTip("")
 	}
 
+	if s.ffmpegCheckValid && !s.ffmpegCheckDirty && s.ffmpegCheckPath == s.ffmpegPath {
+		s.updateChromecastSubtitleAvailability(s.ffmpegCheckErr)
+	}
 	setToolTip(s.transcodeToolTipCheck, s.TranscodeCheckBox)
 	setToolTip(s.screencastToolTipCheck, s.ScreencastCheckBox)
 	setToolTip(s.rtmpServerToolTipCheck, s.rtmpServerCheck)
@@ -254,7 +286,11 @@ func (s *FyneScreen) validateFFmpeg() error {
 		return nil
 	}
 
-	err := utils.CheckFFmpeg(s.ffmpegPath)
+	ctx := s.playbackStartupContext()
+	err := utils.CheckFFmpegContext(ctx, s.ffmpegPath)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	s.ffmpegCheckPath = s.ffmpegPath
 	s.ffmpegCheckErr = err
 	s.ffmpegCheckValid = true
@@ -270,6 +306,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 	if s == nil {
 		return
 	}
+	s.torrent.ctx = ctx
 
 	if s.tempFiles == nil {
 		s.tempFiles = make([]string, 0)
@@ -357,6 +394,11 @@ func Start(ctx context.Context, s *FyneScreen) {
 	s.updateFFmpegDependentCheckTooltips()
 
 	s.tabs = tabs
+	s.mpris = startMPRIS(s)
+	if s.mpris != nil {
+		defer s.mpris.close()
+		s.mpris.refresh()
+	}
 
 	w.SetContent(fynetooltip.AddWindowToolTipLayer(tabs, w.Canvas()))
 	w.Resize(mainTabWindowSize(w, tabs, mainContent))
@@ -570,26 +612,27 @@ func autoSelectNextSubs(v string, screen *FyneScreen) {
 }
 
 func getNextPossibleSubs(v string) string {
-	possibleSub := v[0:len(v)-
-		len(filepath.Ext(v))] + ".srt"
-
-	if _, err := os.Stat(possibleSub); err == nil {
-		return possibleSub
+	for _, extension := range mediamodel.SubtitleExtensions() {
+		possibleSub := strings.TrimSuffix(v, filepath.Ext(v)) + extension
+		if _, err := os.Stat(possibleSub); err == nil {
+			return possibleSub
+		}
 	}
 
 	return ""
 }
 
 func setPlayPauseView(s string, screen *FyneScreen) {
+	screen.cancelPlayTimer()
 	fyne.Do(func() {
 		if screen.mediaSelection != nil {
 			screen.mediaSelection.refresh()
 		}
 	})
-	if screen.cancelEnablePlay != nil {
-		screen.cancelEnablePlay()
-	}
+	refreshPlaybackControls(s, screen)
+}
 
+func refreshPlaybackControls(s string, screen *FyneScreen) {
 	if screen.renderGate.remoteLeaseHeld() {
 		// Renderer controls stay locked while the remote session runs; the
 		// lease release recomputes availability.
@@ -637,6 +680,10 @@ func setPlayPauseView(s string, screen *FyneScreen) {
 			}
 		}
 		screen.refreshPlaybackReadiness()
+		state := screen.getScreenState()
+		if screen.torrentPlaybackPending() || screen.playbackStartupPending() || screen.chromecastCompatibilityPending() && state != "Playing" && state != "Paused" {
+			screen.PlayPause.Disable()
+		}
 		screen.PlayPause.Refresh()
 		screen.refreshTraversalControls()
 	})
@@ -680,6 +727,9 @@ func (p *FyneScreen) updateScreenState(a string) {
 		p.playingMediaPath = p.mediafile
 	}
 	p.mu.Unlock()
+	if p.mpris != nil {
+		p.mpris.refresh()
+	}
 
 	fyne.Do(func() {
 		if p.DeviceList != nil {
@@ -725,6 +775,9 @@ func (p *FyneScreen) setPlayingMediaPath(path string) {
 	p.mu.Lock()
 	p.playingMediaPath = path
 	p.mu.Unlock()
+	if p.mpris != nil {
+		p.mpris.refresh()
+	}
 	fyne.Do(func() {
 		p.refreshPlaybackReadiness()
 		p.refreshQueueStateUI()
@@ -856,47 +909,6 @@ func (p *FyneScreen) reusableChromecastClientForDevice(device devType) *castprot
 	return client
 }
 
-// checkChromecastCompatibility checks if loaded media needs transcoding for Chromecast.
-// Auto-enables transcode checkbox if media is incompatible and FFmpeg is available.
-// Only auto-enables once per file - tracks checked file to respect user's manual disable.
-func (p *FyneScreen) checkChromecastCompatibility() {
-	if p.selectedDeviceType != devices.DeviceTypeChromecast {
-		return
-	}
-	if p.mediafile == "" {
-		return
-	}
-	// Skip if we've already auto-checked this file (prevents re-enabling after user disables)
-	if p.chromecastCheckedFile == p.mediafile {
-		return
-	}
-	if err := p.ffmpegStatus(); err != nil {
-		return // Can't transcode anyway
-	}
-
-	// Only auto-enable transcoding for video files
-	// Images and audio are natively supported by Chromecast
-	ext := strings.ToLower(filepath.Ext(p.mediafile))
-	if !slices.Contains(p.videoFormats, ext) {
-		return // Not a video file, no need to check compatibility
-	}
-
-	info, err := utils.GetMediaCodecInfo(p.ffmpegPath, p.mediafile)
-	if err != nil {
-		return // Can't determine, let user decide
-	}
-
-	// Mark this file as checked (even if compatible) to avoid rechecking
-	p.chromecastCheckedFile = p.mediafile
-
-	if !utils.IsChromecastCompatible(info) {
-		fyne.Do(func() {
-			p.TranscodeCheckBox.SetChecked(true)
-		})
-		p.Transcode = true
-	}
-}
-
 // NewFyneScreen creates and initializes a new FyneScreen instance with the provided version string.
 func NewFyneScreen(version string, crash *crashlog.Session) *FyneScreen {
 	go2tv := app.NewWithID("app.go2tv.go2tv")
@@ -975,11 +987,11 @@ func crashPath(crash *crashlog.Session) string {
 
 func onDropFiles(screen *FyneScreen) func(p fyne.Position, u []fyne.URI) {
 	return func(p fyne.Position, u []fyne.URI) {
-		handleDroppedFiles(screen, droppedMediaModeReplace, u)
+		handleDroppedFiles(screen, screen.Current, droppedMediaModeReplace, u)
 	}
 }
 
-func handleDroppedFiles(screen *FyneScreen, mode droppedMediaMode, uris []fyne.URI) {
+func handleDroppedFiles(screen *FyneScreen, parent fyne.Window, mode droppedMediaMode, uris []fyne.URI) {
 	if screen.renderGate.remoteLeaseHeld() {
 		return
 	}
@@ -996,7 +1008,7 @@ func handleDroppedFiles(screen *FyneScreen, mode droppedMediaMode, uris []fyne.U
 	}
 
 	if err := screen.droppedMediaBlockedErrorForMode(mode); err != nil {
-		check(screen, err)
+		checkInWindow(screen, err, parent)
 		return
 	}
 
@@ -1014,7 +1026,7 @@ func handleDroppedFiles(screen *FyneScreen, mode droppedMediaMode, uris []fyne.U
 			err = selectMediaPaths(screen, paths)
 		}
 
-		check(screen, err)
+		checkInWindow(screen, err, parent)
 	}()
 }
 
@@ -1023,7 +1035,7 @@ func splitDroppedFiles(screen *FyneScreen, uris []fyne.URI) ([]fyne.URI, []fyne.
 
 out:
 	for _, f := range uris {
-		if strings.HasSuffix(strings.ToUpper(f.Name()), ".SRT") {
+		if mediamodel.IsSubtitlePath(f.Name()) {
 			sfiles = append(sfiles, f)
 			continue
 		}

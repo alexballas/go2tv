@@ -8,8 +8,12 @@ import (
 	"unsafe"
 
 	"go2tv.app/go2tv/v2/castprotocol"
+	"go2tv.app/go2tv/v2/castprotocol/v2/cast"
 	"go2tv.app/go2tv/v2/devices"
 )
+
+// Session tests model a healthy client without opening a renderer socket.
+type sessionTestConn struct{ cast.Conn }
 
 func newConnectedCastClientForTest(t *testing.T, deviceAddr string) *castprotocol.CastClient {
 	t.Helper()
@@ -20,6 +24,9 @@ func newConnectedCastClientForTest(t *testing.T, deviceAddr string) *castprotoco
 	}
 
 	client.Close(false)
+	connField := reflectNewAtField(reflectValueElem(t, client).FieldByName("conn"))
+	conn := connField.Interface().(cast.Conn)
+	connField.Set(reflect.ValueOf(&sessionTestConn{Conn: conn}))
 	clientConnectedFieldSet(t, client, true)
 	return client
 }
@@ -124,5 +131,23 @@ func TestReusableChromecastClientForSelectedDeviceRequiresSameDevice(t *testing.
 	screen.selectedDevice = devType{name: "Bedroom DLNA", addr: "http://bedroom-dlna", deviceType: devices.DeviceTypeDLNA}
 	if got := screen.reusableChromecastClientForSelectedDevice(); got != nil {
 		t.Fatal("expected no reusable client for non-Chromecast selection")
+	}
+}
+
+func TestChromecastSelectionKeepsStartupClient(t *testing.T) {
+	client := newConnectedCastClientForTest(t, "http://living-room:8009")
+	screen := &FyneScreen{
+		chromecastClient: client,
+		activeDevice:     devType{name: "Living Room", addr: "http://living-room:8009", deviceType: devices.DeviceTypeChromecast},
+		State:            "Stopped",
+	}
+
+	if screen.shouldCloseChromecastClientOnSelectionChange() {
+		t.Fatal("selection would close a Chromecast client while its cast is starting")
+	}
+
+	screen.clearActiveDevice()
+	if !screen.shouldCloseChromecastClientOnSelectionChange() {
+		t.Fatal("selection should close an idle client after playback ends")
 	}
 }

@@ -1,3 +1,5 @@
+import { torrentControls } from "./torrent.js";
+
 const protocolVersion = 1;
 const maxConflictRetries = 2;
 
@@ -40,6 +42,8 @@ export function startClient(env) {
       AutoPlaySameType: false,
       GaplessEnabled: false,
       ImageDurationSeconds: 10,
+      DisableTorrentSubtitles: false,
+      BurnChromecastSubtitles: false,
     },
     selected_device_id: "",
     selected_media: false,
@@ -84,6 +88,8 @@ export function startClient(env) {
       "player.pause",
       "player.resume",
       "player.stop",
+      "torrent.select",
+      "torrent.cancel",
     ]),
     playbackPendingTypes = new Set([
       ...queuePendingTypes,
@@ -94,6 +100,13 @@ export function startClient(env) {
       "player.transcode",
     ]),
     devicePendingTypes = new Set(["devices.select", "devices.refresh"]);
+  const torrents = torrentControls(
+    env,
+    (...args) => send(...args),
+    () => connected && !shuttingDown && !queueLocked(),
+    () => hasPending("torrent.select") || hasPending("torrent.cancel"),
+    (...args) => showToast(...args),
+  );
   const svgNS = "http://www.w3.org/2000/svg";
   const option = (value, label) => {
     const node = document.createElement("option");
@@ -202,7 +215,7 @@ export function startClient(env) {
       numeric: true,
       sensitivity: "base",
     });
-  const isSubtitle = (name) => /\.(srt|vtt)$/i.test(name);
+  const isSubtitle = (name) => /\.(srt|vtt|ass|ssa)$/i.test(name);
   const filteredEntries = () => {
     const filter = byID("library-filter").value.trim().toLowerCase();
     return filter
@@ -307,6 +320,15 @@ export function startClient(env) {
     return thumbnail;
   }
   function renderPending(request) {
+    byID("burn-subtitles").disabled =
+      !connected || !transcodeAvailable || hasPending("playback.policy");
+    byID("burn-subtitles").title = transcodeAvailable
+      ? ""
+      : "FFmpeg unavailable";
+    if (!transcodeAvailable) byID("burn-subtitles").checked = false;
+    byID("torrent-subtitles").disabled =
+      !connected || hasPending("playback.policy");
+    torrents.render();
     pendingNode.textContent = pending.size ? `${pending.size} working` : "";
     const type = request?.type;
     if (!type) {
@@ -736,6 +758,9 @@ export function startClient(env) {
     byID("autoplay").checked = !!p.AutoPlayNext;
     byID("same-type").checked = !!p.AutoPlaySameType;
     byID("gapless").checked = !!p.GaplessEnabled;
+    byID("torrent-subtitles").checked = !p.DisableTorrentSubtitles;
+    byID("burn-subtitles").checked =
+      transcodeAvailable && !!p.BurnChromecastSubtitles;
     byID("image-duration").value = String(
       normalizeImageDuration(p.ImageDurationSeconds ?? 10),
     );
@@ -876,6 +901,7 @@ export function startClient(env) {
         if (request?.type === "queue.add_many")
           bulkAddToast(p, request.truncated || 0);
         renderPending(request);
+        if (request?.type?.startsWith("torrent.")) torrents.refresh();
         break;
       }
       case "error": {
@@ -915,6 +941,7 @@ export function startClient(env) {
       case "server.shutdown":
         shuttingDown = true;
         connected = false;
+        torrents.connection(false);
         pending.clear();
         connection("Server stopped", "error");
         renderPending();
@@ -933,11 +960,13 @@ export function startClient(env) {
     );
     ws.addEventListener("open", () => {
       connected = true;
+      torrents.connection(true);
       connection("Connected", "connected");
       renderPending();
     });
     ws.addEventListener("close", () => {
       connected = false;
+      torrents.connection(false);
       pending.clear();
       queueFocus = null;
       renderPending();
@@ -971,6 +1000,11 @@ export function startClient(env) {
         return;
       }
       transcodeAvailable = !!bootstrap.features?.transcode;
+      torrents.configure(
+        bootstrap.features,
+        bootstrap.torrent,
+        bootstrap.limits?.torrent_bytes,
+      );
       if (instanceID !== (bootstrap.instance_id || ""))
         await refreshLibrary(bootstrap);
       shuttingDown = false;
@@ -1240,6 +1274,8 @@ export function startClient(env) {
         AutoPlaySameType: auto && byID("same-type").checked,
         GaplessEnabled: auto && byID("gapless").checked,
         ImageDurationSeconds: duration,
+        DisableTorrentSubtitles: !byID("torrent-subtitles").checked,
+        BurnChromecastSubtitles: byID("burn-subtitles").checked,
       },
     });
   }
@@ -1257,6 +1293,11 @@ export function startClient(env) {
     assetsHash = bootstrap.assets_hash || "";
     instanceID = bootstrap.instance_id || "";
     transcodeAvailable = !!bootstrap.features?.transcode;
+    torrents.configure(
+      bootstrap.features,
+      bootstrap.torrent,
+      bootstrap.limits?.torrent_bytes,
+    );
     queueLimit = bootstrap.limits?.queue_items || queueLimit;
     mergeSnapshot(bootstrap.snapshot);
     roots.replaceChildren();
@@ -1369,6 +1410,8 @@ export function startClient(env) {
     "same-type",
     "gapless",
     "image-duration",
+    "torrent-subtitles",
+    "burn-subtitles",
   ])
     byID(id).addEventListener("change", () => sendPolicy(id));
   byID("theme-toggle").addEventListener("click", () => {

@@ -4,13 +4,14 @@ import "go2tv.app/go2tv/v2/metadata"
 
 // LoadRequest describes one media load, including protocol-neutral metadata.
 type LoadRequest struct {
-	MediaURL    string
-	ContentType string
-	Metadata    metadata.Media
-	StartTime   int
-	Duration    float64
-	SubtitleURL string
-	Live        bool
+	MediaURL           string
+	ContentType        string
+	Metadata           metadata.Media
+	StartTime          int
+	Duration           float64
+	SubtitleURL        string
+	TorrentSubtitleURL string
+	Live               bool
 }
 
 // MediaTrack represents a media track (audio, video, or text/subtitles).
@@ -27,13 +28,18 @@ type MediaTrack struct {
 
 // MediaItemWithTracks extends MediaItem with tracks support for subtitles.
 type MediaItemWithTracks struct {
-	ContentId      string          `json:"contentId"`
-	ContentType    string          `json:"contentType"`
-	StreamType     string          `json:"streamType"`
-	Duration       float32         `json:"duration,omitempty"`
-	Metadata       *MediaMeta      `json:"metadata,omitempty"`
-	Tracks         []MediaTrack    `json:"tracks,omitempty"`
-	TextTrackStyle *TextTrackStyle `json:"textTrackStyle,omitempty"`
+	ContentId      string           `json:"contentId"`
+	ContentType    string           `json:"contentType"`
+	StreamType     string           `json:"streamType"`
+	Duration       float32          `json:"duration,omitempty"`
+	Metadata       *MediaMeta       `json:"metadata,omitempty"`
+	Tracks         []MediaTrack     `json:"tracks,omitempty"`
+	TextTrackStyle *TextTrackStyle  `json:"textTrackStyle,omitempty"`
+	CustomData     *MediaCustomData `json:"customData,omitempty"`
+}
+
+type MediaCustomData struct {
+	TorrentSubtitleURL string `json:"go2tvTorrentSubtitleURL,omitempty"`
 }
 
 // MediaMeta contains metadata about the media.

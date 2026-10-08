@@ -64,6 +64,9 @@ func loadMedia(conn cast.Conn, transportId string, req LoadRequest, autoplay boo
 	}
 
 	var activeTrackIds []int
+	if req.TorrentSubtitleURL != "" {
+		mediaItem.CustomData = &MediaCustomData{TorrentSubtitleURL: req.TorrentSubtitleURL}
+	}
 
 	if req.SubtitleURL != "" {
 		// Add subtitle track
