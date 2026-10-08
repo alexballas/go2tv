@@ -43,7 +43,7 @@ jobs:
         test -s "build/$appimage_name"
         if [ -n "$update_info" ]; then
           test -s "build/$appimage_name.zsync"
-          actual_update_info="$("build/$appimage_name" --appimage-updateinformation)"
+          actual_update_info="$(env -u APPIMAGE_EXTRACT_AND_RUN "build/$appimage_name" --appimage-updateinformation)"
           if [ "$actual_update_info" != "$update_info" ]; then
             echo "AppImage update information mismatch: $actual_update_info"
             exit 1
