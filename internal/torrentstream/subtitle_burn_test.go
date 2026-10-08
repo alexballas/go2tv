@@ -211,8 +211,8 @@ func (r *brokenCaptionReader) Read(data []byte) (int, error) {
 	return r.ReadSeekCloser.Read(data)
 }
 
-// Interleaved media fills every piece. Inspect actual output at startup, rather
-// than relying on an undownloaded Void after all of the playable media.
+// Interleaved media fills every piece. Withhold a later media piece so startup
+// must produce playable output without it, regardless of download/encoder speed.
 func TestTorrentSubtitleBurnStartsBeforeMediaDownloadCompletes(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
@@ -279,7 +279,14 @@ Dialogue: 0,0:01:30.00,0:01:34.00,Default,,0,0,0,,Late caption
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedTorrent.DownloadAll()
+	// Withhold a piece around 80 seconds from the sole peer. Headers, fonts,
+	// initial media and end indexes stay available; scanning the entire subtitle
+	// track would stall here. Update the peer's cached availability synchronously.
+	missing := seedTorrent.Piece(info.NumPieces() * 2 / 3)
+	if err := missing.Storage().MarkNotComplete(); err != nil {
+		t.Fatalf("withhold media piece: %v", err)
+	}
+	missing.UpdateCompletion()
 	for _, chromecast := range []bool{false, true} {
 		name := "DLNA"
 		if chromecast {
@@ -287,7 +294,6 @@ Dialogue: 0,0:01:30.00,0:01:34.00,Default,,0,0,0,,Late caption
 		}
 		t.Run(name, func(t *testing.T) {
 			cfg := localConfig()
-			cfg.DownloadRateLimiter = rate.NewLimiter(2<<20, 64<<10)
 			session, err := openWithConfig(ctx, "", mi, cfg)
 			if err != nil {
 				t.Fatal(err)
