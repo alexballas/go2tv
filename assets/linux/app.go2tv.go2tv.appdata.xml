@@ -51,6 +51,28 @@
   </branding>
 
   <releases>
+      <release version="2.7.0" date="2026-10-09" type="stable">
+        <description>
+          <ul>
+            <li>Added torrent playback from magnet links and .torrent files, with casting support during downloads and subtitle support.</li>
+            <li>Added ASS/SSA subtitle support, preserving styles and fonts during transcoding.</li>
+            <li>Added support for burning PGS and other image-based subtitles into transcoded video.</li>
+            <li>Improved automatic subtitle selection and fixed subtitle conversion and timing when seeking.</li>
+            <li>Fixed stopping media during cast startup and skipping tracks during DLNA gapless playback.</li>
+            <li>Improved video casting performance with hardware decoding and software fallback.</li>
+            <li>Fixed AppImage hardware transcoding on older NVIDIA cards (GTX 10xx / Pascal) by locking bundled FFmpeg to 8.1.2.</li>
+            <li>Android: Updated the target SDK to Android 15 (API 35).</li>
+            <li>Android: Added support for selecting WebVTT subtitle files.</li>
+            <li>Android: Added a compact Settings tab with theme, playback position, and update notification options.</li>
+            <li>Android: Added resume playback support to continue media from the last saved position.</li>
+            <li>Android: No longer keeps the screen awake unnecessarily while casting in the background.</li>
+            <li>Android: Fixed volume and mute controls targeting the previous Chromecast after switching devices.</li>
+            <li>Linux: Added MPRIS support for desktop media controls and playback metadata.</li>
+            <li>Linux: Added AppManager support for updating AppImages with zsync delta updates.</li>
+          </ul>
+        </description>
+        <url type="details">https://github.com/alexballas/go2tv/releases/tag/v2.7.0</url>
+      </release>
       <release version="2.6.1" date="2026-09-16" type="stable">
         <description>
           <ul>
