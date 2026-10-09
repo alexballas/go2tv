@@ -306,9 +306,10 @@ make appimage-ffmpeg   # With FFmpeg
 ```
 
 Release AppImages are built on Ubuntu 22.04 (glibc 2.35) for compatibility with
-older systems and named `Go2TV-vX.Y.Z-x86_64.AppImage`. Build on Ubuntu 22.04
-when distributing local AppImages; building on a newer system can require a
-newer glibc.
+older systems and named `go2tv_vX.Y.Z_amd64.AppImage`. The lowercase prefix and
+underscores match other release artifacts; `linux` is omitted because AppImages
+are Linux-only. Build on Ubuntu 22.04 when distributing local AppImages;
+building on a newer system can require a newer glibc.
 
 Standalone Linux amd64 and arm64 releases use the same Ubuntu 22.04 baseline.
 ARMv6 releases use a pinned Raspberry Pi OS Bookworm image (glibc 2.36), which

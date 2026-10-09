@@ -81,7 +81,7 @@ jobs:
           const expected = [
             `go2tv_${versionTag}_android`,
             `go2tv_${versionTag}_linux_amd64`,
-            `Go2TV-${versionTag}-x86_64.AppImage`,
+            `go2tv_${versionTag}_amd64.AppImage`,
             `go2tv_${versionTag}_linux_arm`,
             `go2tv_${versionTag}_linux_arm64`,
             `go2tv_${versionTag}_macOS_amd64`,
@@ -145,7 +145,7 @@ jobs:
             cp "$apk_path" "$GITHUB_WORKSPACE/release-assets/go2tv_${{ steps.version.outputs.tag }}.apk"
           fi
 
-          if [[ "$name" == Go2TV-*-x86_64.AppImage ]]; then
+          if [[ "$name" == go2tv_*_amd64.AppImage ]]; then
             appimage_path="$workdir/$name"
             zsync_path="$appimage_path.zsync"
             if [ ! -s "$appimage_path" ] || [ ! -s "$zsync_path" ]; then
