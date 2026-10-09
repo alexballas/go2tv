@@ -32,10 +32,10 @@ jobs:
         APPIMAGE_EXTRACT_AND_RUN: 1
       run: |
         set -euo pipefail
-        appimage_name="Go2TV-${GO2TV_VERSION}-x86_64.AppImage"
+        appimage_name="go2tv_${GO2TV_VERSION}_amd64.AppImage"
         update_info=""
         if [[ "$GO2TV_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-          update_info='gh-releases-zsync|alexballas|go2tv|latest|Go2TV-*-x86_64.AppImage.zsync'
+          update_info='gh-releases-zsync|alexballas|go2tv|latest|go2tv_*_amd64.AppImage.zsync'
         fi
         make appimage-ffmpeg APPIMAGE_FFMPEG_MODE=download \
           "APPIMAGE_OUT=build/$appimage_name" \
@@ -60,9 +60,9 @@ jobs:
 
     - uses: actions/upload-artifact@v6
       with:
-        name: Go2TV-${{ env.GO2TV_VERSION }}-x86_64.AppImage
+        name: go2tv_${{ env.GO2TV_VERSION }}_amd64.AppImage
         path: |
-          Go2TV-${{ env.GO2TV_VERSION }}-x86_64.AppImage
-          Go2TV-${{ env.GO2TV_VERSION }}-x86_64.AppImage.zsync
+          go2tv_${{ env.GO2TV_VERSION }}_amd64.AppImage
+          go2tv_${{ env.GO2TV_VERSION }}_amd64.AppImage.zsync
         if-no-files-found: error
         retention-days: 2
