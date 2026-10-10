@@ -64,7 +64,7 @@ func TestDLNAEmbeddedSubtitleSelection(t *testing.T) {
 		transcode, native, sidecar        bool
 		failExtraction, wantError, url    bool
 		receiverFirst, burnFirst          bool
-		bitmap                            bool
+		bitmap, plainText, missingMedia   bool
 		track                             int
 	}{
 		{name: "automatic ASS uses native TV captions", media: ass, mode: subtitleAutomatic},
@@ -72,20 +72,23 @@ func TestDLNAEmbeddedSubtitleSelection(t *testing.T) {
 		{name: "switch Chromecast captions to styled burn", media: ass, mode: subtitleAutomatic, transcode: true, native: true, receiverFirst: true},
 		{name: "switch Chromecast captions to native DLNA", media: ass, mode: subtitleAutomatic, receiverFirst: true},
 		{name: "automatic SRT uses native TV captions", media: srt, mode: subtitleAutomatic},
-		{name: "automatic SRT burn", media: srt, mode: subtitleAutomatic, transcode: true, want: "First caption"},
+		{name: "automatic SRT burn", media: srt, mode: subtitleAutomatic, transcode: true, native: true, plainText: true},
+		{name: "automatic WebVTT burn", media: webvtt, mode: subtitleAutomatic, transcode: true, native: true, plainText: true},
 		{name: "disable transcoding after SRT burn", media: srt, mode: subtitleAutomatic, burnFirst: true},
 		{name: "disable transcoding after styled ASS burn", media: ass, mode: subtitleAutomatic, burnFirst: true},
 		{name: "sidecar takes priority", media: ass, mode: subtitleAutomatic, sidecar: true, want: "Sidecar caption"},
 		{name: "burn keeps sidecar priority", media: ass, mode: subtitleAutomatic, transcode: true, sidecar: true, want: "Sidecar caption"},
 		{name: "manual second track", media: ass, mode: subtitleEmbedded, selected: "Second", want: "Second caption"},
 		{name: "manual ASS burn", media: ass, mode: subtitleEmbedded, selected: "Second", transcode: true, native: true, track: 1},
+		{name: "manual SRT burn", media: srt, mode: subtitleEmbedded, selected: "Second", transcode: true, native: true, plainText: true, track: 1},
 		{name: "none disables fallback", media: ass, mode: subtitleNone},
 		{name: "none disables burn fallback", media: ass, mode: subtitleNone, transcode: true},
 		{name: "embedded requires selection", media: ass, mode: subtitleEmbedded},
 		{name: "external requires file", media: ass, mode: subtitleExternal},
 		{name: "URL excludes local fallback", media: ass, mode: subtitleAutomatic, transcode: true, url: true},
-		{name: "automatic failure allows playback", media: webvtt, mode: subtitleAutomatic, transcode: true, failExtraction: true},
+		{name: "automatic preparation failure is optional", media: webvtt, mode: subtitleAutomatic, transcode: true, missingMedia: true},
 		{name: "manual failure reported", media: ass, mode: subtitleEmbedded, selected: "Second", failExtraction: true, wantError: true},
+		{name: "manual burn preparation failure reported", media: srt, mode: subtitleEmbedded, selected: "Second", transcode: true, missingMedia: true, wantError: true},
 		{name: "bitmap allows playback", media: bitmap, mode: subtitleAutomatic},
 		{name: "bitmap burn", media: bitmap, mode: subtitleAutomatic, transcode: true, native: true, bitmap: true},
 		{name: "manual bitmap requires transcoding", media: bitmap, mode: subtitleEmbedded, selected: "eng", bitmap: true, wantError: true},
@@ -112,6 +115,10 @@ func TestDLNAEmbeddedSubtitleSelection(t *testing.T) {
 			}
 			if tc.failExtraction {
 				screen.ffmpegPath = filepath.Join(dir, "missing-ffmpeg")
+			}
+			if tc.missingMedia {
+				// A source can disappear after selection; both probing and extraction fail.
+				screen.mediafile = filepath.Join(dir, "missing-media.mkv")
 			}
 			t.Cleanup(func() {
 				for _, path := range screen.tempFiles {
@@ -153,8 +160,8 @@ func TestDLNAEmbeddedSubtitleSelection(t *testing.T) {
 			}
 			if tc.native {
 				original := screen.embeddedSubtitle
-				if original == nil || original.Path != screen.mediafile || original.Track != tc.track || original.Bitmap != tc.bitmap || screen.subsfile != "" {
-					t.Fatalf("styled subtitle source lost: %+v, sidecar=%q", original, screen.subsfile)
+				if original == nil || original.Path != screen.mediafile || original.Track != tc.track || original.Bitmap != tc.bitmap || original.PlainText != tc.plainText || screen.subsfile != "" {
+					t.Fatalf("embedded subtitle source lost: %+v, sidecar=%q", original, screen.subsfile)
 				}
 				return
 			}

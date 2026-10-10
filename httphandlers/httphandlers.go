@@ -75,6 +75,26 @@ func (s *HTTPserver) AddHandler(path string, payload *soapcalls.TVPayload, trans
 	s.mu.Unlock()
 }
 
+// SetDLNATranscodeSeek publishes media seek options and receiver captions at
+// the same point. HTTP requests snapshot both under the handler lock.
+func (s *HTTPserver) SetDLNATranscodeSeek(payload *soapcalls.TVPayload, seconds int, subsPath string, embedded *utils.EmbeddedSubtitle, subtitleRoute string, subtitles any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	payload.SetTranscodeSeek(seconds, subsPath, embedded)
+	if subtitleRoute != "" {
+		s.handlers[subtitleRoute] = handler{media: subtitles}
+	}
+}
+
+type dlnaTranscodeOptionsKey struct{}
+
+// DLNATranscodeOptionsForRequest returns the seek configuration captured when
+// this request selected its handler, including custom media HTTP handlers.
+func DLNATranscodeOptionsForRequest(r *http.Request) *utils.TranscodeOptions {
+	options, _ := r.Context().Value(dlnaTranscodeOptionsKey{}).(*utils.TranscodeOptions)
+	return options
+}
+
 // AddStaticHandler adds GET/HEAD static content with explicit MIME and CORS.
 // media may be a file path, []byte, or MediaReaderSeeker.
 func (s *HTTPserver) AddStaticHandler(path, mediaType string, media any) {
@@ -256,6 +276,13 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 				}
 			}
 		}
+		var dlnaOpts *utils.TranscodeOptions
+		if out.payload != nil {
+			dlnaOpts = out.payload.TranscodeOptionsSnapshot()
+		}
+		if dlnaOpts != nil {
+			r = r.WithContext(context.WithValue(r.Context(), dlnaTranscodeOptionsKey{}, dlnaOpts))
+		}
 		s.mu.Unlock()
 
 		if !exists {
@@ -336,7 +363,7 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 			}
 		}
 
-		serveContent(w, r, out.payload, out.transcode, out.media, s.ffmpeg)
+		serveContentWithDLNAOptions(w, r, out.payload, out.transcode, out.media, s.ffmpeg, dlnaOpts)
 	}
 }
 
@@ -478,6 +505,14 @@ func NewServer(a string) *HTTPserver {
 }
 
 func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mf any, ff *exec.Cmd) {
+	var dlnaOpts *utils.TranscodeOptions
+	if tv != nil {
+		dlnaOpts = tv.TranscodeOptionsSnapshot()
+	}
+	serveContentWithDLNAOptions(w, r, tv, tcOpts, mf, ff, dlnaOpts)
+}
+
+func serveContentWithDLNAOptions(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mf any, ff *exec.Cmd, dlnaOpts *utils.TranscodeOptions) {
 	var (
 		isMedia   bool
 		transcode bool
@@ -512,7 +547,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 
 	switch f := mf.(type) {
 	case osFileType:
-		serveContentCustomType(w, r, tv, tcOpts, mediaType, transcode, seek, f, ff)
+		serveContentCustomType(w, r, tv, tcOpts, mediaType, transcode, seek, f, ff, dlnaOpts)
 	case MediaReaderSeeker:
 		rsc, err := f()
 		if err != nil {
@@ -520,7 +555,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 			return
 		}
 		if transcode {
-			serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, rsc, ff)
+			serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, rsc, ff, dlnaOpts)
 			return
 		}
 		serveContentSeekCloser(w, r, mediaType, seek, rsc)
@@ -530,7 +565,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 		// A probe must not take the reader, or the GET that follows it finds
 		// the stream busy and the renderer never starts playing.
 		if r.Method != http.MethodGet {
-			serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, http.NoBody, ff)
+			serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, http.NoBody, ff, dlnaOpts)
 			return
 		}
 
@@ -539,9 +574,9 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 			http.Error(w, "stream busy", http.StatusServiceUnavailable)
 			return
 		}
-		serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, rc, ff)
+		serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, rc, ff, dlnaOpts)
 	case io.ReadCloser:
-		serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, f, ff)
+		serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, f, ff, dlnaOpts)
 	default:
 		http.NotFound(w, r)
 		return
@@ -564,16 +599,7 @@ func serveContentBytes(w http.ResponseWriter, r *http.Request, mediaType string,
 	http.ServeContent(w, r, name, time.Now(), bReader)
 }
 
-func dlnaTranscodeOptions(tv *soapcalls.TVPayload) *utils.TranscodeOptions {
-	return &utils.TranscodeOptions{
-		FFmpegPath: tv.FFmpegPath, SubsPath: tv.FFmpegSubsPath,
-		SeekSeconds: tv.FFmpegSeek, SubtitleSize: utils.SubtitleSizeMedium,
-		TorrentSource: tv.TorrentSource, LogOutput: tv.LogOutput,
-		EmbeddedSubtitle: tv.FFmpegEmbeddedSubtitle,
-	}
-}
-
-func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode bool, f io.ReadCloser, ff *exec.Cmd) {
+func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode bool, f io.ReadCloser, ff *exec.Cmd, dlnaOpts *utils.TranscodeOptions) {
 	defer f.Close()
 
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
@@ -598,7 +624,7 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 		case tv != nil:
 			// DLNA transcoding (MPEGTS)
 			var command exec.Cmd
-			err := utils.ServeDLNATranscodedStream(r.Context(), w, f, &command, dlnaTranscodeOptions(tv))
+			err := utils.ServeDLNATranscodedStream(r.Context(), w, f, &command, dlnaOpts)
 			if err != nil {
 				tv.Log().Error("", "function", "serveContentReadClose", "Action", "Transcode", "error", err)
 			}
@@ -641,7 +667,7 @@ func serveContentSeekCloser(w http.ResponseWriter, r *http.Request, mediaType st
 	http.ServeContent(w, r, name, time.Now(), f)
 }
 
-func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode, seek bool, f osFileType, ff *exec.Cmd) {
+func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode, seek bool, f osFileType, ff *exec.Cmd, dlnaOpts *utils.TranscodeOptions) {
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
 		w.Header()["contentFeatures.dlna.org"] = []string{utils.BuildDLNAContentFeatures(utils.DLNAContentFeaturesOptions{
 			ByteSeek:  seek && !transcode,
@@ -675,7 +701,7 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcall
 		case tv != nil:
 			// DLNA transcoding (MPEGTS)
 			var command exec.Cmd
-			err := utils.ServeDLNATranscodedStream(r.Context(), w, input, &command, dlnaTranscodeOptions(tv))
+			err := utils.ServeDLNATranscodedStream(r.Context(), w, input, &command, dlnaOpts)
 			if err != nil {
 				tv.Log().Error("", "function", "serveContentCustomType", "Action", "Transcode", "error", err)
 			}

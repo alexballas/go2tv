@@ -28,7 +28,7 @@ func TestTorrentSubtitleSelectionAndHandlerLifetime(t *testing.T) {
 	server := httphandlers.NewServer("")
 	for _, mode := range []string{subtitleAutomatic, subtitleNone, subtitleExternal, subtitleEmbedded, subtitleAutomatic} {
 		card.subtitles.SetSelected(lang.L(mode))
-		url := registerTorrentSubtitles(server, "host:1234", path, !screen.CustomSubsCheck.Checked, 0)
+		url := registerTorrentSubtitles(server, "host:1234", path, !screen.CustomSubsCheck.Checked, 0, false)
 		w := httptest.NewRecorder()
 		server.ServeMediaHandler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://host:1234/torrent-subtitles.json?time=NaN", nil))
 		if mode == subtitleAutomatic {
@@ -39,7 +39,7 @@ func TestTorrentSubtitleSelectionAndHandlerLifetime(t *testing.T) {
 			t.Fatalf("explicit mode retained automatic endpoint: %s %q %d", mode, url, w.Code)
 		}
 	}
-	if url := registerTorrentSubtitles(server, "host:1234", filepath.Join(t.TempDir(), "local.mkv"), true, 0); url != "" {
+	if url := registerTorrentSubtitles(server, "host:1234", filepath.Join(t.TempDir(), "local.mkv"), true, 0, false); url != "" {
 		t.Fatal("local file acquired torrent subtitle handler")
 	}
 	w := httptest.NewRecorder()

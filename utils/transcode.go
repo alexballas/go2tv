@@ -91,6 +91,7 @@ func serveDLNATranscodedStream(ctx context.Context, w io.Writer, input any, ff *
 
 	encoderPlan := selectTranscodeVideoEncoder(ffmpegPath, videoEncoderProfileDLNA)
 	buildArgs := func(plan videoEncoderPlan, hw string) []string {
+		copyTS := (in != "pipe:0" && seekSeconds > 0) || burn.overlay != ""
 		var vf string
 		args := []string{ffmpegPath}
 		switch hw {
@@ -101,7 +102,7 @@ func serveDLNATranscodedStream(ctx context.Context, w io.Writer, input any, ff *
 		default:
 			vf = joinVideoFilters(
 				softwareTranscodeScaleFilter,
-				burn.filter,
+				burn.videoFilter(copyTS),
 				plan.filterTail,
 			)
 		}
@@ -110,7 +111,7 @@ func serveDLNATranscodedStream(ctx context.Context, w io.Writer, input any, ff *
 		if in != "pipe:0" && seekSeconds > 0 {
 			args = append(args, "-ss", strconv.Itoa(seekSeconds))
 		}
-		if (in != "pipe:0" && seekSeconds > 0) || burn.overlay != "" {
+		if copyTS {
 			args = append(args, "-copyts")
 		}
 

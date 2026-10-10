@@ -11,13 +11,14 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
 var ErrBadStatus = errors.New("streamURL bad status code")
 
 const (
-	streamHTTPClientTimeout         = 20 * time.Second
+	streamHTTPPreparationTimeout    = 20 * time.Second
 	streamHTTPDialTimeout           = 5 * time.Second
 	streamHTTPKeepAlive             = 30 * time.Second
 	streamHTTPTLSHandshakeTimeout   = 5 * time.Second
@@ -27,7 +28,6 @@ const (
 )
 
 var streamHTTPClient = &http.Client{
-	Timeout: streamHTTPClientTimeout,
 	Transport: &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
@@ -41,20 +41,75 @@ var streamHTTPClient = &http.Client{
 	},
 }
 
+// Playback bodies keep the caller's cancellation without a total deadline.
+// Acquisition, MIME sniffing and image downloads each have a bounded deadline.
+type streamURLBody struct {
+	io.ReadCloser
+	cancel      context.CancelCauseFunc
+	stopTimeout func() bool
+	closeOnce   sync.Once
+	closeErr    error
+}
+
+func (b *streamURLBody) startTimeout() {
+	done := make(chan struct{})
+	timer := time.AfterFunc(streamHTTPPreparationTimeout, func() {
+		b.cancel(context.DeadlineExceeded)
+		close(done)
+	})
+	var once sync.Once
+	stopped := false
+	b.stopTimeout = func() bool {
+		once.Do(func() {
+			stopped = timer.Stop()
+			if !stopped {
+				// Finish an already-started callback before handing off playback.
+				<-done
+			}
+		})
+		return stopped
+	}
+}
+
+func (b *streamURLBody) Close() error {
+	b.closeOnce.Do(func() {
+		b.stopTimeout()
+		b.cancel(context.Canceled)
+		b.closeErr = b.ReadCloser.Close()
+	})
+	return b.closeErr
+}
+
 func streamURLResponse(ctx context.Context, s string) (*http.Response, error) {
 	_, err := url.ParseRequestURI(s)
 	if err != nil {
 		return nil, fmt.Errorf("streamURL failed to parse url: %w", err)
 	}
+	if ctx == nil {
+		return nil, errors.New("streamURL: nil context")
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s, nil)
+	requestCtx, cancel := context.WithCancelCause(ctx)
+	body := &streamURLBody{cancel: cancel}
+	body.startTimeout()
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, s, nil)
 	if err != nil {
+		body.stopTimeout()
+		cancel(context.Canceled)
 		return nil, fmt.Errorf("streamURL failed to call NewRequest: %w", err)
 	}
 
 	resp, err := streamHTTPClient.Do(req)
+	acquired := body.stopTimeout()
 	if err != nil {
+		cancel(context.Canceled)
 		return nil, fmt.Errorf("streamURL failed to client.Do: %w", err)
+	}
+	body.ReadCloser = resp.Body
+	resp.Body = body
+	if !acquired {
+		body.Close()
+		return nil, fmt.Errorf("streamURL failed to acquire response: %w", context.DeadlineExceeded)
 	}
 
 	if resp.StatusCode >= 400 {
@@ -107,12 +162,21 @@ func StreamURLWithMime(ctx context.Context, s string) (io.ReadCloser, string, er
 	}
 
 	mediaType := normalizeContentType(resp.Header.Get("Content-Type"))
+	body := resp.Body.(*streamURLBody)
 	if !shouldSniffContentType(mediaType) {
+		if strings.Contains(mediaType, "image") {
+			body.startTimeout()
+		}
 		return resp.Body, mediaType, nil
 	}
 
 	head := make([]byte, 261)
+	body.startTimeout()
 	n, err := io.ReadFull(resp.Body, head)
+	if !body.stopTimeout() {
+		resp.Body.Close()
+		return nil, "", fmt.Errorf("streamURL failed to read body for mime detection: %w", context.DeadlineExceeded)
+	}
 	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		resp.Body.Close()
 		return nil, "", fmt.Errorf("streamURL failed to read body for mime detection: %w", err)
@@ -125,6 +189,9 @@ func StreamURLWithMime(ctx context.Context, s string) (io.ReadCloser, string, er
 
 	if sniffedType != "" && sniffedType != "/" {
 		mediaType = sniffedType
+	}
+	if strings.Contains(mediaType, "image") {
+		body.startTimeout()
 	}
 
 	return struct {

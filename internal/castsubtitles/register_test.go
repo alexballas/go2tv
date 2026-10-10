@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -19,6 +22,87 @@ import (
 type captionSource struct {
 	path string
 	size int64
+}
+
+func TestTorrentCaptionRegistrationWithMediaOrigin(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	ffprobe, err := exec.LookPath("ffprobe")
+	if err != nil {
+		t.Skip("ffprobe unavailable")
+	}
+	subs := filepath.Join(t.TempDir(), "captions.srt")
+	if err := os.WriteFile(subs, []byte("1\n00:00:05,000 --> 00:00:10,000\nFirst caption\n\n2\n00:00:35,000 --> 00:00:40,000\nSecond caption\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	fixtures := []struct {
+		name, audioCodec, audioOffset string
+	}{
+		{"aligned PCM", "pcm_s16le", "0"},
+		{"audio before video", "pcm_s16le", "-1"},
+		{"AAC encoder delay", "aac", "0"},
+		{"Opus encoder delay", "libopus", "0"},
+	}
+	for _, fixture := range fixtures {
+		t.Run(fixture.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "offset.mkv")
+			command := exec.Command(ffmpeg, "-nostdin", "-v", "error", "-f", "lavfi", "-i", "color=size=32x32:rate=2:duration=45",
+				"-itsoffset", fixture.audioOffset, "-f", "lavfi", "-i", "sine=frequency=440:duration=46", "-i", subs,
+				"-map", "0:v", "-map", "1:a", "-map", "2:s", "-c:v", "libx264", "-c:a", fixture.audioCodec, "-c:s", "srt", "-output_ts_offset", "5", path)
+			if output, err := command.CombinedOutput(); err != nil {
+				if strings.Contains(string(output), "Unknown encoder") {
+					t.Skipf("fixture encoder unavailable: %s", output)
+				}
+				t.Fatalf("create offset torrent: %v: %s", err, output)
+			}
+			// Encoder delay changes the muxed origin across FFmpeg versions.
+			// Compare receiver timing with FFmpeg's independent timeline.
+			output, err := exec.Command(ffprobe, "-v", "error", "-show_entries", "format=start_time", "-of", "default=noprint_wrappers=1:nokey=1", path).Output()
+			if err != nil {
+				t.Fatalf("probe media origin: %v", err)
+			}
+			origin, err := strconv.ParseFloat(strings.TrimSpace(string(output)), 64)
+			if err != nil || math.IsNaN(origin) || math.IsInf(origin, 0) {
+				t.Fatalf("invalid media origin %q: %v", output, err)
+			}
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(mediasource.Register(path, captionSource{path, info.Size()}))
+			tt := []struct {
+				name       string
+				transcoded bool
+				seek       int
+				want       mkvsubs.Cue
+			}{
+				{name: "native", want: mkvsubs.Cue{10, 15, "First caption"}},
+				{name: "initial transcode", transcoded: true, want: mkvsubs.Cue{10 - origin, 15 - origin, "First caption"}},
+				{name: "transcoded seek", transcoded: true, seek: 30, want: mkvsubs.Cue{10 - origin, 15 - origin, "Second caption"}},
+			}
+			for _, tc := range tt {
+				t.Run(tc.name, func(t *testing.T) {
+					server := httphandlers.NewServer("")
+					captions, err := Register(server, "host:1234", path, "", Options{Transcoded: tc.transcoded, AutomaticTorrent: true, SeekSeconds: tc.seek})
+					if err != nil {
+						t.Fatal(err)
+					}
+					response := httptest.NewRecorder()
+					server.ServeMediaHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, captions.TorrentSubtitleURL+"?time=0", nil))
+					var result struct{ Cues []mkvsubs.Cue }
+					if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+						t.Fatal(err)
+					}
+					if response.Code != http.StatusOK || len(result.Cues) != 1 || result.Cues[0].Text != tc.want.Text ||
+						math.Abs(result.Cues[0].Start-tc.want.Start) > 1e-6 || math.Abs(result.Cues[0].End-tc.want.End) > 1e-6 {
+						t.Fatalf("receiver captions = %+v, status=%d, want %+v", result.Cues, response.Code, tc.want)
+					}
+				})
+			}
+		})
+	}
 }
 
 func (s captionSource) Open(context.Context) (io.ReadSeekCloser, error) { return os.Open(s.path) }

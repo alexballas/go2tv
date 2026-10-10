@@ -11,7 +11,7 @@ import (
 
 // RegisterTorrent exposes progressive embedded text only for registered torrent
 // sources. A false automatic value removes stale captions.
-func RegisterTorrent(server *httphandlers.HTTPserver, host, path string, automatic bool, offset int) string {
+func RegisterTorrent(server *httphandlers.HTTPserver, host, path string, automatic bool, offset int, transcoded bool) string {
 	if server == nil {
 		return ""
 	}
@@ -24,7 +24,7 @@ func RegisterTorrent(server *httphandlers.HTTPserver, host, path string, automat
 	if source == nil {
 		return ""
 	}
-	server.AddHandler(endpoint, nil, nil, mkvsubs.Handler(mkvsubs.New(source), float64(offset)))
+	server.AddHandler(endpoint, nil, nil, mkvsubs.Handler(mkvsubs.New(source), float64(offset), transcoded))
 	return "http://" + host + endpoint
 }
 

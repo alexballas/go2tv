@@ -290,7 +290,7 @@ Go2TV uses a custom Chromecast receiver hosted at https://cast-receiver.go2tv.ap
 
 ## Building from Source
 
-**Requirements**: Go 1.26
+**Requirements**: Go 1.26.9 or later (Go 1.27 requires 1.27.2 or later)
 
 ``` console
 git clone https://github.com/alexballas/go2tv
