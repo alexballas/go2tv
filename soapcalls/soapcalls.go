@@ -73,7 +73,7 @@ func NewTVPayload(o *Options) (*TVPayload, error) {
 		Transcode:                   o.Transcode,
 		FFmpegPath:                  o.FFmpegPath,
 		FFmpegSubsPath:              o.FFmpegSubsPath,
-		FFmpegEmbeddedSubtitle:      o.FFmpegEmbeddedSubtitle,
+		FFmpegEmbeddedSubtitle:      copyEmbeddedSubtitle(o.FFmpegEmbeddedSubtitle),
 		TorrentSource:               o.TorrentSource,
 		FFmpegSeek:                  o.FFmpegSeek,
 		Seekable:                    o.Seek,
@@ -124,4 +124,35 @@ func (p *TVPayload) SubscriptionIDs() []string {
 	}
 	slices.Sort(ids)
 	return ids
+}
+
+// SetTranscodeSeek publishes one coherent seek/caption configuration. Callers
+// must use this method instead of changing FFmpeg fields during playback.
+func (p *TVPayload) SetTranscodeSeek(seconds int, subsPath string, embedded *utils.EmbeddedSubtitle) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.FFmpegSeek = seconds
+	p.FFmpegSubsPath = subsPath
+	p.FFmpegEmbeddedSubtitle = copyEmbeddedSubtitle(embedded)
+}
+
+// TranscodeOptionsSnapshot returns independent options for one HTTP request.
+// Existing streams retain their configuration while a seek publishes new options.
+func (p *TVPayload) TranscodeOptionsSnapshot() *utils.TranscodeOptions {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return &utils.TranscodeOptions{
+		FFmpegPath: p.FFmpegPath, SubsPath: p.FFmpegSubsPath,
+		SeekSeconds: p.FFmpegSeek, SubtitleSize: utils.SubtitleSizeMedium,
+		TorrentSource: p.TorrentSource, LogOutput: p.LogOutput,
+		EmbeddedSubtitle: copyEmbeddedSubtitle(p.FFmpegEmbeddedSubtitle),
+	}
+}
+
+func copyEmbeddedSubtitle(embedded *utils.EmbeddedSubtitle) *utils.EmbeddedSubtitle {
+	if embedded == nil {
+		return nil
+	}
+	copied := *embedded
+	return &copied
 }

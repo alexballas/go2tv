@@ -47,9 +47,9 @@ type TranscodeOptions struct {
 	SubtitleFontsDir string
 	LogOutput        io.Writer
 	RawInput         *RawVideoInput
-	// EmbeddedSubtitle renders a selected local ASS/SSA or bitmap track directly
-	// from its container, preserving typesetting and attached fonts. Used when
-	// SubsPath is empty; an external subtitle selection takes priority.
+	// EmbeddedSubtitle renders a selected local text or bitmap track directly
+	// from its container, preserving timestamps, typesetting and attached fonts.
+	// Used when SubsPath is empty; an external subtitle selection takes priority.
 	EmbeddedSubtitle *EmbeddedSubtitle
 	// TorrentSource burns the first supported embedded text track when SubsPath
 	// is empty. Callers select this only for automatic torrent captions.
@@ -63,6 +63,9 @@ type EmbeddedSubtitle struct {
 	Path   string
 	Track  int // Zero-based subtitle stream index, as in FFmpeg's 0:s:N selector.
 	Bitmap bool
+	// PlainText applies the configured subtitle size to an unstyled text track.
+	// ASS/SSA and bitmap tracks retain their original presentation.
+	PlainText bool
 	// StartTime is the container origin retained by FFmpeg's subtitles filter.
 	StartTime float64
 }

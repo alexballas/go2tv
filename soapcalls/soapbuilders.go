@@ -2,6 +2,7 @@ package soapcalls
 
 import (
 	"bytes"
+	"context"
 	"encoding/xml"
 	"fmt"
 	"math"
@@ -338,7 +339,11 @@ func setAVTransportSoapBuild(tvdata *TVPayload) ([]byte, error) {
 }
 
 func setAVTransportSoapBuildWithCompat(tvdata *TVPayload, legacyMetadataCompat bool) ([]byte, error) {
-	a, err := buildDIDLLite(tvdata, tvdata.MediaURL, tvdata.Metadata)
+	return setAVTransportSoapBuildWithCompatContext(tvdata.Context(), tvdata, legacyMetadataCompat)
+}
+
+func setAVTransportSoapBuildWithCompatContext(ctx context.Context, tvdata *TVPayload, legacyMetadataCompat bool) ([]byte, error) {
+	a, err := buildDIDLLiteContext(ctx, tvdata, tvdata.MediaURL, tvdata.Metadata)
 	if err != nil {
 		return nil, fmt.Errorf("setAVTransportSoapBuild DIDL error: %w", err)
 	}
@@ -403,6 +408,10 @@ func applyLegacyDIDLCompatToCurrentURI(input []byte) []byte {
 }
 
 func setNextAVTransportSoapBuild(tvdata *TVPayload, clear bool) ([]byte, error) {
+	return setNextAVTransportSoapBuildContext(tvdata.Context(), tvdata, clear)
+}
+
+func setNextAVTransportSoapBuildContext(ctx context.Context, tvdata *TVPayload, clear bool) ([]byte, error) {
 	murl := tvdata.MediaURL
 	mediaMetadata := tvdata.Metadata
 	if clear {
@@ -410,7 +419,7 @@ func setNextAVTransportSoapBuild(tvdata *TVPayload, clear bool) ([]byte, error) 
 		mediaMetadata.Artwork = nil
 	}
 
-	a, err := buildDIDLLite(tvdata, murl, mediaMetadata)
+	a, err := buildDIDLLiteContext(ctx, tvdata, murl, mediaMetadata)
 	if err != nil {
 		return nil, fmt.Errorf("setNextAVTransportSoapBuild DIDL error: %w", err)
 	}
@@ -443,6 +452,10 @@ func setNextAVTransportSoapBuild(tvdata *TVPayload, clear bool) ([]byte, error) 
 }
 
 func buildDIDLLite(tvdata *TVPayload, mediaURL string, mediaMetadata metadata.Media) ([]byte, error) {
+	return buildDIDLLiteContext(tvdata.Context(), tvdata, mediaURL, mediaMetadata)
+}
+
+func buildDIDLLiteContext(ctx context.Context, tvdata *TVPayload, mediaURL string, mediaMetadata metadata.Media) ([]byte, error) {
 	wireMediaType := utils.DLNAResourceMediaType(tvdata.MediaType, tvdata.Transcode)
 	contentFeatures := utils.BuildDLNAContentFeatures(utils.DLNAContentFeaturesOptions{
 		ByteSeek:  tvdata.Seekable && !tvdata.Transcode,
@@ -473,7 +486,7 @@ func buildDIDLLite(tvdata *TVPayload, mediaURL string, mediaMetadata metadata.Me
 	}}
 	if tvdata.MediaDuration > 0 {
 		resNodeData[0].Duration = utils.SecondsToClockTime(int(math.Round(tvdata.MediaDuration)))
-	} else if duration, _ := utils.DurationForMediaContext(tvdata.Context(), tvdata.FFmpegPath, tvdata.MediaPath); duration != "" {
+	} else if duration, _ := utils.DurationForMediaContext(ctx, tvdata.FFmpegPath, tvdata.MediaPath); duration != "" {
 		resNodeData[0].Duration = duration
 	}
 

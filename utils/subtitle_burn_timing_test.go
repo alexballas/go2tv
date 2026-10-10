@@ -16,9 +16,11 @@ import (
 	"time"
 )
 
-func TestEmbeddedStyledSubtitlePlaybackTiming(t *testing.T) {
+func TestEmbeddedSubtitlePlaybackTiming(t *testing.T) {
 	scripts := []struct{ name, script, extension string }{
 		{"ASS", styledBurnASS, ".ass"}, {"SSA", styledBurnSSA, ".ssa"},
+		{"SRT", "1\n00:00:01,000 --> 00:00:03,000\nPlain caption\n", ".srt"},
+		{"WebVTT", "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nPlain caption\n", ".vtt"},
 	}
 	protocols := []struct {
 		name, extension string

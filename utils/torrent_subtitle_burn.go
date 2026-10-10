@@ -58,6 +58,9 @@ func prepareSubtitleBurn(ctx context.Context, opts *TranscodeOptions) (*subtitle
 		}
 		if ffmpegFilterAvailable(opts.FFmpegPath, "subtitles") {
 			burn.filter = fmt.Sprintf("subtitles='%s':si=%d", escapeFFmpegPath(selected.Path), selected.Track)
+			if selected.PlainText {
+				burn.filter += subtitleBurnStyle(opts.SubtitleSize)
+			}
 			burn.filterOrigin = selected.StartTime
 		}
 		return burn, nil

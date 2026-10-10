@@ -18,8 +18,8 @@ const (
 	maxSubtitleFontBytes = 64 << 20
 )
 
-// EmbeddedSubtitleForBurn identifies styled text and bitmap tracks that must
-// be rendered without an SRT conversion. Plain text keeps the existing path.
+// EmbeddedSubtitleForBurn selects supported text and bitmap tracks for direct
+// container rendering, retaining subtitle timestamps and ASS/SSA typesetting.
 func EmbeddedSubtitleForBurn(ffmpegPath, path string, track int) (*EmbeddedSubtitle, error) {
 	return EmbeddedSubtitleForBurnContext(context.Background(), ffmpegPath, path, track)
 }
@@ -32,8 +32,9 @@ func EmbeddedSubtitleForBurnContext(ctx context.Context, ffmpegPath, path string
 	if len(result.Streams) == 1 {
 		codec := result.Streams[0].CodecName
 		bitmap := bitmapSubtitleCodec(codec)
-		if codec == "ass" || codec == "ssa" || bitmap {
-			selected := &EmbeddedSubtitle{Path: path, Track: track, Bitmap: bitmap}
+		plainText := plainTextSubtitleCodec(codec)
+		if codec == "ass" || codec == "ssa" || bitmap || plainText {
+			selected := &EmbeddedSubtitle{Path: path, Track: track, Bitmap: bitmap, PlainText: plainText}
 			if !bitmap && result.Format.StartTime != "" {
 				selected.StartTime, err = strconv.ParseFloat(result.Format.StartTime, 64)
 				if err != nil || math.IsNaN(selected.StartTime) || math.IsInf(selected.StartTime, 0) {
@@ -44,6 +45,15 @@ func EmbeddedSubtitleForBurnContext(ctx context.Context, ffmpegPath, path string
 		}
 	}
 	return nil, nil
+}
+
+func plainTextSubtitleCodec(codec string) bool {
+	switch codec {
+	case "subrip", "text", "mov_text", "webvtt", "microdvd", "jacosub", "sami",
+		"realtext", "subviewer", "subviewer1", "vplayer", "mpl2", "pjs", "stl":
+		return true
+	}
+	return false
 }
 
 func styledSubtitlePath(path string) bool {
