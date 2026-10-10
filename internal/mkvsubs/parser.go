@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -65,6 +66,9 @@ type Parser struct {
 	burn                      BurnMetadata
 	attachments               int64
 	seekHeads                 []int64
+	origin                    float64
+	originReady               bool
+	mediaTracks               map[uint64]uint64 // A/V track numbers and codec delays in nanoseconds.
 }
 
 func New(source mediasource.Source) *Parser {
@@ -74,6 +78,12 @@ func New(source mediasource.Source) *Parser {
 // PrepareBurn selects a text track and reads only the first cluster's timeline
 // origin. Window supplies the captions later, as the encoder needs them.
 func (p *Parser) PrepareBurn(ctx context.Context) (float64, error) {
+	select {
+	case p.gate <- struct{}{}:
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
+	defer func() { <-p.gate }()
 	r, err := p.source.Open(ctx)
 	if err != nil {
 		return 0, err
@@ -91,7 +101,47 @@ func (p *Parser) PrepareBurn(ctx context.Context) (float64, error) {
 		return 0, ErrNoSubtitles
 	}
 	p.ready = true
-	// metadata leaves the reader immediately after the cluster header.
+	return p.readOrigin(ctx, r)
+}
+
+// TimelineOrigin reads initial A/V block timestamps without reading their
+// payloads. Cluster timestamps can differ from the media origin when audio
+// precedes video or has codec delay. Successful reads are cached across requests.
+func (p *Parser) TimelineOrigin(ctx context.Context) (float64, error) {
+	select {
+	case p.gate <- struct{}{}:
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
+	defer func() { <-p.gate }()
+	if p.originReady {
+		return p.origin, nil
+	}
+	r, err := p.source.Open(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer r.Close()
+	if reader, ok := r.(interface{ SetReadahead(int64) }); ok {
+		reader.SetReadahead(4 << 10)
+	}
+	if !p.ready {
+		if err := p.metadata(ctx, r); err != nil {
+			return 0, err
+		}
+		p.ready = true
+	}
+	if p.track == 0 {
+		return 0, ErrNoSubtitles
+	}
+	origin, err := p.readMediaOrigin(ctx, r)
+	if err == nil {
+		p.origin, p.originReady = origin, true
+	}
+	return origin, err
+}
+
+func (p *Parser) readOrigin(ctx context.Context, r io.ReadSeeker) (float64, error) {
 	if _, err := r.Seek(p.first, io.SeekStart); err != nil {
 		return 0, err
 	}
@@ -109,12 +159,127 @@ func (p *Parser) PrepareBurn(ctx context.Context) (float64, error) {
 		}
 		if e.id == 0xe7 {
 			ticks, err := uintValue(r, e)
-			return float64(ticks) * p.scale, err
+			if err != nil {
+				return 0, err
+			}
+			return float64(ticks) * p.scale, nil
 		}
 		if err := skip(r, e); err != nil {
 			return 0, err
 		}
 	}
+}
+
+func (p *Parser) readMediaOrigin(ctx context.Context, r io.ReadSeeker) (float64, error) {
+	if len(p.mediaTracks) == 0 {
+		return p.readOrigin(ctx, r)
+	}
+	if _, err := r.Seek(p.first, io.SeekStart); err != nil {
+		return 0, err
+	}
+	parent, err := next(r, p.end)
+	if err != nil {
+		return 0, err
+	}
+	var ticks uint64
+	origin := math.Inf(1)
+	seen := make(map[uint64]bool)
+	for {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		e, err := next(r, parent.end)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return 0, err
+		}
+		if segmentChild(e.id) {
+			break
+		}
+		if e.id == 0xe7 {
+			ticks, err = uintValue(r, e)
+			if err != nil {
+				return 0, err
+			}
+		}
+		block := e
+		if e.id == 0xa0 {
+			for {
+				child, err := next(r, e.end)
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				if err != nil {
+					return 0, err
+				}
+				if child.id == 0xa1 {
+					block = child
+					break
+				}
+				if err := skip(r, child); err != nil {
+					return 0, err
+				}
+			}
+		}
+		if block.id == 0xa3 || block.id == 0xa1 {
+			track, at, err := p.mediaBlockTime(r, block, ticks)
+			if err != nil {
+				return 0, err
+			}
+			if track != 0 && !seen[track] {
+				seen[track] = true
+				origin = min(origin, at)
+				if len(seen) == len(p.mediaTracks) {
+					return origin, nil
+				}
+			}
+		}
+		if err := skip(r, e); err != nil {
+			return 0, err
+		}
+	}
+	// Stay within the initial cluster; tracks that start later cannot move the
+	// origin forward. Missing pieces must not force a full-media startup scan.
+	if math.IsInf(origin, 1) {
+		origin = float64(ticks) * p.scale
+	}
+	return origin, nil
+}
+
+func (p *Parser) mediaBlockTime(r io.ReadSeeker, e element, ticks uint64) (uint64, float64, error) {
+	track, _, err := vint(r, false)
+	if err != nil {
+		return 0, 0, err
+	}
+	delay, media := p.mediaTracks[track]
+	if !media {
+		return 0, 0, nil
+	}
+	pos, err := r.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return 0, 0, err
+	}
+	var header [3]byte
+	if e.end-pos < int64(len(header)) {
+		return 0, 0, fmt.Errorf("truncated media block header")
+	}
+	if _, err := io.ReadFull(r, header[:]); err != nil {
+		return 0, 0, err
+	}
+	relative := int16(uint16(header[0])<<8 | uint16(header[1]))
+	// FFmpeg rounds codec delay into the Matroska stream's timestamp units.
+	delayTicks := math.Round(float64(delay) / (p.scale * 1e9))
+	return track, (float64(ticks) + float64(relative) - delayTicks) * p.scale, nil
+}
+
+func segmentChild(id uint64) bool {
+	switch id {
+	case clusterID, cuesID, 0x1549a966, 0x1654ae6b, attachmentsID, 0x114d9b74, 0x1254c367, 0x1043a770:
+		return true
+	}
+	return false
 }
 
 func (p *Parser) Window(ctx context.Context, start, end float64) ([]Cue, error) {
@@ -251,6 +416,8 @@ func (p *Parser) metadata(ctx context.Context, r io.ReadSeeker) error {
 	p.track, p.codec, p.first, p.cues = 0, "", 0, 0
 	p.burn = BurnMetadata{}
 	p.attachments, p.seekHeads = 0, nil
+	p.mediaTracks = make(map[uint64]uint64)
+	p.originReady = false
 	p.scale = 1e-3
 	for {
 		if err := ctx.Err(); err != nil {
@@ -338,7 +505,7 @@ func (p *Parser) tracks(r io.ReadSeeker, parent element) error {
 			return err
 		}
 		if e.id == 0xae {
-			var number, kind, duration uint64
+			var number, kind, duration, delay uint64
 			var codec string
 			var private element
 			encoded := false
@@ -371,7 +538,12 @@ func (p *Parser) tracks(r io.ReadSeeker, parent element) error {
 					if p.preserveASS && p.burn.Width == 0 {
 						err = p.videoSize(r, c)
 					}
-				case 0x56aa, 0x23314f, 0x537f:
+				case 0x56aa:
+					delay, err = uintValue(r, c)
+					if p.strict {
+						encoded = true
+					}
+				case 0x23314f, 0x537f:
 					// Codec delay, track timestamp scale/offset need FFmpeg's
 					// timing adjustments when exporting a complete subtitle file.
 					if p.strict {
@@ -384,6 +556,9 @@ func (p *Parser) tracks(r io.ReadSeeker, parent element) error {
 				if err := skip(r, c); err != nil {
 					return err
 				}
+			}
+			if kind == 1 || kind == 2 {
+				p.mediaTracks[number] = delay
 			}
 			if kind == 17 {
 				selected := p.subtitleIndex < 0 || p.subtitleIndex == subtitleIndex
@@ -576,7 +751,7 @@ func (p *Parser) readCluster(ctx context.Context, r io.ReadSeeker, parent elemen
 			return float64(ticks) * p.scale, captions, err
 		}
 		// Unknown-sized clusters end at the next Segment child.
-		if e.id == clusterID || e.id == cuesID || e.id == 0x1549a966 || e.id == 0x1654ae6b || e.id == attachmentsID || e.id == 0x114d9b74 || e.id == 0x1254c367 || e.id == 0x1043a770 {
+		if segmentChild(e.id) {
 			_, err = r.Seek(e.pos, io.SeekStart)
 			if err != nil {
 				return float64(ticks) * p.scale, captions, err

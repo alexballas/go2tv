@@ -28,12 +28,13 @@ const (
 )
 
 type subtitleBurn struct {
-	filter     string
-	overlay    string
-	bitmap     *EmbeddedSubtitle
-	bitmapSeek bool
-	origin     float64
-	cleanup    func()
+	filter       string
+	filterOrigin float64
+	overlay      string
+	bitmap       *EmbeddedSubtitle
+	bitmapSeek   bool
+	origin       float64
+	cleanup      func()
 }
 
 // prepareSubtitleBurn keeps external captions on the existing file-filter path.
@@ -57,6 +58,7 @@ func prepareSubtitleBurn(ctx context.Context, opts *TranscodeOptions) (*subtitle
 		}
 		if ffmpegFilterAvailable(opts.FFmpegPath, "subtitles") {
 			burn.filter = fmt.Sprintf("subtitles='%s':si=%d", escapeFFmpegPath(selected.Path), selected.Track)
+			burn.filterOrigin = selected.StartTime
 		}
 		return burn, nil
 	}
@@ -175,6 +177,16 @@ func (b *subtitleBurn) enabled() string {
 		return "overlay"
 	}
 	return b.filter
+}
+
+// videoFilter evaluates embedded text in its container timeline, then restores
+// the video's rebased timestamps. Seeks using -copyts already share that timeline.
+func (b *subtitleBurn) videoFilter(copyTS bool) string {
+	if copyTS || b.filter == "" || b.filterOrigin == 0 {
+		return b.filter
+	}
+	origin := strconv.FormatFloat(b.filterOrigin, 'f', -1, 64)
+	return joinVideoFilters("setpts=PTS+("+origin+")/TB", b.filter, "setpts=PTS-("+origin+")/TB")
 }
 
 // videoArgs overlays local bitmap tracks or adds a progressive torrent PNG input.

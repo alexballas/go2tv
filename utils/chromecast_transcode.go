@@ -103,6 +103,7 @@ func ServeChromecastTranscodedStream(
 	}
 	encoderPlan := selectTranscodeVideoEncoder(opts.FFmpegPath, profile)
 	buildArgs := func(plan videoEncoderPlan, hw string) []string {
+		copyTS := (in != "pipe:0" && opts.SeekSeconds > 0) || burn.overlay != ""
 		var vf string
 		switch hw {
 		case "cuda":
@@ -110,7 +111,7 @@ func ServeChromecastTranscodedStream(
 		case "vaapi":
 			vf = vaapiTranscodeScaleFilter
 		default:
-			vf = joinVideoFilters(burn.filter, softwareTranscodeScaleFilter, plan.filterTail)
+			vf = joinVideoFilters(burn.videoFilter(copyTS), softwareTranscodeScaleFilter, plan.filterTail)
 		}
 
 		// For piped input, skip -ss parameter entirely (even -ss 0) as it can cause issues.
@@ -121,7 +122,7 @@ func ServeChromecastTranscodedStream(
 		if in != "pipe:0" && opts.SeekSeconds > 0 {
 			args = append(args, "-ss", strconv.Itoa(opts.SeekSeconds))
 		}
-		if (in != "pipe:0" && opts.SeekSeconds > 0) || burn.overlay != "" {
+		if copyTS {
 			args = append(args, "-copyts")
 		}
 		args = append(args, transcodeInputArgs(plan, hw)...)

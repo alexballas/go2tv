@@ -326,7 +326,7 @@ func (s *Server) newTorrentSubtitleRouteLocked(request playback.ServerRequest) (
 	if request.Transcode {
 		offset = request.SeekOffset
 	}
-	r.handler = mkvsubs.Handler(mkvsubs.New(request.TorrentSource), float64(offset))
+	r.handler = mkvsubs.Handler(mkvsubs.New(request.TorrentSource), float64(offset), request.Transcode)
 	s.routes[r.path] = r
 	return r, nil
 }
