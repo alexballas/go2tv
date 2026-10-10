@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -31,7 +33,14 @@ func EmbeddedSubtitleForBurnContext(ctx context.Context, ffmpegPath, path string
 		codec := result.Streams[0].CodecName
 		bitmap := bitmapSubtitleCodec(codec)
 		if codec == "ass" || codec == "ssa" || bitmap {
-			return &EmbeddedSubtitle{Path: path, Track: track, Bitmap: bitmap}, nil
+			selected := &EmbeddedSubtitle{Path: path, Track: track, Bitmap: bitmap}
+			if !bitmap && result.Format.StartTime != "" {
+				selected.StartTime, err = strconv.ParseFloat(result.Format.StartTime, 64)
+				if err != nil || math.IsNaN(selected.StartTime) || math.IsInf(selected.StartTime, 0) {
+					return nil, fmt.Errorf("invalid embedded subtitle timeline origin: %q", result.Format.StartTime)
+				}
+			}
+			return selected, nil
 		}
 	}
 	return nil, nil

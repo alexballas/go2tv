@@ -63,6 +63,8 @@ type EmbeddedSubtitle struct {
 	Path   string
 	Track  int // Zero-based subtitle stream index, as in FFmpeg's 0:s:N selector.
 	Bitmap bool
+	// StartTime is the container origin retained by FFmpeg's subtitles filter.
+	StartTime float64
 }
 
 // RawVideoInput describes a raw video stream piped to ffmpeg stdin.

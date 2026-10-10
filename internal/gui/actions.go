@@ -1750,7 +1750,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 	}
 	torrentSubtitleURL := registerTorrentSubtitles(screen.httpserver, subtitleHost, screen.mediafile,
 		!screen.CustomSubsCheck.Checked && subtitleURL == "" && screen.chromecastSubtitleBurnPath(transcode) == "" && screen.chromecastTorrentBurnSource(transcode) == nil && !screen.Screencast &&
-			!screen.ExternalMediaURL.Checked && (screen.rtmpServerCheck == nil || !screen.rtmpServerCheck.Checked), subtitleOffset)
+			!screen.ExternalMediaURL.Checked && (screen.rtmpServerCheck == nil || !screen.rtmpServerCheck.Checked), subtitleOffset, transcode)
 	playbackStart := ffmpegSeek
 	if transcode && torrentMediaSelected(screen) {
 		// FFmpeg already seeks the source; the new receiver stream starts at zero.
@@ -1862,7 +1862,7 @@ func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
 			return
 		}
 		torrentSubtitleURL := registerTorrentSubtitles(screen.httpserver, whereToListen, screen.mediafile,
-			!screen.CustomSubsCheck.Checked && subtitleURL == "" && screen.chromecastSubtitleBurnPath(true) == "" && screen.chromecastTorrentBurnSource(true) == nil, seekPos)
+			!screen.CustomSubsCheck.Checked && subtitleURL == "" && screen.chromecastSubtitleBurnPath(true) == "" && screen.chromecastTorrentBurnSource(true) == nil, seekPos, true)
 		// live=false because this is local file playback (seeking)
 		if err := client.LoadMediaOnExisting(castprotocol.LoadRequest{
 			MediaURL:           mediaURL,

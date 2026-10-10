@@ -39,7 +39,7 @@ func Register(server *httphandlers.HTTPserver, host, mediaPath, subtitlePath str
 	}
 	burn := opts.Transcoded && opts.BurnSubtitles
 	captions.BurnSource = TorrentSource(mediaPath, opts.AutomaticTorrent && !external && burn)
-	captions.TorrentSubtitleURL = RegisterTorrent(server, host, mediaPath, opts.AutomaticTorrent && !external && captions.BurnSource == nil, offset)
+	captions.TorrentSubtitleURL = RegisterTorrent(server, host, mediaPath, opts.AutomaticTorrent && !external && captions.BurnSource == nil, offset, opts.Transcoded)
 	if !external {
 		return captions, nil
 	}

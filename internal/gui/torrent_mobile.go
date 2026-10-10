@@ -82,7 +82,7 @@ func registerMobileTorrentSubtitles(s *FyneScreen, host string, offset int, tran
 	}
 	automatic := (s.TorrentSubsCheck == nil || s.TorrentSubsCheck.Checked) && s.subsfile == nil &&
 		(s.ExternalMediaURL == nil || !s.ExternalMediaURL.Checked) && !(transcode && s.castBurnSubtitles)
-	return registerTorrentSubtitles(s.httpserver, host, path, automatic, offset)
+	return registerTorrentSubtitles(s.httpserver, host, path, automatic, offset, transcode)
 }
 
 func clearTorrentSelection(s *FyneScreen, path string) {

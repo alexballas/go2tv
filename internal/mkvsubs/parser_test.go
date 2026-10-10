@@ -177,7 +177,7 @@ func TestAvailableCaptionsSurviveMissingFuturePieces(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 	w := httptest.NewRecorder()
-	Handler(New(source), 0).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://host/?time=5", nil).WithContext(ctx))
+	Handler(New(source), 0, true).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://host/?time=5", nil).WithContext(ctx))
 	var dataWindow struct {
 		Available bool
 		Until     float64
@@ -234,7 +234,7 @@ func TestSeekUsesMatroskaIndex(t *testing.T) {
 
 func TestCaptionHTTPContract(t *testing.T) {
 	source, _ := fixture("S_TEXT/ASS", false)
-	handler := Handler(New(source), 5)
+	handler := Handler(New(source), 5, true)
 	// Repeat a valid window to catch mutation of cached source timestamps when
 	// the HTTP handler adjusts returned cues for a transcoded stream.
 	tt := []struct {
@@ -266,7 +266,7 @@ func TestCaptionHTTPContract(t *testing.T) {
 	}
 	unsupported := &memorySource{data: elem(segmentID, elem(0x1654ae6b, textTrack(2, "S_HDMV/PGS")), elem(clusterID, number(0xe7, 0)))}
 	w := httptest.NewRecorder()
-	Handler(New(unsupported), 0).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://host/?time=0", nil))
+	Handler(New(unsupported), 0, true).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://host/?time=0", nil))
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"available":false`) {
 		t.Fatalf("unsupported subtitle track: %s", w.Body.String())
 	}
