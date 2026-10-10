@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -28,18 +29,21 @@ func TestTorrentCaptionRegistrationWithMediaOrigin(t *testing.T) {
 	if err != nil {
 		t.Skip("ffmpeg unavailable")
 	}
+	ffprobe, err := exec.LookPath("ffprobe")
+	if err != nil {
+		t.Skip("ffprobe unavailable")
+	}
 	subs := filepath.Join(t.TempDir(), "captions.srt")
 	if err := os.WriteFile(subs, []byte("1\n00:00:05,000 --> 00:00:10,000\nFirst caption\n\n2\n00:00:35,000 --> 00:00:40,000\nSecond caption\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	fixtures := []struct {
 		name, audioCodec, audioOffset string
-		origin                        float64
 	}{
-		{"aligned PCM", "pcm_s16le", "0", 5},
-		{"audio before video", "pcm_s16le", "-1", 4},
-		{"AAC encoder delay", "aac", "0", 4.977},
-		{"Opus encoder delay", "libopus", "0", 4.993},
+		{"aligned PCM", "pcm_s16le", "0"},
+		{"audio before video", "pcm_s16le", "-1"},
+		{"AAC encoder delay", "aac", "0"},
+		{"Opus encoder delay", "libopus", "0"},
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.name, func(t *testing.T) {
@@ -53,6 +57,16 @@ func TestTorrentCaptionRegistrationWithMediaOrigin(t *testing.T) {
 				}
 				t.Fatalf("create offset torrent: %v: %s", err, output)
 			}
+			// Encoder delay changes the muxed origin across FFmpeg versions.
+			// Compare receiver timing with FFmpeg's independent timeline.
+			output, err := exec.Command(ffprobe, "-v", "error", "-show_entries", "format=start_time", "-of", "default=noprint_wrappers=1:nokey=1", path).Output()
+			if err != nil {
+				t.Fatalf("probe media origin: %v", err)
+			}
+			origin, err := strconv.ParseFloat(strings.TrimSpace(string(output)), 64)
+			if err != nil || math.IsNaN(origin) || math.IsInf(origin, 0) {
+				t.Fatalf("invalid media origin %q: %v", output, err)
+			}
 			info, err := os.Stat(path)
 			if err != nil {
 				t.Fatal(err)
@@ -65,8 +79,8 @@ func TestTorrentCaptionRegistrationWithMediaOrigin(t *testing.T) {
 				want       mkvsubs.Cue
 			}{
 				{name: "native", want: mkvsubs.Cue{10, 15, "First caption"}},
-				{name: "initial transcode", transcoded: true, want: mkvsubs.Cue{10 - fixture.origin, 15 - fixture.origin, "First caption"}},
-				{name: "transcoded seek", transcoded: true, seek: 30, want: mkvsubs.Cue{10 - fixture.origin, 15 - fixture.origin, "Second caption"}},
+				{name: "initial transcode", transcoded: true, want: mkvsubs.Cue{10 - origin, 15 - origin, "First caption"}},
+				{name: "transcoded seek", transcoded: true, seek: 30, want: mkvsubs.Cue{10 - origin, 15 - origin, "Second caption"}},
 			}
 			for _, tc := range tt {
 				t.Run(tc.name, func(t *testing.T) {
