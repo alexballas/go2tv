@@ -43,7 +43,7 @@ No need to copy files to a USB drive or set up a media server. Just select your 
 - **Loop and auto-play** - Loop the current file or auto-play through the playlist
 - **DLNA Gapless Playback** - Supported for DLNA devices
 - **RTMP Server** - Cast live streams from OBS directly to Chromecast (requires FFmpeg)
-- **Cast Desktop (experimental)** - Cast desktop as live stream to Chromecast (requires FFmpeg)
+- **Cast Desktop (experimental)** - Cast desktop as a live stream to DLNA or Chromecast devices (requires FFmpeg)
 - **Web UI (server mode)** - Browse media roots and control casting from any browser on your network
 - **GUI and CLI** - Use the graphical interface or command line
 
@@ -245,10 +245,10 @@ go2tv -server \
 Select a Chromecast, enable **RTMP Server**, and click **Play**. Use the displayed URL in
 OBS or other streaming software. Requires FFmpeg.
 
-### Cast Desktop (Experimental, Chromecast only)
+### Cast Desktop (Experimental)
 
-Select a Chromecast, enable **Cast Desktop (experimental)**, and click **Cast**. Requires
-FFmpeg and is not supported on audio-only Chromecast devices.
+Select a DLNA or Chromecast device, enable **Cast Desktop (experimental)**, and click **Cast**.
+Requires FFmpeg and is not supported on audio-only devices.
 
 ---
 
