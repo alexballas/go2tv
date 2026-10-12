@@ -7,7 +7,7 @@ toolchain go1.27.2
 require (
 	github.com/alexballas/fyne-tooltip v0.0.0-20260907194307-bfdbb9024bac
 	github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab
-	github.com/alexballas/refyne/v2 v2.8.109
+	github.com/alexballas/refyne/v2 v2.8.110
 	github.com/alexballas/tunetag v0.0.0-20260922200838-ac09c80877d1
 	github.com/alexballas/xfilepicker v0.0.0-20260921231749-b5e595de2dba
 	github.com/anacrolix/torrent v1.61.1-0.20260927071845-d913b30f520e
@@ -36,6 +36,7 @@ require (
 	golang.org/x/image v0.46.0
 	golang.org/x/mod v0.41.0
 	golang.org/x/sys v0.48.0
+	golang.org/x/text v0.42.0
 	golang.org/x/time v0.16.0
 	gopkg.in/ini.v1 v1.67.3
 )
@@ -159,7 +160,6 @@ require (
 	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/term v0.46.0 // indirect
-	golang.org/x/text v0.42.0 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 	modernc.org/libc v1.77.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
