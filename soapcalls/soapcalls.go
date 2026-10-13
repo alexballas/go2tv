@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/url"
 	"slices"
+	"strings"
 	"time"
 
 	"go2tv.app/go2tv/v2/internal/mediasource"
@@ -143,6 +144,7 @@ func (p *TVPayload) TranscodeOptionsSnapshot() *utils.TranscodeOptions {
 	defer p.mu.RUnlock()
 	return &utils.TranscodeOptions{
 		FFmpegPath: p.FFmpegPath, SubsPath: p.FFmpegSubsPath,
+		AudioOnly:   strings.HasPrefix(p.MediaType, "audio/"),
 		SeekSeconds: p.FFmpegSeek, SubtitleSize: utils.SubtitleSizeMedium,
 		TorrentSource: p.TorrentSource, LogOutput: p.LogOutput,
 		EmbeddedSubtitle: copyEmbeddedSubtitle(p.FFmpegEmbeddedSubtitle),

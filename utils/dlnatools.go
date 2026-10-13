@@ -50,6 +50,9 @@ func BuildDLNAContentFeatures(opts DLNAContentFeaturesOptions) string {
 // DLNAResourceMediaType returns the MIME type of the bytes on the wire.
 func DLNAResourceMediaType(sourceMediaType string, transcode bool) string {
 	mediaType := strings.TrimSpace(sourceMediaType)
+	if transcode && strings.HasPrefix(strings.ToLower(mediaType), "audio/") {
+		return AudioTranscodeMediaType
+	}
 	if transcode && strings.HasPrefix(strings.ToLower(mediaType), "video/") {
 		return "video/mpeg"
 	}

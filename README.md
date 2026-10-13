@@ -34,6 +34,7 @@ No need to copy files to a USB drive or set up a media server. Just select your 
 
 ## Features
 
+- **Internet radio** - Browse Radio Browser stations by name, genre, or country; save favorites and cast to DLNA or Chromecast
 - **Auto-discovery** - Automatically finds Smart TVs and Chromecast devices on your network
 - **Transcoding** - Converts incompatible video formats on-the-fly (requires FFmpeg)
 - **Subtitles** - Supports external SRT/VTT/ASS/SSA files and embedded MKV subtitles
@@ -112,6 +113,10 @@ When transcoding is enabled, Go2TV probes available GPU H.264 encoders first and
 ### GUI
 
 Select a media file (or drag and drop it onto the main window), pick a device from the list, and click **Play**.
+
+For internet radio, click **Radio…** beside the main media controls. Enter a station name or genre, then press the adjacent search icon or Enter. Choose **Select country** below the search field to filter results, or open **Favorites**. **Popular** clears the search and returns to popular stations in the selected country. **All countries (clear selection)** removes the country filter. Select a station and click **Use station**; choosing a new station stops existing playback, closes the picker, and fills the main URL field. Then choose a device and press the normal **Cast/Play** button. Station icons appear when available and accompany playback artwork. Favorites refresh by UUID, falling back to the saved URL when the directory is unavailable.
+
+Enable the main **Transcode** checkbox when a receiver cannot play the original radio stream. FFmpeg relays stereo AAC audio, including HLS stations. Android bundles FFmpeg; desktop builds need FFmpeg installed. Receivers must support AAC. Direct stations that supply ICY metadata show their current track in the main playback controls; HLS and stations without ICY metadata have no track display.
 
 For torrents, click **Torrent…**, paste a magnet link or open a `.torrent`, and choose
 **Use file**. Pick a device and cast immediately. Seeks fetch missing pieces first;

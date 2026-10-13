@@ -88,6 +88,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	}()
 
 	mfiletext := widget.NewEntry()
+	mfiletext.OnChanged = s.invalidateRadioURL
 	sfiletext := widget.NewEntry()
 
 	mfile := widget.NewButton(lang.L("Select Media File"), func() {
@@ -168,6 +169,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.MuteUnmute = muteunmute
 	s.ExternalMediaURL = externalmedia
 	s.TranscodeCheckBox = transcode
+	s.LoopSelectedCheck = medialoop
 	s.MediaText = mfiletext
 	s.SubsText = sfiletext
 	s.DeviceList = list
@@ -193,10 +195,11 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	// overflowing the window width on portrait phone screens.
 	checklists := container.New(layout.NewGridLayout(2), checklistItems...)
 	mediasubsbuttons := container.New(layout.NewGridLayout(2), mfile, sfile)
+	radio := newRadioButton(s)
 	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
 	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearmedia), clearmedia, mfiletext)
 	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
-	buttons := container.NewVBox(mediasubsbuttons, newTorrentButton(s), newTorrentControls(s), s.TorrentSubsCheck, viewfilescont, checklists, sliderArea, actionbuttons, container.NewPadded(deviceHeader))
+	buttons := container.NewVBox(mediasubsbuttons, container.NewGridWithColumns(2, newTorrentButton(s), radio), newTorrentControls(s), s.TorrentSubsCheck, viewfilescont, checklists, newRadioSongLabel(s), sliderArea, actionbuttons, container.NewPadded(deviceHeader))
 	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
 
 	// Widgets actions

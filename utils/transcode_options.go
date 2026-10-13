@@ -38,6 +38,8 @@ import (
 //	           Pass nil to disable logging.
 //	           Includes full FFmpeg arguments for each transcode attempt.
 type TranscodeOptions struct {
+	// AudioOnly emits native AAC/ADTS instead of a video container.
+	AudioOnly    bool
 	FFmpegPath   string
 	SubsPath     string
 	SeekSeconds  int

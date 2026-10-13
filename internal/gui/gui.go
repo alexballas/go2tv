@@ -30,6 +30,7 @@ import (
 	"go2tv.app/go2tv/v2/httphandlers"
 	"go2tv.app/go2tv/v2/internal/crashlog"
 	"go2tv.app/go2tv/v2/internal/mediamodel"
+	"go2tv.app/go2tv/v2/internal/radiobrowser"
 	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/rtmp"
 	"go2tv.app/go2tv/v2/soapcalls"
@@ -66,6 +67,12 @@ func (p *FyneScreen) refreshMPRISProgress() {
 
 // FyneScreen .
 type FyneScreen struct {
+	radioSong                radioSongState
+	radio                    *radioView
+	radioArtworkCache        *radioArtworkCache
+	radioArtworkResolved     bool
+	radioArtwork             *metadata.ArtworkAsset
+	radioSelected            radiobrowser.Station
 	mpris                    mprisBridge
 	mediaSelection           *mediaSelectionCard
 	playbackStatus           *playbackStatusLabel
@@ -455,11 +462,11 @@ func (p *FyneScreen) EmitMsg(a string) {
 	fyne.Do(func() {
 		switch a {
 		case "Playing":
-			setPlayPauseView("Pause", p)
 			p.updateScreenState("Playing")
+			setPlayPauseView("Pause", p)
 		case "Paused":
-			setPlayPauseView("Play", p)
 			p.updateScreenState("Paused")
+			setPlayPauseView("Play", p)
 		case "Stopped":
 			stopAction(p)
 		default:
@@ -623,7 +630,6 @@ func getNextPossibleSubs(v string) string {
 }
 
 func setPlayPauseView(s string, screen *FyneScreen) {
-	screen.cancelPlayTimer()
 	fyne.Do(func() {
 		if screen.mediaSelection != nil {
 			screen.mediaSelection.refresh()
@@ -681,7 +687,7 @@ func refreshPlaybackControls(s string, screen *FyneScreen) {
 		}
 		screen.refreshPlaybackReadiness()
 		state := screen.getScreenState()
-		if screen.torrentPlaybackPending() || screen.playbackStartupPending() || screen.chromecastCompatibilityPending() && state != "Playing" && state != "Paused" {
+		if screen.torrentPlaybackPending() || screen.playbackStartupPending() || screen.dlnaPlaybackPending() || screen.chromecastCompatibilityPending() && state != "Playing" && state != "Paused" {
 			screen.PlayPause.Disable()
 		}
 		screen.PlayPause.Refresh()
@@ -720,6 +726,8 @@ func (p *FyneScreen) isMuted() bool {
 // the GUI interface to control certain flows.
 func (p *FyneScreen) updateScreenState(a string) {
 	p.mu.Lock()
+	cancel := p.cancelEnablePlay
+	p.cancelEnablePlay = nil
 	p.State = a
 	if a == "Stopped" {
 		p.playingMediaPath = ""
@@ -727,6 +735,12 @@ func (p *FyneScreen) updateScreenState(a string) {
 		p.playingMediaPath = p.mediafile
 	}
 	p.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if a == "Stopped" {
+		p.stopRadioSongMonitor()
+	}
 	if p.mpris != nil {
 		p.mpris.refresh()
 	}

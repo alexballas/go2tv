@@ -55,12 +55,12 @@ func TestChromecastExternalURLPolicy(t *testing.T) {
 			wantLocalServer: true,
 		},
 		{
-			name:            "audio never transcodes",
+			name:            "requested audio relays through transcoder",
 			mediaURL:        "https://example.com/audio.mp3",
 			mediaType:       "audio/mpeg",
 			transcode:       true,
-			wantDirect:      true,
-			wantLocalServer: false,
+			wantTranscode:   true,
+			wantLocalServer: true,
 		},
 	}
 

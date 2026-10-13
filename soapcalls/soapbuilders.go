@@ -469,6 +469,9 @@ func buildDIDLLiteContext(ctx context.Context, tvdata *TVPayload, mediaURL strin
 	case "image":
 		class = "object.item.imageItem.photo"
 	}
+	if mediaMetadata.AudioOnly {
+		class = "object.item.audioItem.musicTrack"
+	}
 
 	parsedMediaURL, err := url.Parse(mediaURL)
 	if err != nil {

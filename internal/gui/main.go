@@ -160,6 +160,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	mfiletext := widget.NewEntry()
 	mfiletext.OnChanged = func(v string) {
+		s.invalidateRadioURL(v)
 		if s.ExternalMediaURL != nil && s.ExternalMediaURL.Checked &&
 			s.TranscodeCheckBox != nil && s.TranscodeCheckBox.Checked &&
 			utils.IsHLSStream(v, "") {

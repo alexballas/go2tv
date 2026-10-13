@@ -1279,11 +1279,19 @@ func (p *TVPayload) Gapless() (string, error) {
 // GetTransportInfo retrieves the transport information from the TV device.
 // It returns a slice of strings containing the current transport state, status, and speed, or an error if the operation fails.
 func (p *TVPayload) GetTransportInfo() ([]string, error) {
+	return p.GetTransportInfoContext(nil)
+}
+
+// GetTransportInfoContext allows startup polling to stop without canceling
+// the media stream or subscription renewals.
+func (p *TVPayload) GetTransportInfoContext(ctx context.Context) ([]string, error) {
 	if p == nil {
 		return nil, errors.New("GetTransportInfo, nil tvdata")
 	}
 
-	ctx := p.Context()
+	if ctx == nil {
+		ctx = p.Context()
+	}
 
 	parsedURLtransport, err := url.Parse(p.ControlURL)
 	if err != nil {

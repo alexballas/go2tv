@@ -47,7 +47,7 @@ func (s *FyneScreen) refreshPlaybackReadiness() {
 	switch {
 	case active:
 		status = lang.L(state)
-	case s.playbackStartupPending() || s.torrentPlaybackPending():
+	case s.playbackStartupPending() || s.torrentPlaybackPending() || s.dlnaPlaybackPending():
 		status = lang.L("Loading media…")
 		toolTip = status
 	case s.selectedDevice.addr == "":
@@ -78,6 +78,14 @@ func (s *FyneScreen) refreshPlaybackReadiness() {
 	s.playbackStatus.SetToolTip("")
 	if mediaPath := s.nowPlayingPath(); mediaPath != "" {
 		s.playbackStatus.filename = filepath.Base(mediaPath)
+		if station, selected := s.radioStationForURL(mediaPath); selected {
+			s.playbackStatus.filename = station.Name
+			s.mu.RLock()
+			if s.radioSong.mediaURL == mediaPath && s.radioSong.title != "" {
+				s.playbackStatus.filename = s.radioSong.title
+			}
+			s.mu.RUnlock()
+		}
 		status += " · " + s.playbackStatus.filename
 	}
 	s.playbackStatus.SetText(status)

@@ -23,6 +23,7 @@ import (
 	"go2tv.app/go2tv/v2/httphandlers"
 	"go2tv.app/go2tv/v2/internal/crashlog"
 	"go2tv.app/go2tv/v2/internal/mediamodel"
+	"go2tv.app/go2tv/v2/internal/radiobrowser"
 	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
@@ -34,6 +35,12 @@ func (p *FyneScreen) notifyMPRISSeek(int) {}
 
 // FyneScreen .
 type FyneScreen struct {
+	radioSong              radioSongState
+	radio                  *radioView
+	radioArtworkCache      *radioArtworkCache
+	radioArtworkResolved   bool
+	radioArtwork           *metadata.ArtworkAsset
+	radioSelected          radiobrowser.Station
 	mu                     sync.RWMutex
 	Debug                  *debugWriter
 	DiscoveryDebug         *debugWriter
@@ -45,6 +52,8 @@ type FyneScreen struct {
 	chromecastClient       *castprotocol.CastClient
 	chromecastActionID     uint64
 	playbackStarting       bool
+	playbackStartCtx       context.Context
+	playbackStartCancel    context.CancelFunc
 	Stop                   *widget.Button
 	MuteUnmute             *widget.Button
 	CheckVersion           *widget.Button
@@ -68,6 +77,7 @@ type FyneScreen struct {
 	activeDevice           devType
 	selectedDeviceType     string
 	NextMediaCheck         *widget.Check
+	LoopSelectedCheck      *widget.Check
 	State                  string
 	controlURL             string
 	eventlURL              string
@@ -165,14 +175,14 @@ func Start(ctx context.Context, s *FyneScreen) {
 func (p *FyneScreen) EmitMsg(a string) {
 	switch a {
 	case "Playing":
-		setPlayPauseView("Pause", p)
 		p.updateScreenState("Playing")
+		setPlayPauseView("Pause", p)
 	case "Paused":
-		setPlayPauseView("Play", p)
 		p.updateScreenState("Paused")
-	case "Stopped":
 		setPlayPauseView("Play", p)
+	case "Stopped":
 		p.updateScreenState("Stopped")
+		setPlayPauseView("Play", p)
 		// Clear casting media type
 		p.SetMediaType("")
 		stopAction(p)
@@ -203,8 +213,16 @@ func (p *FyneScreen) Fini() {
 // the GUI interface to control certain flows.
 func (p *FyneScreen) updateScreenState(a string) {
 	p.mu.Lock()
+	cancel := p.cancelEnablePlay
+	p.cancelEnablePlay = nil
 	p.State = a
 	p.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if a == "Stopped" {
+		p.stopRadioSongMonitor()
+	}
 
 	// Confirmed playback backs up the eager Play-callback start, while every
 	// terminal path stops the background service here. Called after the unlock:
@@ -249,7 +267,6 @@ func (p *FyneScreen) isChromecastActionCurrent(actionID uint64) bool {
 }
 
 func setPlayPauseView(s string, screen *FyneScreen) {
-	screen.cancelPlayTimer()
 	refreshPlaybackControls(s, screen)
 }
 
@@ -268,7 +285,7 @@ func refreshPlaybackControls(s string, screen *FyneScreen) {
 			screen.PlayPause.SetIcon(theme.FileImageIcon())
 			screen.PlayPause.SetText("Image")
 		} else {
-			if screen.mobilePlaybackStarting() || screen.playbackStartupPending() {
+			if screen.mobilePlaybackStarting() || screen.playbackStartupPending() || screen.dlnaPlaybackPending() {
 				screen.PlayPause.Disable()
 			} else {
 				screen.PlayPause.Enable()

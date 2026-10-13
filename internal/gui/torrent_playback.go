@@ -18,6 +18,10 @@ type playbackStartup struct {
 // Register before launching playback, so cancellation can abort and join work
 // that has not published a renderer or HTTP server yet.
 func (s *FyneScreen) beginPlaybackStartup(path string) (context.Context, func(), bool) {
+	return s.beginPlaybackStartupContext(context.Background(), path)
+}
+
+func (s *FyneScreen) beginPlaybackStartupContext(parentCtx context.Context, path string) (context.Context, func(), bool) {
 	if !s.torrent.operationMu.TryLock() {
 		return nil, nil, false
 	}
@@ -27,7 +31,7 @@ func (s *FyneScreen) beginPlaybackStartup(path string) (context.Context, func(),
 	if s.torrent.cancelDone != nil || s.torrent.startup != nil {
 		return nil, nil, false
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(parentCtx)
 	startup := &playbackStartup{ctx: ctx, cancel: cancel, done: make(chan struct{})}
 	if path == s.torrent.path {
 		startup.session = s.torrent.session

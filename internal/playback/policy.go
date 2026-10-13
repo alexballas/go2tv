@@ -16,6 +16,10 @@ type ChromecastURLPolicy struct {
 
 func ChromecastExternalURLPolicy(mediaURL, mediaType string, transcodeRequested bool, subtitlesPath string) ChromecastURLPolicy {
 	transcode := ChromecastTranscodeEnabled(transcodeRequested, mediaURL, mediaType)
+	// URL audio has an explicit AAC relay; local playback keeps its own policy.
+	if transcodeRequested && strings.HasPrefix(strings.ToLower(strings.TrimSpace(mediaType)), "audio/") {
+		transcode = true
+	}
 	_, hasSubtitles := ChromecastSubtitlePath(subtitlesPath)
 
 	return ChromecastURLPolicy{

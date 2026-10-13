@@ -26,6 +26,7 @@ import (
 	"go2tv.app/go2tv/v2/castprotocol"
 	"go2tv.app/go2tv/v2/castprotocol/v2/cast"
 	"go2tv.app/go2tv/v2/devices"
+	"go2tv.app/go2tv/v2/soapcalls"
 )
 
 type startupTestConn struct {
@@ -90,7 +91,12 @@ func TestStopInterruptsChromecastLoad(t *testing.T) {
 		t.Fatal("LOAD did not start")
 	}
 	setPlayPauseView("", s)
-	fyne.DoAndWait(func() { test.Tap(s.Stop) })
+	fyne.DoAndWait(func() {
+		if !s.PlayPause.Disabled() || s.Stop.Disabled() || s.dlnaPlaybackPending() {
+			t.Fatal("Chromecast LOAD must disable Cast, offer Stop, and use its own startup guard")
+		}
+		test.Tap(s.Stop)
+	})
 	select {
 	case err := <-result:
 		if !errors.Is(err, context.Canceled) {
@@ -172,6 +178,9 @@ func TestURLPlaybackSurvivesStartupCompletion(t *testing.T) {
 		if s.Stop.Disabled() {
 			t.Fatal("Stop disabled while waiting for playback confirmation")
 		}
+		if !s.PlayPause.Disabled() {
+			t.Fatal("Cast enabled before playback confirmation")
+		}
 	})
 	unblock()
 	response, err := http.Get(s.tvdata.MediaURL)
@@ -182,6 +191,69 @@ func TestURLPlaybackSurvivesStartupCompletion(t *testing.T) {
 	body, err := io.ReadAll(response.Body)
 	if err != nil || string(body) != "firstsecond" {
 		t.Fatalf("URL playback truncated after startup: body=%q, err=%v", body, err)
+	}
+	s.EmitMsg("Playing")
+	fyne.DoAndWait(func() {
+		if s.PlayPause.Disabled() || strings.TrimSpace(s.PlayPause.Text) != "Pause" || s.getScreenState() != "Playing" {
+			t.Fatal("playback callback did not enable Pause")
+		}
+	})
+}
+
+func TestDLNAConfirmationCancelsPendingStatusRequest(t *testing.T) {
+	tt := []struct {
+		name, state, button string
+	}{
+		{"playback callback", "Playing", "Pause"},
+		{"Stop while loading", "Stopped", "Cast"},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _ := newMediaCardTestScreen(t)
+			s.State, s.mediafile = "Stopped", "movie.mp4"
+			s.playbackStatus = newPlaybackStatusLabel("")
+			s.Stop = widget.NewButton("Stop", func() { stopAction(s) })
+			s.SlideBar = &tappedSlider{Slider: widget.NewSlider(0, 100)}
+			s.CurrentPos, s.EndPos = binding.NewString(), binding.NewString()
+			requested, cancelled := make(chan struct{}), make(chan struct{})
+			renderer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = io.Copy(io.Discard, r.Body)
+				if strings.Contains(r.Header.Get("SOAPAction"), "#GetTransportInfo\"") {
+					close(requested)
+					<-r.Context().Done()
+					close(cancelled)
+					return
+				}
+				w.WriteHeader(http.StatusOK)
+			}))
+			t.Cleanup(renderer.Close)
+			s.selectedDevice = devType{addr: renderer.URL, deviceType: devices.DeviceTypeDLNA}
+			s.setActiveDevice(s.selectedDevice)
+			s.tvdata = &soapcalls.TVPayload{ControlURL: renderer.URL}
+			t.Cleanup(func() { stopActionSync(s) })
+			s.waitForDLNAPlayback(s.tvdata)
+			setPlayPauseView("", s)
+			select {
+			case <-requested:
+			case <-time.After(5 * time.Second):
+				t.Fatal("renderer status request did not start")
+			}
+			if tc.state == "Stopped" {
+				fyne.DoAndWait(func() { test.Tap(s.Stop) })
+			} else {
+				s.EmitMsg(tc.state)
+			}
+			select {
+			case <-cancelled:
+			case <-time.After(time.Second):
+				t.Fatal("pending status request survived playback confirmation/Stop")
+			}
+			fyne.DoAndWait(func() {
+				if s.getScreenState() != tc.state || s.PlayPause.Disabled() || strings.TrimSpace(s.PlayPause.Text) != tc.button {
+					t.Fatalf("controls after %s: state=%q button=%q disabled=%v", tc.name, s.getScreenState(), s.PlayPause.Text, s.PlayPause.Disabled())
+				}
+			})
+		})
 	}
 }
 
@@ -203,9 +275,9 @@ func TestDLNAStatusFallbackAfterStartup(t *testing.T) {
 			s.SlideBar = &tappedSlider{Slider: widget.NewSlider(0, 100)}
 			s.CurrentPos, s.EndPos = binding.NewString(), binding.NewString()
 			var loads atomic.Int32
+			var polls atomic.Int32
 			actions := make(chan string, 4)
-			queried := make(chan struct{})
-			signalQueried := sync.OnceFunc(func() { close(queried) })
+			queried := make(chan string, 4)
 			renderer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				_, _ = io.Copy(io.Discard, r.Body)
 				if r.Method == "SUBSCRIBE" {
@@ -216,8 +288,15 @@ func TestDLNAStatusFallbackAfterStartup(t *testing.T) {
 				case strings.Contains(action, "#SetAVTransportURI\""):
 					loads.Add(1)
 				case strings.Contains(action, "#GetTransportInfo\""):
-					_, _ = io.WriteString(w, `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetTransportInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><CurrentTransportState>`+tc.transportState+`</CurrentTransportState><CurrentTransportStatus>OK</CurrentTransportStatus><CurrentSpeed>1</CurrentSpeed></u:GetTransportInfoResponse></s:Body></s:Envelope>`)
-					signalQueried()
+					transportState := tc.transportState
+					switch polls.Add(1) {
+					case 1:
+						transportState = "STOPPED"
+					case 2:
+						transportState = "TRANSITIONING"
+					}
+					_, _ = io.WriteString(w, `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetTransportInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><CurrentTransportState>`+transportState+`</CurrentTransportState><CurrentTransportStatus>OK</CurrentTransportStatus><CurrentSpeed>1</CurrentSpeed></u:GetTransportInfoResponse></s:Body></s:Envelope>`)
+					queried <- transportState
 					return
 				case strings.Contains(action, "#Play\""):
 					actions <- "Play"
@@ -258,10 +337,26 @@ func TestDLNAStatusFallbackAfterStartup(t *testing.T) {
 			}
 			// This renderer never sends callbacks. The fallback must still
 			// discover playback after media preparation has finished.
-			select {
-			case <-queried:
-			case <-time.After(5 * time.Second):
-				t.Fatal("startup completion cancelled DLNA status fallback")
+			for _, want := range []string{"STOPPED", "TRANSITIONING", tc.transportState} {
+				select {
+				case got := <-queried:
+					if got != want {
+						t.Fatalf("transport state = %q, want %q", got, want)
+					}
+				case <-time.After(5 * time.Second):
+					t.Fatal("startup completion cancelled DLNA status fallback")
+				}
+				if want == tc.transportState {
+					break
+				}
+				// Media/device refreshes must preserve the startup wait.
+				setPlayPauseView("", s)
+				fyne.DoAndWait(func() {
+					if !s.PlayPause.Disabled() || s.Stop.Disabled() || s.getScreenState() != "Stopped" || !strings.HasPrefix(s.playbackStatus.Text, "Loading media…") {
+						t.Fatal("DLNA loading exposed playback controls before confirmation")
+					}
+					test.Tap(s.PlayPause)
+				})
 			}
 			deadline := time.Now().Add(time.Second)
 			for {

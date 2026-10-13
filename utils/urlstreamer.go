@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"mime"
 	"net"
 	"net/http"
@@ -81,6 +82,10 @@ func (b *streamURLBody) Close() error {
 }
 
 func streamURLResponse(ctx context.Context, s string) (*http.Response, error) {
+	return streamURLResponseHeaders(ctx, s, nil)
+}
+
+func streamURLResponseHeaders(ctx context.Context, s string, headers http.Header) (*http.Response, error) {
 	_, err := url.ParseRequestURI(s)
 	if err != nil {
 		return nil, fmt.Errorf("streamURL failed to parse url: %w", err)
@@ -99,6 +104,7 @@ func streamURLResponse(ctx context.Context, s string) (*http.Response, error) {
 		return nil, fmt.Errorf("streamURL failed to call NewRequest: %w", err)
 	}
 
+	maps.Copy(req.Header, headers)
 	resp, err := streamHTTPClient.Do(req)
 	acquired := body.stopTimeout()
 	if err != nil {

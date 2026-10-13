@@ -112,7 +112,7 @@ func loadMedia(conn cast.Conn, transportId string, req LoadRequest, autoplay boo
 }
 
 func hasMediaMetadata(mediaMetadata metadata.Media) bool {
-	return mediaMetadata.Title != "" ||
+	return mediaMetadata.AudioOnly || mediaMetadata.Title != "" ||
 		mediaMetadata.Artist != "" ||
 		mediaMetadata.Album != "" ||
 		mediaMetadata.AlbumArtist != "" ||
@@ -121,7 +121,7 @@ func hasMediaMetadata(mediaMetadata metadata.Media) bool {
 
 func newMediaMeta(contentType string, mediaMetadata metadata.Media) *MediaMeta {
 	metadataType := 0
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(contentType)), "audio/") {
+	if mediaMetadata.AudioOnly || strings.HasPrefix(strings.ToLower(strings.TrimSpace(contentType)), "audio/") {
 		metadataType = 3
 	}
 
