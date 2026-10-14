@@ -1662,9 +1662,16 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 			if client == nil || !client.IsConnected() {
 				return
 			}
+			server := screen.httpserver
+			if stopFailedTranscode(screen, server, nil, actionID) {
+				// A receiver retry may clear the error before the UI callback.
+				// Keep watching until playback actually stops or is replaced.
+				continue
+			}
 
 			status, err := client.GetStatus()
 			if err != nil {
+				fyne.Do(func() { screen.SlideBar.setChromecastDuration(client, actionID, 0, false) })
 				statusErrs++
 				if statusErrs < chromecastLostConnPolls {
 					continue
@@ -1755,7 +1762,7 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 					}
 					return
 				}
-				startupIdleTicks++
+				startupIdleTicks = chromecastStartupIdleCount(startupIdleTicks, server.TranscodeStatus(""))
 				if startupIdleTicks >= chromecastStartupIdleTicks {
 					if !screen.isChromecastActionCurrent(actionID) {
 						return
@@ -1792,6 +1799,13 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 
 			// Chromecast reports 0 duration/time during buffering.
 			sampleValid := status.PlayerState != "BUFFERING" && duration > 0
+			fyne.Do(func() {
+				seekDuration := duration
+				if !sampleValid {
+					seekDuration = 0
+				}
+				screen.SlideBar.setChromecastDuration(client, actionID, seekDuration, status.StreamType != "LIVE" || screen.mediaDuration > 0)
+			})
 			if sampleValid && mediaStarted && !screen.sliderActive {
 				// Display only: ffprobe durations can undershoot, letting the
 				// position pass the reported end. The stall net keeps the raw

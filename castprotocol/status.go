@@ -9,4 +9,5 @@ type CastStatus struct {
 	Muted       bool
 	MediaTitle  string
 	ContentType string
+	StreamType  string // "BUFFERED" or "LIVE"
 }

@@ -208,27 +208,43 @@ func TestNegativeTimestampsAndLongCaptionOverlap(t *testing.T) {
 }
 
 func TestSeekUsesMatroskaIndex(t *testing.T) {
-	tracks := elem(0x1654ae6b, textTrack(2, "S_TEXT/UTF8"))
-	old := elem(clusterID, number(0xe7, 0), elem(0xa3, []byte{0x81, 0, 0, 0, 0xcc}))
-	near := elem(clusterID, number(0xe7, 850000))
-	target := elem(clusterID, number(0xe7, 990000), subBlock(2, 0, 20000, "Visible after seek"))
-	seek := func(pos uint64) []byte {
-		return elem(0x114d9b74, elem(0x4dbb, number(0x53ab, cuesID), number(0x53ac, pos)))
+	tt := []struct {
+		name          string
+		duplicateCues int
+	}{
+		{name: "ordinary index"},
+		{name: "many tracks sharing clusters", duplicateCues: 100001},
 	}
-	base := len(tracks) + len(seek(0))
-	cuesOffset := base + len(old) + len(near) + len(target)
-	point := func(at, pos uint64) []byte { return elem(0xbb, number(0xb3, at), elem(0xb7, number(0xf1, pos))) }
-	index := elem(cuesID, point(0, uint64(base)), point(850000, uint64(base+len(old))), point(990000, uint64(base+len(old)+len(near))))
-	body := bytes.Join([][]byte{tracks, seek(uint64(cuesOffset)), old, near, target, index}, nil)
-	data := elem(segmentID, body)
-	segmentHeader := len(data) - len(body)
-	source := &memorySource{data: data, forbidden: [][2]int64{{int64(segmentHeader + base + 5), int64(segmentHeader + base + len(old))}}}
-	cues, err := New(source).Window(context.Background(), 1000, 1030)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(cues) != 1 || cues[0] != (Cue{990, 1010, "Visible after seek"}) {
-		t.Fatalf("seek cues: %+v", cues)
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			tracks := elem(0x1654ae6b, textTrack(2, "S_TEXT/UTF8"))
+			old := elem(clusterID, number(0xe7, 0), elem(0xa3, []byte{0x81, 0, 0, 0, 0xcc}))
+			near := elem(clusterID, number(0xe7, 850000))
+			target := elem(clusterID, number(0xe7, 990000), subBlock(2, 0, 20000, "Visible after seek"))
+			seek := func(pos uint64) []byte {
+				return elem(0x114d9b74, elem(0x4dbb, number(0x53ab, cuesID), number(0x53ac, pos)))
+			}
+			base := len(tracks) + len(seek(0))
+			cuesOffset := base + len(old) + len(near) + len(target)
+			point := func(at, pos uint64) []byte { return elem(0xbb, number(0xb3, at), elem(0xb7, number(0xf1, pos))) }
+			points := bytes.Join([][]byte{point(0, uint64(base)), point(850000, uint64(base+len(old))), point(990000, uint64(base+len(old)+len(near)))}, nil)
+			duplicate := point(990000, uint64(base+len(old)+len(near)))
+			for range tc.duplicateCues {
+				points = append(points, duplicate...)
+			}
+			index := elem(cuesID, points)
+			body := bytes.Join([][]byte{tracks, seek(uint64(cuesOffset)), old, near, target, index}, nil)
+			data := elem(segmentID, body)
+			segmentHeader := len(data) - len(body)
+			source := &memorySource{data: data, forbidden: [][2]int64{{int64(segmentHeader + base + 5), int64(segmentHeader + base + len(old))}}}
+			cues, err := New(source).Window(context.Background(), 1000, 1030)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(cues) != 1 || cues[0] != (Cue{990, 1010, "Visible after seek"}) {
+				t.Fatalf("seek cues: %+v", cues)
+			}
+		})
 	}
 }
 

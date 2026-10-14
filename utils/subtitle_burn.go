@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -10,13 +11,98 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"go2tv.app/go2tv/v2/internal/mediasource"
 )
 
 const (
 	maxSubtitleFonts     = 128
 	maxSubtitleFontSize  = 16 << 20
 	maxSubtitleFontBytes = 64 << 20
+	localSubtitleBuffer  = 2 << 10
 )
+
+type localSubtitleSource struct {
+	path string
+	size int64
+}
+
+func (s localSubtitleSource) Open(ctx context.Context) (io.ReadSeekCloser, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	file, err := os.Open(s.path)
+	if err != nil {
+		return nil, err
+	}
+	section := io.NewSectionReader(file, 0, s.size)
+	return &localSubtitleReader{file: file, section: section, reader: bufio.NewReaderSize(section, localSubtitleBuffer), size: s.size}, nil
+}
+func (s localSubtitleSource) URL() string  { return s.path }
+func (s localSubtitleSource) MIME() string { return "video/x-matroska" }
+func (s localSubtitleSource) Size() int64  { return s.size }
+
+// EBML parsing repeatedly reads tiny headers and asks for the current offset.
+// Keep offsets in memory and buffer adjacent headers and small audio blocks.
+// Limit read-ahead so skipping large video blocks never reads their full payload.
+type localSubtitleReader struct {
+	file    *os.File
+	section *io.SectionReader
+	reader  *bufio.Reader
+	pos     int64
+	size    int64
+}
+
+func (r *localSubtitleReader) Read(data []byte) (int, error) {
+	n, err := r.reader.Read(data)
+	r.pos += int64(n)
+	return n, err
+}
+
+func (r *localSubtitleReader) Seek(offset int64, whence int) (int64, error) {
+	switch whence {
+	case io.SeekStart:
+	case io.SeekCurrent:
+		offset += r.pos
+	case io.SeekEnd:
+		offset += r.size
+	default:
+		return r.pos, os.ErrInvalid
+	}
+	if offset < 0 {
+		return r.pos, os.ErrInvalid
+	}
+	if offset >= r.pos && offset-r.pos <= int64(r.reader.Buffered()) {
+		n, err := r.reader.Discard(int(offset - r.pos))
+		r.pos += int64(n)
+		return r.pos, err
+	}
+	pos, err := r.section.Seek(offset, io.SeekStart)
+	if err != nil {
+		return r.pos, err
+	}
+	r.reader.Reset(r.section)
+	r.pos = pos
+	return pos, nil
+}
+
+func (r *localSubtitleReader) Close() error { return r.file.Close() }
+
+func localTextBurnSource(selected *EmbeddedSubtitle) mediasource.Source {
+	if _, progressive := mediasource.Lookup(selected.Path); progressive {
+		return nil
+	}
+	switch strings.ToLower(filepath.Ext(selected.Path)) {
+	case ".mkv", ".webm":
+	default:
+		return nil
+	}
+	info, err := os.Stat(selected.Path)
+	if err != nil || !info.Mode().IsRegular() {
+		return nil
+	}
+	return localSubtitleSource{path: selected.Path, size: info.Size()}
+}
 
 // EmbeddedSubtitleForBurn selects supported text and bitmap tracks for direct
 // container rendering, retaining subtitle timestamps and ASS/SSA typesetting.

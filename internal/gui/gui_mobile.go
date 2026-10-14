@@ -228,6 +228,11 @@ func (p *FyneScreen) updateScreenState(a string) {
 	// terminal path stops the background service here. Called after the unlock:
 	// it reaches into the platform and has no business doing that under a lock.
 	syncBackgroundSession(p, a)
+	fyne.Do(func() {
+		if p.SlideBar != nil {
+			p.SlideBar.Enable()
+		}
+	})
 }
 
 func (p *FyneScreen) setActiveDevice(device devType) {

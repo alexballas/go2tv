@@ -1757,11 +1757,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 	torrentSubtitleURL := registerTorrentSubtitles(screen.httpserver, subtitleHost, screen.mediafile,
 		!screen.CustomSubsCheck.Checked && subtitleURL == "" && screen.chromecastSubtitleBurnPath(transcode) == "" && screen.chromecastTorrentBurnSource(transcode) == nil && !screen.Screencast &&
 			!screen.ExternalMediaURL.Checked && (screen.rtmpServerCheck == nil || !screen.rtmpServerCheck.Checked), subtitleOffset, transcode)
-	playbackStart := ffmpegSeek
-	if transcode && torrentMediaSelected(screen) {
-		// FFmpeg already seeks the source; the new receiver stream starts at zero.
-		playbackStart = 0
-	}
+	playbackStart := chromecastReceiverStartTime(ffmpegSeek, transcode)
 
 	// Load media and update UI on success
 	if startupCtx.Err() != nil {
@@ -1947,12 +1943,19 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 			if client == nil || !client.IsConnected() {
 				return
 			}
+			server := screen.httpserver
+			if stopFailedTranscode(screen, server, nil, actionID) {
+				// A receiver retry may clear the error before the UI callback.
+				// Keep watching until playback actually stops or is replaced.
+				continue
+			}
 			screen.mu.RLock()
 			isScreencast := screen.Screencast
 			screen.mu.RUnlock()
 
 			status, err := client.GetStatus()
 			if err != nil {
+				fyne.Do(func() { screen.SlideBar.setChromecastDuration(client, actionID, 0, false) })
 				statusErrs++
 				if statusErrs < chromecastLostConnPolls {
 					continue
@@ -2063,7 +2066,7 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 					return
 				}
 				// If we haven't started yet, just ignore IDLE
-				startupIdleTicks++
+				startupIdleTicks = chromecastStartupIdleCount(startupIdleTicks, server.TranscodeStatus(""))
 				if startupIdleTicks >= chromecastStartupIdleTicks {
 					if !screen.isChromecastActionCurrent(actionID) {
 						return
@@ -2117,6 +2120,13 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 			// Chromecast reports 0 duration/time during buffering, so only
 			// non-buffering reports with a duration carry a usable position.
 			sampleValid := status.PlayerState != "BUFFERING" && duration > 0
+			fyne.Do(func() {
+				seekDuration := duration
+				if !sampleValid {
+					seekDuration = 0
+				}
+				screen.SlideBar.setChromecastDuration(client, actionID, seekDuration, status.StreamType != "LIVE" || screen.mediaDuration > 0)
+			})
 
 			if sampleValid && mediaStarted && !screen.sliderActive {
 				// Display only: ffprobe durations can undershoot, letting the
@@ -2544,7 +2554,7 @@ func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target 
 				MediaURL:    mediaURL,
 				ContentType: mediaType,
 				Metadata:    guiMediaMetadata(chromecastMediaTitle(screen, mediaURL), whereToListen, artworkAsset),
-				StartTime:   ffmpegSeek,
+				StartTime:   chromecastReceiverStartTime(ffmpegSeek, transcode),
 				Duration:    screen.mediaDuration,
 				SubtitleURL: subtitleURL,
 			}); err != nil {

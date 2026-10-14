@@ -10,6 +10,10 @@ import (
 	"go2tv.app/go2tv/v2/devices"
 )
 
+func (s *FyneScreen) progressSeekingAllowed() bool {
+	return !strings.HasPrefix(s.castingMediaType, "image/")
+}
+
 func (s *FyneScreen) rendererPermit(bool) (func(), bool) {
 	return func() {}, true
 }

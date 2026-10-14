@@ -101,6 +101,72 @@ func TestTorrentASSBurnMatchesOriginalRendering(t *testing.T) {
 	}
 }
 
+func TestLocalTextBurnPreservesAttachedFonts(t *testing.T) {
+	tt := []struct{ name, text string }{
+		{name: "attached font", text: `<font face="Go Mono">Attached caption font</font>`},
+		{name: "default font", text: "Default caption font"},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			ffmpeg, media, _ := styledSubtitleScriptFixture(t, "1\n00:00:01,000 --> 00:00:14,000\n"+tc.text+"\n", ".srt")
+			if !ffmpegFilterAvailable(ffmpeg, "scale2ref") {
+				t.Skip("overlay filters unavailable")
+			}
+			selected, err := EmbeddedSubtitleForBurn(ffmpeg, media, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+			defer cancel()
+			opts := &TranscodeOptions{FFmpegPath: ffmpeg, EmbeddedSubtitle: selected, SubtitleSize: SubtitleSizeMedium, SeekSeconds: 2}
+			burn, err := prepareSubtitleBurn(ctx, opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer burn.cleanup()
+			if burn.overlay == "" {
+				t.Fatal("local subtitle windows unavailable")
+			}
+			actualBytes, err := exec.CommandContext(ctx, ffmpeg, "-v", "error", "-f", "image2pipe", "-framerate", "25", "-c:v", "png", "-probesize", "32", "-analyzeduration", "0", "-i", burn.overlay,
+				"-frames:v", "1", "-c:v", "png", "-threads", "1", "-f", "image2pipe", "pipe:1").Output()
+			if err != nil {
+				t.Fatalf("render caption window: %v", err)
+			}
+			actual, err := png.Decode(bytes.NewReader(actualBytes))
+			if err != nil {
+				t.Fatal(err)
+			}
+			filter := fmt.Sprintf("setpts=PTS+2/TB,subtitles='%s':si=0%s:alpha=1", escapeFFmpegPath(media), subtitleBurnStyle(opts.SubtitleSize))
+			originalBytes, err := exec.CommandContext(ctx, ffmpeg, "-v", "error", "-f", "lavfi", "-i", "color=c=black@0:size=320x180:rate=25:duration=1,format=rgba", "-vf", filter,
+				"-frames:v", "1", "-c:v", "png", "-threads", "1", "-f", "image2pipe", "pipe:1").Output()
+			if err != nil {
+				t.Fatalf("render original captions: %v", err)
+			}
+			original, err := png.Decode(bytes.NewReader(originalBytes))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if actual.Bounds() != original.Bounds() {
+				t.Fatalf("caption canvas = %v, want %v", actual.Bounds(), original.Bounds())
+			}
+			visible := false
+			for y := range original.Bounds().Dy() {
+				for x := range original.Bounds().Dx() {
+					_, _, _, want := original.At(x, y).RGBA()
+					_, _, _, got := actual.At(x, y).RGBA()
+					visible = visible || want > 0
+					if got != want {
+						t.Fatalf("caption font differs at (%d,%d): alpha=%d want %d", x, y, got, want)
+					}
+				}
+			}
+			if !visible {
+				t.Fatal("reference lacks captions")
+			}
+		})
+	}
+}
+
 func checkTorrentStyledRendering(t *testing.T, ffmpeg, media string) {
 	t.Helper()
 	info, err := os.Stat(media)
@@ -165,6 +231,92 @@ func checkTorrentStyledRendering(t *testing.T, ffmpeg, media string) {
 			}
 			if at > 0 && at < 14 && !visible {
 				t.Fatal("reference unexpectedly lacks styled captions")
+			}
+		})
+	}
+}
+
+func TestLocalTextBurnRendersSelectedCaptionsAfterLateSeek(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil || !ffmpegFilterAvailable(ffmpeg, "subtitles") || !ffmpegFilterAvailable(ffmpeg, "scale2ref") {
+		t.Skip("subtitle filters unavailable")
+	}
+	dir := t.TempDir()
+	first, second, long := filepath.Join(dir, "first.srt"), filepath.Join(dir, "second.srt"), filepath.Join(dir, "long.srt")
+	for path, text := range map[string]string{
+		first:  "1\n00:00:01,000 --> 00:00:03,000\nOther track\n",
+		second: "1\n00:01:18,000 --> 00:01:22,000\nSelected caption after seek\n",
+		long:   "1\n00:00:00,000 --> 00:03:15,000\nLong caption overlaps seek\n",
+	} {
+		if err := os.WriteFile(path, []byte(text), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	media := filepath.Join(dir, "late-captions.mkv")
+	fixture := exec.Command(ffmpeg, "-nostdin", "-v", "error", "-f", "lavfi", "-i", "color=size=320x180:rate=1:duration=220",
+		"-i", first, "-i", second, "-i", long, "-map", "0:v", "-map", "1:s", "-map", "2:s", "-map", "3:s", "-c:v", "mpeg4", "-g", "1", "-c:s", "copy", media)
+	if output, err := fixture.CombinedOutput(); err != nil {
+		t.Fatalf("create late-caption fixture: %v: %s", err, output)
+	}
+	unindexed := filepath.Join(dir, "unindexed-captions.mkv")
+	remux := exec.Command(ffmpeg, "-nostdin", "-v", "error", "-i", media, "-map", "0", "-c", "copy", "-live", "1", unindexed)
+	if output, err := remux.CombinedOutput(); err != nil {
+		t.Fatalf("create unindexed-caption fixture: %v: %s", err, output)
+	}
+	tt := []struct {
+		name        string
+		track, seek int
+		visible     bool
+		unindexed   bool
+	}{
+		{name: "selected track after seek", track: 1, seek: 80, visible: true},
+		{name: "other track stays absent", seek: 80},
+		{name: "expired caption stays absent", track: 1, seek: 85},
+		{name: "long caption overlaps late seek", track: 2, seek: 180, visible: true},
+		{name: "expired long caption stays absent", track: 2, seek: 196},
+		{name: "unindexed long caption overlaps seek", track: 2, seek: 180, visible: true, unindexed: true},
+		{name: "unindexed expired caption stays absent", track: 2, seek: 196, unindexed: true},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			path := media
+			if tc.unindexed {
+				path = unindexed
+			}
+			selected, err := EmbeddedSubtitleForBurnContext(ctx, ffmpeg, path, tc.track)
+			if err != nil || selected == nil {
+				t.Fatalf("select track: %+v, %v", selected, err)
+			}
+			burn, err := prepareSubtitleBurn(ctx, &TranscodeOptions{FFmpegPath: ffmpeg, EmbeddedSubtitle: selected, SeekSeconds: tc.seek})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer burn.cleanup()
+			if burn.overlay == "" {
+				t.Fatal("local subtitle windows unavailable")
+			}
+			args := []string{"-v", "error", "-f", "image2pipe", "-framerate", "25", "-c:v", "png", "-probesize", "32", "-analyzeduration", "0", "-i", burn.overlay}
+			args = append(args, "-frames:v", "1", "-c:v", "png", "-threads", "1", "-f", "image2pipe", "pipe:1")
+			command := exec.CommandContext(ctx, ffmpeg, args...)
+			data, err := command.Output()
+			if err != nil {
+				t.Fatalf("render caption after seek: %v", err)
+			}
+			frame, err := png.Decode(bytes.NewReader(data))
+			if err != nil {
+				t.Fatal(err)
+			}
+			visible := false
+			for y := range frame.Bounds().Dy() {
+				for x := range frame.Bounds().Dx() {
+					_, _, _, alpha := frame.At(x, y).RGBA()
+					visible = visible || alpha > 0
+				}
+			}
+			if visible != tc.visible {
+				t.Fatalf("caption visible = %v, want %v", visible, tc.visible)
 			}
 		})
 	}

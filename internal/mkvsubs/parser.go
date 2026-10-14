@@ -20,6 +20,7 @@ const (
 	attachmentsID = 0x1941a469
 	maxText       = 64 << 10
 	maxCues       = 4096
+	seekLookback  = 120.0
 )
 
 var ErrNoSubtitles = errors.New("no supported Matroska text subtitles")
@@ -59,6 +60,7 @@ type Parser struct {
 	segment, end, first, cues int64
 	index                     []cluster
 	indexed                   bool
+	scanFromStart             bool
 	active                    []Cue
 	subtitleIndex             int  // -1 selects the first supported track.
 	strict                    bool // File export must fail rather than silently omit captions.
@@ -73,6 +75,14 @@ type Parser struct {
 
 func New(source mediasource.Source) *Parser {
 	return &Parser{source: source, gate: make(chan struct{}, 1), scale: 1e-3, subtitleIndex: -1}
+}
+
+// NewForSubtitle selects a subtitle ordinal, including unsupported tracks,
+// matching FFmpeg's 0:s:n. A negative index selects the first supported track.
+func NewForSubtitle(source mediasource.Source, index int) *Parser {
+	parser := New(source)
+	parser.subtitleIndex = index
+	return parser
 }
 
 // PrepareBurn selects a text track and reads only the first cluster's timeline
@@ -102,6 +112,25 @@ func (p *Parser) PrepareBurn(ctx context.Context) (float64, error) {
 	}
 	p.ready = true
 	return p.readOrigin(ctx, r)
+}
+
+// PrepareBurnForSeek preserves overlapping captions on a fresh local seek.
+// Cues can omit subtitle frames, even when indexed frames include durations.
+// The first window reads earlier subtitle metadata, skipping A/V payloads;
+// subsequent windows retain active cues and use the discovered cluster index.
+func (p *Parser) PrepareBurnForSeek(ctx context.Context, seconds float64) (float64, error) {
+	origin, err := p.PrepareBurn(ctx)
+	if err != nil {
+		return origin, err
+	}
+	select {
+	case p.gate <- struct{}{}:
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
+	defer func() { <-p.gate }()
+	p.scanFromStart = seconds > 0
+	return origin, nil
 }
 
 // TimelineOrigin reads initial A/V block timestamps without reading their
@@ -311,16 +340,17 @@ func (p *Parser) Window(ctx context.Context, start, end float64) ([]Cue, error) 
 	if len(p.index) > 0 {
 		frontier = p.index[len(p.index)-1].time
 	}
-	if start > frontier+60 && !p.indexed && p.cues > 0 {
+	if !p.scanFromStart && start > frontier+60 && !p.indexed && p.cues > 0 {
 		if err := p.loadIndex(ctx, r); err != nil {
 			return nil, err
 		}
 	}
 	pos := p.first
+	lookback := max(seekLookback, 32768*p.scale)
 	// Include earlier clusters for captions overlapping a seek. Sequential
 	// playback retains the index and never traverses the complete media payload.
 	for _, c := range p.index {
-		if c.time > start-120 {
+		if p.scanFromStart || c.time > start-lookback {
 			break
 		}
 		pos = c.pos
@@ -396,6 +426,7 @@ func (p *Parser) Window(ctx context.Context, start, end float64) ([]Cue, error) 
 		}
 		return captions, &IncompleteWindow{Until: min(end, max(start+1, until)), err: incomplete}
 	}
+	p.scanFromStart = false
 	return captions, nil
 }
 
@@ -653,6 +684,7 @@ func (p *Parser) loadIndex(ctx context.Context, r io.ReadSeeker) error {
 		return fmt.Errorf("invalid Matroska seek index")
 	}
 	index := make([]cluster, 0)
+	byPosition := make(map[int64]int)
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -709,7 +741,16 @@ func (p *Parser) loadIndex(ctx context.Context, r io.ReadSeeker) error {
 				}
 			}
 			for _, pos := range positions {
-				index = append(index, cluster{p.segment + int64(pos), float64(ticks) * p.scale})
+				entry := cluster{p.segment + int64(pos), float64(ticks) * p.scale}
+				// Many tracks can point to the same cluster. Bound unique
+				// clusters, not per-track cue entries, and retain the earliest
+				// timestamp so a seek does not skip overlapping captions.
+				if i, exists := byPosition[entry.pos]; exists {
+					index[i].time = min(index[i].time, entry.time)
+					continue
+				}
+				byPosition[entry.pos] = len(index)
+				index = append(index, entry)
 			}
 		}
 		if len(index) > 100000 {

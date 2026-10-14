@@ -597,6 +597,7 @@ func (c *CastClient) GetStatus() (*CastStatus, error) {
 			status.Duration = media.Media.Duration
 		}
 		status.ContentType = media.Media.ContentType
+		status.StreamType = media.Media.StreamType
 		status.MediaTitle = media.Media.Metadata.Title
 	} else {
 		status.PlayerState = "IDLE"

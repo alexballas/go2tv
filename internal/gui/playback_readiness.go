@@ -37,6 +37,9 @@ func (l *playbackStatusLabel) MouseIn(e *desktop.MouseEvent) {
 
 // Called on the UI thread; keep all playback slots present in every state.
 func (s *FyneScreen) refreshPlaybackReadiness() {
+	if s.SlideBar != nil {
+		s.SlideBar.Enable()
+	}
 	if s.playbackStatus == nil {
 		return
 	}
@@ -96,14 +99,11 @@ func (s *FyneScreen) refreshPlaybackReadiness() {
 			s.Stop.Disable()
 		}
 	}
-	if s.SlideBar != nil {
-		if active && !strings.HasPrefix(s.castingMediaType, "image/") && !s.Screencast && s.rtmpServer == nil && !s.renderGate.remoteLeaseHeld() {
-			s.SlideBar.Enable()
-		} else {
-			s.SlideBar.Disable()
-		}
-	}
 	if s.mpris != nil {
 		s.mpris.refresh()
 	}
+}
+
+func (s *FyneScreen) progressSeekingAllowed() bool {
+	return !strings.HasPrefix(s.castingMediaType, "image/") && !s.Screencast && s.rtmpServer == nil && !s.renderGate.remoteLeaseHeld()
 }

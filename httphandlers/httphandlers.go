@@ -3,7 +3,6 @@ package httphandlers
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -32,6 +31,7 @@ type HTTPserver struct {
 	ffmpeg      *exec.Cmd
 	handlers    map[string]handler
 	dirHandlers map[string]string // Handlers for serving entire directories (e.g. HLS)
+	transcodes  map[string]*transcodeState
 	mu          sync.Mutex
 }
 
@@ -45,6 +45,7 @@ type handler struct {
 	media     any
 	mediaType string
 	static    bool
+	state     *transcodeState
 }
 
 // Screen interface is used to push message back to the user
@@ -71,7 +72,9 @@ type osFileType struct {
 // For Chromecast without transcoding: pass both as nil
 func (s *HTTPserver) AddHandler(path string, payload *soapcalls.TVPayload, transcode *utils.TranscodeOptions, media any) {
 	s.mu.Lock()
-	s.handlers[path] = handler{payload: payload, transcode: transcode, media: media}
+	state := &transcodeState{}
+	s.transcodes[path] = state
+	s.handlers[path] = handler{payload: payload, transcode: transcode, media: media, state: state}
 	s.mu.Unlock()
 }
 
@@ -81,8 +84,16 @@ func (s *HTTPserver) SetDLNATranscodeSeek(payload *soapcalls.TVPayload, seconds 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	payload.SetTranscodeSeek(seconds, subsPath, embedded)
+	for path, out := range s.handlers {
+		if out.payload == payload {
+			out.state = &transcodeState{}
+			s.transcodes[path] = out.state
+			s.handlers[path] = out
+		}
+	}
 	if subtitleRoute != "" {
 		s.handlers[subtitleRoute] = handler{media: subtitles}
+		delete(s.transcodes, subtitleRoute)
 	}
 }
 
@@ -100,6 +111,7 @@ func DLNATranscodeOptionsForRequest(r *http.Request) *utils.TranscodeOptions {
 func (s *HTTPserver) AddStaticHandler(path, mediaType string, media any) {
 	s.mu.Lock()
 	s.handlers[path] = handler{media: media, mediaType: mediaType, static: true}
+	delete(s.transcodes, path)
 	s.mu.Unlock()
 }
 
@@ -107,6 +119,7 @@ func (s *HTTPserver) AddStaticHandler(path, mediaType string, media any) {
 func (s *HTTPserver) RemoveHandler(path string) {
 	s.mu.Lock()
 	delete(s.handlers, path)
+	delete(s.transcodes, path)
 	s.mu.Unlock()
 }
 
@@ -282,6 +295,10 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 		}
 		if dlnaOpts != nil {
 			r = r.WithContext(context.WithValue(r.Context(), dlnaTranscodeOptionsKey{}, dlnaOpts))
+		}
+		r = r.WithContext(context.WithValue(r.Context(), transcodeServerKey{}, s))
+		if out.state != nil {
+			r = r.WithContext(context.WithValue(r.Context(), transcodeStateKey{}, out.state))
 		}
 		s.mu.Unlock()
 
@@ -499,6 +516,7 @@ func NewServer(a string) *HTTPserver {
 		ffmpeg:      new(exec.Cmd),
 		handlers:    make(map[string]handler),
 		dirHandlers: make(map[string]string),
+		transcodes:  make(map[string]*transcodeState),
 	}
 
 	return &srv
@@ -645,21 +663,11 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 			// Chromecast transcoding (fragmented MP4)
 			w.Header().Set("Content-Type", "video/mp4")
 			w.Header().Set("Access-Control-Allow-Origin", "*")
-			err := utils.ServeChromecastTranscodedStream(r.Context(), w, f, ff, tcOpts)
-			if err != nil {
-				if errors.Is(err, utils.ErrTranscodeBusy) {
-					http.Error(w, "busy", http.StatusServiceUnavailable)
-					return
-				}
-				tcOpts.LogError("serveContentReadClose", "ChromecastTranscode", err)
-			}
+			serveVideoTranscode(w, r, f, ff, tcOpts, true)
 		case tv != nil:
 			// DLNA transcoding (MPEGTS)
 			var command exec.Cmd
-			err := utils.ServeDLNATranscodedStream(r.Context(), w, f, &command, dlnaOpts)
-			if err != nil {
-				tv.Log().Error("", "function", "serveContentReadClose", "Action", "Transcode", "error", err)
-			}
+			serveVideoTranscode(w, r, f, &command, dlnaOpts, false)
 		}
 		return
 	}
@@ -744,21 +752,11 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcall
 			// Chromecast transcoding (fragmented MP4)
 			w.Header().Set("Content-Type", "video/mp4")
 			w.Header().Set("Access-Control-Allow-Origin", "*")
-			err := utils.ServeChromecastTranscodedStream(r.Context(), w, input, ff, tcOpts)
-			if err != nil {
-				if errors.Is(err, utils.ErrTranscodeBusy) {
-					http.Error(w, "busy", http.StatusServiceUnavailable)
-					return
-				}
-				tcOpts.LogError("serveContentCustomType", "ChromecastTranscode", err)
-			}
+			serveVideoTranscode(w, r, input, ff, tcOpts, true)
 		case tv != nil:
 			// DLNA transcoding (MPEGTS)
 			var command exec.Cmd
-			err := utils.ServeDLNATranscodedStream(r.Context(), w, input, &command, dlnaOpts)
-			if err != nil {
-				tv.Log().Error("", "function", "serveContentCustomType", "Action", "Transcode", "error", err)
-			}
+			serveVideoTranscode(w, r, input, &command, dlnaOpts, false)
 		}
 		return
 	}
