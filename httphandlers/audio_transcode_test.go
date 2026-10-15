@@ -154,6 +154,64 @@ func TestRadioAudioReconnectDoesNotKillActiveStream(t *testing.T) {
 	}
 }
 
+func TestRadioTranscodeDeliversChunksBeforeEncoderEnds(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture")
+	}
+	upstream := radioTranscodeTestUpstream(t)
+	tt := []struct {
+		name       string
+		chromecast bool
+	}{{name: "DLNA"}, {name: "Chromecast", chromecast: true}}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			ffmpeg := filepath.Join(dir, "ffmpeg")
+			nextChunk := filepath.Join(dir, "next")
+			if err := os.WriteFile(ffmpeg, []byte("#!/bin/sh\nprintf 'first encoded chunk'\nwhile [ ! -e \"$GO2TV_RADIO_NEXT\" ]; do sleep 0.02; done\nprintf 'next encoded chunk'\nexec sleep 30\n"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("GO2TV_RADIO_NEXT", nextChunk)
+			server := NewServer("")
+			var tv *soapcalls.TVPayload
+			var opts *utils.TranscodeOptions
+			if tc.chromecast {
+				opts = &utils.TranscodeOptions{FFmpegPath: ffmpeg, AudioOnly: true}
+			} else {
+				tv = &soapcalls.TVPayload{MediaType: "audio/mpeg", Transcode: true, FFmpegPath: ffmpeg}
+			}
+			server.AddHandler("/radio", tv, opts, RemoteMediaURL(upstream+"/live"))
+			receiver := httptest.NewServer(server.ServeMediaHandler())
+			defer receiver.Close()
+			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+			defer cancel()
+			request, err := http.NewRequestWithContext(ctx, http.MethodGet, receiver.URL+"/radio", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := receiver.Client().Do(request)
+			if err != nil {
+				t.Fatalf("encoded audio buffered while encoder remains open: %v", err)
+			}
+			defer response.Body.Close()
+			for _, want := range []string{"first encoded chunk", "next encoded chunk"} {
+				chunk := make([]byte, len(want))
+				if _, err := io.ReadFull(response.Body, chunk); err != nil {
+					t.Fatalf("encoded chunk buffered while encoder remains open: %v", err)
+				}
+				if string(chunk) != want {
+					t.Fatalf("encoded bytes changed: got %q, want %q", chunk, want)
+				}
+				if want == "first encoded chunk" {
+					if err := os.WriteFile(nextChunk, nil, 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+		})
+	}
+}
+
 func radioTranscodeTestUpstream(t *testing.T) string {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

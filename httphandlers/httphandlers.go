@@ -575,6 +575,9 @@ func serveContentWithDLNAOptions(w http.ResponseWriter, r *http.Request, tv *soa
 			}
 			rc, err := utils.StreamURL(r.Context(), string(f))
 			if err != nil {
+				if tv != nil {
+					tv.Log().Debug("remote media acquisition failed", "Method", "DLNAMediaHTTP", "Action", "UpstreamError", "Path", r.URL.Path, "Error", err)
+				}
 				http.Error(w, "remote media unavailable", http.StatusBadGateway)
 				return
 			}
@@ -674,7 +677,7 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 
 	// No seek support
 	if r.Method == http.MethodGet {
-		_, _ = io.Copy(w, f)
+		serveMediaStream(w, r, tv, mediaType, f)
 	}
 }
 
@@ -785,27 +788,21 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcall
 	}
 }
 
-// Track whether FFmpeg emitted bytes before reporting a startup failure.
-type audioHTTPWriter struct {
-	io.Writer
-	written bool
-}
-
-func (w *audioHTTPWriter) Write(data []byte) (int, error) {
-	n, err := w.Writer.Write(data)
-	w.written = w.written || n > 0
-	return n, err
-}
-
 func serveAudioTranscode(w http.ResponseWriter, r *http.Request, input any, opts *utils.TranscodeOptions) {
-	writer := &audioHTTPWriter{Writer: w}
+	writer := newMediaStreamWriter(w, r, utils.AudioTranscodeMediaType)
+	writer.transcoded = true
+	if opts != nil && opts.LogOutput != nil {
+		writer.log = opts.Log()
+	}
 	// Receiver probes/reconnects must not replace an active request's process.
 	var command exec.Cmd
-	if err := utils.ServeAudioTranscodedStream(r.Context(), writer, input, &command, opts); err != nil {
+	err := utils.ServeAudioTranscodedStream(r.Context(), writer, input, &command, opts)
+	writer.logEnd(r, err)
+	if err != nil {
 		if opts != nil {
 			opts.LogError("serveContent", "AudioTranscode", err)
 		}
-		if !writer.written && r.Context().Err() == nil {
+		if writer.bytes == 0 && r.Context().Err() == nil {
 			http.Error(w, "audio transcode unavailable", http.StatusBadGateway)
 		}
 	}
