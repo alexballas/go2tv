@@ -211,7 +211,9 @@ func TestDLNATerminalCleanupHonorsVerifiedStop(t *testing.T) {
 					t.Fatalf("failed startup advanced queue: %#v", after)
 				}
 			} else {
-				awaitAutoplaySnapshot(t, c, func(s Snapshot) bool { return s.HasSession && s.Generation > before.Generation })
+				awaitAutoplaySnapshot(t, c, func(s Snapshot) bool {
+					return s.HasSession && s.Generation > before.Generation && s.PlaybackState == PlaybackStatePlaying
+				})
 			}
 			events := log.snapshot()
 			if count(events, "stop:renderer") != tc.stops || count(events, "close:renderer") != 1 || count(events, "server:stop") != 1 {

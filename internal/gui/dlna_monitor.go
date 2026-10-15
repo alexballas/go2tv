@@ -74,7 +74,6 @@ func (s *dlnaPlaybackSession) ensureGaplessQueue(current *soapcalls.TVPayload) {
 		fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled") != "Enabled" || !s.claimQueue(current) {
 		return
 	}
-	s.debug("queue_ensured", "current_uri", current.MediaURL)
 	go func() {
 		if _, err := queueNext(s.FyneScreen, false); err != nil && !errors.Is(err, context.Canceled) {
 			current.Log().Debug("gapless queue failed; ordinary autoplay remains enabled", "error", err)
@@ -139,12 +138,6 @@ func (s *FyneScreen) dlnaKnownDuration(payload *soapcalls.TVPayload) (int, bool)
 	return duration, ok
 }
 
-// Temporary debugging: filter exported diagnostics for DLNA_AUTOPLAY.
-func (s *dlnaPlaybackSession) debug(event string, fields ...any) {
-	fields = append([]any{"session", s.subscriptionPayload.CallbackURL, "renderer", s.subscriptionPayload.ControlURL, "epoch", s.monitorEpoch.Load()}, fields...)
-	s.current.Load().Log().Debug("DLNA_AUTOPLAY "+event, fields...)
-}
-
 func (s *FyneScreen) prepareDLNAMonitor(ctx context.Context, payload *soapcalls.TVPayload) *dlnaPlaybackSession {
 	if s.Screencast || strings.HasPrefix(payload.MediaType, "image/") {
 		return nil
@@ -163,9 +156,6 @@ func (s *FyneScreen) prepareDLNAMonitor(ctx context.Context, payload *soapcalls.
 func (s *FyneScreen) cancelDLNAFollowup() uint64 {
 	s.dlnaQueueMu.Lock()
 	if s.dlnaFollowupCancel != nil {
-		if session := s.dlnaMonitor; session != nil {
-			session.debug("followup_cancel_requested")
-		}
 		s.dlnaFollowupCancel()
 		s.dlnaFollowupCancel = nil
 	}
@@ -190,7 +180,6 @@ func (s *FyneScreen) beginDLNASeek(payload *soapcalls.TVPayload) func() {
 	if session == nil || session.current.Load() != payload {
 		return func() {}
 	}
-	session.debug("monitor_suspended", "reason", "seek or pause/resume control")
 	session.monitorMu.Lock()
 	session.monitorEpoch.Add(1)
 	if session.monitorCancel != nil {
@@ -242,9 +231,6 @@ func (s *dlnaPlaybackSession) run() {
 	playback.RunDLNAMonitor(ctx, playback.MonitorConfig{
 		Generation: 1, CurrentURI: s.current.Load().MediaURL, Sink: dlnaMonitorSink{s, epoch}, DLNAStopGate: &s.stopGate,
 		InitialPosition: position, InitialDuration: duration,
-		DLNADebug: func(event string, fields ...any) {
-			s.debug(event, append([]any{"monitor_epoch", epoch}, fields...)...)
-		},
 		GaplessActive: func() bool { return s.queued.Load() != nil || s.queueing.Load() },
 		QueuedURI: func() string {
 			if queued := s.queued.Load(); queued != nil {
@@ -266,11 +252,9 @@ func (s *dlnaPlaybackSession) run() {
 // at a time, so a blocked callback freezes every control request. A dropped
 // state is still observed by the monitor's transport polling.
 func (s *dlnaPlaybackSession) HandleCallbackEvent(_ context.Context, event httphandlers.CallbackEvent) {
-	s.debug("callback_received", "sid", event.SID, "state", event.TransportState)
 	select {
 	case s.callbacks <- playback.DLNACallbackEvent{Generation: 1, TransportState: event.TransportState}:
 	default:
-		s.debug("callback_dropped", "reason", "monitor backlog full", "state", event.TransportState)
 	}
 }
 
@@ -288,7 +272,7 @@ func (s *dlnaPlaybackSession) RetryStart(ctx context.Context, uri string, reload
 		// holds the queue lock here, so the queued payload is stable.
 		if queued := s.queued.Load(); queued != nil {
 			if err := queued.SetNextAVTransportURIContext(ctx, false); err != nil {
-				s.debug("requeue_failed", "queued_uri", queued.MediaURL, "error", err)
+				queued.Log().Debug("gapless requeue failed; ordinary autoplay remains enabled", "error", err)
 			}
 		}
 	}
@@ -342,9 +326,6 @@ func (s *dlnaPlaybackSession) isCurrent() bool {
 
 func (s *dlnaPlaybackSession) handleMonitorEvent(event playback.MonitorEvent, epoch uint64) {
 	if s.monitorEpoch.Load() != epoch || !s.isCurrent() || s.finished.Load() {
-		if event.Terminal != "" || event.GaplessPromoted {
-			s.debug("event_ignored", "event_epoch", epoch, "terminal", event.Terminal, "promotion", event.GaplessPromoted, "finished", s.finished.Load())
-		}
 		return
 	}
 	if event.Terminal == playback.TerminalFinished {
@@ -410,7 +391,6 @@ func (s *dlnaPlaybackSession) promote(uri string, epoch uint64) {
 		}
 		queued = s.queued.Load()
 		if queued == nil || queued.MediaURL != uri {
-			s.debug("promotion_ignored", "reason", "queued URI changed", "observed_uri", uri)
 			queued = nil
 			return
 		}
@@ -444,7 +424,6 @@ func (s *dlnaPlaybackSession) promote(uri string, epoch uint64) {
 			}
 		}
 	}
-	s.debug("promotion_applied", "previous_uri", old.MediaURL, "current_uri", uri, "media", queued.MediaPath, "queue_following", queueFollowing)
 	if !queueFollowing || !s.claimQueue(queued) {
 		return
 	}
@@ -465,7 +444,6 @@ func (s *dlnaPlaybackSession) gaplessStrike() bool {
 	}
 	s.dlnaGaplessStrikes[s.subscriptionPayload.ControlURL]++
 	strikes := s.dlnaGaplessStrikes[s.subscriptionPayload.ControlURL]
-	s.debug("gapless_strike", "strikes", strikes, "limit", playback.GaplessHandoffStrikes)
 	return strikes >= playback.GaplessHandoffStrikes
 }
 
@@ -476,18 +454,15 @@ func (s *dlnaPlaybackSession) markGaplessUnavailable() {
 	}
 	s.dlnaGaplessUnavailable[s.subscriptionPayload.ControlURL] = true
 	s.dlnaQueueMu.Unlock()
-	s.debug("gapless_disabled", "reason", "renderer handoff unavailable; ordinary autoplay fallback")
 }
 
 // Called on the UI thread. Selection and renderer identity are captured before
 // teardown; a replacement session or explicit Stop cancels the follow-up.
 func (s *dlnaPlaybackSession) fail(event playback.MonitorEvent, epoch uint64) {
 	if s.monitorEpoch.Load() != epoch || !s.isCurrent() || !s.finished.CompareAndSwap(false, true) {
-		s.debug("failure_ignored", "event_epoch", epoch, "reason", event.Recovery)
 		return
 	}
 	s.rendererStopped.Store(event.DLNAStopped)
-	s.debug("startup_failure_handled", "reason", event.Recovery, "renderer_stopped", event.DLNAStopped, "error", event.Err, "advance", false)
 	s.cancelDLNAFollowup()
 	stopActionInternal(s.FyneScreen, false)
 	if event.Err != nil {
@@ -497,7 +472,6 @@ func (s *dlnaPlaybackSession) fail(event playback.MonitorEvent, epoch uint64) {
 
 func (s *dlnaPlaybackSession) complete(event playback.MonitorEvent, epoch uint64) {
 	if s.monitorEpoch.Load() != epoch || !s.isCurrent() || !s.finished.CompareAndSwap(false, true) {
-		s.debug("completion_ignored", "event_epoch", epoch, "finished", s.finished.Load(), "session_current", s.isCurrent())
 		return
 	}
 	s.rendererStopped.Store(event.DLNAStopped)
@@ -518,7 +492,7 @@ func (s *dlnaPlaybackSession) complete(event playback.MonitorEvent, epoch uint64
 			var nextErr error
 			_, nextPath, nextErr = getAdjacentQueuedMediaFromPath(s.FyneScreen, mediaPath, 1, true)
 			if nextErr != nil {
-				s.debug("successor_unavailable", "media", mediaPath, "error", nextErr)
+				s.current.Load().Log().Debug("autoplay successor unavailable", "media", mediaPath, "error", nextErr)
 			}
 		case s.Medialoop:
 			nextPath = mediaPath
@@ -526,7 +500,6 @@ func (s *dlnaPlaybackSession) complete(event playback.MonitorEvent, epoch uint64
 	} else if s.Medialoop && s.ExternalMediaURL != nil && s.ExternalMediaURL.Checked {
 		nextPath = mediaPath
 	}
-	s.debug("transition_selected", "media", mediaPath, "next_media", nextPath, "autoplay", s.NextMediaCheck != nil && s.NextMediaCheck.Checked, "loop", s.Medialoop, "recovery", recovery)
 	preserveSource := s.ExternalMediaURL != nil && s.ExternalMediaURL.Checked && nextPath == mediaPath
 	s.FyneScreen.beginDLNAFollowup(target, nextPath, s, preserveSource)
 }
@@ -535,14 +508,6 @@ func (s *dlnaPlaybackSession) complete(event playback.MonitorEvent, epoch uint64
 // start. Stop, manual Play and another skip cancel this follow-up immediately.
 func (s *FyneScreen) beginDLNAFollowup(target playbackTarget, nextPath string, expected *dlnaPlaybackSession, preserveSource bool) {
 	s.cancelDLNAFollowup()
-	started := time.Now()
-	trace := func(event string, fields ...any) {
-		if expected != nil {
-			fields = append([]any{"next_media", nextPath, "elapsed_ms", time.Since(started).Milliseconds()}, fields...)
-			expected.debug(event, fields...)
-		}
-	}
-	trace("teardown_wait_started")
 	followupCtx, cancel := context.WithCancel(context.Background())
 	s.dlnaQueueMu.Lock()
 	s.dlnaFollowupCancel = cancel
@@ -564,33 +529,27 @@ func (s *FyneScreen) beginDLNAFollowup(target playbackTarget, nextPath string, e
 			select {
 			case <-done:
 			case <-followupCtx.Done():
-				trace("followup_cancelled", "reason", context.Cause(followupCtx))
 				return
 			}
 		}
-		trace("teardown_wait_finished")
 		if settle {
 			// Samsung renderers acknowledge, then drop, a Play sent right after EOF.
 			select {
 			case <-time.After(dlnaEOFSettleDelay):
 			case <-followupCtx.Done():
-				trace("followup_cancelled", "reason", context.Cause(followupCtx))
 				return
 			}
-			trace("settle_finished", "settle_ms", dlnaEOFSettleDelay.Milliseconds())
 		}
 		fyne.Do(func() {
 			s.dlnaQueueMu.Lock()
 			current := s.dlnaMonitor == expected
 			s.dlnaQueueMu.Unlock()
 			if followupCtx.Err() != nil || !current || nextPath == "" {
-				trace("followup_skipped", "cancelled", followupCtx.Err() != nil, "session_current", current, "has_successor", nextPath != "")
 				cancel()
 				return
 			}
 			if !preserveSource {
 				if err := setCurrentMediaPathOnUI(s, nextPath); err != nil {
-					trace("followup_failed", "error", err)
 					cancel()
 					check(s, err)
 					return
@@ -599,7 +558,6 @@ func (s *FyneScreen) beginDLNAFollowup(target playbackTarget, nextPath string, e
 			if !preserveSource {
 				updateInternalSubsDropdownAsync(s, nextPath)
 			}
-			trace("followup_starting", "preserve_source", preserveSource)
 			go playActionOnTargetContext(s, target, followupCtx)
 		})
 	}()

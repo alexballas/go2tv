@@ -3,7 +3,6 @@ package playback
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -86,7 +85,6 @@ type MonitorConfig struct {
 	// tail guard covers its first poll. Ignored unless InitialDuration > 0.
 	InitialPosition, InitialDuration int
 	// Temporary diagnostics; nil keeps monitoring silent.
-	DLNADebug func(string, ...any)
 }
 
 // DLNAStopGate suppresses the renderer's initial STOPPED callback. Keeping it
@@ -148,14 +146,11 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNAPositi
 	if stopGate == nil {
 		stopGate = &DLNAStopGate{}
 	}
-	trace := &dlnaDebug{write: cfg.DLNADebug}
-	trace.log("monitor_started", "generation", cfg.Generation, "current_uri", cfg.CurrentURI, "poll_timeout_ms", DLNAPollTimeout.Milliseconds(), "poll_deadline_scope", "per operation", "poll_order", "transport_state, position, media_info", "stall_window_seconds", dlnaStallWindow, "stall_threshold_ms", dlnaStallDelay.Milliseconds(), "gapless_grace_ms", dlnaGaplessGrace.Milliseconds(), "gapless_handoff_timeout_ms", dlnaGaplessHandoffTimeout.Milliseconds(), "startup_timeout_ms", dlnaStartupTimeout.Milliseconds(), "startup_grace_ms", dlnaStartupGrace.Milliseconds(), "startup_stopped_ms", dlnaStartupStoppedDelay.Milliseconds())
 	state, currentURI := "", cfg.CurrentURI
 	lastPosition, lastDuration := -1, 0
 	var lastProgress, boundaryStop, lastSample time.Time
 	if cfg.InitialDuration > 0 && cfg.InitialPosition >= 0 {
 		lastPosition, lastDuration, lastSample = cfg.InitialPosition, cfg.InitialDuration, clockNow(cfg.Clock)
-		trace.log("tail_seeded", "position", lastPosition, "duration", lastDuration)
 	}
 	startup := dlnaStartup{}
 	// stateErr is the latest transport-state result; nil when no fresh poll ran.
@@ -172,11 +167,9 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNAPositi
 		if callbackStop && event.Recovery == RecoveryStoppedWithoutCallback {
 			event.Recovery = ""
 		}
-		trace.log("completion", "terminal", event.Terminal, "reason", event.Recovery, "state", state, "position", lastPosition, "duration", lastDuration, "current_uri", currentURI, "renderer_stopped", event.DLNAStopped, "error", event.Err)
 		emitMonitor(ctx, cfg, event)
 	}
 	poll := func(now time.Time, trigger string) bool {
-		trace.trigger = trigger
 		if _, ok := cfg.Clock.(interface{ Now() time.Time }); ok || now.IsZero() {
 			now = clockNow(cfg.Clock)
 		}
@@ -189,17 +182,15 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNAPositi
 			release, acquired = guard.TryMonitorLock()
 			if !acquired {
 				stateErr = nil
-				trace.change("queue_busy", "true", "poll_deferred", "reason", "gapless queue preparation in flight")
 				lastProgress = now
-				if result := startup.check(now, state, false, "", currentURI, stopGate.started.Load(), false, trace); result.failure != nil {
+				if result := startup.check(now, state, false, "", currentURI, stopGate.started.Load(), false); result.failure != nil {
 					finish(*result.failure)
 					return true
 				}
 				return false
 			}
 		}
-		trace.change("queue_busy", "false", "poll_available")
-		event, terminal := pollDLNA(ctx, cfg, transport, trace, now, &state, &currentURI, &lastPosition, &lastDuration, &lastProgress, &boundaryStop, &lastSample, &stateErr, stopGate, &startup)
+		event, terminal := pollDLNA(ctx, cfg, transport, now, &state, &currentURI, &lastPosition, &lastDuration, &lastProgress, &boundaryStop, &lastSample, &stateErr, stopGate, &startup)
 		if ctx.Err() != nil {
 			release()
 			return false
@@ -231,14 +222,12 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNAPositi
 				// the normal gapless grace before counting it as failed.
 				if stateLostAt.IsZero() {
 					stateLostAt = now
-					trace.log("stop_trust_deferred", "reason", "gapless handoff may be in progress", "grace_ms", dlnaGaplessGrace.Milliseconds(), "error", stateErr)
 				}
 				if now.Sub(stateLostAt) < dlnaGaplessGrace {
 					return false
 				}
 				trusted.Recovery = RecoveryGaplessHandoffFailed
 			}
-			trace.log("stop_trusted", "reason", "transport state unavailable", "gapless", trusted.Recovery != "", "error", stateErr)
 			finish(trusted)
 			return true
 		}
@@ -247,20 +236,16 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNAPositi
 	for {
 		select {
 		case <-ctx.Done():
-			trace.log("monitor_stopped", "cause", context.Cause(ctx), "state", state, "position", lastPosition, "duration", lastDuration)
 			emitMonitor(ctx, cfg, MonitorEvent{Terminal: terminalFromContext(ctx)})
 			return
 		case event, ok := <-callbacks:
-			trace.trigger = "callback"
 			if !ok {
 				callbacks = nil
 				continue
 			}
 			if event.Generation != cfg.Generation {
-				trace.log("callback_ignored", "reason", "stale generation", "callback_generation", event.Generation, "generation", cfg.Generation, "callback_state", event.TransportState)
 				continue
 			}
-			trace.log("callback", "callback_state", event.TransportState, "previous_state", state, "position", lastPosition, "duration", lastDuration, "playback_started", stopGate.started.Load())
 			switch event.TransportState {
 			case "PLAYING":
 				stopGate.Arm()
@@ -278,16 +263,13 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNAPositi
 				startup.transitioning = true
 			case "STOPPED":
 				if cfg.ExplicitStop != nil && cfg.ExplicitStop() {
-					trace.log("callback_ignored", "reason", "explicit Stop")
 					return
 				}
 				if !stopGate.acceptStop() {
-					trace.log("callback_ignored", "reason", "initial STOPPED")
 					continue
 				}
 				callbackStop = true
 				if _, ok := transport.(DLNAStatusTransport); ok {
-					trace.log("stop_verification", "previous_state", state, "position", lastPosition, "duration", lastDuration)
 					state = "STOPPED"
 					if poll(clockNow(cfg.Clock), "STOPPED callback") {
 						return
@@ -309,26 +291,20 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNAPositi
 	}
 }
 
-func pollDLNA(ctx context.Context, cfg MonitorConfig, transport DLNAPositionTransport, trace *dlnaDebug, now time.Time, state, currentURI *string, lastPosition, lastDuration *int, lastProgress, boundaryStop, lastSample *time.Time, stateErr *error, stopGate *DLNAStopGate, startup *dlnaStartup) (MonitorEvent, bool) {
+func pollDLNA(ctx context.Context, cfg MonitorConfig, transport DLNAPositionTransport, now time.Time, state, currentURI *string, lastPosition, lastDuration *int, lastProgress, boundaryStop, lastSample *time.Time, stateErr *error, stopGate *DLNAStopGate, startup *dlnaStartup) (MonitorEvent, bool) {
 	event := MonitorEvent{}
 	// State gets first chance even when position requests hang at EOF. Each
 	// SOAP operation has its own deadline; one timeout cannot starve the next.
 	typed, hasStatus := transport.(DLNAStatusTransport)
 	stateConfirmed := false
 	if hasStatus {
-		requestStarted := time.Now()
 		requestCtx, cancel := context.WithTimeout(ctx, DLNAPollTimeout)
 		polled, err := typed.TransportState(requestCtx)
 		cancel()
-		trace.result("transport_state", requestStarted, err)
 		*stateErr = err
-		if trace.trigger == "STOPPED callback" {
-			trace.log("stop_verification_result", "state", polled, "state_confirmed", err == nil, "last_position", *lastPosition, "last_duration", *lastDuration, "error", err)
-		}
 		if err == nil {
 			stateConfirmed = true
 			polled = strings.ToUpper(strings.TrimSpace(polled))
-			trace.change("transport_state", polled, "transport_state", "previous_state", *state, "state", polled, "last_position", *lastPosition, "last_duration", *lastDuration)
 			if polled != *state {
 				*lastProgress = now
 			}
@@ -348,37 +324,28 @@ func pollDLNA(ctx context.Context, cfg MonitorConfig, transport DLNAPositionTran
 	if cfg.QueuedURI != nil {
 		queuedURI = cfg.QueuedURI()
 	}
-	trace.change("gapless", fmt.Sprint(gapless, queuedURI), "gapless_status", "active", gapless, "queued_uri", queuedURI)
 	if stateConfirmed && *state == "STOPPED" && stopGate.started.Load() {
-		trace.change("position_skipped", "stopped", "position_skipped", "reason", "renderer already confirmed STOPPED", "last_position", *lastPosition, "last_duration", *lastDuration)
 		// The track that just ended is never a handoff target (one-item loops share URLs).
-		handoff := gapless && queuedURI != *currentURI && dlnaHandoffObserved(ctx, transport, queuedURI, trace)
-		return dlnaStoppedResult(now, gapless, handoff, boundaryStop, *currentURI, queuedURI, true, trace)
+		handoff := gapless && queuedURI != *currentURI && dlnaHandoffObserved(ctx, transport, queuedURI)
+		return dlnaStoppedResult(now, gapless, handoff, boundaryStop, true)
 	}
-	delete(trace.values, "position_skipped")
-	requestStarted := time.Now()
 	var position Position
 	var positionErr error
 	if estimate, guarded := dlnaTailEstimate(now, *state, *lastPosition, *lastDuration, *lastSample); guarded && stopGate.started.Load() {
-		trace.change("tail_guard", "true", "position_withheld", "reason", "estimated end of track", "estimate", estimate, "last_position", *lastPosition, "duration", *lastDuration, "sampled_ms_ago", now.Sub(*lastSample).Milliseconds())
 		positionErr = errDLNATailGuard
 		event.Position, event.Duration = estimate, *lastDuration
 	} else {
-		delete(trace.values, "tail_guard")
 		requestCtx, cancel := context.WithTimeout(ctx, DLNAPollTimeout)
 		position, positionErr = transport.Position(requestCtx)
 		cancel()
-		trace.result("position", requestStarted, positionErr)
 	}
 	observedURI := position.TrackURI
 	if gapless {
 		switch typed := transport.(type) {
 		case DLNAMediaInfoTransport:
-			requestStarted = time.Now()
 			requestCtx, cancel := context.WithTimeout(ctx, DLNAPollTimeout)
 			current, next, err := typed.MediaInfo(requestCtx)
 			cancel()
-			trace.result("media_info", requestStarted, err)
 			if err == nil {
 				event.NextURI, event.NextURIObserved = next, true
 				if observedURI == "" {
@@ -386,18 +353,13 @@ func pollDLNA(ctx context.Context, cfg MonitorConfig, transport DLNAPositionTran
 				}
 			}
 		case DLNAGaplessTransport:
-			requestStarted = time.Now()
 			requestCtx, cancel := context.WithTimeout(ctx, DLNAPollTimeout)
 			next, err := typed.NextURI(requestCtx)
 			cancel()
-			trace.result("next_uri", requestStarted, err)
 			if err == nil {
 				event.NextURI, event.NextURIObserved = next, true
 			}
 		}
-	}
-	if event.NextURIObserved {
-		trace.change("next_uri", event.NextURI, "next_uri_observed", "next_uri", event.NextURI, "observed_uri", observedURI, "expected_uri", queuedURI)
 	}
 	// An empty NextURI alone also means rejection/clearing on some renderers.
 	// Track identity must match the queued resource before old routes retire.
@@ -432,16 +394,14 @@ func pollDLNA(ctx context.Context, cfg MonitorConfig, transport DLNAPositionTran
 		}
 	}
 	retrier, retryable := transport.(DLNAStartupRetryTransport)
-	switch result := startup.check(now, *state, stateConfirmed, observedURI, *currentURI, stopGate.started.Load(), retryable, trace); {
+	switch result := startup.check(now, *state, stateConfirmed, observedURI, *currentURI, stopGate.started.Load(), retryable); {
 	case result.failure != nil:
 		return *result.failure, true
 	case result.retry:
-		requestStarted = time.Now()
 		requestCtx, cancel := context.WithTimeout(ctx, dlnaStartupRetryTimeout)
-		err := retrier.RetryStart(requestCtx, *currentURI, result.reload)
+		// A failed retry is judged again by the next poll's startup check.
+		_ = retrier.RetryStart(requestCtx, *currentURI, result.reload)
 		cancel()
-		trace.result("startup_retry", requestStarted, err)
-		trace.log("startup_retry_result", "reload", result.reload, "elapsed_ms", time.Since(requestStarted).Milliseconds(), "error", err)
 	}
 	if positionErr != nil && !errors.Is(positionErr, errDLNATailGuard) {
 		*lastProgress = now
@@ -452,7 +412,6 @@ func pollDLNA(ctx context.Context, cfg MonitorConfig, transport DLNAPositionTran
 	promoted := stateConfirmed && *state == "PLAYING" && gapless && sameKnownURI(observedURI, queuedURI) &&
 		queuedURI != *currentURI
 	if promoted {
-		trace.log("gapless_verified", "previous_uri", *currentURI, "current_uri", observedURI, "queued_uri", queuedURI, "next_uri", event.NextURI, "position", position.Current, "duration", position.Duration)
 		event.GaplessPromoted = true
 		event.GaplessURI = queuedURI
 		event.State = "PLAYING"
@@ -462,26 +421,15 @@ func pollDLNA(ctx context.Context, cfg MonitorConfig, transport DLNAPositionTran
 		return event, false
 	}
 	nearEnd := *lastDuration > 0 && *lastPosition >= *lastDuration-dlnaStallWindow
-	trace.change("observed_uri", observedURI, "track_observed", "current_uri", *currentURI, "observed_uri", observedURI, "queued_uri", queuedURI)
-	trace.change("near_end", fmt.Sprint(nearEnd), "tail_status", "near_end", nearEnd, "position", *lastPosition, "duration", *lastDuration, "state", *state)
-	if !stopGate.started.Load() || nearEnd || *state == "STOPPED" || gapless && event.NextURIObserved && event.NextURI == "" {
-		stalled := int64(0)
-		if !lastProgress.IsZero() {
-			stalled = now.Sub(*lastProgress).Milliseconds()
-		}
-		sampleKey := fmt.Sprint(*state, position.Current, position.Duration, positionErr == nil, stateConfirmed, observedURI, queuedURI, event.NextURI, event.NextURIObserved)
-		trace.sample(now, sampleKey, "state", *state, "state_confirmed", stateConfirmed, "position", position.Current, "duration", position.Duration, "last_position", *lastPosition, "last_duration", *lastDuration, "stationary_ms", stalled, "position_valid", positionErr == nil, "playback_started", stopGate.started.Load(), "current_uri", *currentURI, "observed_uri", observedURI, "queued_uri", queuedURI, "next_uri", event.NextURI, "next_observed", event.NextURIObserved)
-	}
 	if *state == "STOPPED" && stopGate.started.Load() && (stateConfirmed || !hasStatus) {
 		handoff := queuedURI != *currentURI && sameKnownURI(observedURI, queuedURI)
-		if stoppedEvent, terminal := dlnaStoppedResult(now, gapless, handoff, boundaryStop, *currentURI, queuedURI, stateConfirmed, trace); terminal {
+		if stoppedEvent, terminal := dlnaStoppedResult(now, gapless, handoff, boundaryStop, stateConfirmed); terminal {
 			return stoppedEvent, true
 		}
 	} else if *state != "STOPPED" {
 		*boundaryStop = time.Time{}
 	}
 	if stateConfirmed && *state == "PLAYING" && positionErr == nil && nearEnd && !lastProgress.IsZero() && now.Sub(*lastProgress) >= dlnaStallDelay {
-		trace.log("stall_recovery", "stationary_ms", now.Sub(*lastProgress).Milliseconds(), "threshold_ms", dlnaStallDelay.Milliseconds(), "position", *lastPosition, "duration", *lastDuration)
 		return MonitorEvent{Recovery: RecoveryStalledNearEnd}, true
 	}
 	return event, false
@@ -503,35 +451,29 @@ func dlnaTailEstimate(now time.Time, state string, position, duration int, sampl
 
 // dlnaHandoffObserved reports whether a STOPPED renderer already took the
 // queued URI. GetMediaInfo stays responsive at EOF, unlike GetPositionInfo.
-func dlnaHandoffObserved(ctx context.Context, transport DLNAPositionTransport, queuedURI string, trace *dlnaDebug) bool {
+func dlnaHandoffObserved(ctx context.Context, transport DLNAPositionTransport, queuedURI string) bool {
 	typed, ok := transport.(DLNAMediaInfoTransport)
 	if !ok || queuedURI == "" {
 		return false
 	}
-	requestStarted := time.Now()
 	requestCtx, cancel := context.WithTimeout(ctx, DLNAPollTimeout)
 	current, _, err := typed.MediaInfo(requestCtx)
 	cancel()
-	trace.result("media_info", requestStarted, err)
-	handoff := err == nil && sameKnownURI(current, queuedURI)
-	trace.change("gapless_handoff", fmt.Sprint(handoff), "gapless_handoff_status", "handoff", handoff, "renderer_uri", current, "queued_uri", queuedURI)
-	return handoff
+	return err == nil && sameKnownURI(current, queuedURI)
 }
 
-func dlnaStoppedResult(now time.Time, gapless, handoff bool, boundaryStop *time.Time, currentURI, queuedURI string, verified bool, trace *dlnaDebug) (MonitorEvent, bool) {
+func dlnaStoppedResult(now time.Time, gapless, handoff bool, boundaryStop *time.Time, verified bool) (MonitorEvent, bool) {
 	if !gapless {
 		return MonitorEvent{Recovery: RecoveryStoppedWithoutCallback, DLNAStopped: verified}, true
 	}
 	if boundaryStop.IsZero() {
 		*boundaryStop = now
-		trace.log("gapless_grace_started", "grace_ms", dlnaGaplessGrace.Milliseconds(), "handoff_timeout_ms", dlnaGaplessHandoffTimeout.Milliseconds(), "current_uri", currentURI, "queued_uri", queuedURI)
 	}
 	limit := dlnaGaplessGrace
 	if handoff {
 		limit = dlnaGaplessHandoffTimeout
 	}
 	if now.Sub(*boundaryStop) >= limit {
-		trace.log("gapless_fallback", "waited_ms", now.Sub(*boundaryStop).Milliseconds(), "reason", "renderer still STOPPED", "handoff", handoff, "current_uri", currentURI, "queued_uri", queuedURI)
 		return MonitorEvent{Recovery: RecoveryGaplessHandoffFailed, DLNAStopped: verified}, true
 	}
 	return MonitorEvent{State: "STOPPED"}, false

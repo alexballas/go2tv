@@ -209,7 +209,7 @@ func TestDLNAMonitorWithholdsPositionAtTrackEnd(t *testing.T) {
 	var shown []int
 	for second := range int64(6) {
 		dlna.at = second
-		event, terminal := pollDLNA(t.Context(), MonitorConfig{}, dlna, &dlnaDebug{}, time.Unix(100+second, 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, startup)
+		event, terminal := pollDLNA(t.Context(), MonitorConfig{}, dlna, time.Unix(100+second, 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, startup)
 		if terminal {
 			if second != 5 || event.Terminal != "" || !event.DLNAStopped {
 				t.Fatalf("unexpected completion at %ds: %#v", second, event)
@@ -289,7 +289,7 @@ func TestDLNAGaplessPromotionToleratesReencodedURI(t *testing.T) {
 	var progress, boundary, sampled time.Time
 	gate := &DLNAStopGate{}
 	gate.Arm()
-	event, _ := pollDLNA(t.Context(), MonitorConfig{GaplessActive: func() bool { return true }, QueuedURI: func() string { return queued }}, &scriptedDLNA{samples: []dlnaSample{sample}}, &dlnaDebug{}, time.Unix(100, 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, &dlnaStartup{})
+	event, _ := pollDLNA(t.Context(), MonitorConfig{GaplessActive: func() bool { return true }, QueuedURI: func() string { return queued }}, &scriptedDLNA{samples: []dlnaSample{sample}}, time.Unix(100, 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, &dlnaStartup{})
 	if !event.GaplessPromoted || event.GaplessURI != queued {
 		t.Fatalf("re-encoded handoff not promoted: %#v", event)
 	}

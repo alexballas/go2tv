@@ -1106,9 +1106,7 @@ func playActionOnTargetContext(screen *FyneScreen, target playbackTarget, parent
 			return
 		}
 
-		loadStarted := time.Now()
 		err = screen.tvdata.SendtoTV("Play1")
-		payload.Log().Debug("DLNA_AUTOPLAY load_result", "session", payload.CallbackURL, "renderer", payload.ControlURL, "media", payload.MediaPath, "uri", payload.MediaURL, "elapsed_ms", time.Since(loadStarted).Milliseconds(), "accepted", err == nil, "error", err)
 		if startupCtx.Err() != nil {
 			return
 		}
@@ -1153,7 +1151,6 @@ func playActionOnTargetContext(screen *FyneScreen, target playbackTarget, parent
 		gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
 		autoplay := screen.NextMediaCheck.Checked
 		queue := autoplay && gaplessOption == "Enabled" && (session == nil || session.claimQueue(payload))
-		payload.Log().Debug("DLNA_AUTOPLAY queue_initial", "session", payload.CallbackURL, "autoplay", autoplay, "gapless", gaplessOption, "queue", queue)
 		if queue {
 			_, err := queueNext(screen, false)
 			if err != nil {
@@ -2582,12 +2579,6 @@ func previewmedia(screen *FyneScreen) {
 }
 
 func stopAction(screen *FyneScreen) {
-	screen.dlnaQueueMu.Lock()
-	session := screen.dlnaMonitor
-	screen.dlnaQueueMu.Unlock()
-	if session != nil {
-		session.debug("explicit_stop")
-	}
 	screen.cancelDLNAFollowup()
 	screen.cancelPendingTorrentPlayback()
 	if screen.stopPlaybackStartup() {
@@ -2721,29 +2712,23 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 		if previousTeardown != nil {
 			<-previousTeardown
 		}
-		teardownStarted := time.Now()
 		if tvdata != nil && tvdata.ControlURL != "" {
 			tvdata.SetContext(context.Background())
-			var err error
 			if rendererStopped {
-				tvdata.Log().Debug("DLNA_AUTOPLAY stop_skipped", "session", tvdata.CallbackURL, "renderer", tvdata.ControlURL, "reason", "transport STOPPED verified", "cleanup_subscriptions", true)
 				if clearQueued {
-					clearStarted := time.Now()
-					clearErr := tvdata.SetNextAVTransportURIContext(context.Background(), true)
-					tvdata.Log().Debug("DLNA_AUTOPLAY queue_clear_result", "session", tvdata.CallbackURL, "elapsed_ms", time.Since(clearStarted).Milliseconds(), "error", clearErr)
+					if err := tvdata.SetNextAVTransportURIContext(context.Background(), true); err != nil {
+						tvdata.Log().Debug("clear queued next failed", "error", err)
+					}
 				}
-				err = tvdata.CleanupSubscriptionsContext(context.Background())
+				_ = tvdata.CleanupSubscriptionsContext(context.Background())
 			} else {
-				tvdata.Log().Debug("DLNA_AUTOPLAY stop_started", "session", tvdata.CallbackURL, "renderer", tvdata.ControlURL)
-				err = tvdata.SendtoTV("Stop")
+				_ = tvdata.SendtoTV("Stop")
 			}
-			tvdata.Log().Debug("DLNA_AUTOPLAY stop_result", "session", tvdata.CallbackURL, "renderer", tvdata.ControlURL, "remote_stop_requested", !rendererStopped, "elapsed_ms", time.Since(teardownStarted).Milliseconds(), "error", err)
 		}
 		if server != nil {
 			server.StopServer()
 		}
 		stopScreencastSession(screen)
-		tvdata.Log().Debug("DLNA_AUTOPLAY teardown_finished", "session", tvdata.CallbackURL, "elapsed_ms", time.Since(teardownStarted).Milliseconds())
 	}
 
 	if wait {
@@ -2862,7 +2847,7 @@ func volumeAction(screen *FyneScreen, up bool) {
 	}()
 }
 
-func queueNext(screen *FyneScreen, clear bool) (queued *soapcalls.TVPayload, queueErr error) {
+func queueNext(screen *FyneScreen, clear bool) (*soapcalls.TVPayload, error) {
 	releasePermit, permitted := screen.rendererPermit(false)
 	if !permitted {
 		return nil, errRemoteLeaseHeld
@@ -2876,7 +2861,6 @@ func queueNext(screen *FyneScreen, clear bool) (queued *soapcalls.TVPayload, que
 	screen.dlnaQueueMu.Lock()
 	tvdata, server := screen.tvdata, screen.httpserver
 	if !clear && tvdata != nil && screen.dlnaGaplessUnavailable[tvdata.ControlURL] {
-		tvdata.Log().Debug("DLNA_AUTOPLAY queue_skipped", "session", tvdata.CallbackURL, "renderer", tvdata.ControlURL, "reason", "renderer gapless disabled after failed handoff")
 		screen.dlnaQueueMu.Unlock()
 		return nil, errDLNAGaplessUnavailable
 	}
@@ -2887,15 +2871,6 @@ func queueNext(screen *FyneScreen, clear bool) (queued *soapcalls.TVPayload, que
 	if screen.serverStopCTX == nil {
 		screen.serverStopCTX, screen.cancelServerStop = context.WithCancel(context.Background())
 	}
-	queueStarted := time.Now()
-	tvdata.Log().Debug("DLNA_AUTOPLAY queue_started", "session", tvdata.CallbackURL, "renderer", tvdata.ControlURL, "current_uri", tvdata.MediaURL, "clear", clear)
-	defer func() {
-		nextURI, nextMedia := "", ""
-		if queued != nil {
-			nextURI, nextMedia = queued.MediaURL, queued.MediaPath
-		}
-		tvdata.Log().Debug("DLNA_AUTOPLAY queue_result", "session", tvdata.CallbackURL, "renderer", tvdata.ControlURL, "clear", clear, "next_media", nextMedia, "next_uri", nextURI, "accepted", queueErr == nil, "elapsed_ms", time.Since(queueStarted).Milliseconds(), "error", queueErr)
-	}()
 	sessionCtx := screen.serverStopCTX
 	if session := screen.dlnaMonitor; session != nil && session.ctx == sessionCtx {
 		session.queueing.Store(true)

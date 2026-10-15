@@ -40,8 +40,6 @@ func TestDLNAStartupFailureDoesNotBecomeCompletion(t *testing.T) {
 	}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			records := &dlnaTraceCollector{}
-			trace := &dlnaDebug{write: records.write}
 			dlna := &scriptedDLNA{samples: tc.samples}
 			state, currentURI := "", current
 			position, duration := -1, 0
@@ -50,16 +48,13 @@ func TestDLNAStartupFailureDoesNotBecomeCompletion(t *testing.T) {
 			var last MonitorEvent
 			for i, seconds := range tc.times {
 				var terminal bool
-				last, terminal = pollDLNA(t.Context(), MonitorConfig{}, dlna, trace, time.Unix(100+seconds, 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, startup)
+				last, terminal = pollDLNA(t.Context(), MonitorConfig{}, dlna, time.Unix(100+seconds, 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, startup)
 				if last.Terminal == TerminalFinished || terminal && (last.Terminal != TerminalError || i != len(tc.times)-1) {
 					t.Fatalf("premature completion at %d: %#v", seconds, last)
 				}
 			}
 			if (last.Terminal == TerminalError) != tc.failed || tc.failed && (last.Err == nil || last.DLNAStopped != tc.stopped) {
 				t.Fatalf("startup result = %#v, want failed=%t stopped=%t", last, tc.failed, tc.stopped)
-			}
-			if tc.failed && len(records.matching("startup_failed")) != 1 {
-				t.Fatal("startup failure missing from debug trace")
 			}
 		})
 	}
@@ -95,7 +90,6 @@ func TestDLNAStartupRetriesDroppedPlay(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			dlna := &retryDLNA{scriptedDLNA: scriptedDLNA{samples: tc.samples}}
-			trace := &dlnaDebug{}
 			state, currentURI := "", current
 			position, duration := -1, 0
 			var progress, boundary, sampled time.Time
@@ -106,7 +100,7 @@ func TestDLNAStartupRetriesDroppedPlay(t *testing.T) {
 				if terminal {
 					t.Fatalf("terminal before %ds: %#v", seconds, last)
 				}
-				last, terminal = pollDLNA(t.Context(), MonitorConfig{}, dlna, trace, time.Unix(100+seconds, 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, startup)
+				last, terminal = pollDLNA(t.Context(), MonitorConfig{}, dlna, time.Unix(100+seconds, 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, startup)
 			}
 			if fmt.Sprint(dlna.retries) != fmt.Sprint(tc.retries) {
 				t.Fatalf("retries = %q, want %q", dlna.retries, tc.retries)
@@ -131,7 +125,7 @@ func TestDLNAStartupHidesStaleTrackProgress(t *testing.T) {
 	var progress, boundary, sampled time.Time
 	gate, startup := &DLNAStopGate{}, &dlnaStartup{}
 	for i := range dlna.samples {
-		event, _ := pollDLNA(t.Context(), MonitorConfig{}, dlna, &dlnaDebug{}, time.Unix(100+int64(i), 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, startup)
+		event, _ := pollDLNA(t.Context(), MonitorConfig{}, dlna, time.Unix(100+int64(i), 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, startup)
 		if event.Duration != 0 || event.Position != 0 {
 			t.Fatalf("pre-start sample %d reached UI: %#v", i, event)
 		}
@@ -176,7 +170,6 @@ func (d deadlineDLNA) MediaInfo(ctx context.Context) (string, string, error) { r
 func TestDLNAPollOperationsHaveIndependentDeadlines(t *testing.T) {
 	for _, operation := range []string{"transport_state", "position"} {
 		t.Run(operation+" timeout", func(t *testing.T) {
-			trace := &dlnaTraceCollector{}
 			dlna := deadlineDLNA{
 				state: func(ctx context.Context) (string, error) {
 					if operation == "transport_state" {
@@ -196,7 +189,7 @@ func TestDLNAPollOperationsHaveIndependentDeadlines(t *testing.T) {
 			}
 			clock := newManualClock()
 			events := make(chan MonitorEvent, 4)
-			go RunDLNAMonitor(t.Context(), MonitorConfig{Clock: clock, Sink: monitorCollector{events}, CurrentURI: "a", GaplessActive: func() bool { return true }, QueuedURI: func() string { return "b" }, DLNADebug: trace.write}, dlna, nil)
+			go RunDLNAMonitor(t.Context(), MonitorConfig{Clock: clock, Sink: monitorCollector{events}, CurrentURI: "a", GaplessActive: func() bool { return true }, QueuedURI: func() string { return "b" }}, dlna, nil)
 			clock.tick.ch <- time.Unix(100, 0)
 			select {
 			case event := <-events:
@@ -205,10 +198,6 @@ func TestDLNAPollOperationsHaveIndependentDeadlines(t *testing.T) {
 				}
 			case <-time.After(4 * time.Second):
 				t.Fatal("bounded SOAP timeout did not release monitor")
-			}
-			failures := trace.matching("poll_failed")
-			if len(failures) != 1 || failures[0].fields["operation"] != operation {
-				t.Fatalf("unexpected poll failures: %#v", failures)
 			}
 		})
 	}

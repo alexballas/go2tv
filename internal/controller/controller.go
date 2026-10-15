@@ -1173,10 +1173,6 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 		if reusedCast != nil && !old.server.Transcode && old.server.Subtitle == nil && !transcode && !subtitle.valid() {
 			routeAdder, _ = c.cfg.MediaServer.(mediaRouteAdder)
 		}
-		cleanupStarted := time.Now()
-		if target.Protocol == "DLNA" && c.cfg.Logger != nil {
-			c.cfg.Logger.Debug(playback.DLNADebugMessage("teardown_started", "renderer", old.target.ID, "generation", old.generation, "next_renderer", target.ID, "next_generation", generation, "next_media", media.Name))
-		}
 		var err error
 		switch {
 		case routeAdder != nil:
@@ -1184,9 +1180,6 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 			err = c.cfg.MediaServer.Stop(ioCtx)
 		default:
 			err = transitionSession(ioCtx, old, c.cfg.MediaServer, c.cfg.OperationTimeout)
-		}
-		if target.Protocol == "DLNA" && c.cfg.Logger != nil {
-			c.cfg.Logger.Debug(playback.DLNADebugMessage("teardown_finished", "renderer", old.target.ID, "generation", old.generation, "next_renderer", target.ID, "next_generation", generation, "elapsed_ms", time.Since(cleanupStarted).Milliseconds(), "error", err))
 		}
 		if err != nil {
 			if reusedCast != nil {
@@ -1282,7 +1275,6 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 		Metadata:           metadata.Media{Title: item.BaseName()},
 	}
 	c.attachArtwork(ioCtx, item.ID(), &media, &loadRequest, &routeIDs)
-	loadStarted := time.Now()
 	if err == nil && target.Protocol == "DLNA" {
 		if activator, ok := transport.(callbackActivator); ok {
 			err = activator.ActivateCallbacks(generation)
@@ -1322,9 +1314,6 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 	// arrives fails with "media not yet initialised" and tears down a good load.
 	if err == nil && target.Protocol != "Chromecast" {
 		err = transport.Play(ioCtx)
-	}
-	if target.Protocol == "DLNA" && c.cfg.Logger != nil {
-		c.cfg.Logger.Debug(playback.DLNADebugMessage("load_result", "renderer", target.ID, "generation", generation, "media", media.Name, "uri", loadRequest.MediaURL, "accepted", err == nil, "elapsed_ms", time.Since(loadStarted).Milliseconds(), "error", err))
 	}
 	if err != nil {
 		_ = cleanupTransport(transport, c.cfg.MediaServer, c.cfg.OperationTimeout)
@@ -1400,26 +1389,12 @@ func (c *Controller) startMonitor(session *activeSession) {
 		cfg.InitialPosition, cfg.InitialDuration = hint.Current, hint.Duration
 		session.seekHint = nil
 	}
-	if c.cfg.Logger != nil && session.target.Protocol == "DLNA" {
-		renderer, generation := session.target.ID, session.generation
-		cfg.DLNADebug = func(event string, fields ...any) {
-			fields = append([]any{"renderer", renderer, "generation", generation}, fields...)
-			c.cfg.Logger.Debug(playback.DLNADebugMessage(event, fields...))
-		}
-	}
 	c.goOwned(func() { c.cfg.RunMonitor(session.ctx, cfg, session.target, session.transport) })
 }
 
-func (c *Controller) queueGapless(ctx context.Context, active *activeSession, candidate *gaplessCandidate) (queued *gaplessSession, queueErr error) {
+func (c *Controller) queueGapless(ctx context.Context, active *activeSession, candidate *gaplessCandidate) (*gaplessSession, error) {
 	if active == nil || candidate == nil {
 		return nil, ErrInvalidOperation
-	}
-	queueStarted := time.Now()
-	if c.cfg.Logger != nil {
-		c.cfg.Logger.Debug(playback.DLNADebugMessage("queue_started", "renderer", active.target.ID, "queue_id", queueStarted.UnixNano(), "next_media", candidate.media.Name))
-		defer func() {
-			c.cfg.Logger.Debug(playback.DLNADebugMessage("queue_result", "renderer", active.target.ID, "queue_id", queueStarted.UnixNano(), "next_media", candidate.media.Name, "accepted", queued != nil, "elapsed_ms", time.Since(queueStarted).Milliseconds(), "error", queueErr))
-		}()
 	}
 	gapless, ok := active.transport.(playback.DLNAGaplessTransport)
 	if !ok {
@@ -2171,9 +2146,6 @@ func (c *Controller) HandleCallbackEvent(_ context.Context, event httphandlers.C
 
 func (s *actorState) monitor(event playback.MonitorEvent) {
 	if s.active == nil || event.Generation != s.generation || event.Generation != s.active.generation {
-		if (event.Terminal != "" || event.GaplessPromoted) && s.controller.cfg.Logger != nil {
-			s.controller.cfg.Logger.Debug(playback.DLNADebugMessage("event_ignored", "event_generation", event.Generation, "generation", s.generation, "has_session", s.active != nil, "terminal", event.Terminal, "promotion", event.GaplessPromoted))
-		}
 		return
 	}
 	if event.TimerEpoch != 0 && event.TimerEpoch != s.active.imageEpoch {
@@ -2256,9 +2228,6 @@ func (s *actorState) monitor(event playback.MonitorEvent) {
 		active := s.active
 		active.cancel(event.Terminal)
 		advanced := playback.ShouldAdvance(event.Terminal, s.policy.LoopSelected, s.policy.AutoPlayNext) && s.followup(active)
-		if active.target.Protocol == "DLNA" && s.controller.cfg.Logger != nil {
-			s.controller.cfg.Logger.Debug(playback.DLNADebugMessage("completion_action", "renderer", active.target.ID, "completed_generation", event.Generation, "generation", s.generation, "media", active.media.Name, "terminal", event.Terminal, "recovery", event.Recovery, "autoplay", s.policy.AutoPlayNext, "loop", s.policy.LoopSelected, "advanced", advanced, "remote_stop_skipped", active.rendererStopped))
-		}
 		if !advanced {
 			s.active = nil
 			s.mutation, s.cleanup, s.state = true, true, PlaybackStateStopping

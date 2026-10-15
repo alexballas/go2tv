@@ -438,11 +438,9 @@ type legacyScreenSink struct {
 func (s *legacyScreenSink) HandleCallbackEvent(ctx context.Context, event CallbackEvent) {
 	processStop, err := s.tv.GetProcessStop(event.SID)
 	if err != nil {
-		s.tv.Log().Debug("DLNA_AUTOPLAY callback_rejected", "session", s.tv.CallbackURL, "sid", event.SID, "state", event.TransportState, "error", err)
 		return
 	}
 	if !processStop && event.TransportState == "STOPPED" {
-		s.tv.Log().Debug("DLNA_AUTOPLAY callback_ignored", "session", s.tv.CallbackURL, "sid", event.SID, "reason", "initial STOPPED before playback callback")
 		s.tv.SetProcessStopTrue(event.SID)
 		return
 	}

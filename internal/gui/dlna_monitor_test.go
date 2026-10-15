@@ -170,9 +170,6 @@ func TestDLNAVerifiedCompletionCleansSubscriptionsBeforeAutoplay(t *testing.T) {
 	if stops.Load() != 0 {
 		t.Fatal("redundant Stop sent after verified completion")
 	}
-	if entries := strings.Join(debugLogEntries(s.Debug), ""); !strings.Contains(entries, "DLNA_AUTOPLAY stop_skipped") {
-		t.Fatal("skipped Stop missing from debug logs")
-	}
 }
 
 func TestDLNAStartupFailureRestoresControlsWithoutAutoplay(t *testing.T) {
@@ -212,9 +209,6 @@ func TestDLNAStartupFailureRestoresControlsWithoutAutoplay(t *testing.T) {
 	}
 	if loads.Load() != 0 || stops.Load() != 0 {
 		t.Fatalf("startup failure advanced or sent redundant Stop: loads=%d stops=%d", loads.Load(), stops.Load())
-	}
-	if entries := strings.Join(debugLogEntries(s.Debug), ""); !strings.Contains(entries, "DLNA_AUTOPLAY startup_failure_handled") {
-		t.Fatal("GUI startup failure missing from debug logs")
 	}
 }
 
