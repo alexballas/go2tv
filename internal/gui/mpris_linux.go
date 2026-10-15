@@ -237,6 +237,8 @@ func (m *guiMPRIS) seek(position int64) {
 			return
 		}
 	} else if tv := s.tvdata; tv != nil && tv.ControlURL != "" {
+		finishSeek := s.beginDLNASeek(tv)
+		defer finishSeek()
 		if tv.Transcode {
 			s.ffmpegSeek = seconds
 			s.dlnaSeekRestart = true
@@ -246,6 +248,7 @@ func (m *guiMPRIS) seek(position int64) {
 		} else if err := tv.SeekSoapCall(utils.SecondsToClockTime(seconds)); err != nil {
 			return
 		}
+		s.noteDLNASeek(tv, seconds, 0)
 	} else {
 		return
 	}

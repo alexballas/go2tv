@@ -435,16 +435,25 @@ type legacyScreenSink struct {
 	screen Screen
 }
 
-func (s *legacyScreenSink) HandleCallbackEvent(_ context.Context, event CallbackEvent) {
+func (s *legacyScreenSink) HandleCallbackEvent(ctx context.Context, event CallbackEvent) {
 	processStop, err := s.tv.GetProcessStop(event.SID)
 	if err != nil {
+		s.tv.Log().Debug("DLNA_AUTOPLAY callback_rejected", "session", s.tv.CallbackURL, "sid", event.SID, "state", event.TransportState, "error", err)
 		return
 	}
 	if !processStop && event.TransportState == "STOPPED" {
+		s.tv.Log().Debug("DLNA_AUTOPLAY callback_ignored", "session", s.tv.CallbackURL, "sid", event.SID, "reason", "initial STOPPED before playback callback")
 		s.tv.SetProcessStopTrue(event.SID)
 		return
 	}
 	if !s.tv.UpdateMRstate(event.TransportState, event.SID) {
+		return
+	}
+	if sink, ok := s.screen.(CallbackEventSink); ok {
+		if event.TransportState == "PLAYING" {
+			s.tv.SetProcessStopTrue(event.SID)
+		}
+		sink.HandleCallbackEvent(ctx, event)
 		return
 	}
 	switch event.TransportState {

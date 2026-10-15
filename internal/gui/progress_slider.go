@@ -222,11 +222,18 @@ func (t *tappedSlider) seekDLNAAsync() {
 		return
 	}
 
+	finishSeek := t.screen.beginDLNASeek(tvdata)
 	go func() {
 		defer releasePermit()
-		total, end, err := dlnaSeekTimeline(tvdata)
-		if err != nil {
-			return
+		defer finishSeek()
+		total, end := 0, ""
+		if known, ok := t.screen.dlnaKnownDuration(tvdata); ok && !isTranscode {
+			total, end = known, utils.SecondsToClockTime(known)
+		} else {
+			var err error
+			if total, end, err = dlnaSeekTimeline(tvdata); err != nil {
+				return
+			}
 		}
 
 		cur := (float64(total) * sliderValue) / sliderMax
@@ -255,6 +262,7 @@ func (t *tappedSlider) seekDLNAAsync() {
 		if err := tvdata.SeekSoapCall(reltime); err != nil {
 			return
 		}
+		t.screen.noteDLNASeek(tvdata, roundedInt, total)
 		t.screen.notifyMPRISSeek(roundedInt)
 	}()
 }
@@ -280,6 +288,10 @@ func sliderUpdate(s *FyneScreen) {
 			if s.chromecastSessionClient() != nil {
 				continue
 			}
+			// A monitored DLNA startup is still "Stopped"; the monitor owns progress.
+			if tvdata != nil && s.dlnaProgressMonitored(tvdata) {
+				continue
+			}
 			fyne.Do(func() {
 				s.SlideBar.Disable()
 				s.SlideBar.Slider.SetValue(0)
@@ -295,6 +307,10 @@ func sliderUpdate(s *FyneScreen) {
 			}
 
 			if tvdata == nil {
+				continue
+			}
+
+			if s.dlnaProgressMonitored(tvdata) {
 				continue
 			}
 

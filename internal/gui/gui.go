@@ -110,7 +110,13 @@ type FyneScreen struct {
 	MediaText                *widget.Entry
 	ExternalMediaURL         *widget.Check
 	SkinNextOnlySameTypes    bool
-	GaplessMediaWatcher      func(context.Context, *FyneScreen, *soapcalls.TVPayload)
+	dlnaMonitor              *dlnaPlaybackSession
+	dlnaTeardownDone         chan struct{}
+	dlnaGaplessUnavailable   map[string]bool
+	dlnaGaplessStrikes       map[string]int
+	dlnaFollowupCancel       context.CancelFunc
+	dlnaActionID             atomic.Uint64
+	subtitleProbeCancel      context.CancelFunc
 	SlideBar                 *tappedSlider
 	MuteUnmute               *widget.Button
 	VolumeDown               *widget.Button
@@ -491,7 +497,6 @@ func (p *FyneScreen) Fini() {
 			return
 		}
 
-		gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
 		target := autoPlayPlaybackTarget(p)
 
 		// An item removed from the playlist has no successor.
@@ -510,7 +515,7 @@ func (p *FyneScreen) Fini() {
 		// For Chromecast, ignore gapless setting (it's DLNA-specific)
 		isChromecast := target.device.deviceType == devices.DeviceTypeChromecast
 
-		if p.NextMediaCheck.Checked && (isChromecast || gaplessOption == "Disabled") {
+		if p.NextMediaCheck.Checked {
 			_, nextMediaPath, err := getNextAutoPlayMediaOrError(p)
 			if err != nil {
 				if isTraversalBoundaryError(err) {
@@ -533,7 +538,12 @@ func (p *FyneScreen) Fini() {
 				return
 			}
 
-			go playActionOnTarget(p, target)
+			go func() {
+				if !isChromecast {
+					stopActionSync(p)
+				}
+				playActionOnTarget(p, target)
+			}()
 			return
 		}
 		// Main media loop logic
@@ -576,12 +586,16 @@ func getAdjacentMedia(screen *FyneScreen, delta int) (string, string, error) {
 }
 
 func getAdjacentQueuedMedia(screen *FyneScreen, delta int, wrap bool) (string, string, error) {
+	return getAdjacentQueuedMediaFromPath(screen, screen.mediafile, delta, wrap)
+}
+
+func getAdjacentQueuedMediaFromPath(screen *FyneScreen, mediaPath string, delta int, wrap bool) (string, string, error) {
 	queue, _ := screen.queueSnapshot()
 	if queue == nil || queue.Len() == 0 {
 		return "", "", errors.New(lang.L("queue is empty"))
 	}
 
-	currentIndex := queue.IndexByPath(screen.mediafile)
+	currentIndex := queue.IndexByPath(mediaPath)
 	if currentIndex == -1 {
 		return "", "", errors.New(lang.L("current media file is not in the queue"))
 	}

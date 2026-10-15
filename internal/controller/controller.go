@@ -53,6 +53,7 @@ type activeSession struct {
 	ctx              context.Context
 	cancel           context.CancelCauseFunc
 	reusable         bool
+	rendererStopped  bool
 	imageReady       bool
 	imageTimer       context.CancelFunc
 	imageEpoch       uint64
@@ -61,6 +62,10 @@ type activeSession struct {
 	queued           *gaplessSession
 	gaplessActive    atomic.Bool
 	gaplessQueueing  bool
+	monitorNext      atomic.Pointer[string]
+	monitorTimeline  atomic.Pointer[playback.Position]
+	// Native seek target for the restarted monitor's end-of-track guard.
+	seekHint *playback.Position
 }
 
 type gaplessCandidate struct {
@@ -149,6 +154,7 @@ type actorState struct {
 	// next URI, so later tracks fall back to ordinary autoplay instead of
 	// re-attempting gapless queueing on every session.
 	gaplessUnsupported map[string]bool
+	gaplessStrikes     map[string]int
 }
 
 type Controller struct {
@@ -818,6 +824,10 @@ func (c *Controller) SetPolicy(ctx context.Context, request PolicyRequest) Resul
 			return fail(request.RequestID, s.revision, ErrInvalidPolicy)
 		}
 		restartImageTimer := s.policy.AutoPlayNext != p.AutoPlayNext || s.policy.ImageDurationSeconds != p.ImageDurationSeconds
+		if p.GaplessEnabled && !s.policy.GaplessEnabled {
+			// Re-enabling is an explicit retry of renderers disabled after failures.
+			s.gaplessUnsupported, s.gaplessStrikes = nil, nil
+		}
 		s.policy = p
 		if restartImageTimer {
 			s.syncImageTimer()
@@ -1163,6 +1173,10 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 		if reusedCast != nil && !old.server.Transcode && old.server.Subtitle == nil && !transcode && !subtitle.valid() {
 			routeAdder, _ = c.cfg.MediaServer.(mediaRouteAdder)
 		}
+		cleanupStarted := time.Now()
+		if target.Protocol == "DLNA" && c.cfg.Logger != nil {
+			c.cfg.Logger.Debug(playback.DLNADebugMessage("teardown_started", "renderer", old.target.ID, "generation", old.generation, "next_renderer", target.ID, "next_generation", generation, "next_media", media.Name))
+		}
 		var err error
 		switch {
 		case routeAdder != nil:
@@ -1170,6 +1184,9 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 			err = c.cfg.MediaServer.Stop(ioCtx)
 		default:
 			err = transitionSession(ioCtx, old, c.cfg.MediaServer, c.cfg.OperationTimeout)
+		}
+		if target.Protocol == "DLNA" && c.cfg.Logger != nil {
+			c.cfg.Logger.Debug(playback.DLNADebugMessage("teardown_finished", "renderer", old.target.ID, "generation", old.generation, "next_renderer", target.ID, "next_generation", generation, "elapsed_ms", time.Since(cleanupStarted).Milliseconds(), "error", err))
 		}
 		if err != nil {
 			if reusedCast != nil {
@@ -1265,6 +1282,7 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 		Metadata:           metadata.Media{Title: item.BaseName()},
 	}
 	c.attachArtwork(ioCtx, item.ID(), &media, &loadRequest, &routeIDs)
+	loadStarted := time.Now()
 	if err == nil && target.Protocol == "DLNA" {
 		if activator, ok := transport.(callbackActivator); ok {
 			err = activator.ActivateCallbacks(generation)
@@ -1305,6 +1323,9 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 	if err == nil && target.Protocol != "Chromecast" {
 		err = transport.Play(ioCtx)
 	}
+	if target.Protocol == "DLNA" && c.cfg.Logger != nil {
+		c.cfg.Logger.Debug(playback.DLNADebugMessage("load_result", "renderer", target.ID, "generation", generation, "media", media.Name, "uri", loadRequest.MediaURL, "accepted", err == nil, "elapsed_ms", time.Since(loadStarted).Milliseconds(), "error", err))
+	}
 	if err != nil {
 		_ = cleanupTransport(transport, c.cfg.MediaServer, c.cfg.OperationTimeout)
 		c.completePlay(playCompletion{generation: generation, operation: operation, err: err, request: request, response: response})
@@ -1341,11 +1362,33 @@ func operationContext(base, request context.Context, timeout time.Duration) (con
 	}
 }
 
+func (session *activeSession) syncDLNAMonitor() {
+	session.monitorTimeline.Store(&playback.Position{Current: session.seekOffset, Duration: session.expectedDuration})
+	if session.queued != nil {
+		uri := session.queued.load.MediaURL
+		session.monitorNext.Store(&uri)
+	} else {
+		session.monitorNext.Store(nil)
+	}
+}
+
 func (c *Controller) startMonitor(session *activeSession) {
 	if c.cfg.RunMonitor == nil || session == nil {
 		return
 	}
+	session.syncDLNAMonitor()
 	cfg := playback.MonitorConfig{
+		CurrentURI: session.load.MediaURL,
+		QueuedURI: func() string {
+			if uri := session.monitorNext.Load(); uri != nil {
+				return *uri
+			}
+			return ""
+		},
+		DLNATimeline: func() (int, int) {
+			timeline := session.monitorTimeline.Load()
+			return timeline.Current, timeline.Duration
+		},
 		Generation:       session.generation,
 		SeekOffset:       session.seekOffset,
 		ExpectedDuration: session.expectedDuration,
@@ -1353,12 +1396,30 @@ func (c *Controller) startMonitor(session *activeSession) {
 		Sink:             c,
 		GaplessActive:    session.gaplessActive.Load,
 	}
+	if hint := session.seekHint; hint != nil {
+		cfg.InitialPosition, cfg.InitialDuration = hint.Current, hint.Duration
+		session.seekHint = nil
+	}
+	if c.cfg.Logger != nil && session.target.Protocol == "DLNA" {
+		renderer, generation := session.target.ID, session.generation
+		cfg.DLNADebug = func(event string, fields ...any) {
+			fields = append([]any{"renderer", renderer, "generation", generation}, fields...)
+			c.cfg.Logger.Debug(playback.DLNADebugMessage(event, fields...))
+		}
+	}
 	c.goOwned(func() { c.cfg.RunMonitor(session.ctx, cfg, session.target, session.transport) })
 }
 
-func (c *Controller) queueGapless(ctx context.Context, active *activeSession, candidate *gaplessCandidate) (*gaplessSession, error) {
+func (c *Controller) queueGapless(ctx context.Context, active *activeSession, candidate *gaplessCandidate) (queued *gaplessSession, queueErr error) {
 	if active == nil || candidate == nil {
 		return nil, ErrInvalidOperation
+	}
+	queueStarted := time.Now()
+	if c.cfg.Logger != nil {
+		c.cfg.Logger.Debug(playback.DLNADebugMessage("queue_started", "renderer", active.target.ID, "queue_id", queueStarted.UnixNano(), "next_media", candidate.media.Name))
+		defer func() {
+			c.cfg.Logger.Debug(playback.DLNADebugMessage("queue_result", "renderer", active.target.ID, "queue_id", queueStarted.UnixNano(), "next_media", candidate.media.Name, "accepted", queued != nil, "elapsed_ms", time.Since(queueStarted).Milliseconds(), "error", queueErr))
+		}()
 	}
 	gapless, ok := active.transport.(playback.DLNAGaplessTransport)
 	if !ok {
@@ -1463,6 +1524,7 @@ func (s *actorState) reconcileGapless() {
 	// still deferred by the monitor. Promotion is gated on active.queued, which
 	// is cleared here, so the in-flight poll cannot promote a stale next.
 	active.queued = nil
+	active.monitorNext.Store(nil)
 	active.gaplessQueueing = true
 	s.controller.goOwned(func() {
 		ioCtx, cancel := context.WithTimeout(active.ctx, s.controller.cfg.OperationTimeout)
@@ -1505,6 +1567,7 @@ func (s *actorState) reconcileGapless() {
 			} else {
 				active.queued = nil
 			}
+			active.syncDLNAMonitor()
 			active.gaplessActive.Store(active.queued != nil)
 			if err != nil && current.controller.cfg.Logger != nil {
 				current.controller.cfg.Logger.Warning("DLNA gapless playback update failed; using ordinary autoplay")
@@ -1575,7 +1638,7 @@ func teardownSession(ctx context.Context, session *activeSession, server playbac
 			return gapless.ClearNext(ctx)
 		}))
 	}
-	if session.target.Protocol != "Chromecast" || session.reusable {
+	if !session.rendererStopped && (session.target.Protocol != "Chromecast" || session.reusable) {
 		result = errors.Join(result, rendererCleanup(session.transport, closeTimeout, func(ctx context.Context, transport Transport) error {
 			return transport.Stop(ctx)
 		}))
@@ -1606,7 +1669,7 @@ func transitionSession(ctx context.Context, session *activeSession, server playb
 			return gapless.ClearNext(ctx)
 		})
 	}
-	if session.target.Protocol != "Chromecast" || session.reusable {
+	if !session.rendererStopped && (session.target.Protocol != "Chromecast" || session.reusable) {
 		_ = rendererCleanup(session.transport, closeTimeout, func(ctx context.Context, transport Transport) error {
 			return transport.Stop(ctx)
 		})
@@ -1893,6 +1956,9 @@ func (c *Controller) Seek(ctx context.Context, request SeekRequest) Result {
 				if active.server.Transcode {
 					active.server.SeekOffset = request.Seconds
 					active.seekOffset = request.Seconds
+				} else if active.target.Protocol == "DLNA" && duration > 0 {
+					// Renderers resume on the next keyframe, past the target.
+					active.seekHint = &playback.Position{Current: request.Seconds + 1, Duration: duration}
 				}
 				s.position, s.state = request.Seconds, PlaybackStatePlaying
 				s.commit()
@@ -2072,7 +2138,7 @@ func (c *Controller) deviceControl(ctx context.Context, mutation Mutation, call 
 // HandleMonitorEvent accepts adapter monitor updates. Progress events may be
 // dropped under pressure; terminal events are retained unless shutting down.
 func (c *Controller) HandleMonitorEvent(_ context.Context, event playback.MonitorEvent) {
-	if event.Terminal == "" {
+	if event.Terminal == "" && !event.GaplessPromoted {
 		select {
 		case <-c.ctx.Done():
 		case c.callbacks <- event:
@@ -2105,6 +2171,9 @@ func (c *Controller) HandleCallbackEvent(_ context.Context, event httphandlers.C
 
 func (s *actorState) monitor(event playback.MonitorEvent) {
 	if s.active == nil || event.Generation != s.generation || event.Generation != s.active.generation {
+		if (event.Terminal != "" || event.GaplessPromoted) && s.controller.cfg.Logger != nil {
+			s.controller.cfg.Logger.Debug(playback.DLNADebugMessage("event_ignored", "event_generation", event.Generation, "generation", s.generation, "has_session", s.active != nil, "terminal", event.Terminal, "promotion", event.GaplessPromoted))
+		}
 		return
 	}
 	if event.TimerEpoch != 0 && event.TimerEpoch != s.active.imageEpoch {
@@ -2121,8 +2190,9 @@ func (s *actorState) monitor(event playback.MonitorEvent) {
 	if event.NextURIObserved && event.NextURI == gaplessUnsupportedURI {
 		s.disableGapless()
 	}
-	promoted := event.NextURIObserved && event.NextURI == "" && s.promoteGapless()
+	promoted := event.GaplessPromoted && s.active.queued != nil && event.GaplessURI == s.active.queued.load.MediaURL && s.promoteGapless()
 	if promoted {
+		delete(s.gaplessStrikes, s.active.target.ID)
 		changed = true
 	}
 	if !promoted && (event.Position != 0 || event.Duration != 0) {
@@ -2152,7 +2222,23 @@ func (s *actorState) monitor(event playback.MonitorEvent) {
 		s.syncImageTimer()
 	}
 	if event.Terminal != "" {
+		s.active.rendererStopped = s.active.target.Protocol == "DLNA" && event.DLNAStopped
+		if event.Recovery == playback.RecoveryGaplessHandoffFailed {
+			if s.gaplessStrikes == nil {
+				s.gaplessStrikes = map[string]int{}
+			}
+			s.gaplessStrikes[s.active.target.ID]++
+			if s.gaplessStrikes[s.active.target.ID] >= playback.GaplessHandoffStrikes {
+				if s.gaplessUnsupported == nil {
+					s.gaplessUnsupported = map[string]bool{}
+				}
+				s.gaplessUnsupported[s.active.target.ID] = true
+			}
+		}
 		if s.controller.cfg.Logger != nil {
+			if event.Recovery != "" {
+				s.controller.cfg.Logger.Info("DLNA playback recovery: " + event.Recovery)
+			}
 			switch event.Terminal {
 			case playback.TerminalFinished:
 				s.controller.cfg.Logger.Info("Playback completed")
@@ -2170,6 +2256,9 @@ func (s *actorState) monitor(event playback.MonitorEvent) {
 		active := s.active
 		active.cancel(event.Terminal)
 		advanced := playback.ShouldAdvance(event.Terminal, s.policy.LoopSelected, s.policy.AutoPlayNext) && s.followup(active)
+		if active.target.Protocol == "DLNA" && s.controller.cfg.Logger != nil {
+			s.controller.cfg.Logger.Debug(playback.DLNADebugMessage("completion_action", "renderer", active.target.ID, "completed_generation", event.Generation, "generation", s.generation, "media", active.media.Name, "terminal", event.Terminal, "recovery", event.Recovery, "autoplay", s.policy.AutoPlayNext, "loop", s.policy.LoopSelected, "advanced", advanced, "remote_stop_skipped", active.rendererStopped))
+		}
 		if !advanced {
 			s.active = nil
 			s.mutation, s.cleanup, s.state = true, true, PlaybackStateStopping
@@ -2197,6 +2286,7 @@ func (s *actorState) disableGapless() {
 	s.gaplessUnsupported[active.target.ID] = true
 	queued := active.queued
 	active.queued = nil
+	active.syncDLNAMonitor()
 	active.gaplessActive.Store(false)
 	if newlyMarked && s.controller.cfg.Logger != nil {
 		s.controller.cfg.Logger.Info("Renderer does not support DLNA gapless playback; using ordinary autoplay")
@@ -2234,6 +2324,7 @@ func (s *actorState) promoteGapless() bool {
 	active.expectedDuration = int(queued.load.Duration)
 	active.imageReady = true
 	active.queued = nil
+	active.syncDLNAMonitor()
 	active.gaplessActive.Store(false)
 	if index := queueIndex(s.queue, queued.itemID); index >= 0 {
 		s.queue.SetCurrentIndex(index)

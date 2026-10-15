@@ -615,11 +615,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 				if gaplessOption == "Enabled" && target.device.deviceType == devices.DeviceTypeDLNA {
 					switch s.getScreenState() {
 					case "Playing", "Paused":
-						newTVPayload, err := queueNext(s, false)
-						if err == nil && s.GaplessMediaWatcher == nil {
-							s.GaplessMediaWatcher = gaplessMediaWatcher
-							go s.GaplessMediaWatcher(s.serverStopCTX, s, newTVPayload)
-						}
+						_, _ = queueNext(s, false)
 					}
 				}
 				return

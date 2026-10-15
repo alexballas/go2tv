@@ -158,3 +158,12 @@ func copyEmbeddedSubtitle(embedded *utils.EmbeddedSubtitle) *utils.EmbeddedSubti
 	copied := *embedded
 	return &copied
 }
+
+// SetAVTransportURIContext loads a URI without changing playback lifetime.
+func (p *TVPayload) SetAVTransportURIContext(ctx context.Context) error {
+	return p.setAVTransportSoapCallContext(ctx)
+}
+
+func (p *TVPayload) SetNextAVTransportURIContext(ctx context.Context, clear bool) error {
+	return p.setNextAVTransportSoapCallContext(ctx, clear)
+}
