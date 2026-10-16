@@ -51,13 +51,18 @@ func mobileSettingsWindow(s *FyneScreen) (fyne.CanvasObject, func()) {
 			return
 		}
 
-		if err := store.clear(); err != nil {
-			dialog.ShowError(err, s.Current)
-			return
-		}
+		dialog.ShowConfirm(lang.L("Clear Playback History"), lang.L("Forget saved playback positions for all media?"), func(confirmed bool) {
+			if !confirmed {
+				return
+			}
+			if err := store.clear(); err != nil {
+				dialog.ShowError(err, s.Current)
+				return
+			}
 
-		s.clearResumeSession()
-		dialog.ShowInformation(lang.L("Playback History"), lang.L("Playback history cleared"), s.Current)
+			s.clearResumeSession()
+			dialog.ShowInformation(lang.L("Playback History"), lang.L("Playback history cleared"), s.Current)
+		}, s.Current)
 	})
 
 	disableUpdates := newWrappingCheck(lang.L("Disable Future Version Notifications"), func(disabled bool) {

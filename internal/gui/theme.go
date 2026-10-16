@@ -61,6 +61,9 @@ func (m go2tvTheme) Font(style fyne.TextStyle) fyne.Resource {
 }
 
 func (m go2tvTheme) Size(name fyne.ThemeSizeName) float32 {
+	if size, ok := platformThemeSize(name); ok {
+		return size
+	}
 	return theme.DefaultTheme().Size(name)
 }
 

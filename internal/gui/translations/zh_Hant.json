@@ -229,7 +229,6 @@
     "All countries (clear selection)": "所有國家/地區（清除選擇）",
     "Audio only": "僅音訊",
     "Auto-play": "自動播放",
-    "Automatic Torrent Subtitles": "自動顯示種子內嵌字幕",
     "Browse…": "瀏覽…",
     "Burn Chromecast Subtitles (Compatibility Fallback)": "燒錄 Chromecast 字幕（相容性備援）",
     "Can't reach the radio directory; check your connection": "無法連線至電台目錄；請檢查網路連線",
@@ -322,5 +321,9 @@
     "Automatic": "自動",
     "Embedded Track": "內嵌軌道",
     "External File": "外部檔案",
-    "None": "無"
+    "None": "無",
+    "Forget saved playback positions for all media?": "清除所有媒體的已儲存播放位置？",
+    "Make sure your phone and the TV are on the same Wi-Fi network.": "請確認手機和電視連接到同一個 Wi-Fi 網路。",
+    "Connecting to %s…": "正在連接 %s…",
+    "Station": "電台"
 }

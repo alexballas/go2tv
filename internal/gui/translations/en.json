@@ -19,7 +19,6 @@
     "Select Subtitles File": "Select Subtitles File",
     "URL": "URL",
     "Subtitles": "Subtitles",
-    "Automatic Torrent Subtitles": "Automatic Torrent Subtitles",
     "Enter URL here": "Enter URL here",
     "Open": "Open",
     "Cancel": "Cancel",
@@ -322,5 +321,9 @@
     "Automatic": "Automatic",
     "Embedded Track": "Embedded Track",
     "External File": "External File",
-    "None": "None"
+    "None": "None",
+    "Forget saved playback positions for all media?": "Forget saved playback positions for all media?",
+    "Make sure your phone and the TV are on the same Wi-Fi network.": "Make sure your phone and the TV are on the same Wi-Fi network.",
+    "Connecting to %s…": "Connecting to %s…",
+    "Station": "Station"
 }

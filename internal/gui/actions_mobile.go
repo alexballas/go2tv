@@ -73,6 +73,15 @@ func selectedMobileChromecastControlClient(screen *FyneScreen, device devType) (
 	return client, func() { _ = client.Close(false) }, nil
 }
 
+// renderingPayload snapshots the DLNA rendering control target on the UI
+// thread, so background SOAP calls never touch shared screen fields.
+func renderingPayload(screen *FyneScreen) *soapcalls.TVPayload {
+	if screen.tvdata != nil {
+		return screen.tvdata
+	}
+	return &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
+}
+
 func muteAction(screen *FyneScreen) {
 	w := screen.Current
 	selectedDevice := screen.selectedDevice
@@ -119,12 +128,9 @@ func muteAction(screen *FyneScreen) {
 		return
 	}
 
+	payload := renderingPayload(screen)
 	go func() {
-		if screen.tvdata == nil {
-			screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
-		}
-
-		if err := screen.tvdata.SetMuteSoapCall("1"); err != nil {
+		if err := payload.SetMuteSoapCall("1"); err != nil {
 			check(w, errors.New(lang.L("could not send mute action")))
 			return
 		}
@@ -158,12 +164,9 @@ func unmuteAction(screen *FyneScreen) {
 		return
 	}
 
+	payload := renderingPayload(screen)
 	go func() {
-		if screen.tvdata == nil {
-			screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
-		}
-
-		if err := screen.tvdata.SetMuteSoapCall("0"); err != nil {
+		if err := payload.SetMuteSoapCall("0"); err != nil {
 			check(w, errors.New(lang.L("could not send mute action")))
 			return
 		}
@@ -208,14 +211,18 @@ func setMobileMediaURI(screen *FyneScreen, uri fyne.URI) {
 		openMobileTorrentDocument(screen, uri)
 		return
 	}
+	// Choosing a file leaves URL mode, e.g. after a radio station. Untick before
+	// assigning: OnChanged restores the previous file synchronously.
+	if screen.ExternalMediaURL != nil && screen.ExternalMediaURL.Checked {
+		screen.ExternalMediaURL.SetChecked(false)
+	}
 	if torrentMediaSelected(screen) {
 		cancelTorrent(screen)
 	}
-	screen.MediaText.Text = uri.Name()
+	screen.MediaText.SetText(uri.Name())
 	screen.mediafile = uri
 	resolveSelectedMobileArtwork(screen, uri)
-
-	screen.MediaText.Refresh()
+	screen.refreshPlaybackReadiness()
 }
 
 func resolveSelectedMobileArtwork(screen *FyneScreen, mediaURI fyne.URI) {
@@ -261,9 +268,8 @@ func subsAction(screen *FyneScreen) {
 			return
 		}
 
-		screen.SubsText.Text = reader.URI().Name()
 		screen.subsfile = reader.URI()
-		screen.SubsText.Refresh()
+		screen.SubsText.SetText(reader.URI().Name())
 	}, w)
 
 	fd.SetFilter(storage.NewExtensionFileFilter(mediamodel.SubtitleExtensions()))
@@ -1009,6 +1015,10 @@ func getDevices() ([]devType, error) {
 func volumeAction(screen *FyneScreen, up bool) {
 	w := screen.Current
 	selectedDevice := screen.selectedDevice
+	var payload *soapcalls.TVPayload
+	if screen.renderingControlURL != "" {
+		payload = renderingPayload(screen)
+	}
 	go func() {
 		// Handle Chromecast volume
 		if selectedDevice.deviceType == devices.DeviceTypeChromecast {
@@ -1046,16 +1056,12 @@ func volumeAction(screen *FyneScreen, up bool) {
 		}
 
 		// Handle DLNA volume
-		if screen.renderingControlURL == "" {
+		if payload == nil {
 			check(w, errors.New(lang.L("please select a device")))
 			return
 		}
 
-		if screen.tvdata == nil {
-			screen.tvdata = &soapcalls.TVPayload{RenderingControlURL: screen.renderingControlURL}
-		}
-
-		currentVolume, err := screen.tvdata.GetVolumeSoapCall()
+		currentVolume, err := payload.GetVolumeSoapCall()
 		if err != nil {
 			check(w, errors.New(lang.L("could not get the volume levels")))
 			return
@@ -1073,7 +1079,7 @@ func volumeAction(screen *FyneScreen, up bool) {
 
 		stringVolume := strconv.Itoa(setVolume)
 
-		if err := screen.tvdata.SetVolumeSoapCall(stringVolume); err != nil {
+		if err := payload.SetVolumeSoapCall(stringVolume); err != nil {
 			check(w, errors.New(lang.L("could not send volume action")))
 		}
 	}()

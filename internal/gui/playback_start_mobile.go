@@ -19,6 +19,7 @@ func claimMobilePlayback(s *FyneScreen) bool {
 	s.playbackStartCtx, s.playbackStartCancel = context.WithCancel(context.Background())
 	s.mu.Unlock()
 	s.PlayPause.Disable()
+	s.refreshPlaybackStatus()
 	// Android requires the first service start while the app is visible.
 	beginBackgroundSession(s)
 	return true

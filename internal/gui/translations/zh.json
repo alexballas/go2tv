@@ -19,7 +19,6 @@
     "Select Subtitles File": "选择字幕文件",
     "URL": "网址",
     "Subtitles": "字幕",
-    "Automatic Torrent Subtitles": "自动显示种子内嵌字幕",
     "Enter URL here": "在此输入网址",
     "Open": "打开",
     "Cancel": "取消",
@@ -322,5 +321,9 @@
     "Automatic": "自动",
     "Embedded Track": "内嵌轨道",
     "External File": "外部文件",
-    "None": "无"
+    "None": "无",
+    "Forget saved playback positions for all media?": "清除所有媒体的已保存播放位置？",
+    "Make sure your phone and the TV are on the same Wi-Fi network.": "请确保手机和电视连接到同一个 Wi-Fi 网络。",
+    "Connecting to %s…": "正在连接 %s…",
+    "Station": "电台"
 }

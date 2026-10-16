@@ -99,7 +99,15 @@ func (r *radioView) chooseCountry() {
 	})
 	r.countryPicker = picker
 	picker.refreshRadioCountryChoices(r.countries)
-	picker.popup.Resize(fyne.NewSize(330, 390))
+	size := r.screen.Current.Canvas().Size()
+	width, height := float32(330), float32(390)
+	if size.Width >= 280 {
+		width = min(width, size.Width-24)
+	}
+	if size.Height >= 360 {
+		height = min(height, size.Height-32)
+	}
+	picker.popup.Resize(fyne.NewSize(width, height))
 	picker.popup.Show()
 }
 

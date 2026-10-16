@@ -36,13 +36,6 @@ func handleSharedURI(screen *FyneScreen, uri fyne.URI, mime string) {
 		return
 	}
 
-	// Untick Media from URL before assigning, never after: SetChecked runs
-	// OnChanged synchronously, and that restores the previously selected file,
-	// which would overwrite the share. Doing it only once the share has been
-	// accepted keeps a rejected one from clearing the user's URL mode.
-	if screen.ExternalMediaURL != nil && screen.ExternalMediaURL.Checked {
-		screen.ExternalMediaURL.SetChecked(false)
-	}
-
+	// Accepted shares leave URL mode in setMobileMediaURI; rejected ones keep it.
 	setMobileMediaURI(screen, uri)
 }

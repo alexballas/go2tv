@@ -229,7 +229,6 @@
     "All countries (clear selection)": "所有国家/地区（清除选择）",
     "Audio only": "仅音频",
     "Auto-play": "自动播放",
-    "Automatic Torrent Subtitles": "自动显示种子内嵌字幕",
     "Browse…": "浏览…",
     "Burn Chromecast Subtitles (Compatibility Fallback)": "烧录 Chromecast 字幕（兼容性备选）",
     "Can't reach the radio directory; check your connection": "无法连接电台目录；请检查网络连接",
@@ -322,5 +321,9 @@
     "Automatic": "自动",
     "Embedded Track": "内嵌轨道",
     "External File": "外部文件",
-    "None": "无"
+    "None": "无",
+    "Forget saved playback positions for all media?": "清除所有媒体的已保存播放位置？",
+    "Make sure your phone and the TV are on the same Wi-Fi network.": "请确保手机和电视连接到同一个 Wi-Fi 网络。",
+    "Connecting to %s…": "正在连接 %s…",
+    "Station": "电台"
 }

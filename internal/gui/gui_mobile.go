@@ -59,8 +59,13 @@ type FyneScreen struct {
 	CheckVersion           *widget.Button
 	burnSubtitlesCheck     *wrappingCheck
 	castBurnSubtitles      bool
-	TorrentSubsCheck       *widget.Check
 	ExternalMediaURL       *widget.Check
+	playbackStatus         *widget.Label
+	timeline               fyne.CanvasObject
+	volumeControls         []fyne.Disableable
+	radioDetail            *widget.Label
+	radioRow               fyne.CanvasObject
+	connectingDevice       string // DLNA device whose control URLs are still loading
 	cancelEnablePlay       context.CancelFunc
 	serverStopCTX          context.Context
 	cancelServerStop       context.CancelFunc
@@ -128,7 +133,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 	settingsTab := container.NewTabItem(lang.L("Settings"), container.NewVScroll(container.NewPadded(settingsContent)))
 
 	tabs := container.NewAppTabs(
-		container.NewTabItem("Go2TV", container.NewVScroll(container.NewPadded(mainWindow(s)))),
+		container.NewTabItem("Go2TV", container.NewPadded(mainWindow(s))),
 		settingsTab,
 		container.NewTabItem(lang.L("About"), container.NewVScroll(aboutWindow(s))),
 	)
@@ -232,6 +237,7 @@ func (p *FyneScreen) updateScreenState(a string) {
 		if p.SlideBar != nil {
 			p.SlideBar.Enable()
 		}
+		p.refreshPlaybackStatus()
 	})
 }
 
@@ -288,9 +294,9 @@ func refreshPlaybackControls(s string, screen *FyneScreen) {
 		if isImage {
 			screen.PlayPause.Disable()
 			screen.PlayPause.SetIcon(theme.FileImageIcon())
-			screen.PlayPause.SetText("Image")
+			screen.PlayPause.SetText(lang.L("Image Casting"))
 		} else {
-			if screen.mobilePlaybackStarting() || screen.playbackStartupPending() || screen.dlnaPlaybackPending() {
+			if screen.mobilePlaybackBusy() || screen.playbackRequirement() != "" {
 				screen.PlayPause.Disable()
 			} else {
 				screen.PlayPause.Enable()
@@ -305,6 +311,7 @@ func refreshPlaybackControls(s string, screen *FyneScreen) {
 			}
 		}
 		screen.PlayPause.Refresh()
+		screen.refreshPlaybackStatus()
 	})
 }
 

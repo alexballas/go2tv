@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/alexballas/refyne/v2/storage"
-	"github.com/alexballas/refyne/v2/widget"
 
 	"go2tv.app/go2tv/v2/httphandlers"
 	"go2tv.app/go2tv/v2/internal/mediasource"
@@ -41,27 +40,22 @@ func TestMobileTorrentCaptionsSelectionAndSeek(t *testing.T) {
 	t.Cleanup(mediasource.Register(path, mobileCaptionSource{path: fixture, size: info.Size()}))
 	s.mediafile = storage.NewFileURI(path)
 	tt := []struct {
-		name                       string
-		disabled, external, remote bool
-		burn, transcode            bool
-		offset                     int
-		text                       string
+		name             string
+		external, remote bool
+		burn, transcode  bool
+		offset           int
+		text             string
 	}{
-		{name: "automatic without desktop checkbox", text: "First caption"},
+		{name: "automatic", text: "First caption"},
 		{name: "transcoded seek", offset: 30, text: "Second caption"},
 		{name: "burning removes receiver captions", burn: true, transcode: true},
 		{name: "direct playback ignores burn", burn: true, text: "First caption"},
-		{name: "disabled", disabled: true},
 		{name: "external also overrides burn-in", external: true},
 		{name: "remote media", remote: true},
 		{name: "automatic restored", text: "First caption"},
 	}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			s.TorrentSubsCheck = nil
-			if tc.disabled {
-				s.TorrentSubsCheck = widget.NewCheck("", nil)
-			}
 			s.subsfile = nil
 			if tc.external {
 				s.subsfile = storage.NewFileURI("/external.srt")

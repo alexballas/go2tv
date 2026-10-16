@@ -3,7 +3,7 @@
 package gui
 
 import (
-	"github.com/alexballas/refyne/v2/lang"
+	"github.com/alexballas/refyne/v2"
 
 	"go2tv.app/go2tv/v2/internal/radiobrowser"
 	"go2tv.app/go2tv/v2/metadata"
@@ -26,21 +26,8 @@ func (s *FyneScreen) playRadioStation() { go playAction(s) }
 
 func (s *FyneScreen) radioSongDisplayAvailable() bool { return s.radioSong.label != nil }
 
-func (s *FyneScreen) refreshRadioSongView() {
-	s.mu.RLock()
-	label, title := s.radioSong.label, s.radioSong.title
-	s.mu.RUnlock()
-	if label == nil {
-		return
-	}
-	if title == "" {
-		label.SetText("")
-		label.Hide()
-		return
-	}
-	label.SetText(lang.L("Now playing") + ": " + title)
-	label.Show()
-}
+// The player bar shows the song in place of the live stream's timeline.
+func (s *FyneScreen) refreshRadioSongView() { fyne.Do(s.refreshPlaybackStatus) }
 
 func (s *FyneScreen) selectRadioStation(station radiobrowser.Station) {
 	transcode := s.TranscodeCheckBox.Checked
