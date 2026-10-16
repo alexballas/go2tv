@@ -156,7 +156,24 @@ func TestNonICYStationDoesNotReadAudio(t *testing.T) {
 			}
 		})
 	}
-	if title, _ := streamTitle("StreamTitle='" + strings.Repeat("x", 400) + "';"); len([]rune(title)) != maxTitleRunes {
+	if title, _ := streamTitle([]byte("StreamTitle='" + strings.Repeat("x", 400) + "';")); len([]rune(title)) != maxTitleRunes {
 		t.Fatal("track display length not bounded")
+	}
+}
+
+func TestICYReaderRelaysAudioWithoutMetadata(t *testing.T) {
+	data := append(icyPacket(4, "StreamTitle='First';"), icyPacket(4, "")...)
+	data = append(data, icyPacket(4, "StreamTitle='Caf\xe9 \x93Live\x94';")...)
+	data = append(data, 'b', 'b')
+	var titles []string
+	audio, err := io.ReadAll(NewReader(bytes.NewReader(data), 4, func(title string) { titles = append(titles, title) }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(audio) != strings.Repeat("a", 12)+"bb" {
+		t.Fatalf("relayed audio = %q", audio)
+	}
+	if !reflect.DeepEqual(titles, []string{"First", "Caf\u00e9 \u201cLive\u201d"}) {
+		t.Fatalf("relayed titles = %q", titles)
 	}
 }

@@ -20,6 +20,12 @@ const AudioTranscodeMediaType = "audio/aac"
 
 const audioHLSProbeTimeout = 2 * time.Second
 
+// RemoteAudio is a station URL whose ICY titles are reported while relaying.
+type RemoteAudio struct {
+	URL     string
+	OnTitle func(string)
+}
+
 // ServeAudioTranscodedStream converts a station/file to stereo AAC without
 // video filters or subtitles. URL inputs use a Go HTTP proxy for TLS and HLS segments.
 func ServeAudioTranscodedStream(ctx context.Context, w io.Writer, input any, ff *exec.Cmd, opts *TranscodeOptions) error {
@@ -30,7 +36,11 @@ func ServeAudioTranscodedStream(ctx context.Context, w io.Writer, input any, ff 
 		return err
 	}
 	var in string
+	var onTitle func(string)
 	switch source := input.(type) {
+	case RemoteAudio:
+		in = mediasource.Input(source.URL)
+		input, onTitle = in, source.OnTitle
 	case string:
 		in = mediasource.Input(source)
 		input = in
@@ -43,7 +53,7 @@ func ServeAudioTranscodedStream(ctx context.Context, w io.Writer, input any, ff 
 	}
 	var hls bool
 	if strings.HasPrefix(in, "http://") || strings.HasPrefix(in, "https://") {
-		proxy, inputURL, err := newAudioStreamProxy(ctx, in)
+		proxy, inputURL, err := newAudioStreamProxy(ctx, in, onTitle)
 		if err != nil {
 			return err
 		}

@@ -98,16 +98,19 @@ func TestRadioControlsFitPhoneAndDesktopWidths(t *testing.T) {
 			if screen.radio.list.Size().Height < 120 {
 				t.Fatalf("station list collapsed: %v", screen.radio.list.Size())
 			}
-			if math.Abs(float64(r.country.Size().Width-r.popular.Size().Width)) > 0.5 || math.Abs(float64(r.popular.Size().Width-r.favoritesButton.Size().Width)) > 0.5 || r.country.Size().Height != r.popular.Size().Height || r.popular.Size().Height != r.favoritesButton.Size().Height {
-				t.Fatalf("filter button sizes differ: %v, %v, %v", r.country.Size(), r.popular.Size(), r.favoritesButton.Size())
+			filters := []fyne.CanvasObject{r.country, r.popular, r.favoritesButton, r.recentButton}
+			for i := 1; i < len(filters); i++ {
+				previous, current := filters[i-1], filters[i]
+				if math.Abs(float64(previous.Size().Width-current.Size().Width)) > 0.5 || previous.Size().Height != current.Size().Height {
+					t.Fatalf("filter button sizes differ: %v, %v", previous.Size(), current.Size())
+				}
+				previousPos, currentPos := app.Driver().AbsolutePositionForObject(previous), app.Driver().AbsolutePositionForObject(current)
+				if previousPos.X+previous.Size().Width > currentPos.X || previousPos.Y != currentPos.Y {
+					t.Fatal("Country, Popular, Favorites and Recent overlap or changed order")
+				}
 			}
-			country := app.Driver().AbsolutePositionForObject(r.country)
-			popular := app.Driver().AbsolutePositionForObject(r.popular)
-			favorites := app.Driver().AbsolutePositionForObject(r.favoritesButton)
-			if country.X+r.country.Size().Width > popular.X || popular.X+r.popular.Size().Width > favorites.X || country.Y != popular.Y || popular.Y != favorites.Y {
-				t.Fatal("Country, Popular and Favorites overlap or changed order")
-			}
-			if favorites.X+r.favoritesButton.Size().Width > tc.width {
+			last := filters[len(filters)-1]
+			if app.Driver().AbsolutePositionForObject(last).X+last.Size().Width > tc.width {
 				t.Fatal("radio filter row overflows the window")
 			}
 		})

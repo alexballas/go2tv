@@ -64,12 +64,34 @@ func (s *FyneScreen) radioDirectHLSURL(mediaURL, mediaType string, transcode boo
 	return station.StreamURL()
 }
 
+// radioStartError names the likely cause when a selected station fails to open.
+func (s *FyneScreen) radioStartError(mediaURL string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if _, ok := s.radioStationForURL(mediaURL); !ok {
+		return err
+	}
+	return fmt.Errorf("%s: %w", lang.L("Station offline or unreachable"), err)
+}
+
+// radioStationPlaying marks the station currently cast in the list.
+func (s *FyneScreen) radioStationPlaying(uuid string) bool {
+	state := s.getScreenState()
+	if uuid == "" || s.MediaText == nil || state != "Playing" && state != "Paused" {
+		return false
+	}
+	station, ok := s.radioStationForURL(s.MediaText.Text)
+	return ok && station.UUID == uuid
+}
+
 func (s *FyneScreen) reportRadioPlayback(mediaURL string) {
 	s.startRadioSongMonitor(mediaURL)
 	station, ok := s.radioStationForURL(mediaURL)
 	if !ok || s.radio == nil {
 		return
 	}
+	fyne.Do(func() { s.radio.recordRecent(station) })
 	go func() {
 		ctx, cancel := context.WithTimeout(s.radio.parentCtx, 8*time.Second)
 		defer cancel()
@@ -90,12 +112,16 @@ func (r *radioView) useRadioStation() {
 		r.status.SetText(err.Error())
 		return
 	}
+	// Switching stations mid-cast continues on the new one; otherwise the
+	// station only becomes the source, since no device may be selected yet.
+	resume := r.screen.getScreenState() == "Playing" && r.screen.selectedDevice.addr != ""
 	r.screen.cancelQueuedRadioPlayback()
 	r.selectPending = true
 	r.refreshRadioSelection()
 	r.status.SetText(lang.L("Selecting station…"))
 	ctx := r.ctx
-	refreshFavorite := r.isFavorite(station.UUID)
+	// Saved entries can outlive a station's stream URL or artwork.
+	refreshFavorite := r.mode != radioModeSearch || r.isFavorite(station.UUID)
 	asset, _, cached := r.artwork.lookup(station.Favicon)
 	cached = cached && asset != nil
 	previous, sameRadio := r.screen.radioStationForURL(r.screen.MediaText.Text)
@@ -117,7 +143,22 @@ func (r *radioView) useRadioStation() {
 		if ctx.Err() != nil {
 			return
 		}
-		if !sameRadio || previous.UUID != station.UUID || previous.StreamURL() != station.StreamURL() {
+		switching := !sameRadio || previous.UUID != station.UUID || previous.StreamURL() != station.StreamURL()
+		if switching {
+			// Validate before stopping so a refused selection keeps playback.
+			var err error
+			fyne.DoAndWait(func() { err = r.screen.validateRadioSelection() })
+			if err != nil {
+				fyne.Do(func() {
+					if r.ctx != ctx {
+						return
+					}
+					r.selectPending = false
+					r.status.SetText(err.Error())
+					r.refreshRadioSelection()
+				})
+				return
+			}
 			stopActionSync(r.screen)
 		}
 		fyne.Do(func() {
@@ -141,6 +182,9 @@ func (r *radioView) useRadioStation() {
 			}
 			if !cached && station.Favicon != "" {
 				r.screen.loadSelectedRadioArtwork(r.parentCtx, station)
+			}
+			if switching && resume {
+				r.screen.playRadioStation()
 			}
 		})
 	}()

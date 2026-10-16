@@ -954,7 +954,7 @@ func playActionOnTargetContext(screen *FyneScreen, target playbackTarget, parent
 					}
 					return
 				}
-				check(screen, err)
+				check(screen, screen.radioStartError(screen.MediaText.Text, err))
 				if err != nil {
 					startAfreshPlayButton(screen)
 					return
@@ -977,7 +977,7 @@ func playActionOnTargetContext(screen *FyneScreen, target playbackTarget, parent
 				mediaFile = mediaURL
 				if radioSelected {
 					_ = mediaURL.Close()
-					mediaFile = httphandlers.RemoteMediaURL(mediaPath)
+					mediaFile = httphandlers.RemoteMediaURL{URL: mediaPath, OnTitle: screen.radioRelayTitles(mediaPath)}
 				}
 				if strings.Contains(mediaType, "image") {
 					readerToBytes, err := io.ReadAll(mediaURL)
@@ -1003,7 +1003,8 @@ func playActionOnTargetContext(screen *FyneScreen, target playbackTarget, parent
 			return
 		}
 		mediaDuration := 0.0
-		if transcodeEnabled && !screen.ExternalMediaURL.Checked {
+		// Live stations never end; probing them only delays startup.
+		if _, radio := screen.radioStationForURL(mediaPath); transcodeEnabled && !radio {
 			if duration, probeErr := utils.DurationForMediaSecondsContext(startupCtx, screen.ffmpegPath, mediaPath); probeErr == nil && duration > 0 {
 				mediaDuration = duration
 			}
@@ -1552,7 +1553,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 				return
 			}
 			if err != nil {
-				check(screen, err)
+				check(screen, screen.radioStartError(mediaURL, err))
 				startAfreshPlayButton(screen)
 				return
 			}
@@ -1631,7 +1632,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 			} else {
 				var input any = stream
 				if tcOpts.AudioOnly {
-					input = httphandlers.RemoteMediaURL(mediaURL)
+					input = httphandlers.RemoteMediaURL{URL: mediaURL, OnTitle: screen.radioRelayTitles(mediaURL)}
 				}
 				handlerPath, err := url.PathUnescape(mediaFilename)
 				if err != nil {

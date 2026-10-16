@@ -383,7 +383,7 @@ func TestRadioPopularReturnsFromFavoritesWithCurrentCountry(t *testing.T) {
 	r.name.SetText("jazz")
 	fyne.DoAndWait(func() {
 		test.Tap(r.favoritesButton)
-		if !r.favoritesOnly || len(r.stations) != 1 || r.stations[0].UUID != saved.UUID || r.status.Text != fmt.Sprintf(lang.L("Saved %d favorites"), 1) {
+		if r.mode != radioModeFavorites || len(r.stations) != 1 || r.stations[0].UUID != saved.UUID || r.status.Text != fmt.Sprintf(lang.L("Saved %d favorites"), 1) {
 			t.Fatal("Favorites did not show the saved station")
 		}
 		r.list.Select(0)
@@ -399,7 +399,7 @@ func TestRadioPopularReturnsFromFavoritesWithCurrentCountry(t *testing.T) {
 		t.Fatal("Popular did not request directory stations")
 	}
 	fyne.DoAndWait(func() {
-		if r.favoritesOnly || r.name.Text != "" || r.countryCode != "GR" || r.selected != -1 || !r.useStation.Disabled() {
+		if r.mode == radioModeFavorites || r.name.Text != "" || r.countryCode != "GR" || r.selected != -1 || !r.useStation.Disabled() {
 			t.Fatal("Popular retained favorite/search selection or lost country")
 		}
 	})
@@ -431,7 +431,7 @@ func TestRadioReopensFavoritesWithoutReplacingThemWithSearchResults(t *testing.T
 	}()
 	waitRadioUI(t, func() bool { return len(queries) == 1 })
 	fyne.DoAndWait(func() {
-		if !r.favoritesOnly || len(r.stations) != 1 || r.stations[0].UUID != saved.UUID {
+		if r.mode != radioModeFavorites || len(r.stations) != 1 || r.stations[0].UUID != saved.UUID {
 			t.Fatal("reopening Favorites replaced saved stations with directory results")
 		}
 		r.list.Select(0)

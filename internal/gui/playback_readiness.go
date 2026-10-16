@@ -81,13 +81,11 @@ func (s *FyneScreen) refreshPlaybackReadiness() {
 	s.playbackStatus.SetToolTip("")
 	if mediaPath := s.nowPlayingPath(); mediaPath != "" {
 		s.playbackStatus.filename = filepath.Base(mediaPath)
-		if station, selected := s.radioStationForURL(mediaPath); selected {
+		if station, song, _, selected := s.radioNowPlaying(mediaPath); selected {
 			s.playbackStatus.filename = station.Name
-			s.mu.RLock()
-			if s.radioSong.mediaURL == mediaPath && s.radioSong.title != "" {
-				s.playbackStatus.filename = s.radioSong.title
+			if song != "" {
+				s.playbackStatus.filename = song
 			}
-			s.mu.RUnlock()
 		}
 		status += " · " + s.playbackStatus.filename
 	}

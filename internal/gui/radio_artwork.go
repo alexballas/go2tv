@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"image"
+	_ "image/gif"
+	"image/png"
 	"io"
 	"net/http"
 	"net/url"
@@ -12,6 +14,7 @@ import (
 	"time"
 
 	"github.com/alexballas/refyne/v2"
+	_ "golang.org/x/image/webp"
 
 	"go2tv.app/go2tv/v2/internal/radiobrowser"
 	"go2tv.app/go2tv/v2/metadata"
@@ -68,11 +71,24 @@ func fetchRadioArtwork(ctx context.Context, favicon string) (*metadata.ArtworkAs
 	if err != nil {
 		return nil, fmt.Errorf("radio icon decode: %w", err)
 	}
-	if format != "jpeg" && format != "png" {
-		return nil, fmt.Errorf("radio icon: unsupported image")
-	}
 	if config.Width <= 0 || config.Height <= 0 || uint64(config.Width)*uint64(config.Height) > maxRadioIconPixels {
 		return nil, fmt.Errorf("radio icon dimensions too large")
+	}
+	switch format {
+	case "jpeg", "png":
+	case "gif", "webp":
+		// Artwork normalization accepts JPEG/PNG; many station logos are not.
+		decoded, _, err := image.Decode(bytes.NewReader(data))
+		if err != nil {
+			return nil, fmt.Errorf("radio icon decode: %w", err)
+		}
+		var converted bytes.Buffer
+		if err := png.Encode(&converted, decoded); err != nil {
+			return nil, fmt.Errorf("radio icon convert: %w", err)
+		}
+		data = converted.Bytes()
+	default:
+		return nil, fmt.Errorf("radio icon: unsupported image")
 	}
 	asset, err := metadata.LoadArtwork(data, parsed.String())
 	if err != nil {
@@ -100,7 +116,11 @@ func (r *radioView) loadRadioIcon(station radiobrowser.Station) {
 			}
 			delete(r.iconsPending, favicon)
 			r.screen.logRadioError("artwork", err)
-			r.list.Refresh()
+			for id, station := range r.stations {
+				if station.Favicon == favicon {
+					r.list.RefreshItem(id)
+				}
+			}
 		})
 	}()
 }
@@ -127,6 +147,7 @@ func (s *FyneScreen) setSelectedRadioArtwork(station radiobrowser.Station, asset
 	if preview {
 		s.previewRadioArtwork(asset)
 	}
+	s.refreshRadioSongView()
 }
 
 func (s *FyneScreen) resolveCurrentRadioArtwork(ctx context.Context, mediaURL string) *metadata.ArtworkAsset {

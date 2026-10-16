@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -41,7 +42,7 @@ func TestRadioDeliversSmallChunksBeforeUpstreamEnds(t *testing.T) {
 			}))
 			defer upstream.Close()
 			server := NewServer("")
-			server.AddHandler("/radio", &soapcalls.TVPayload{MediaType: tc.mediaType}, nil, RemoteMediaURL(upstream.URL))
+			server.AddHandler("/radio", &soapcalls.TVPayload{MediaType: tc.mediaType}, nil, RemoteMediaURL{URL: upstream.URL})
 			relay := httptest.NewServer(server.ServeMediaHandler())
 			defer relay.Close()
 			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
@@ -142,3 +143,40 @@ func (w *radioErrorWriter) Write(p []byte) (int, error) {
 }
 
 func (w *radioErrorWriter) FlushError() error { return w.flushErr }
+
+func TestRadioRelayReportsICYTitlesWithoutSecondConnection(t *testing.T) {
+	var requests atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.Header().Set("Content-Type", "audio/mpeg")
+		if r.Header.Get("Icy-MetaData") != "1" {
+			_, _ = io.WriteString(w, "audio")
+			return
+		}
+		w.Header().Set("icy-metaint", "3")
+		_, _ = io.WriteString(w, "aud\x02StreamTitle='Song';"+strings.Repeat("\x00", 13)+"io")
+	}))
+	defer upstream.Close()
+	titles := make(chan string, 1)
+	server := NewServer("")
+	server.AddHandler("/radio", &soapcalls.TVPayload{MediaType: "audio/mpeg"}, nil, RemoteMediaURL{URL: upstream.URL, OnTitle: func(title string) { titles <- title }})
+	relay := httptest.NewServer(server.ServeMediaHandler())
+	defer relay.Close()
+	response, err := relay.Client().Get(relay.URL + "/radio")
+	if err != nil {
+		t.Fatalf("receiver request: %v", err)
+	}
+	body, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil || string(body) != "audio" {
+		t.Fatalf("renderer received %q, %v", body, err)
+	}
+	select {
+	case title := <-titles:
+		if title != "Song" || requests.Load() != 1 {
+			t.Fatalf("title %q after %d upstream requests", title, requests.Load())
+		}
+	default:
+		t.Fatal("relayed ICY title not reported")
+	}
+}

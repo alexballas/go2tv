@@ -3,10 +3,13 @@ package gui
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
 	"image"
+	"image/color"
+	"image/gif"
 	"image/png"
 	"net/http"
 	"net/http/httptest"
@@ -30,6 +33,15 @@ func radioTestPNG(t *testing.T) []byte {
 	return data.Bytes()
 }
 
+func radioTestGIF(t *testing.T) []byte {
+	t.Helper()
+	var data bytes.Buffer
+	if err := gif.Encode(&data, image.NewPaletted(image.Rect(0, 0, 24, 16), color.Palette{color.Black, color.White}), nil); err != nil {
+		t.Fatal(err)
+	}
+	return data.Bytes()
+}
+
 func TestRadioFaviconIsBoundedAndNormalized(t *testing.T) {
 	valid := radioTestPNG(t)
 	largePixels := append([]byte(nil), valid...)
@@ -43,6 +55,7 @@ func TestRadioFaviconIsBoundedAndNormalized(t *testing.T) {
 		want   bool
 	}{
 		{name: "PNG station logo", body: valid, status: 200, want: true},
+		{name: "GIF station logo", body: radioTestGIF(t), status: 200, want: true},
 		{name: "SVG fallback", body: []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`), status: 200},
 		{name: "oversized body", body: []byte(strings.Repeat("x", maxRadioIconBytes+1)), status: 200},
 		{name: "pixel limit", body: largePixels, status: 200},
@@ -60,6 +73,15 @@ func TestRadioFaviconIsBoundedAndNormalized(t *testing.T) {
 				t.Fatalf("normalized icon = %+v", asset)
 			}
 		})
+	}
+	webp, err := base64.StdEncoding.DecodeString("UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==")
+	if err != nil {
+		t.Fatal(err)
+	}
+	webpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(webp) }))
+	defer webpServer.Close()
+	if asset, err := fetchRadioArtwork(context.Background(), webpServer.URL); err != nil || asset.Width != 1 || asset.Height != 1 {
+		t.Fatalf("WebP station logo = %+v, %v", asset, err)
 	}
 	if _, err := fetchRadioArtwork(context.Background(), "file:///tmp/logo.png"); err == nil {
 		t.Fatal("local file favicon accepted")

@@ -129,6 +129,11 @@ func (m *guiMPRIS) refresh() {
 				v.URL = (&url.URL{Scheme: "file", Path: abs}).String()
 			}
 		}
+		station, song, artwork, radio := s.radioNowPlaying(path)
+		radioArt := ""
+		if radio {
+			radioArt = m.artURL(artwork)
+		}
 		m.mu.Lock()
 		if m.closed {
 			m.mu.Unlock()
@@ -140,10 +145,14 @@ func (m *guiMPRIS) refresh() {
 		if !changed {
 			v.Name, v.Artist, v.Album, v.ArtURL = m.last.Name, m.last.Artist, m.last.Album, m.last.ArtURL
 		}
+		if radio {
+			mprisRadioMetadata(&v, station.Name, song)
+			v.ArtURL = radioArt
+		}
 		m.last = v
 		m.service.Update(v)
 		m.mu.Unlock()
-		if changed && path != "" {
+		if changed && path != "" && !radio {
 			go m.enrich(path, s.ffmpegPath)
 		}
 		if path != "" && (changed && active || becameActive) {
@@ -207,13 +216,28 @@ func (m *guiMPRIS) enrich(path, ffmpegPath string) {
 	m.service.Update(m.last)
 }
 
+// ICY titles are usually "Artist - Title"; the station becomes the album.
+func mprisRadioMetadata(v *mpris.Snapshot, station, song string) {
+	v.Name, v.Artist, v.Album = station, "", ""
+	if song == "" {
+		return
+	}
+	v.Name, v.Album = song, station
+	if artist, title, found := strings.Cut(song, " - "); found && strings.TrimSpace(artist) != "" && strings.TrimSpace(title) != "" {
+		v.Artist, v.Name = strings.TrimSpace(artist), strings.TrimSpace(title)
+	}
+}
+
 func (m *guiMPRIS) artURL(asset *metadata.ArtworkAsset) string {
 	if asset == nil {
 		return ""
 	}
+	// Names are content hashes; radio refreshes reuse the written file.
 	path := filepath.Join(m.dir, asset.ID+asset.Extension)
-	if err := os.WriteFile(path, asset.Data, 0600); err != nil {
-		return ""
+	if _, err := os.Stat(path); err != nil {
+		if err := os.WriteFile(path, asset.Data, 0600); err != nil {
+			return ""
+		}
 	}
 	return (&url.URL{Scheme: "file", Path: path}).String()
 }

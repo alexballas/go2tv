@@ -42,7 +42,7 @@ func TestRadioAudioRelaySurvivesReceiverProbes(t *testing.T) {
 			} else {
 				tv = &soapcalls.TVPayload{MediaType: "audio/ogg", Transcode: true, FFmpegPath: ffmpeg}
 			}
-			server.AddHandler("/radio.aac", tv, opts, RemoteMediaURL(upstream+"/live.m3u8"))
+			server.AddHandler("/radio.aac", tv, opts, RemoteMediaURL{URL: upstream + "/live.m3u8"})
 			for _, method := range []string{http.MethodHead, http.MethodGet, http.MethodGet} {
 				request := httptest.NewRequest(method, "/radio.aac", nil)
 				request.Header.Set("getcontentFeatures.dlna.org", "1")
@@ -78,7 +78,7 @@ func TestRadioAudioRelaySurvivesReceiverProbes(t *testing.T) {
 
 func TestRadioTranscodeStartupFailureReturnsError(t *testing.T) {
 	server := NewServer("")
-	server.AddHandler("/radio", nil, &utils.TranscodeOptions{FFmpegPath: filepath.Join(t.TempDir(), "missing-ffmpeg"), AudioOnly: true}, RemoteMediaURL(radioTranscodeTestUpstream(t)+"/live"))
+	server.AddHandler("/radio", nil, &utils.TranscodeOptions{FFmpegPath: filepath.Join(t.TempDir(), "missing-ffmpeg"), AudioOnly: true}, RemoteMediaURL{URL: radioTranscodeTestUpstream(t) + "/live"})
 	request := httptest.NewRequest(http.MethodGet, "/radio", nil)
 	response := httptest.NewRecorder()
 	server.ServeMediaHandler().ServeHTTP(response, request)
@@ -111,7 +111,7 @@ func TestRadioAudioReconnectDoesNotKillActiveStream(t *testing.T) {
 			} else {
 				tv = &soapcalls.TVPayload{MediaType: "audio/mpeg", Transcode: true, FFmpegPath: ffmpeg}
 			}
-			server.AddHandler("/radio", tv, opts, RemoteMediaURL(upstream+"/live"))
+			server.AddHandler("/radio", tv, opts, RemoteMediaURL{URL: upstream + "/live"})
 			receiver := httptest.NewServer(server.ServeMediaHandler())
 			defer receiver.Close()
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -180,7 +180,7 @@ func TestRadioTranscodeDeliversChunksBeforeEncoderEnds(t *testing.T) {
 			} else {
 				tv = &soapcalls.TVPayload{MediaType: "audio/mpeg", Transcode: true, FFmpegPath: ffmpeg}
 			}
-			server.AddHandler("/radio", tv, opts, RemoteMediaURL(upstream+"/live"))
+			server.AddHandler("/radio", tv, opts, RemoteMediaURL{URL: upstream + "/live"})
 			receiver := httptest.NewServer(server.ServeMediaHandler())
 			defer receiver.Close()
 			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)

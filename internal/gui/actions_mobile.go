@@ -517,7 +517,7 @@ func playMobileAction(screen *FyneScreen) {
 			}
 			return
 		}
-		check(screen.Current, err)
+		check(screen.Current, screen.radioStartError(screen.MediaText.Text, err))
 		if err != nil {
 			startAfreshPlayButton(screen)
 			return
@@ -528,7 +528,7 @@ func playMobileAction(screen *FyneScreen) {
 		mediaFile = mediaURL
 		if _, radioSelected := screen.radioStationForURL(screen.MediaText.Text); radioSelected {
 			_ = mediaURL.Close()
-			mediaFile = httphandlers.RemoteMediaURL(screen.MediaText.Text)
+			mediaFile = httphandlers.RemoteMediaURL{URL: screen.MediaText.Text, OnTitle: screen.radioRelayTitles(screen.MediaText.Text)}
 		}
 		if strings.Contains(mediaType, "image") {
 			readerToBytes, err := io.ReadAll(mediaURL)
@@ -1275,7 +1275,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx contex
 			return
 		}
 		if err != nil {
-			check(w, err)
+			check(w, screen.radioStartError(mediaURL, err))
 			startAfreshPlayButton(screen)
 			return
 		}
@@ -1312,7 +1312,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx contex
 			var input any
 			var stream io.ReadCloser
 			if tcOpts.AudioOnly {
-				input = httphandlers.RemoteMediaURL(mediaURL)
+				input = httphandlers.RemoteMediaURL{URL: mediaURL, OnTitle: screen.radioRelayTitles(mediaURL)}
 			} else {
 				stream, err = utils.StreamURL(streamCtx, mediaURL)
 				if err != nil {

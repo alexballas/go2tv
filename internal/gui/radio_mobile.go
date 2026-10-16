@@ -21,6 +21,9 @@ func (s *FyneScreen) cancelQueuedRadioPlayback() {
 	}
 }
 
+// Mobile playback claims the UI thread with DoAndWait.
+func (s *FyneScreen) playRadioStation() { go playAction(s) }
+
 func (s *FyneScreen) radioSongDisplayAvailable() bool { return s.radioSong.label != nil }
 
 func (s *FyneScreen) refreshRadioSongView() {

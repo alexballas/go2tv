@@ -40,7 +40,7 @@ func TestRadioReceiverCancellationClosesStalledUpstream(t *testing.T) {
 			defer upstream.Close()
 			defer upstream.CloseClientConnections()
 			server := NewServer("")
-			var media any = RemoteMediaURL(upstream.URL)
+			var media any = RemoteMediaURL{URL: upstream.URL}
 			if tc.owned {
 				rc, err := utils.StreamURL(t.Context(), upstream.URL)
 				if err != nil {
@@ -92,7 +92,7 @@ func TestDirectRadioReceiverProbesDoNotOpenUpstream(t *testing.T) {
 	}))
 	defer upstream.Close()
 	server := NewServer("")
-	server.AddHandler("/radio", &soapcalls.TVPayload{MediaType: "audio/mpeg"}, nil, RemoteMediaURL(upstream.URL))
+	server.AddHandler("/radio", &soapcalls.TVPayload{MediaType: "audio/mpeg"}, nil, RemoteMediaURL{URL: upstream.URL})
 	response := httptest.NewRecorder()
 	server.ServeMediaHandler()(response, httptest.NewRequest(http.MethodHead, "/radio", nil))
 	if response.Code != http.StatusOK || response.Body.Len() != 0 || response.Header().Get("Content-Type") != "audio/mpeg" {

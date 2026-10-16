@@ -2,6 +2,7 @@ package gui
 
 import (
 	"math"
+	"sort"
 	"strings"
 
 	"github.com/alexballas/refyne/v2"
@@ -24,6 +25,17 @@ type radioCountryPicker struct {
 }
 
 func (r *radioView) setRadioCountries(countries []radiobrowser.Country) {
+	tag := radioDisplayLanguage()
+	namer := display.Regions(tag)
+	localized := make([]radiobrowser.Country, len(countries))
+	for i, country := range countries {
+		localized[i] = country
+		if name := radioRegionName(namer, country.Code); name != "" {
+			localized[i].Name = name
+		}
+	}
+	sort.SliceStable(localized, func(i, j int) bool { return strings.ToLower(localized[i].Name) < strings.ToLower(localized[j].Name) })
+	countries = localized
 	r.countries = countries
 	for _, country := range countries {
 		if country.Code == r.countryCode {
@@ -76,7 +88,7 @@ func (r *radioView) chooseCountry() {
 		}
 		fyne.CurrentApp().Preferences().SetString(radioCountryPreference, country.Code)
 		picker.popup.Hide()
-		r.favoritesOnly = false
+		r.mode = radioModeSearch
 		r.searchRadioStations()
 	}
 	picker.popup = dialog.NewCustom(lang.L("Country"), lang.L("Close"), container.NewBorder(picker.search, nil, nil, nil, picker.list), r.screen.Current)
@@ -145,9 +157,31 @@ func (r *radioCountryRenderer) MinSize() fyne.Size {
 }
 
 func radioCountryName(code string) string {
-	region, err := language.ParseRegion(code)
-	if err != nil {
-		return code
+	if name := radioRegionName(display.Regions(radioDisplayLanguage()), code); name != "" {
+		return name
 	}
-	return display.English.Regions().Name(region)
+	return code
+}
+
+func radioRegionName(namer display.Namer, code string) string {
+	region, err := language.ParseRegion(code)
+	if err != nil || namer == nil {
+		return ""
+	}
+	return namer.Name(region)
+}
+
+// radioDisplayLanguage follows the UI translation in use, so country names
+// never switch to a language the rest of the app is not shown in.
+func radioDisplayLanguage() language.Tag {
+	requested := language.Make(lang.SystemLocale().String())
+	switch fyne.CurrentApp().Preferences().String("Language") {
+	case "English":
+		requested = language.English
+	case "中文(简体)":
+		requested = language.SimplifiedChinese
+	}
+	supported := []language.Tag{language.English, language.SimplifiedChinese, language.TraditionalChinese}
+	_, index, _ := language.NewMatcher(supported).Match(requested)
+	return supported[index]
 }

@@ -1,4 +1,4 @@
-// Package radiometadata observes ICY titles independently of renderer audio.
+// Package radiometadata extracts ICY track titles from radio streams.
 package radiometadata
 
 import (
@@ -13,6 +13,9 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
+
+	"golang.org/x/text/encoding/charmap"
 )
 
 const (
@@ -57,8 +60,8 @@ func StreamTitles(ctx context.Context, streamURL string, onTitle func(string)) e
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("ICY status: %d", response.StatusCode)
 	}
-	interval, err := strconv.Atoi(response.Header.Get("icy-metaint"))
-	if err != nil || interval <= 0 || interval > MaxInterval {
+	interval, ok := Interval(response.Header.Get("icy-metaint"))
+	if !ok {
 		return nil
 	}
 	return readTitles(requestCtx, cancel, response.Body, interval, readTimeout, onTitle)
@@ -85,44 +88,99 @@ func (r idleReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
+// Interval parses an icy-metaint header within the supported range.
+func Interval(header string) (int, bool) {
+	interval, err := strconv.Atoi(strings.TrimSpace(header))
+	return interval, err == nil && interval > 0 && interval <= MaxInterval
+}
+
+// Reader strips ICY metadata blocks from relayed audio and reports changed
+// titles, so renderers receive plain audio from a single upstream connection.
+type Reader struct {
+	reader    io.Reader
+	interval  int
+	remaining int
+	block     []byte
+	lastTitle string
+	onTitle   func(string)
+}
+
+// NewReader expects an interval accepted by Interval.
+func NewReader(reader io.Reader, interval int, onTitle func(string)) *Reader {
+	return &Reader{reader: reader, interval: interval, remaining: interval, block: make([]byte, 255*16), onTitle: onTitle}
+}
+
+func (r *Reader) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if r.remaining == 0 {
+		if err := r.readMetadata(); err != nil {
+			return 0, err
+		}
+	}
+	n, err := r.reader.Read(p[:min(len(p), r.remaining)])
+	r.remaining -= n
+	return n, err
+}
+
+func (r *Reader) readMetadata() error {
+	var length [1]byte
+	if _, err := io.ReadFull(r.reader, length[:]); err != nil {
+		return err
+	}
+	n := int(length[0]) * 16
+	if _, err := io.ReadFull(r.reader, r.block[:n]); err != nil {
+		if err == io.EOF {
+			err = io.ErrUnexpectedEOF
+		}
+		return err
+	}
+	r.remaining = r.interval
+	if title, found := streamTitle(r.block[:n]); found && title != r.lastTitle {
+		r.lastTitle = title
+		if r.onTitle != nil {
+			r.onTitle(title)
+		}
+	}
+	return nil
+}
+
 func readTitles(ctx context.Context, cancel context.CancelCauseFunc, reader io.Reader, interval int, timeout time.Duration, onTitle func(string)) error {
-	if interval <= 0 || interval > MaxInterval {
+	if _, ok := Interval(strconv.Itoa(interval)); !ok {
 		return errors.New("ICY: invalid metadata interval")
 	}
-	reader = idleReader{Reader: reader, cancel: cancel, timeout: timeout}
-	var length [1]byte
-	block := make([]byte, 255*16)
-	lastTitle := ""
+	icy := NewReader(idleReader{Reader: reader, cancel: cancel, timeout: timeout}, interval, onTitle)
+	buffer := make([]byte, 32<<10)
 	for {
 		if ctx.Err() != nil {
 			return context.Cause(ctx)
 		}
-		_, err := io.CopyN(io.Discard, reader, int64(interval))
-		if err == nil {
-			_, err = io.ReadFull(reader, length[:])
-		}
-		n := int(length[0]) * 16
-		if err == nil && n > 0 {
-			_, err = io.ReadFull(reader, block[:n])
-		}
-		if err != nil {
+		if _, err := icy.Read(buffer); err != nil {
 			if ctx.Err() != nil {
 				return context.Cause(ctx)
 			}
 			return fmt.Errorf("ICY metadata: %w", err)
 		}
-		if title, found := streamTitle(string(block[:n])); found && title != lastTitle {
-			lastTitle = title
-			if onTitle != nil {
-				onTitle(title)
-			}
-		}
 	}
 }
 
-func streamTitle(block string) (string, bool) {
+func streamTitle(raw []byte) (string, bool) {
+	block := string(raw)
+	// Many Shoutcast servers send legacy Windows-1252/Latin-1 titles.
+	if !utf8.Valid(raw) {
+		if decoded, err := charmap.Windows1252.NewDecoder().Bytes(raw); err == nil {
+			block = string(decoded)
+		}
+	}
 	marker := "streamtitle="
-	start := strings.Index(strings.ToLower(block), marker)
+	start := -1
+	for i := 0; i+len(marker) <= len(block); i++ {
+		if strings.EqualFold(block[i:i+len(marker)], marker) {
+			start = i
+			break
+		}
+	}
 	if start < 0 {
 		return "", false
 	}

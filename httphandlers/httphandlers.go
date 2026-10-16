@@ -63,6 +63,8 @@ type osFileType struct {
 	time time.Time
 	file io.ReadSeeker
 	path string
+	// onTitle marks path as a remote station relayed by audio transcoding.
+	onTitle func(string)
 }
 
 // AddHandler dynamically adds a new handler. Currently used by the gapless playback logic where we use
@@ -580,7 +582,7 @@ func serveContentWithDLNAOptions(w http.ResponseWriter, r *http.Request, tv *soa
 				serveContentReadClose(w, r, tv, tcOpts, mediaType, false, http.NoBody, ff, dlnaOpts)
 				return
 			}
-			rc, err := utils.StreamURL(r.Context(), string(f))
+			rc, err := utils.StreamURLWithTitles(r.Context(), f.URL, f.OnTitle)
 			if err != nil {
 				if tv != nil {
 					tv.Log().Debug("remote media acquisition failed", "Method", "DLNAMediaHTTP", "Action", "UpstreamError", "Path", r.URL.Path, "Error", err)
@@ -591,7 +593,7 @@ func serveContentWithDLNAOptions(w http.ResponseWriter, r *http.Request, tv *soa
 			serveContentReadClose(w, r, tv, tcOpts, mediaType, false, rc, ff, dlnaOpts)
 			return
 		}
-		serveContentCustomType(w, r, tv, tcOpts, mediaType, transcode, false, osFileType{path: string(f)}, ff, dlnaOpts)
+		serveContentCustomType(w, r, tv, tcOpts, mediaType, transcode, false, osFileType{path: f.URL, onTitle: f.OnTitle}, ff, dlnaOpts)
 	case osFileType:
 		serveContentCustomType(w, r, tv, tcOpts, mediaType, transcode, seek, f, ff, dlnaOpts)
 	case MediaReaderSeeker:
@@ -690,7 +692,11 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 
 // RemoteMediaURL opens a fresh upstream per request. Direct streams use the
 // receiver request context; transcoding lets FFmpeg open URLs, including HLS.
-type RemoteMediaURL string
+// OnTitle receives ICY track titles parsed from the relayed connection.
+type RemoteMediaURL struct {
+	URL     string
+	OnTitle func(string)
+}
 
 // LiveStream borrows the reader of a live, non-seekable stream for the
 // duration of one request. Unlike MediaReaderSeeker it cannot hand out a fresh
@@ -755,6 +761,9 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcall
 			if tcOpts != nil {
 				opts = tcOpts
 				w.Header().Set("Access-Control-Allow-Origin", "*")
+			}
+			if f.onTitle != nil {
+				input = utils.RemoteAudio{URL: f.path, OnTitle: f.onTitle}
 			}
 			serveAudioTranscode(w, r, input, opts)
 

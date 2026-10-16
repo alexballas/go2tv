@@ -557,6 +557,8 @@ func check(s *FyneScreen, err error) {
 	checkInWindow(s, err, s.Current)
 }
 
+func (s *FyneScreen) showPlaybackError(err error) { check(s, err) }
+
 func checkInWindow(s *FyneScreen, err error, parent fyne.Window) {
 	s.muError.Lock()
 	defer s.muError.Unlock()

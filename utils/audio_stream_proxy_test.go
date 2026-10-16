@@ -53,7 +53,7 @@ func TestRadioProxyRewritesHTTPSHLSReferences(t *testing.T) {
 	previous := streamHTTPClient
 	streamHTTPClient = upstream.Client()
 	defer func() { streamHTTPClient = previous }()
-	proxy, entryURL, err := newAudioStreamProxy(context.Background(), upstream.URL+"/start")
+	proxy, entryURL, err := newAudioStreamProxy(context.Background(), upstream.URL+"/start", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestRadioProxyClosesOrdinaryStream(t *testing.T) {
 		io.WriteString(w, "radio bytes")
 	}))
 	defer upstream.Close()
-	proxy, endpoint, err := newAudioStreamProxy(context.Background(), upstream.URL)
+	proxy, endpoint, err := newAudioStreamProxy(context.Background(), upstream.URL, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,6 +134,42 @@ func TestRadioProxyClosesOrdinaryStream(t *testing.T) {
 	}
 }
 
+func TestRadioProxyRelaysICYTitlesOnPlaybackConnection(t *testing.T) {
+	var requests atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.Header().Set("Content-Type", "audio/mpeg")
+		if r.Header.Get("Icy-MetaData") != "1" {
+			io.WriteString(w, "radio")
+			return
+		}
+		w.Header().Set("icy-metaint", "3")
+		metadata := "StreamTitle='Song';" + strings.Repeat("\x00", 13)
+		w.Header().Set("Content-Length", "38")
+		io.WriteString(w, "rad\x02"+metadata+"io")
+	}))
+	defer upstream.Close()
+	var titles []string
+	proxy, endpoint, err := newAudioStreamProxy(context.Background(), upstream.URL, func(title string) { titles = append(titles, title) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer proxy.close()
+	response, err := http.Get(endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	// The upstream length counts metadata the relay removed.
+	if err != nil || string(body) != "radio" || response.ContentLength == 38 {
+		t.Fatalf("ICY relay = %q (length %d), %v", body, response.ContentLength, err)
+	}
+	if len(titles) != 1 || titles[0] != "Song" || requests.Load() != 1 {
+		t.Fatalf("titles = %q after %d upstream requests", titles, requests.Load())
+	}
+}
+
 func TestRadioProxyRoutesRejectForgedTargetsAndSurviveLiveSegments(t *testing.T) {
 	var requests atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -142,12 +178,12 @@ func TestRadioProxyRoutesRejectForgedTargetsAndSurviveLiveSegments(t *testing.T)
 		_, _ = io.WriteString(w, "radio bytes")
 	}))
 	defer upstream.Close()
-	proxy, endpoint, err := newAudioStreamProxy(context.Background(), upstream.URL+"/live")
+	proxy, endpoint, err := newAudioStreamProxy(context.Background(), upstream.URL+"/live", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer proxy.close()
-	other, _, err := newAudioStreamProxy(context.Background(), upstream.URL+"/live")
+	other, _, err := newAudioStreamProxy(context.Background(), upstream.URL+"/live", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

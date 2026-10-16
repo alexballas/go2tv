@@ -14,16 +14,22 @@ import (
 	"go2tv.app/go2tv/v2/metadata"
 )
 
+// radioStationRow takes taps from the list item so a double-tap can use the
+// station; a single tap still selects it.
 type radioStationRow struct {
 	widget.BaseWidget
 	title, details *widget.Label
 	icon           *canvas.Image
+	id             widget.ListItemID
+	onSelect       func(widget.ListItemID)
+	onUse          func(widget.ListItemID)
 }
 
-func newRadioStationRow() *radioStationRow {
+func newRadioStationRow(onSelect, onUse func(widget.ListItemID)) *radioStationRow {
 	row := &radioStationRow{
 		title:   widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		details: widget.NewLabel(""), icon: canvas.NewImageFromResource(theme.MediaMusicIcon()),
+		id: -1, onSelect: onSelect, onUse: onUse,
 	}
 	row.title.Truncation = fyne.TextTruncateEllipsis
 	row.details.Truncation = fyne.TextTruncateEllipsis
@@ -37,10 +43,26 @@ func (r *radioStationRow) CreateRenderer() fyne.WidgetRenderer {
 	return widget.NewSimpleRenderer(container.NewBorder(nil, nil, r.icon, nil, container.NewVBox(r.title, r.details)))
 }
 
-func (r *radioStationRow) setStation(station radiobrowser.Station, favorite bool, asset *metadata.ArtworkAsset) {
+func (r *radioStationRow) Tapped(*fyne.PointEvent) {
+	if r.onSelect != nil && r.id >= 0 {
+		r.onSelect(r.id)
+	}
+}
+
+func (r *radioStationRow) DoubleTapped(*fyne.PointEvent) {
+	if r.onUse != nil && r.id >= 0 {
+		r.onUse(r.id)
+	}
+}
+
+func (r *radioStationRow) setStation(id widget.ListItemID, station radiobrowser.Station, favorite, playing bool, asset *metadata.ArtworkAsset) {
+	r.id = id
 	name := station.Name
 	if favorite {
 		name = "★ " + name
+	}
+	if playing {
+		name = "▶ " + name
 	}
 	r.title.SetText(name)
 	r.details.SetText(radioStationSummary(station))

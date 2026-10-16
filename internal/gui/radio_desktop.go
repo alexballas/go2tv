@@ -21,9 +21,16 @@ func (s *FyneScreen) validateRadioSelection() error {
 
 func (s *FyneScreen) cancelQueuedRadioPlayback() { s.cancelPendingTorrentPlayback() }
 
+func (s *FyneScreen) playRadioStation() { playAction(s) }
+
 func (s *FyneScreen) radioSongDisplayAvailable() bool { return s.playbackStatus != nil }
 
-func (s *FyneScreen) refreshRadioSongView() { s.refreshPlaybackReadiness() }
+func (s *FyneScreen) refreshRadioSongView() {
+	s.refreshPlaybackReadiness()
+	if s.mpris != nil {
+		s.mpris.refresh()
+	}
+}
 
 func (s *FyneScreen) selectRadioStation(station radiobrowser.Station) {
 	transcode := s.TranscodeCheckBox.Checked

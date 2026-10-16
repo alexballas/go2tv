@@ -344,6 +344,8 @@ func NewFyneScreen(version string, crash *crashlog.Session) *FyneScreen {
 	}
 }
 
+func (s *FyneScreen) showPlaybackError(err error) { check(s.Current, err) }
+
 func check(win fyne.Window, err error) {
 	if err != nil {
 		cleanErr := strings.ReplaceAll(err.Error(), ": ", "\n")

@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -17,6 +18,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"go2tv.app/go2tv/v2/internal/radiometadata"
 )
 
 const maxRadioPlaylistBytes = 1 << 20
@@ -30,14 +33,17 @@ type audioStreamProxy struct {
 	baseURL string
 	server  *http.Server
 	key     [32]byte
+	// The station stream reports ICY titles; HLS playlists and segments do not.
+	top     string
+	onTitle func(string)
 }
 
-func newAudioStreamProxy(ctx context.Context, upstream string) (*audioStreamProxy, string, error) {
+func newAudioStreamProxy(ctx context.Context, upstream string, onTitle func(string)) (*audioStreamProxy, string, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, "", fmt.Errorf("radio proxy listen: %w", err)
 	}
-	proxy := &audioStreamProxy{baseURL: "http://" + listener.Addr().String()}
+	proxy := &audioStreamProxy{baseURL: "http://" + listener.Addr().String(), top: upstream, onTitle: onTitle}
 	if _, err := rand.Read(proxy.key[:]); err != nil {
 		_ = listener.Close()
 		return nil, "", fmt.Errorf("radio proxy key: %w", err)
@@ -118,7 +124,17 @@ func (p *audioStreamProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	response, err := streamURLResponseHeaders(ctx, upstream, http.Header{"Range": r.Header.Values("Range"), "User-Agent": {"Go2TV"}})
+	headers := http.Header{"User-Agent": {"Go2TV"}}
+	if ranges := r.Header.Values("Range"); len(ranges) > 0 {
+		headers["Range"] = ranges
+	}
+	// ICY offsets count from the response start, so only request metadata
+	// when the relayed body starts at the beginning of the stream.
+	icy := p.onTitle != nil && upstream == p.top && r.Method == http.MethodGet && (len(r.Header.Values("Range")) == 0 || r.Header.Get("Range") == "bytes=0-")
+	if icy {
+		headers.Set("Icy-MetaData", "1")
+	}
+	response, err := streamURLResponseHeaders(ctx, upstream, headers)
 	if err != nil {
 		http.Error(w, "radio upstream unavailable", http.StatusBadGateway)
 		return
@@ -153,14 +169,22 @@ func (p *audioStreamProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "radio upstream timeout", http.StatusGatewayTimeout)
 		return
 	}
+	headers = http.Header{}
 	for _, header := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"} {
 		if value := response.Header.Get(header); value != "" {
-			w.Header().Set(header, value)
+			headers.Set(header, value)
 		}
 	}
+	var body io.Reader = reader
+	if interval, ok := radiometadata.Interval(response.Header.Get("icy-metaint")); icy && ok {
+		// Stripped metadata changes the length and byte offsets.
+		body = radiometadata.NewReader(reader, interval, p.onTitle)
+		headers = http.Header{"Content-Type": headers["Content-Type"]}
+	}
+	maps.Copy(w.Header(), headers)
 	w.WriteHeader(response.StatusCode)
 	if r.Method == http.MethodGet {
-		_, _ = io.Copy(w, reader)
+		_, _ = io.Copy(w, body)
 	}
 }
 

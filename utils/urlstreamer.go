@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"go2tv.app/go2tv/v2/internal/radiometadata"
 )
 
 var ErrBadStatus = errors.New("streamURL bad status code")
@@ -157,6 +159,32 @@ func StreamURL(ctx context.Context, s string) (io.ReadCloser, error) {
 	}
 
 	return resp.Body, nil
+}
+
+// StreamURLWithTitles opens live audio and, when onTitle is set, requests ICY
+// metadata on the same connection. Metadata blocks are stripped from the body.
+func StreamURLWithTitles(ctx context.Context, s string, onTitle func(string)) (io.ReadCloser, error) {
+	if onTitle == nil {
+		return StreamURL(ctx, s)
+	}
+	resp, err := streamURLResponseHeaders(ctx, s, http.Header{"Icy-MetaData": {"1"}})
+	if err != nil {
+		return nil, err
+	}
+	return icyBody(resp, onTitle), nil
+}
+
+type icyReadCloser struct {
+	io.Reader
+	io.Closer
+}
+
+func icyBody(resp *http.Response, onTitle func(string)) io.ReadCloser {
+	interval, ok := radiometadata.Interval(resp.Header.Get("icy-metaint"))
+	if !ok || onTitle == nil {
+		return resp.Body
+	}
+	return icyReadCloser{Reader: radiometadata.NewReader(resp.Body, interval, onTitle), Closer: resp.Body}
 }
 
 // StreamURLWithMime returns the stream body and inferred media type from
