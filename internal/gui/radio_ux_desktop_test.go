@@ -211,23 +211,25 @@ func TestRadioRelayTitlesAvoidSecondStationConnection(t *testing.T) {
 	}
 }
 
-func TestRadioRowDoubleTapAndEnterUseStation(t *testing.T) {
+func TestRadioRowTapSelectsAtOnceAndDoubleTapOrEnterUseStation(t *testing.T) {
+	row := func(t *testing.T, r *radioView, id widget.ListItemID) *radioStationRow {
+		for _, object := range test.LaidOutObjects(r.list) {
+			if row, ok := object.(*radioStationRow); ok && row.id == id {
+				return row
+			}
+		}
+		t.Fatal("station row not rendered")
+		return nil
+	}
 	tt := []struct {
 		name string
-		use  func(r *radioView)
+		use  func(t *testing.T, r *radioView)
 	}{
-		{name: "double-tap", use: func(r *radioView) {
-			for _, object := range test.LaidOutObjects(r.list) {
-				if row, ok := object.(*radioStationRow); ok && row.id == 1 {
-					test.DoubleTap(row)
-					return
-				}
-			}
-			t.Fatal("station row not rendered")
+		{name: "double-tap", use: func(t *testing.T, r *radioView) {
+			test.Tap(row(t, r, 1))
+			test.Tap(row(t, r, 1))
 		}},
-		{name: "Enter", use: func(r *radioView) {
-			r.list.OnReturn(1)
-		}},
+		{name: "Enter", use: func(t *testing.T, r *radioView) { r.list.OnReturn(1) }},
 	}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
@@ -242,9 +244,23 @@ func TestRadioRowDoubleTapAndEnterUseStation(t *testing.T) {
 			r.client = radioTestDirectory{stations: stations}
 			fyne.DoAndWait(func() { test.Tap(card.radio) })
 			waitRadioUI(t, func() bool { return r.list.Length() == 2 })
-			fyne.DoAndWait(func() { tc.use(r) })
+			fyne.DoAndWait(func() {
+				// Single taps must not wait for a possible double-tap.
+				test.Tap(row(t, r, 0))
+				if r.selected != 0 || r.useStation.Disabled() || r.modal == nil {
+					t.Fatal("single tap did not select immediately, or used the station")
+				}
+				tc.use(t, r)
+			})
 			waitRadioUI(t, func() bool { return s.MediaText.Text == stations[1].StreamURL() && r.modal == nil })
 		})
+	}
+}
+
+func TestRadioRowSummaryShowsLeadingUniqueTags(t *testing.T) {
+	station := radiobrowser.Station{Country: "Greece", Codec: "MP3", Bitrate: 128, Tags: "jazz, Jazz,,soul ,funk,blues"}
+	if got := radioStationSummary(station); got != "Greece · MP3 · 128 kbps · jazz, soul, funk" {
+		t.Fatalf("row summary = %q", got)
 	}
 }
 

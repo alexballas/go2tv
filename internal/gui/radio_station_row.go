@@ -14,22 +14,21 @@ import (
 	"go2tv.app/go2tv/v2/metadata"
 )
 
-// radioStationRow takes taps from the list item so a double-tap can use the
-// station; a single tap still selects it.
+// radioStationRow takes taps from the list item. It is deliberately not
+// DoubleTappable: drivers delay single taps on those to wait for a second.
 type radioStationRow struct {
 	widget.BaseWidget
 	title, details *widget.Label
 	icon           *canvas.Image
 	id             widget.ListItemID
-	onSelect       func(widget.ListItemID)
-	onUse          func(widget.ListItemID)
+	onTap          func(widget.ListItemID)
 }
 
-func newRadioStationRow(onSelect, onUse func(widget.ListItemID)) *radioStationRow {
+func newRadioStationRow(onTap func(widget.ListItemID)) *radioStationRow {
 	row := &radioStationRow{
 		title:   widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		details: widget.NewLabel(""), icon: canvas.NewImageFromResource(theme.MediaMusicIcon()),
-		id: -1, onSelect: onSelect, onUse: onUse,
+		id: -1, onTap: onTap,
 	}
 	row.title.Truncation = fyne.TextTruncateEllipsis
 	row.details.Truncation = fyne.TextTruncateEllipsis
@@ -44,14 +43,8 @@ func (r *radioStationRow) CreateRenderer() fyne.WidgetRenderer {
 }
 
 func (r *radioStationRow) Tapped(*fyne.PointEvent) {
-	if r.onSelect != nil && r.id >= 0 {
-		r.onSelect(r.id)
-	}
-}
-
-func (r *radioStationRow) DoubleTapped(*fyne.PointEvent) {
-	if r.onUse != nil && r.id >= 0 {
-		r.onUse(r.id)
+	if r.onTap != nil && r.id >= 0 {
+		r.onTap(r.id)
 	}
 }
 
@@ -83,5 +76,29 @@ func radioStationSummary(station radiobrowser.Station) string {
 	if station.Bitrate > 0 {
 		parts = append(parts, fmt.Sprintf("%d kbps", station.Bitrate))
 	}
+	if tags := radioStationTags(station.Tags, maxRadioRowTags); tags != "" {
+		parts = append(parts, tags)
+	}
 	return strings.Join(parts, " · ")
+}
+
+// Rows show the leading genre tags; the label truncates anything wider.
+const maxRadioRowTags = 3
+
+func radioStationTags(tags string, limit int) string {
+	var result []string
+	seen := make(map[string]bool)
+	for tag := range strings.SplitSeq(tags, ",") {
+		tag = strings.TrimSpace(tag)
+		key := strings.ToLower(tag)
+		if tag == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		result = append(result, tag)
+		if len(result) == limit {
+			break
+		}
+	}
+	return strings.Join(result, ", ")
 }

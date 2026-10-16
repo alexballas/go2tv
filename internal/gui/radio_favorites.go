@@ -49,7 +49,7 @@ func (r *radioView) showFavorites() {
 	sort.Slice(stations, func(i, j int) bool { return strings.ToLower(stations[i].Name) < strings.ToLower(stations[j].Name) })
 	r.setStations(stations)
 	if len(stations) == 0 {
-		r.status.SetText(lang.L("No favorites yet — select a station and tap Save favorite"))
+		r.status.SetText(lang.L("No favorites yet — select a station and tap ☆ Favorite"))
 		return
 	}
 	r.status.SetText(fmt.Sprintf(lang.L("Saved %d favorites"), len(stations)))

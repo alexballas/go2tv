@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/container"
@@ -63,20 +64,21 @@ type radioView struct {
 	name            *widget.Entry
 	country         *radioCountryButton
 	status          *widget.Label
-	details         *widget.Label
 	list            *widget.List
 	useStation      *widget.Button
 	favorite        *widget.Button
 	popular         *widget.Button
 	favoritesButton *widget.Button
 	recentButton    *widget.Button
+	lastTapID       widget.ListItemID
+	lastTapAt       time.Time
 }
 
 func radioWindow(ctx context.Context, screen *FyneScreen) fyne.CanvasObject {
 	r := &radioView{
 		screen: screen, parentCtx: ctx, ctx: ctx,
 		artwork: screen.getRadioArtworkCache(), iconsPending: make(map[string]bool),
-		client: radiobrowser.New("Go2TV/" + screen.version), selected: -1,
+		client: radiobrowser.New("Go2TV/" + screen.version), selected: -1, lastTapID: -1,
 	}
 	screen.radio = r
 	r.loadRadioPreferences(fyne.CurrentApp().Preferences())
@@ -84,14 +86,12 @@ func radioWindow(ctx context.Context, screen *FyneScreen) fyne.CanvasObject {
 	r.name.SetPlaceHolder(lang.L("Search station name or genre"))
 	r.status = widget.NewLabel(lang.L("Discover stations from Radio Browser"))
 	r.status.Wrapping = fyne.TextWrapWord
-	r.details = widget.NewLabel(lang.L("Select a station"))
-	r.details.Wrapping = fyne.TextWrapWord
 	r.country = newRadioCountryButton(lang.L("Select country"), r.chooseCountry)
 	if r.countryCode != "" {
 		r.country.SetText(radioCountryName(r.countryCode))
 	}
 	r.list = widget.NewList(func() int { return len(r.stations) }, func() fyne.CanvasObject {
-		return newRadioStationRow(r.list.Select, r.useRadioRow)
+		return newRadioStationRow(r.tapRadioRow)
 	}, func(id widget.ListItemID, object fyne.CanvasObject) {
 		station := r.stations[id]
 		asset, _, _ := r.artwork.lookup(station.Favicon)
@@ -102,7 +102,7 @@ func radioWindow(ctx context.Context, screen *FyneScreen) fyne.CanvasObject {
 	r.list.OnReturn = r.useRadioRow
 	r.useStation = widget.NewButtonWithIcon(lang.L("Use station"), theme.ConfirmIcon(), r.useRadioStation)
 	r.useStation.Importance = widget.HighImportance
-	r.favorite = widget.NewButtonWithIcon(lang.L("Save favorite"), theme.ContentAddIcon(), r.toggleFavorite)
+	r.favorite = widget.NewButton("☆ "+lang.L("Favorite"), r.toggleFavorite)
 	r.refreshRadioSelection()
 	search := func() { r.mode = radioModeSearch; r.searchRadioStations() }
 	r.name.OnSubmitted = func(string) { search() }
@@ -111,7 +111,9 @@ func radioWindow(ctx context.Context, screen *FyneScreen) fyne.CanvasObject {
 	r.favoritesButton = widget.NewButton(lang.L("Favorites"), r.showFavorites)
 	r.recentButton = widget.NewButton(lang.L("Recent"), r.showRecent)
 	filters := container.NewVBox(container.NewBorder(nil, nil, nil, searchButton, r.name), container.NewGridWithColumns(4, r.country, r.popular, r.favoritesButton, r.recentButton), r.status)
-	controls := container.NewVBox(r.details, container.NewGridWithColumns(2, r.favorite, r.useStation))
+	// The highlighted row already describes the selection; a details panel
+	// would repeat it and resize the list on every selection.
+	controls := container.NewBorder(nil, nil, r.favorite, nil, r.useStation)
 	r.content = container.NewPadded(container.NewBorder(filters, controls, nil, nil, r.list))
 	return r.content
 }
@@ -148,6 +150,20 @@ func (r *radioView) loadRadioCountries() {
 			r.setRadioCountries(countries)
 		})
 	}()
+}
+
+// tapRadioRow selects immediately; a second tap on the same row within the
+// driver's double-tap delay uses the station.
+func (r *radioView) tapRadioRow(id widget.ListItemID) {
+	now := time.Now()
+	double := id == r.lastTapID && now.Sub(r.lastTapAt) <= fyne.CurrentApp().Driver().DoubleTapDelay()
+	r.lastTapID, r.lastTapAt = id, now
+	if double {
+		r.lastTapID = -1
+		r.useRadioRow(id)
+		return
+	}
+	r.list.Select(id)
 }
 
 // useRadioRow handles double-tap and Enter on a station row.
@@ -212,6 +228,7 @@ func radioDirectoryError(err error) string {
 
 func (r *radioView) setStations(stations []radiobrowser.Station) {
 	r.selected = -1
+	r.lastTapID = -1
 	r.list.UnselectAll()
 	r.stations = stations
 	r.list.Refresh()
@@ -220,17 +237,12 @@ func (r *radioView) setStations(stations []radiobrowser.Station) {
 
 func (r *radioView) refreshRadioSelection() {
 	if r.selected < 0 || r.selected >= len(r.stations) {
-		r.details.SetText(lang.L("Select a station"))
 		r.useStation.Disable()
+		r.favorite.SetText("☆ " + lang.L("Favorite"))
 		r.favorite.Disable()
 		return
 	}
 	station := r.stations[r.selected]
-	detail := station.Name + "\n" + radioStationSummary(station)
-	if station.Tags != "" {
-		detail += "\n" + station.Tags
-	}
-	r.details.SetText(detail)
 	if r.selectPending {
 		r.useStation.Disable()
 	} else {
@@ -238,8 +250,8 @@ func (r *radioView) refreshRadioSelection() {
 	}
 	r.favorite.Enable()
 	if r.isFavorite(station.UUID) {
-		r.favorite.SetText(lang.L("Remove favorite"))
+		r.favorite.SetText("★ " + lang.L("Favorite"))
 	} else {
-		r.favorite.SetText(lang.L("Save favorite"))
+		r.favorite.SetText("☆ " + lang.L("Favorite"))
 	}
 }
