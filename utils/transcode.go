@@ -136,5 +136,6 @@ func serveDLNATranscodedStream(ctx context.Context, w io.Writer, input any, ff *
 	}
 
 	hw := selectTranscodeVideoDecoder(ffmpegPath, encoderPlan, burn.enabled(), in, false)
+	hw = rotationSafeTranscodeDecoder(ctx, ffmpegPath, input, in, hw, logger)
 	return runTranscodeWithFallback(ctx, ff, input, in, w, encoderPlan, videoEncoderProfileDLNA, hw, buildArgs, logger)
 }

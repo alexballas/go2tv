@@ -443,3 +443,121 @@ func TestRaspberryPiTranscodeAvailability(t *testing.T) {
 		})
 	}
 }
+
+// MPEG-TS cannot carry a display matrix, so rotated DLNA inputs must reach the
+// CPU filters, where FFmpeg autorotate turns the frames upright.
+func TestServeTranscodeRotatedInputLeavesGPUFrames(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	if _, err := ResolveFFprobePath(ffmpeg); err != nil {
+		t.Skip("ffprobe unavailable")
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	upright, rotated := filepath.Join(dir, "upright.mp4"), filepath.Join(dir, "rotated.mp4")
+	if out, err := exec.Command(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "testsrc=size=64x36:rate=5:duration=1", "-c:v", "mpeg4", upright).CombinedOutput(); err != nil {
+		t.Fatalf("create media: %v: %s", err, out)
+	}
+	if out, err := exec.Command(ffmpeg, "-v", "error", "-display_rotation", "90", "-i", upright, "-c", "copy", rotated).CombinedOutput(); err != nil {
+		t.Skipf("display rotation unsupported: %v: %s", err, out)
+	}
+
+	tt := []struct {
+		name, codec, hw, media string
+		wantAccel, wantFilter  string
+		wantGPUFrames          bool
+	}{
+		{"cuda upright", "h264_nvenc", "cuda", upright, "cuda", "scale_cuda", true},
+		{"cuda rotated", "h264_nvenc", "cuda", rotated, "cuda", softwareTranscodeScaleFilter, false},
+		{"vaapi upright", "h264_vaapi", "vaapi", upright, "vaapi", "scale_vaapi", true},
+		{"vaapi rotated", "h264_vaapi", "vaapi", rotated, "vaapi", softwareTranscodeScaleFilter, false},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			var globals []string
+			if tc.hw == "vaapi" {
+				globals = []string{"-vaapi_device", "/dev/dri/renderD128"}
+			}
+			key := transcodeEncoderCacheKey(executable, videoEncoderProfileDLNA)
+			transcodeVideoEncoderCache.Store(key, transcodeHardwareEncoderPlan(videoEncoderProfileDLNA, tc.codec, globals))
+			cudaTranscodeCache.Store(executable, true)
+			vaapiKey := executable + "|/dev/dri/renderD128"
+			vaapiTranscodeCache.Store(vaapiKey, true)
+			t.Cleanup(func() {
+				transcodeVideoEncoderCache.Delete(key)
+				cudaTranscodeCache.Delete(executable)
+				vaapiTranscodeCache.Delete(vaapiKey)
+			})
+			calls := filepath.Join(t.TempDir(), "calls.json")
+			t.Setenv("GO2TV_TEST_FFMPEG_HELPER", "1")
+			t.Setenv("GO2TV_TEST_FFMPEG_CALLS", calls)
+			t.Setenv("GO2TV_TEST_FFMPEG_MODE", "")
+			var out bytes.Buffer
+			var command exec.Cmd
+			if err := ServeTranscodedStream(context.Background(), &out, tc.media, &command, executable, "", 0, SubtitleSizeMedium); err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(calls)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var args []string
+			if err := json.Unmarshal(data, &args); err != nil {
+				t.Fatal(err)
+			}
+			accel, input := slices.Index(args, "-hwaccel"), slices.Index(args, "-i")
+			if accel < 0 || accel >= input || args[accel+1] != tc.wantAccel {
+				t.Fatalf("GPU decoding lost: %q", args)
+			}
+			if got := slices.Contains(args, "-hwaccel_output_format"); got != tc.wantGPUFrames {
+				t.Fatalf("GPU frames = %v, want %v: %q", got, tc.wantGPUFrames, args)
+			}
+			filter := slices.Index(args, "-vf")
+			if filter < 0 || !strings.Contains(args[filter+1], tc.wantFilter) {
+				t.Fatalf("filter = %q, want %q", args, tc.wantFilter)
+			}
+			if !slices.Contains(args, tc.codec) {
+				t.Fatalf("hardware encoder lost: %q", args)
+			}
+		})
+	}
+}
+
+func TestVideoRotationFileDescriptor(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	if _, err := ResolveFFprobePath(ffmpeg); err != nil {
+		t.Skip("ffprobe unavailable")
+	}
+	dir := t.TempDir()
+	upright, media := filepath.Join(dir, "upright.mp4"), filepath.Join(dir, "rotated.mp4")
+	if out, err := exec.Command(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "testsrc=size=64x36:rate=5:duration=1", "-c:v", "mpeg4", upright).CombinedOutput(); err != nil {
+		t.Fatalf("create media: %v: %s", err, out)
+	}
+	if out, err := exec.Command(ffmpeg, "-v", "error", "-display_rotation", "270", "-i", upright, "-c", "copy", media).CombinedOutput(); err != nil {
+		t.Skipf("display rotation unsupported: %v: %s", err, out)
+	}
+	f, err := os.Open(media)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	// Android content:// files arrive as descriptors read mid-stream.
+	if _, err := f.Seek(100, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	rotation, err := videoRotationContext(context.Background(), ffmpeg, f, "fd:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rotation%360 == 0 {
+		t.Fatalf("rotation = %d, want non-zero", rotation)
+	}
+}
