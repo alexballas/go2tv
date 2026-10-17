@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"sync/atomic"
@@ -561,5 +562,111 @@ func TestArtworkContentAddressedImmutable(t *testing.T) {
 	response.Body.Close()
 	if response.StatusCode != http.StatusNotFound {
 		t.Fatalf("shared route status after final removal = %d, want 404", response.StatusCode)
+	}
+}
+
+func TestLiveRouteRelaysStationAndStripsMetadata(t *testing.T) {
+	block := append([]byte{2}, []byte("StreamTitle='Song A';")...)
+	block = append(block, make([]byte, 33-len(block))...)
+	var upstreamRequests atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamRequests.Add(1)
+		if r.Header.Get("Icy-MetaData") != "1" {
+			t.Error("relay did not request station titles")
+		}
+		w.Header().Set("Content-Type", "audio/mpeg")
+		w.Header().Set("icy-metaint", "8")
+		_, _ = w.Write(append(append([]byte("abcdefgh"), block...), "ijklmnop"...))
+	}))
+	defer upstream.Close()
+	var titles []string
+	server := New(Config{ListenAddr: "127.0.0.1:0"})
+	route := startTestServer(t, server, playback.ServerRequest{MediaExt: ".mp3", MediaType: "audio/mpeg", Target: playback.Device{Protocol: "DLNA"}, Live: &playback.LiveSource{URL: upstream.URL, OnTitle: func(title string) { titles = append(titles, title) }}})
+
+	head, err := http.NewRequest(http.MethodHead, route.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	head.Header.Set("getcontentFeatures.dlna.org", "1")
+	response, err := http.DefaultClient.Do(head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || upstreamRequests.Load() != 0 {
+		t.Fatalf("probe status %d opened %d station connections", response.StatusCode, upstreamRequests.Load())
+	}
+	if features := response.Header.Get("contentFeatures.dlna.org"); strings.Contains(features, "OP=") || response.Header.Get("transferMode.dlna.org") != "Streaming" {
+		t.Fatalf("live stream advertised seeking or non-streaming transfer: %q", features)
+	}
+
+	response, err = http.Get(route.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if string(body) != "abcdefghijklmnop" || response.Header.Get("Content-Type") != "audio/mpeg" {
+		t.Fatalf("relayed body %q (%s), want station audio without metadata", body, response.Header.Get("Content-Type"))
+	}
+	if len(titles) != 1 || titles[0] != "Song A" {
+		t.Fatalf("titles = %q", titles)
+	}
+
+	request, _ := http.NewRequest(http.MethodGet, route.URL, nil)
+	request.Header.Set("Icy-MetaData", "1")
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.Header.Get("icy-metaint") == "" {
+		t.Fatal("renderer requesting ICY titles got no metadata interval")
+	}
+}
+
+func TestLiveRouteReportsUnavailableStation(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "offline", http.StatusServiceUnavailable)
+	}))
+	defer upstream.Close()
+	server := New(Config{ListenAddr: "127.0.0.1:0"})
+	route := startTestServer(t, server, playback.ServerRequest{MediaType: "audio/mpeg", Live: &playback.LiveSource{URL: upstream.URL, OnTitle: func(string) {}}})
+	request, _ := http.NewRequest(http.MethodGet, route.URL, nil)
+	request.Header.Set("Icy-MetaData", "1")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadGateway || response.Header.Get("icy-metaint") != "" {
+		t.Fatalf("offline station status %d, icy-metaint %q", response.StatusCode, response.Header.Get("icy-metaint"))
+	}
+}
+
+func TestLiveRouteTranscodesStationWithTitles(t *testing.T) {
+	var got playback.ServerRequest
+	server := New(Config{ListenAddr: "127.0.0.1:0", Transcode: func(_ context.Context, w http.ResponseWriter, input io.ReadCloser, request playback.ServerRequest) error {
+		got = request
+		if input != nil {
+			t.Error("live transcode received a pre-opened input")
+		}
+		request.Live.OnTitle("Song C")
+		_, err := io.WriteString(w, "aac")
+		return err
+	}})
+	var titles []string
+	route := startTestServer(t, server, playback.ServerRequest{MediaExt: ".aac", MediaType: "audio/aac", Transcode: true, Target: playback.Device{Protocol: "DLNA"}, Live: &playback.LiveSource{URL: "http://station.test/live", OnTitle: func(title string) { titles = append(titles, title) }}})
+	response, err := http.Get(route.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if string(body) != "aac" || response.Header.Get("Content-Type") != "audio/aac" {
+		t.Fatalf("transcoded station = %q (%s)", body, response.Header.Get("Content-Type"))
+	}
+	if got.Live == nil || got.Live.URL != "http://station.test/live" || len(titles) != 1 || titles[0] != "Song C" {
+		t.Fatalf("transcoder request = %+v, titles %q", got, titles)
 	}
 }

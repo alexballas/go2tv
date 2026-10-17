@@ -142,8 +142,10 @@ type LoadRequest struct {
 	Duration           float64
 	Seekable           bool
 	Transcode          bool
-	Metadata           metadata.Media
-	ArtworkData        []byte
+	// Live marks an endless stream; Chromecast shows it as LIVE.
+	Live        bool
+	Metadata    metadata.Media
+	ArtworkData []byte
 }
 
 type ServerRequest struct {
@@ -158,6 +160,16 @@ type ServerRequest struct {
 	BurnSubtitle  bool
 	Target        Device
 	TorrentSource mediasource.Source
+	// Live relays an endless network stream in place of Media.
+	Live *LiveSource
+}
+
+// LiveSource is an endless http(s) stream such as internet radio. The media
+// server opens it once per renderer request; OnTitle receives ICY track titles
+// parsed from that connection.
+type LiveSource struct {
+	URL     string
+	OnTitle func(string)
 }
 
 type RouteRequest struct {

@@ -20,6 +20,11 @@ type Config struct {
 	// ManagedByGUI marks a GUI-managed remote session so the browser can
 	// disclose that device availability comes from the desktop app.
 	ManagedByGUI bool
+	// Radio overrides the Radio Browser directory, mainly for tests.
+	Radio RadioDirectory
+	// RadioStorePath persists radio favorites and recent stations. Empty
+	// keeps them in memory for the lifetime of the handler.
+	RadioStorePath string
 }
 
 type envelope struct {
@@ -53,6 +58,7 @@ type bootstrapDTO struct {
 	Limits          map[string]int  `json:"limits"`
 	Features        map[string]bool `json:"features"`
 	Torrent         torrentDTO      `json:"torrent"`
+	Radio           radioLibraryDTO `json:"radio"`
 }
 
 type deviceDTO struct {
@@ -90,4 +96,9 @@ type snapshotDTO struct {
 	MediaType            string            `json:"media_type,omitempty"`
 	ArtworkID            string            `json:"artwork_id"`
 	Policy               controller.Policy `json:"policy"`
+	SelectedLive         bool              `json:"selected_live"`
+	ActiveLive           bool              `json:"active_live"`
+	StreamTitle          string            `json:"stream_title,omitempty"`
+	SelectedStation      string            `json:"selected_station,omitempty"`
+	ActiveStation        string            `json:"active_station,omitempty"`
 }

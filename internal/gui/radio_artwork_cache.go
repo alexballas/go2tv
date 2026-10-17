@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"go2tv.app/go2tv/v2/internal/radiobrowser"
 	"go2tv.app/go2tv/v2/metadata"
 )
 
@@ -87,7 +88,7 @@ func (c *radioArtworkCache) fetch(ctx context.Context, url string) (*metadata.Ar
 		var err error
 		select {
 		case c.slots <- struct{}{}:
-			asset, err = fetchRadioArtwork(ctx, url)
+			asset, err = radiobrowser.FetchIcon(ctx, url)
 			<-c.slots
 		case <-ctx.Done():
 			err = ctx.Err()

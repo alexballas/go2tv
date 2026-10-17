@@ -8,12 +8,13 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
 func testClient(servers ...string) *Client {
-	return &Client{http: http.DefaultClient, userAgent: "Go2TV/test", mirrors: servers, discovered: true}
+	return &Client{http: http.DefaultClient, userAgent: "Go2TV/test", now: time.Now, mirrors: servers, discovered: true}
 }
 
 func TestSearchFiltersAndPlayableStations(t *testing.T) {
@@ -212,5 +213,80 @@ func TestSearchTextCancellationDiscardsPartialMatches(t *testing.T) {
 	stations, err := testClient(server.URL).SearchText(ctx, "jazz", "GR")
 	if !errors.Is(err, context.Canceled) || len(stations) != 0 {
 		t.Fatalf("canceled search published stale matches: %#v, %v", stations, err)
+	}
+}
+
+func TestDirectoryCacheSparesRepeatRequests(t *testing.T) {
+	tt := []struct {
+		name  string
+		fetch func(*Client) error
+		ttl   time.Duration
+	}{
+		{name: "search", ttl: searchCacheTTL, fetch: func(c *Client) error {
+			_, err := c.SearchText(context.Background(), "jazz", "GR")
+			return err
+		}},
+		{name: "countries", ttl: countriesCacheTTL, fetch: func(c *Client) error {
+			_, err := c.Countries(context.Background())
+			return err
+		}},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			var requests atomic.Int32
+			var fail atomic.Bool
+			fail.Store(true)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests.Add(1)
+				if fail.Load() {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+				fmt.Fprint(w, `[{"stationuuid":"one","name":"Station","url_resolved":"https://station.test/live","iso_3166_1":"GR"}]`)
+			}))
+			defer server.Close()
+			now := time.Now()
+			client := testClient(server.URL)
+			client.now = func() time.Time { return now }
+
+			if err := tc.fetch(client); err == nil {
+				t.Fatal("upstream failure not reported")
+			}
+			fail.Store(false)
+			if err := tc.fetch(client); err != nil {
+				t.Fatalf("failure was cached: %v", err)
+			}
+			fetched := requests.Load()
+			if err := tc.fetch(client); err != nil || requests.Load() != fetched {
+				t.Fatalf("repeat fetched upstream: %d -> %d, %v", fetched, requests.Load(), err)
+			}
+			now = now.Add(tc.ttl)
+			if err := tc.fetch(client); err != nil || requests.Load() == fetched {
+				t.Fatalf("expired entry not refetched: %v", err)
+			}
+		})
+	}
+}
+
+func TestCountriesServeStaleListWhenDirectoryFails(t *testing.T) {
+	fail := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if fail {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		fmt.Fprint(w, `[{"iso_3166_1":"GR"}]`)
+	}))
+	defer server.Close()
+	now := time.Now()
+	client := testClient(server.URL)
+	client.now = func() time.Time { return now }
+	if _, err := client.Countries(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	fail, now = true, now.Add(countriesCacheTTL)
+	countries, err := client.Countries(context.Background())
+	if err != nil || len(countries) != 1 || countries[0].Code != "GR" {
+		t.Fatalf("stale countries = %#v, %v", countries, err)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,6 +26,12 @@ const (
 	requestTimeout   = 15 * time.Second
 	maxResponseBytes = 2 << 20
 	DefaultLimit     = 100
+
+	// The directory changes slowly; caching spares Radio Browser repeat
+	// requests from dialog reopens and multiple WebUI remotes.
+	searchCacheTTL    = 5 * time.Minute
+	countriesCacheTTL = 6 * time.Hour
+	maxSearchCache    = 50
 )
 
 var ErrHTTPStatus = errors.New("radio browser HTTP status")
@@ -82,18 +89,56 @@ type Query struct {
 	Limit       int
 }
 
-// Client caches mirror discovery and retries failed requests on another server.
-// A single instance may be used by concurrent directory requests.
+type cachedSearch struct {
+	stations []Station
+	expires  time.Time
+}
+
+// Client caches mirror discovery, searches and countries, and retries failed
+// requests on another server. A single instance may be used by concurrent
+// directory requests.
 type Client struct {
-	http       *http.Client
-	userAgent  string
-	mu         sync.Mutex
-	mirrors    []string
-	discovered bool
+	http        *http.Client
+	userAgent   string
+	now         func() time.Time
+	mu          sync.Mutex
+	mirrors     []string
+	discovered  bool
+	cacheMu     sync.Mutex
+	searches    map[string]cachedSearch
+	searchOrder []string
+	countries   []Country
+	countriesAt time.Time
 }
 
 func New(userAgent string) *Client {
-	return &Client{http: &http.Client{Timeout: requestTimeout}, userAgent: userAgent}
+	return &Client{http: &http.Client{Timeout: requestTimeout}, userAgent: userAgent, now: time.Now}
+}
+
+func (c *Client) cachedSearch(key string) ([]Station, bool) {
+	c.cacheMu.Lock()
+	defer c.cacheMu.Unlock()
+	entry, ok := c.searches[key]
+	if !ok || !c.now().Before(entry.expires) {
+		return nil, false
+	}
+	return slices.Clone(entry.stations), true
+}
+
+func (c *Client) storeSearch(key string, stations []Station) {
+	c.cacheMu.Lock()
+	defer c.cacheMu.Unlock()
+	if c.searches == nil {
+		c.searches = make(map[string]cachedSearch)
+	}
+	if _, exists := c.searches[key]; !exists {
+		if len(c.searchOrder) >= maxSearchCache {
+			delete(c.searches, c.searchOrder[0])
+			c.searchOrder = c.searchOrder[1:]
+		}
+		c.searchOrder = append(c.searchOrder, key)
+	}
+	c.searches[key] = cachedSearch{stations: slices.Clone(stations), expires: c.now().Add(searchCacheTTL)}
 }
 
 func (c *Client) servers(ctx context.Context) []string {
@@ -143,6 +188,10 @@ func (c *Client) Search(ctx context.Context, q Query) ([]Station, error) {
 	if tag := strings.TrimSpace(q.Tag); tag != "" {
 		values.Set("tag", tag)
 	}
+	key := values.Encode()
+	if stations, ok := c.cachedSearch(key); ok {
+		return stations, nil
+	}
 	var stations []Station
 	if err := c.getJSON(ctx, "/json/stations/search", values, &stations); err != nil {
 		return nil, err
@@ -161,6 +210,7 @@ func (c *Client) Search(ctx context.Context, q Query) ([]Station, error) {
 			break
 		}
 	}
+	c.storeSearch(key, result)
 	return result, nil
 }
 
@@ -240,7 +290,29 @@ waiting:
 	return stations, nil
 }
 
+// Countries serves the cached list while fresh, and a stale one when the
+// directory is unreachable.
 func (c *Client) Countries(ctx context.Context) ([]Country, error) {
+	c.cacheMu.Lock()
+	cached, fresh := c.countries, c.now().Sub(c.countriesAt) < countriesCacheTTL
+	c.cacheMu.Unlock()
+	if cached != nil && fresh {
+		return slices.Clone(cached), nil
+	}
+	result, err := c.fetchCountries(ctx)
+	if err != nil {
+		if cached != nil && ctx.Err() == nil {
+			return slices.Clone(cached), nil
+		}
+		return nil, err
+	}
+	c.cacheMu.Lock()
+	c.countries, c.countriesAt = result, c.now()
+	c.cacheMu.Unlock()
+	return slices.Clone(result), nil
+}
+
+func (c *Client) fetchCountries(ctx context.Context) ([]Country, error) {
 	var records []Country
 	if err := c.getJSON(ctx, "/json/countries", url.Values{"hidebroken": {"true"}}, &records); err != nil {
 		return nil, err

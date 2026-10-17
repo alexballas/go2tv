@@ -736,14 +736,23 @@ func (c *Chromecast) statusCall(ctx context.Context, fn func() (playback.CastSta
 func (c *Chromecast) Connect(ctx context.Context) error { return c.call(ctx, c.client.Connect) }
 func (c *Chromecast) Load(ctx context.Context, req playback.LoadRequest) error {
 	return c.call(ctx, func() error {
-		return c.client.LoadMedia(castprotocol.LoadRequest{MediaURL: req.MediaURL, ContentType: req.MediaType, Metadata: req.Metadata, StartTime: req.Start, Duration: float64(req.Duration), SubtitleURL: req.SubtitleURL, TorrentSubtitleURL: req.TorrentSubtitleURL})
+		return c.client.LoadMedia(castLoadRequest(req))
 	})
 }
 func (c *Chromecast) LoadOnExisting(ctx context.Context, req playback.LoadRequest) error {
 	return c.call(ctx, func() error {
-		return c.client.LoadMediaOnExisting(castprotocol.LoadRequest{MediaURL: req.MediaURL, ContentType: req.MediaType, Metadata: req.Metadata, StartTime: req.Start, Duration: float64(req.Duration), SubtitleURL: req.SubtitleURL, TorrentSubtitleURL: req.TorrentSubtitleURL})
+		return c.client.LoadMediaOnExisting(castLoadRequest(req))
 	})
 }
+func castLoadRequest(req playback.LoadRequest) castprotocol.LoadRequest {
+	return castprotocol.LoadRequest{MediaURL: req.MediaURL, ContentType: req.MediaType, Metadata: req.Metadata, StartTime: req.Start, Duration: float64(req.Duration), SubtitleURL: req.SubtitleURL, TorrentSubtitleURL: req.TorrentSubtitleURL, Live: req.Live}
+}
+
+// SetTrackTitle shows a live stream's current track without reloading it.
+func (c *Chromecast) SetTrackTitle(ctx context.Context, title string) error {
+	return c.call(ctx, func() error { return c.client.SetTrackTitle(title) })
+}
+
 func (c *Chromecast) Play(ctx context.Context) error  { return c.call(ctx, c.client.Play) }
 func (c *Chromecast) Pause(ctx context.Context) error { return c.call(ctx, c.client.Pause) }
 func (c *Chromecast) Stop(ctx context.Context) error  { return c.call(ctx, c.client.Stop) }

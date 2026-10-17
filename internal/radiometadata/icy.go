@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -198,6 +199,38 @@ func (w *Writer) writeMetadata() error {
 	w.sent = title
 	return nil
 }
+
+// Relay forwards station titles in-band to renderers that request ICY
+// metadata. DLNA cannot otherwise retitle a playing item without reloading it.
+// The returned callback records each title for the renderer and then calls
+// onTitle; without a renderer request both are returned unchanged.
+func Relay(w http.ResponseWriter, r *http.Request, onTitle func(string)) (http.ResponseWriter, func(string)) {
+	if onTitle == nil || r.Method != http.MethodGet || strings.TrimSpace(r.Header.Get("Icy-MetaData")) != "1" {
+		return w, onTitle
+	}
+	var title atomic.Pointer[string]
+	w.Header()["icy-metaint"] = []string{strconv.Itoa(WriterInterval)}
+	icy := NewWriter(w, WriterInterval, func() string {
+		if current := title.Load(); current != nil {
+			return *current
+		}
+		return ""
+	})
+	return relayWriter{ResponseWriter: w, icy: icy}, func(current string) {
+		title.Store(&current)
+		onTitle(current)
+	}
+}
+
+type relayWriter struct {
+	http.ResponseWriter
+	icy *Writer
+}
+
+func (w relayWriter) Write(p []byte) (int, error) { return w.icy.Write(p) }
+
+// Unwrap keeps http.ResponseController flushing the underlying writer.
+func (w relayWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func metadataBlock(title string) []byte {
 	// ICY has no escaping; the closing "';" would end the title early.

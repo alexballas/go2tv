@@ -37,7 +37,7 @@ No need to copy files to a USB drive or set up a media server. Just select your 
 - **DLNA Gapless Playback** - Supported for DLNA devices
 - **RTMP Server** - Cast live streams from OBS directly to Chromecast (requires FFmpeg)
 - **Cast Desktop (experimental)** - Cast desktop as a live stream to DLNA or Chromecast devices (requires FFmpeg)
-- **Web UI (server mode)** - Browse media roots and control casting from any browser on your network
+- **Web UI (server mode)** - Browse media roots, tune in to internet radio and control casting from any browser on your network
 - **GUI and CLI** - Use the graphical interface or command line
 
 ---
@@ -200,6 +200,15 @@ downloads. Progress and **Cancel download** are shared across browsers. Cancel
 stops torrent playback and removes its queue item and temporary cache. Loading
 metadata leaves the current stream intact; choosing another torrent replaces it.
 Server shutdown removes torrent caches. FFmpeg transcoding supports input seeks.
+
+Switch the media browser to **Radio** to search Radio Browser stations by name or genre,
+filter by country, or open **Favorites** and **Recent**. Press play on a station to cast
+it; without a selected renderer, the station waits for **Play**. The player shows the
+station logo, a **Live** badge, and the current track when the station announces it.
+Stations play outside the playlist. **Transcode next load** re-encodes stations to AAC for
+receivers that cannot play the original codec. Favorites and recent stations are shared
+by every browser and saved in `go2tv/webui-radio.json` under the user configuration
+directory, separately from the desktop GUI's favorites.
 
 From the GUI, open **Settings → Remote Web Session…**, add media folders, choose local or
 LAN access, and start the session.

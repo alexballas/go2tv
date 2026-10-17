@@ -174,8 +174,31 @@ function fixture() {
     "torrent-progress-text",
     "torrent-progress",
     "torrent-cancel",
+    "player-card",
+    "now-playing-label",
+    "stream-title",
+    "stream-title-text",
+    "player-favorite",
+    "live-timeline",
+    "live-elapsed",
+    "source-library",
+    "source-radio",
+    "library-panel",
+    "library-tools",
+    "radio-panel",
+    "radio-tools",
+    "radio-discover",
+    "radio-favorites",
+    "radio-recent",
+    "radio-favorites-count",
+    "radio-query",
+    "radio-country",
+    "radio-list",
+    "radio-status",
+    "radio-live-dot",
   ])
     ids[id] = new Node();
+  ids["radio-country"].tag = "select";
   ids.roots.tag = "select";
   ids["torrent-files"].tag = "select";
   ids["play-toggle"].dataset.command = "player.play";
@@ -2104,4 +2127,235 @@ test("Chromecast burn fallback defaults off, sends policy, and follows updates",
   assert.equal(ids["burn-subtitles"].checked, false);
   ws.emit("close");
   assert.equal(ids["burn-subtitles"].disabled, true);
+});
+
+function radioFixture({ library, fail = 0 } = {}) {
+  const fx = fixture(),
+    originalFetch = fx.env.fetch,
+    calls = [],
+    stations = [
+      {
+        id: "st-1",
+        name: "Jazz <FM>",
+        country: "Greece",
+        country_code: "GR",
+        codec: "MP3",
+        bitrate: 128,
+        tags: ["jazz", "smooth"],
+        icon_url: "/api/radio/icon?id=st-1",
+      },
+      { id: "st-2", name: "News Talk", country: "France", country_code: "FR" },
+    ];
+  fx.env.fetch = async (url, options) => {
+    if (url === "/api/bootstrap") {
+      const body = await (await originalFetch(url)).json();
+      return {
+        ok: true,
+        json: async () => ({
+          ...body,
+          features: { ...body.features, radio: true },
+          radio: library || { favorites: [], recent: [] },
+        }),
+      };
+    }
+    if (url.startsWith("/api/radio/stations")) {
+      calls.push(url);
+      return calls.length <= fail
+        ? { ok: false, json: async () => ({ error: "radio_timeout" }) }
+        : { ok: true, json: async () => ({ stations }) };
+    }
+    if (url === "/api/radio/countries")
+      return {
+        ok: true,
+        json: async () => ({
+          countries: [{ code: "GR", name: "Greece", stations: 3 }],
+        }),
+      };
+    return originalFetch(url, options);
+  };
+  return { ...fx, calls, stations };
+}
+const stationParts = (row) => ({
+  name: row.children[0].children[1].children[0].textContent,
+  meta: row.children[0].children[1].children[1].textContent,
+  favorite: row.children[1].children[0],
+  play: row.children[1].children[1],
+});
+
+test("radio tab searches the directory and casts stations by ID only", async () => {
+  const { ids, env, calls, timers } = radioFixture();
+  const client = startClient(env);
+  await settle();
+  const ws = FakeSocket.instances[0];
+  ws.emit("open");
+  assert.equal(ids["source-radio"].hidden, false);
+  assert.equal(ids["radio-panel"].hidden, true);
+  ids["source-radio"].emit("click");
+  await settle();
+  assert.equal(ids["radio-panel"].hidden, false);
+  assert.equal(ids["library-panel"].hidden, true);
+  assert.equal(ids["library-tools"].hidden, true);
+  assert.equal(env.localStorage.getItem("go2tv-source"), "radio");
+  assert.equal(ids["radio-discover"].ariaPressed, "true");
+  assert.deepEqual(calls, ["/api/radio/stations"]);
+  assert.equal(ids["radio-status"].textContent, "Popular stations worldwide");
+  const row = stationParts(ids["radio-list"].children[0]);
+  assert.equal(row.name, "Jazz <FM>");
+  assert.equal(row.meta, "Greece · MP3 128 kbps · jazz, smooth");
+
+  ids["radio-query"].value = "jazz";
+  ids["radio-query"].emit("input");
+  assert.equal(calls.length, 1, "typing waits for a pause");
+  await timers.at(-1)();
+  assert.equal(calls.at(-1), "/api/radio/stations?q=jazz");
+  ids["radio-country"].value = "GR";
+  ids["radio-country"].emit("change");
+  await settle();
+  assert.equal(calls.at(-1), "/api/radio/stations?q=jazz&country=GR");
+  assert.equal(env.localStorage.getItem("go2tv-radio-country"), "GR");
+  assert.equal(
+    ids["radio-status"].textContent,
+    "2 stations for “jazz” in Greece",
+  );
+
+  stationParts(ids["radio-list"].children[0]).play.emit("click");
+  const play = ws.sent.at(-1);
+  assert.equal(play.type, "radio.play");
+  assert.deepEqual(play.payload, { station_id: "st-1", expected_revision: 3 });
+  const pendingPlay = stationParts(ids["radio-list"].children[0]).play;
+  assert.equal(pendingPlay.dataset.icon, "loader-circle");
+  assert.equal(pendingPlay.disabled, true);
+  client.handle({ protocol_version: 1, type: "ack", id: play.id, payload: {} });
+  assert.equal(ids.toast.children.length, 0, "renderer selected: no hint");
+
+  client.handle({
+    protocol_version: 1,
+    type: "state.selection",
+    payload: { device_id: "" },
+  });
+  stationParts(ids["radio-list"].children[1]).play.emit("click");
+  const unrouted = ws.sent.at(-1);
+  client.handle({
+    protocol_version: 1,
+    type: "ack",
+    id: unrouted.id,
+    payload: {},
+  });
+  assert.match(ids.toast.children.at(-1).textContent, /Choose a renderer/);
+  stationParts(ids["radio-list"].children[1]).play.emit("click");
+  client.handle({
+    protocol_version: 1,
+    type: "error",
+    id: ws.sent.at(-1).id,
+    payload: { code: "not_found", message: "station offline or unreachable" },
+  });
+  assert.equal(
+    ids.toast.children.at(-1).textContent,
+    "That station is offline or unreachable. Try another one.",
+  );
+});
+
+test("live radio shows its track, marks the station and toggles favorites", async () => {
+  const { stations } = radioFixture(),
+    library = { favorites: [stations[0]], recent: [stations[0]] },
+    fx = radioFixture({ library });
+  const client = startClient(fx.env);
+  await settle();
+  const ws = FakeSocket.instances.at(-1);
+  ws.emit("open");
+  fx.ids["source-radio"].emit("click");
+  await settle();
+  assert.equal(fx.ids["radio-favorites"].ariaPressed, "true", "saved first");
+  assert.equal(fx.ids["radio-favorites-count"].textContent, "1");
+  assert.equal(fx.calls.length, 0, "favorites need no directory request");
+  client.handle({
+    protocol_version: 1,
+    type: "state.snapshot",
+    payload: {
+      revision: 9,
+      devices: [{ id: "dev-2", label: "TV", protocol: "DLNA" }],
+      selected_device_id: "dev-2",
+      selected_media: true,
+      selected_media_name: "Jazz <FM>",
+      active_media_name: "Jazz <FM>",
+      queue: [],
+      has_session: true,
+      playback_state: "PLAYING",
+      position: 65,
+      duration: 0,
+      selected_live: true,
+      active_live: true,
+      selected_station: "st-1",
+      active_station: "st-1",
+      stream_title: "Artist – Song",
+    },
+  });
+  const p = fx.ids;
+  assert.equal(p["player-card"].dataset.live, "true");
+  assert.equal(p["now-playing-label"].textContent, "Live radio");
+  assert.equal(p["stream-title"].hidden, false);
+  assert.equal(p["stream-title-text"].textContent, "Artist – Song");
+  assert.equal(p.seek.hidden, true);
+  assert.equal(p.time.hidden, true);
+  assert.equal(p["live-timeline"].hidden, false);
+  assert.equal(p["live-elapsed"].textContent, "1:05");
+  assert.equal(p["radio-live-dot"].hidden, false);
+  assert.equal(p.artwork.src, "/api/radio/icon?id=st-1", "logo preview");
+  const row = p["radio-list"].children[0],
+    parts = stationParts(row);
+  assert.equal(row.dataset.playing, "true");
+  assert.equal(parts.play.dataset.icon, "pause");
+  parts.play.emit("click");
+  assert.equal(ws.sent.at(-1).type, "player.pause");
+  assert.equal(p["player-favorite"].hidden, false);
+  assert.equal(p["player-favorite"].ariaPressed, "true");
+  p["player-favorite"].emit("click");
+  assert.deepEqual(ws.sent.at(-1).payload, {
+    station_id: "st-1",
+    favorite: false,
+    expected_revision: 9,
+  });
+  client.handle({
+    protocol_version: 1,
+    type: "state.radio",
+    payload: { favorites: [], recent: library.recent },
+  });
+  assert.equal(p["radio-favorites-count"].hidden, true);
+  assert.equal(p["player-favorite"].ariaPressed, "false");
+  assert.match(p["radio-list"].children[0].textContent, /No favorites yet/);
+  client.handle({
+    protocol_version: 1,
+    type: "state.playback",
+    payload: { state: "PLAYING", position: 66, stream_title: "" },
+  });
+  assert.equal(p["stream-title"].hidden, true);
+  client.handle({
+    protocol_version: 1,
+    type: "state.snapshot",
+    payload: {
+      revision: 10,
+      queue: [],
+      has_session: false,
+      selected_live: false,
+      active_live: false,
+    },
+  });
+  assert.equal(p["player-card"].dataset.live, "false");
+  assert.equal(p.seek.hidden, false);
+  assert.equal(p["radio-live-dot"].hidden, true);
+});
+
+test("radio directory failures explain the problem and retry", async () => {
+  const { ids, env, calls } = radioFixture({ fail: 1 });
+  startClient(env);
+  await settle();
+  FakeSocket.instances[0].emit("open");
+  ids["source-radio"].emit("click");
+  await settle();
+  const empty = ids["radio-list"].children[0];
+  assert.match(empty.children[0].textContent, /timed out/);
+  empty.children[1].emit("click");
+  await settle();
+  assert.equal(calls.length, 2);
+  assert.equal(ids["radio-list"].children.length, 2);
 });
