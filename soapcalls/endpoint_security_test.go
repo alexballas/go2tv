@@ -1,13 +1,17 @@
 package soapcalls
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 const secureRendererXML = `<root><device><serviceList><service>` +
@@ -69,5 +73,40 @@ func TestRendererRedirectCannotCrossHost(t *testing.T) {
 	defer redirect.Close()
 	if _, err := DMRextractor(context.Background(), redirect.URL); err == nil {
 		t.Fatal("cross-host redirect followed")
+	}
+}
+
+func TestRendererClientClosesConnWhenServerIgnoresClose(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+
+	closed := make(chan error, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			closed <- err
+			return
+		}
+		defer conn.Close()
+		br := bufio.NewReader(conn)
+		if _, err := http.ReadRequest(br); err != nil {
+			closed <- err
+			return
+		}
+		// Keep-alive response that ignores the request's Connection: close.
+		_, _ = fmt.Fprintf(conn, "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\nContent-Length: %d\r\n\r\n%s", len(secureRendererXML), secureRendererXML)
+		_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		_, err = br.ReadByte()
+		closed <- err
+	}()
+
+	if _, err := DMRextractor(context.Background(), "http://"+ln.Addr().String()+"/desc.xml"); err != nil {
+		t.Fatalf("DMRextractor: %v", err)
+	}
+	if err := <-closed; !errors.Is(err, io.EOF) {
+		t.Fatalf("client left conn open: got %v, want EOF", err)
 	}
 }
