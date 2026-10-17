@@ -38,6 +38,14 @@ type CastClient struct {
 // ErrCastDisconnected reports a connection closed before media loading finished.
 var ErrCastDisconnected = errors.New("chromecast connection closed during load")
 
+// ErrMediaNotReplaced reports a receiver that never started media loaded over
+// the playing session.
+var ErrMediaNotReplaced = errors.New("chromecast did not start replacement media")
+
+// replacementSessionTimeout bounds the wait for a receiver to report the
+// session a LOAD over playing media creates.
+var replacementSessionTimeout = 5 * time.Second
+
 // Log returns the slog logger, initializing it lazily if LogOutput is set.
 // Same pattern as TVPayload.Log() in soapcalls/soapcallers.go.
 func (c *CastClient) Log() *slog.Logger {
@@ -375,6 +383,13 @@ func (c *CastClient) LoadMediaContext(ctx context.Context, req LoadRequest) erro
 			return lastErr
 		}
 
+		// A reused receiver still reports the media being replaced; PLAY must
+		// target the session this LOAD creates.
+		previousSession := 0
+		if _, media, _ := c.app.Status(); media != nil {
+			previousSession = media.MediaSessionId
+		}
+
 		// For live streams: load PAUSED then immediately send PLAY command
 		// This simulates a "fast click" which avoids the 20-30s buffer that autoplay=true triggers
 		autoplay := !req.Live // Only autoplay if NOT a live stream
@@ -399,6 +414,12 @@ func (c *CastClient) LoadMediaContext(ctx context.Context, req LoadRequest) erro
 		// This "fast play" behavior avoids the aggressive buffering that autoplay=true causes
 		if req.Live {
 			c.Log().Debug("live stream loaded paused, sending immediate PLAY to simulate fast click", "Method", "Load")
+			if previousSession != 0 {
+				if err := c.awaitReplacementSession(ctx, previousSession); err != nil {
+					c.Log().Error("replacement media session missing", "Method", "LoadMedia", "error", err)
+					return err
+				}
+			}
 			var playErr error
 			for i := range 3 {
 				if err := ctx.Err(); err != nil {
@@ -435,6 +456,29 @@ func (c *CastClient) LoadMediaContext(ctx context.Context, req LoadRequest) erro
 		return nil
 	}
 	return lastErr
+}
+
+// awaitReplacementSession waits for the session a LOAD over playing media
+// creates; PLAY sent to the old session would leave the new media paused.
+func (c *CastClient) awaitReplacementSession(ctx context.Context, previous int) error {
+	waitCtx, cancel := context.WithTimeout(ctx, replacementSessionTimeout)
+	defer cancel()
+	for {
+		if err := c.app.UpdateContext(waitCtx); err == nil {
+			if _, media, _ := c.app.Status(); media != nil && media.MediaSessionId != previous {
+				return nil
+			}
+		}
+		if !c.IsConnected() {
+			return ErrCastDisconnected
+		}
+		if err := waitForContext(waitCtx, 250*time.Millisecond); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return ErrMediaNotReplaced
+		}
+	}
 }
 
 func requiresCustomLoad(req LoadRequest) bool {
@@ -500,6 +544,22 @@ func (c *CastClient) LoadMediaOnExisting(req LoadRequest) error {
 		c.Log().Debug("success", "Method", "LoadOnExisting")
 	}
 	return err
+}
+
+// SetTrackTitle shows a live stream's current track without reloading it.
+// An empty title restores the loaded title. Requires go2tv's receiver.
+func (c *CastClient) SetTrackTitle(title string) error {
+	app := c.app.App()
+	if !c.IsConnected() || app == nil || app.TransportId == "" {
+		return errors.New("set track title: media receiver unavailable")
+	}
+	payload := &TrackPayload{Type: "TRACK", Title: title}
+	requestID := nextRequestID()
+	payload.SetRequestId(requestID)
+	if err := c.conn.Send(requestID, payload, "sender-0", app.TransportId, TrackNamespace); err != nil {
+		return fmt.Errorf("set track title: %w", err)
+	}
+	return nil
 }
 
 // Play resumes playback.
@@ -597,6 +657,7 @@ func (c *CastClient) GetStatus() (*CastStatus, error) {
 			status.Duration = media.Media.Duration
 		}
 		status.ContentType = media.Media.ContentType
+		status.StreamType = media.Media.StreamType
 		status.MediaTitle = media.Media.Metadata.Title
 	} else {
 		status.PlayerState = "IDLE"

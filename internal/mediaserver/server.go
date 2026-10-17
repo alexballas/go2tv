@@ -20,6 +20,7 @@ import (
 
 	"go2tv.app/go2tv/v2/internal/mkvsubs"
 	"go2tv.app/go2tv/v2/internal/playback"
+	"go2tv.app/go2tv/v2/internal/radiometadata"
 	"go2tv.app/go2tv/v2/utils"
 )
 
@@ -57,6 +58,7 @@ type route struct {
 	request   playback.ServerRequest
 	artwork   bool
 	handler   http.Handler
+	live      *playback.LiveSource
 }
 
 // Server owns one renderer-facing listener and one playback session at a time.
@@ -99,7 +101,7 @@ func (s *Server) Addr() string {
 }
 
 func (s *Server) Start(ctx context.Context, request playback.ServerRequest) (playback.MediaRoute, error) {
-	if request.Media == nil {
+	if request.Media == nil && request.Live == nil {
 		return playback.MediaRoute{}, ErrOpenRequired
 	}
 	listenAddr := s.cfg.ListenAddr
@@ -134,7 +136,7 @@ func (s *Server) Start(ctx context.Context, request playback.ServerRequest) (pla
 	s.routes = make(map[string]route)
 	s.byID = make(map[string]string)
 	s.active = make(map[uint64]activeRequest)
-	mediaRoute, err := s.newSourceRouteLocked("media", request.Media, request.MediaExt, request.MediaType, request)
+	mediaRoute, err := s.newMediaRouteLocked(request)
 	if err != nil {
 		s.resetLocked()
 		_ = listener.Close()
@@ -271,7 +273,7 @@ func (s *Server) Add(_ context.Context, request playback.RouteRequest) (playback
 // restarting the listener. The caller removes superseded routes after the
 // renderer accepts the replacement load.
 func (s *Server) AddMedia(_ context.Context, request playback.ServerRequest) (playback.MediaRoute, error) {
-	if request.Media == nil {
+	if request.Media == nil && request.Live == nil {
 		return playback.MediaRoute{}, ErrOpenRequired
 	}
 	s.mu.Lock()
@@ -279,7 +281,7 @@ func (s *Server) AddMedia(_ context.Context, request playback.ServerRequest) (pl
 	if s.listener == nil {
 		return playback.MediaRoute{}, ErrNotStarted
 	}
-	r, err := s.newSourceRouteLocked("media", request.Media, request.MediaExt, request.MediaType, request)
+	r, err := s.newMediaRouteLocked(request)
 	if err != nil {
 		return playback.MediaRoute{}, err
 	}
@@ -326,7 +328,7 @@ func (s *Server) newTorrentSubtitleRouteLocked(request playback.ServerRequest) (
 	if request.Transcode {
 		offset = request.SeekOffset
 	}
-	r.handler = mkvsubs.Handler(mkvsubs.New(request.TorrentSource), float64(offset))
+	r.handler = mkvsubs.Handler(mkvsubs.New(request.TorrentSource), float64(offset), request.Transcode)
 	s.routes[r.path] = r
 	return r, nil
 }
@@ -386,6 +388,25 @@ func (s *Server) Stop(_ context.Context) error {
 	s.active = make(map[uint64]activeRequest)
 	s.mu.Unlock()
 	return nil
+}
+
+func (s *Server) newMediaRouteLocked(request playback.ServerRequest) (route, error) {
+	if request.Live == nil {
+		return s.newSourceRouteLocked("media", request.Media, request.MediaExt, request.MediaType, request)
+	}
+	token, err := randomToken(s.cfg.Rand)
+	if err != nil {
+		return route{}, fmt.Errorf("media token: %w", err)
+	}
+	id, err := randomToken(s.cfg.Rand)
+	if err != nil {
+		return route{}, fmt.Errorf("route id: %w", err)
+	}
+	ext := safeExtension(request.MediaExt)
+	r := route{id: id, path: "/renderer/" + s.session + "/media/" + token + ext, extension: ext, mediaType: request.MediaType, request: request, live: request.Live}
+	s.routes[r.path] = r
+	s.byID[id] = r.path
+	return r, nil
 }
 
 func (s *Server) newSourceRouteLocked(purpose string, open playback.SourceOpener, extension, mediaType string, request playback.ServerRequest) (route, error) {
@@ -497,6 +518,10 @@ func (s *Server) serveHTTP(w http.ResponseWriter, request *http.Request) {
 		http.ServeContent(w, request.WithContext(ctx), "content", time.Time{}, bytes.NewReader(r.contents))
 		return
 	}
+	if r.live != nil {
+		s.serveLive(w, request.WithContext(ctx), r)
+		return
+	}
 	reader, modTime, err := r.open(ctx)
 	if err != nil {
 		http.NotFound(w, request)
@@ -523,6 +548,54 @@ func (s *Server) serveHTTP(w http.ResponseWriter, request *http.Request) {
 		return
 	}
 	http.ServeContent(w, request.WithContext(ctx), "media", modTime, reader)
+}
+
+// serveLive opens one upstream connection per renderer request. HEAD probes
+// get headers only, so they never hold a station connection.
+func (s *Server) serveLive(w http.ResponseWriter, request *http.Request, r route) {
+	if request.Method == http.MethodHead {
+		return
+	}
+	relay, onTitle := radiometadata.Relay(w, request, r.live.OnTitle)
+	if r.request.Transcode {
+		if s.cfg.Transcode == nil {
+			delete(w.Header(), "icy-metaint")
+			http.Error(w, "transcoding unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		live := *r.live
+		live.OnTitle = onTitle
+		transcoded := r.request
+		transcoded.Live = &live
+		if err := s.cfg.Transcode(request.Context(), relay, nil, transcoded); err != nil && request.Context().Err() == nil {
+			delete(w.Header(), "icy-metaint")
+			http.Error(w, "transcode failed", http.StatusInternalServerError)
+		}
+		return
+	}
+	body, err := utils.StreamURLWithTitles(request.Context(), r.live.URL, onTitle)
+	if err != nil {
+		delete(w.Header(), "icy-metaint")
+		http.Error(w, "live stream unavailable", http.StatusBadGateway)
+		return
+	}
+	defer body.Close()
+	_, _ = io.Copy(flushWriter{Writer: relay, flusher: http.NewResponseController(w)}, body)
+}
+
+// flushWriter delivers each chunk immediately; low-bitrate audio would
+// otherwise sit in the response buffer and delay renderer startup.
+type flushWriter struct {
+	io.Writer
+	flusher *http.ResponseController
+}
+
+func (w flushWriter) Write(p []byte) (int, error) {
+	n, err := w.Writer.Write(p)
+	if err == nil {
+		err = w.flusher.Flush()
+	}
+	return n, err
 }
 
 func (s *Server) resetLocked() {

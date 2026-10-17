@@ -40,6 +40,7 @@ type Handler struct {
 	artworkRefs  map[string]controller.ArtworkLoader
 	artworkOrder []string
 	torrents     torrentState
+	radio        radioState
 }
 
 func New(cfg Config) (*Handler, error) {
@@ -57,6 +58,7 @@ func New(cfg Config) (*Handler, error) {
 	}
 	h := &Handler{cfg: cfg, instanceID: hex.EncodeToString(instance), artworkRefs: make(map[string]controller.ArtworkLoader)}
 	h.torrents.ctx, h.torrents.cancel = context.WithCancel(context.Background())
+	h.initRadio()
 	h.hub = newHub(cfg.Controller, h.command)
 	return h, nil
 }
@@ -64,6 +66,7 @@ func New(cfg Config) (*Handler, error) {
 func (h *Handler) Close() {
 	h.hub.close()
 	h.closeTorrents()
+	h.closeRadio()
 }
 func (h *Handler) ServesBootstrap() {}
 
@@ -111,6 +114,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.browse(w, r)
 	case r.URL.Path == "/api/torrent":
 		h.torrentHTTP(w, r)
+	case strings.HasPrefix(r.URL.Path, "/api/radio/"):
+		h.radioHTTP(w, r)
 	case r.URL.Path == "/api/thumbnail":
 		h.libraryArtwork(w, r, true)
 	case r.URL.Path == "/api/media-artwork":
@@ -151,7 +156,7 @@ func (h *Handler) bootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	roots := h.cfg.Library.Roots()
-	result := bootstrapDTO{ServerVersion: h.cfg.Version, ProtocolVersion: ProtocolVersion, AssetsHash: assetsHash, InstanceID: h.instanceID, ManagedByGUI: h.cfg.ManagedByGUI, Snapshot: safeSnapshot(snapshot), Limits: map[string]int{"ws_message_bytes": maxMessageBytes, "ws_clients": maxClients, "ws_clients_per_ip": maxClientsPerIP, "queue_items": controller.MaxQueueItems, "library_page": library.MaxLimit, "torrent_bytes": maxTorrentBytes}, Features: map[string]bool{"websocket": true, "artwork": true, "transcode": h.cfg.TranscodeAvailable, "gapless": true, "torrent": true}, Torrent: h.torrentSnapshot()}
+	result := bootstrapDTO{ServerVersion: h.cfg.Version, ProtocolVersion: ProtocolVersion, AssetsHash: assetsHash, InstanceID: h.instanceID, ManagedByGUI: h.cfg.ManagedByGUI, Snapshot: safeSnapshot(snapshot), Limits: map[string]int{"ws_message_bytes": maxMessageBytes, "ws_clients": maxClients, "ws_clients_per_ip": maxClientsPerIP, "queue_items": controller.MaxQueueItems, "library_page": library.MaxLimit, "torrent_bytes": maxTorrentBytes}, Features: map[string]bool{"websocket": true, "artwork": true, "transcode": h.cfg.TranscodeAvailable, "gapless": true, "torrent": true, "radio": true}, Torrent: h.torrentSnapshot(), Radio: h.radio.library()}
 	for _, root := range roots {
 		result.Roots = append(result.Roots, rootDTO{ID: root.ID, Name: root.Name})
 	}
@@ -319,7 +324,13 @@ func (h *Handler) loadArtwork(ctx context.Context, id string) ([]byte, error) {
 }
 
 func safeSnapshot(s controller.Snapshot) snapshotDTO {
-	result := snapshotDTO{Revision: s.Revision, SelectedDeviceID: s.SelectedDeviceID, ActiveDeviceID: s.ActiveDeviceID, SelectedMedia: s.SelectedMedia != "", SelectedMediaName: s.SelectedMedia, ActiveMediaName: s.ActiveMediaName, SelectedSubtitle: s.SelectedSubtitle != "", SelectedSubtitleName: s.SelectedSubtitle, Transcode: s.Transcode, HasSession: s.HasSession, PlaybackState: s.PlaybackState, Position: s.Position, Duration: s.Duration, Volume: s.Volume, Muted: s.Muted, MediaType: string(s.MediaType), ArtworkID: s.ArtworkID, Policy: s.Policy}
+	result := snapshotDTO{Revision: s.Revision, SelectedDeviceID: s.SelectedDeviceID, ActiveDeviceID: s.ActiveDeviceID, SelectedMedia: s.SelectedMedia != "", SelectedMediaName: s.SelectedMedia, ActiveMediaName: s.ActiveMediaName, SelectedSubtitle: s.SelectedSubtitle != "", SelectedSubtitleName: s.SelectedSubtitle, Transcode: s.Transcode, HasSession: s.HasSession, PlaybackState: s.PlaybackState, Position: s.Position, Duration: s.Duration, Volume: s.Volume, Muted: s.Muted, MediaType: string(s.MediaType), ArtworkID: s.ArtworkID, Policy: s.Policy, SelectedLive: s.SelectedLive, ActiveLive: s.ActiveLive, StreamTitle: s.StreamTitle}
+	if s.SelectedMediaID.RootID == radioRootID {
+		result.SelectedStation = s.SelectedMediaID.ID
+	}
+	if s.ActiveMediaID.RootID == radioRootID {
+		result.ActiveStation = s.ActiveMediaID.ID
+	}
 	result.Devices = make([]deviceDTO, 0, len(s.Devices))
 	for _, d := range s.Devices {
 		caps := []string{}
@@ -385,11 +396,14 @@ func (h *Handler) command(ctx context.Context, message envelope) (controller.Res
 	var extra map[string]any
 	// queue.add_many is dispatched here, not in executeCommand, because it is
 	// the only command that acknowledges with extra payload fields.
-	if message.Type == "torrent.select" || message.Type == "torrent.cancel" {
+	switch message.Type {
+	case "torrent.select", "torrent.cancel":
 		result = h.torrentCommand(ctx, message)
-	} else if message.Type == "queue.add_many" {
+	case "radio.play", "radio.favorite":
+		result = h.radioCommand(ctx, message)
+	case "queue.add_many":
 		result, extra = h.queueAddMany(ctx, message)
-	} else {
+	default:
 		result = h.executeCommand(ctx, message)
 	}
 	if h.cfg.Logger == nil || !knownAction(message.Type) {
@@ -631,7 +645,7 @@ func (h *Handler) executeCommand(ctx context.Context, message envelope) controll
 func knownAction(kind string) bool {
 	switch kind {
 	case "devices.refresh", "devices.select", "library.play", "library.select_media", "library.select_subtitle", "library.clear_subtitle",
-		"torrent.select", "torrent.cancel",
+		"torrent.select", "torrent.cancel", "radio.play", "radio.favorite",
 		"queue.add", "queue.add_many", "queue.select", "queue.remove", "queue.move", "queue.clear", "player.play", "player.resume",
 		"player.pause", "player.stop", "player.volume", "player.mute", "player.transcode", "playback.policy", "player.seek":
 		return true
@@ -662,6 +676,14 @@ func (h *Handler) logAction(kind string, before, snapshot controller.Snapshot) {
 		message = "Torrent media selected: " + snapshot.SelectedMedia
 	case "torrent.cancel":
 		message = "Torrent cancelled"
+	case "radio.play":
+		if snapshot.ActiveLive {
+			message = "Radio station played: " + snapshot.ActiveMediaName
+		} else {
+			message = "Radio station selected: " + snapshot.SelectedMedia
+		}
+	case "radio.favorite":
+		message = "Radio favorites updated"
 	case "library.play":
 		message = "Media played: " + snapshot.SelectedMedia
 	case "library.select_subtitle":

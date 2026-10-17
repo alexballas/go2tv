@@ -1,6 +1,8 @@
 package utils
 
 import (
+	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,8 +16,45 @@ func transcodeInputArgs(plan videoEncoderPlan, hw string) []string {
 		args = append(args, "-hwaccel", hw, "-hwaccel_output_format", hw)
 	case "videotoolbox", "d3d11va", "drm":
 		args = append(args, "-hwaccel", hw)
+	case cudaDownloadDecoder:
+		args = append(args, "-hwaccel", "cuda")
+	case vaapiDownloadDecoder:
+		args = append(args, "-hwaccel", "vaapi")
 	}
 	return args
+}
+
+// FFmpeg autorotate cannot transpose CUDA or VAAPI frames and MPEG-TS cannot
+// carry a display matrix, so the full-GPU paths send rotated video sideways.
+// These decode on the GPU and download frames so the CPU filters can rotate.
+const (
+	cudaDownloadDecoder  = "cuda_download"
+	vaapiDownloadDecoder = "vaapi_download"
+)
+
+// rotationSafeTranscodeDecoder swaps full-GPU decoding for its download
+// variant when the input carries a rotation. Probe failures keep hw.
+func rotationSafeTranscodeDecoder(ctx context.Context, ffmpegPath string, input any, in, hw string, logger *slog.Logger) string {
+	var download string
+	switch hw {
+	case "cuda":
+		download = cudaDownloadDecoder
+	case "vaapi":
+		download = vaapiDownloadDecoder
+	default:
+		return hw
+	}
+	rotation, err := videoRotationContext(ctx, ffmpegPath, input, in)
+	if err != nil {
+		if logger != nil {
+			logger.DebugContext(ctx, "transcode rotation probe failed", "error", err)
+		}
+		return hw
+	}
+	if rotation%360 == 0 {
+		return hw
+	}
+	return download
 }
 
 func selectTranscodeVideoDecoder(ffmpegPath string, plan videoEncoderPlan, subFilter, in string, isRaw bool) string {

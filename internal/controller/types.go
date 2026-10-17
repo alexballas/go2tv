@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"mime"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -270,6 +271,22 @@ type Snapshot struct {
 	Policy           Policy                  `json:"Policy"`
 	LastError        string                  `json:"LastError"`
 	TerminalReason   playback.TerminalReason `json:"TerminalReason"`
+	// SelectedMediaID and ActiveMediaID echo MediaRef RootID and ID so callers
+	// can recognise media they supplied.
+	SelectedMediaID MediaID `json:"SelectedMediaID"`
+	ActiveMediaID   MediaID `json:"ActiveMediaID"`
+	// SelectedLive and ActiveLive report endless streams, which have no
+	// duration and cannot seek. StreamTitle is the active stream's current
+	// track as announced by the station.
+	SelectedLive bool   `json:"SelectedLive"`
+	ActiveLive   bool   `json:"ActiveLive"`
+	StreamTitle  string `json:"StreamTitle"`
+}
+
+// MediaID identifies a MediaRef by its caller-supplied root and ID.
+type MediaID struct {
+	RootID string `json:"RootID"`
+	ID     string `json:"ID"`
 }
 
 // Mutation carries optional request correlation and optimistic concurrency.
@@ -310,9 +327,28 @@ type MediaRef struct {
 	LoadArtwork   MediaArtworkLoader
 	// TorrentSource is a verified progressive source, supplied only by torrent selection.
 	TorrentSource mediasource.Source
+	// Live replaces the openers for an endless network stream.
+	Live *LiveStream
 
 	artwork          *metadata.ArtworkAsset
 	artworkAttempted bool
+}
+
+// LiveStream is an endless http(s) source such as internet radio. Live media
+// never seeks or takes subtitles, and transcodes to AAC audio. DLNA renderers
+// receive it through the media server so station titles reach them in-band;
+// untranscoded Chromecast loads and HLS playlists fetch URL directly.
+type LiveStream struct {
+	URL string
+	HLS bool
+}
+
+func (l *LiveStream) validate() error {
+	parsed, err := url.Parse(l.URL)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return fmt.Errorf("live URL: %w", ErrInvalidMedia)
+	}
+	return nil
 }
 
 // Validate checks that the reference can be selected and served.
@@ -326,6 +362,10 @@ func (r MediaRef) Validate() error {
 		return fmt.Errorf("name: %w", ErrInvalidMedia)
 	case r.Kind == mediamodel.MediaKindUnknown:
 		return fmt.Errorf("kind: %w", ErrInvalidMedia)
+	case r.Live != nil:
+		if err := r.Live.validate(); err != nil {
+			return err
+		}
 	case r.OpenDirect == nil:
 		return fmt.Errorf("direct opener: %w", ErrInvalidMedia)
 	}

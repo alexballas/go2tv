@@ -29,6 +29,10 @@ type DiscoveryScanner interface {
 	Scan(context.Context) ([]Device, error)
 }
 
+type DLNAPositionTransport interface {
+	Position(context.Context) (Position, error)
+}
+
 type DLNATransport interface {
 	Load(context.Context, LoadRequest) error
 	Play(context.Context) error
@@ -44,6 +48,27 @@ type DLNAGaplessTransport interface {
 	SetNext(context.Context, LoadRequest) error
 	NextURI(context.Context) (string, error)
 	ClearNext(context.Context) error
+}
+
+// DLNAMonitorGuard serializes a poll and its handoff with queue publication.
+type DLNAMonitorGuard interface {
+	TryMonitorLock() (release func(), acquired bool)
+}
+
+// DLNAStartupRetryTransport re-sends a start the renderer acknowledged but
+// never began. reload also re-sends SetAVTransportURI for uri first.
+type DLNAStartupRetryTransport interface {
+	RetryStart(ctx context.Context, uri string, reload bool) error
+}
+
+// DLNAStatusTransport provides authoritative state when callbacks are delayed.
+type DLNAStatusTransport interface {
+	TransportState(context.Context) (string, error)
+}
+
+// DLNAMediaInfoTransport retains both URIs from a single GetMediaInfo request.
+type DLNAMediaInfoTransport interface {
+	MediaInfo(context.Context) (currentURI, nextURI string, err error)
 }
 
 type ChromecastTransport interface {
@@ -95,6 +120,7 @@ type Random interface {
 }
 
 type Position struct {
+	TrackURI string
 	Current  int
 	Duration int
 }
@@ -116,8 +142,10 @@ type LoadRequest struct {
 	Duration           float64
 	Seekable           bool
 	Transcode          bool
-	Metadata           metadata.Media
-	ArtworkData        []byte
+	// Live marks an endless stream; Chromecast shows it as LIVE.
+	Live        bool
+	Metadata    metadata.Media
+	ArtworkData []byte
 }
 
 type ServerRequest struct {
@@ -132,6 +160,16 @@ type ServerRequest struct {
 	BurnSubtitle  bool
 	Target        Device
 	TorrentSource mediasource.Source
+	// Live relays an endless network stream in place of Media.
+	Live *LiveSource
+}
+
+// LiveSource is an endless http(s) stream such as internet radio. The media
+// server opens it once per renderer request; OnTitle receives ICY track titles
+// parsed from that connection.
+type LiveSource struct {
+	URL     string
+	OnTitle func(string)
 }
 
 type RouteRequest struct {
@@ -152,6 +190,8 @@ type MediaRoute struct {
 }
 
 type realClock struct{}
+
+func (realClock) Now() time.Time { return time.Now() }
 
 func (realClock) NewTicker(d time.Duration) Ticker { return realTicker{time.NewTicker(d)} }
 func (realClock) NewTimer(d time.Duration) Timer   { return realTimer{time.NewTimer(d)} }

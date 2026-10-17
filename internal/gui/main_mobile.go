@@ -5,11 +5,13 @@ package gui
 import (
 	"context"
 	"errors"
+	"image/color"
 	"net/url"
 	"sort"
 	"time"
 
 	"github.com/alexballas/refyne/v2"
+	"github.com/alexballas/refyne/v2/canvas"
 	"github.com/alexballas/refyne/v2/container"
 	"github.com/alexballas/refyne/v2/data/binding"
 	"github.com/alexballas/refyne/v2/lang"
@@ -38,7 +40,7 @@ func sortDevTypeSlice(d []devType) {
 	})
 }
 
-func newDeviceList(dd *[]devType) *deviceList {
+func newDeviceList(s *FyneScreen, dd *[]devType) *deviceList {
 	list := &deviceList{}
 
 	list.Length = func() int {
@@ -46,11 +48,24 @@ func newDeviceList(dd *[]devType) *deviceList {
 	}
 
 	list.CreateItem = func() fyne.CanvasObject {
-		return newDeviceRow(nil, nil)
+		return newDeviceRow(castIcon(), nil)
 	}
 
 	list.UpdateItem = func(i widget.ListItemID, o fyne.CanvasObject) {
-		o.(*deviceRow).setDevice((*dd)[i])
+		row := o.(*deviceRow)
+		item := (*dd)[i]
+		row.setDevice(item)
+
+		state := s.getScreenState()
+		active := s.getActiveDevice()
+		switch {
+		case (state == "Playing" || state == "Paused") && item.addr == active.addr && item.deviceType == active.deviceType:
+			row.setLeadingIcon(playingIcon())
+		case item.addr == s.selectedDevice.addr:
+			row.setLeadingIcon(theme.ConfirmIcon())
+		default:
+			row.setLeadingIcon(castIcon())
+		}
 	}
 
 	list.ExtendBaseWidget(list)
@@ -60,9 +75,30 @@ func newDeviceList(dd *[]devType) *deviceList {
 func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	w := s.Current
 	var data []devType
-	list := newDeviceList(&data)
+	list := newDeviceList(s, &data)
 	discoveryStatus := widget.NewLabel(discoveryStatusText(0, false, nil))
 	discoveryStatus.Alignment = fyne.TextAlignTrailing
+	noDevicesHint := widget.NewLabel(lang.L("Make sure your phone and the TV are on the same Wi-Fi network."))
+	noDevicesHint.Alignment = fyne.TextAlignCenter
+	noDevicesHint.Wrapping = fyne.TextWrapWord
+	noDevicesHint.Hide()
+	rescan := make(chan struct{}, 1)
+	var refreshDevices *widget.Button
+	refreshDevices = widget.NewButtonWithIcon("", theme.ViewRefreshIcon(), func() {
+		refreshDevices.Disable()
+		discoveryStatus.SetText(lang.L("Searching for devices…"))
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			_ = devices.RefreshDiscovery(ctx)
+			cancel()
+			select {
+			case rescan <- struct{}{}:
+			default:
+			}
+			fyne.Do(refreshDevices.Enable)
+		}()
+	})
+	refreshDevices.Importance = widget.LowImportance
 
 	// Avoid parallel execution of getDevices.
 	blockGetDevices := make(chan struct{})
@@ -82,25 +118,29 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			data = datanew
 			list.Refresh()
 			discoveryStatus.SetText(discoveryStatusText(len(datanew), searched, err))
+			noDevicesHint.Hidden = !searched || len(datanew) > 0
+			noDevicesHint.Refresh()
 		})
 
 		blockGetDevices <- struct{}{}
 	}()
 
+	// The entries hold the selection; read-only modes show valueFields.
 	mfiletext := widget.NewEntry()
+	mfiletext.SetPlaceHolder(lang.L("Enter URL here"))
 	sfiletext := widget.NewEntry()
+	mediaField := newValueField(nil)
+	subsField := newValueField(func() { subsAction(s) })
+	subsField.Set("", lang.L("No subtitle selected"))
+	sfiletext.OnChanged = func(text string) { subsField.Set(text, lang.L("No subtitle selected")) }
 
 	mfile := widget.NewButton(lang.L("Select Media File"), func() {
 		mediaAction(s)
 	})
 
-	mfiletext.Disable()
-
 	sfile := widget.NewButton(lang.L("Select Subtitles File"), func() {
 		subsAction(s)
 	})
-
-	sfiletext.Disable()
 
 	playpause := widget.NewButtonWithIcon(lang.L("Play"), theme.MediaPlayIcon(), func() {
 		hasMedia := s.mediafile != nil || (s.MediaText != nil && s.MediaText.Text != "")
@@ -122,7 +162,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		startMobilePlayback(s)
 	})
 
-	stop := widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
+	playpause.Importance = widget.HighImportance
+
+	stop := widget.NewButtonWithIcon("", theme.MediaStopIcon(), func() {
 		stopAction(s)
 	})
 
@@ -151,9 +193,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	endPos := binding.NewString()
 
 	externalmedia := widget.NewCheck(lang.L("Media from URL"), func(b bool) {})
-	medialoop := widget.NewCheck(lang.L("Loop Selected"), func(b bool) {})
-	s.TorrentSubsCheck = widget.NewCheck(lang.L("Automatic Torrent Subtitles"), nil)
-	s.TorrentSubsCheck.SetChecked(true)
+	medialoop := widget.NewCheck(lang.L("Loop"), func(b bool) {})
 	transcode := widget.NewCheck(lang.L("Transcode"), func(b bool) {
 		s.Transcode = b
 	})
@@ -161,13 +201,14 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	mediafilelabel := widget.NewLabel(lang.L("Media File") + ":")
 	subsfilelabel := widget.NewLabel(lang.L("Subtitles") + ":")
 	devicelabel := widget.NewLabel(lang.L("Select Device") + ":")
-	deviceHeader := container.NewBorder(nil, nil, devicelabel, discoveryStatus)
+	deviceHeader := container.NewBorder(nil, nil, devicelabel, container.NewHBox(discoveryStatus, refreshDevices))
 
 	s.PlayPause = playpause
 	s.Stop = stop
 	s.MuteUnmute = muteunmute
 	s.ExternalMediaURL = externalmedia
 	s.TranscodeCheckBox = transcode
+	s.LoopSelectedCheck = medialoop
 	s.MediaText = mfiletext
 	s.SubsText = sfiletext
 	s.DeviceList = list
@@ -178,31 +219,62 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	curPos.Set("00:00:00")
 	endPos.Set("00:00:00")
 	sliderArea := container.NewBorder(nil, nil, widget.NewLabelWithData(curPos), widget.NewLabelWithData(endPos), sliderBar)
-	actionbuttons := container.New(&mainButtonsLayout{buttonHeight: 1.5, buttonPadding: theme.Padding()},
-		playpause,
-		volumedown,
-		muteunmute,
-		volumeup,
-		stop)
+	playbackStatus := widget.NewLabel("")
+	playbackStatus.Alignment = fyne.TextAlignCenter
+	playbackStatus.Truncation = fyne.TextTruncateEllipsis
+	s.playbackStatus = playbackStatus
+	s.timeline = sliderArea
+	songLabel := newRadioSongLabel(s)
+	songLabel.Importance = widget.MediumImportance
+	songLabel.Alignment = fyne.TextAlignCenter
+	songLabel.TextStyle.Bold = true
+	songLabel.Show()
+	radioDetail := widget.NewLabel("")
+	radioDetail.Alignment = fyne.TextAlignCenter
+	radioDetail.Truncation = fyne.TextTruncateEllipsis
+	radioDetail.Importance = widget.LowImportance
+	s.radioDetail = radioDetail
+	// Tight label insets keep the two radio lines close to one row's height.
+	radioRow := container.NewThemeOverride(container.New(layout.NewCustomPaddedVBoxLayout(0), songLabel, radioDetail),
+		liveTheme{sizes: map[fyne.ThemeSizeName]float32{theme.SizeNameInnerPadding: 2}})
+	radioRow.Hide()
+	s.radioRow = radioRow
+	// Reserve the two-line radio height so the bar never jumps.
+	rowHeight := canvas.NewRectangle(color.Transparent)
+	rowHeight.SetMinSize(fyne.NewSize(0, radioRow.MinSize().Height))
+	centered := func(o fyne.CanvasObject) fyne.CanvasObject {
+		return container.NewVBox(layout.NewSpacer(), o, layout.NewSpacer())
+	}
+	s.volumeControls = []fyne.Disableable{volumedown, muteunmute, volumeup}
+	actionbuttons := container.New(&playerButtonsLayout{}, playpause, stop, volumedown, muteunmute, volumeup)
 
 	checklistItems := []fyne.CanvasObject{externalmedia, medialoop}
 	if err := utils.CheckFFmpeg(s.ffmpegPath); err == nil {
 		checklistItems = append(checklistItems, transcode)
 	}
-	// Two columns so a third option wraps to a new row instead of
-	// overflowing the window width on portrait phone screens.
-	checklists := container.New(layout.NewGridLayout(2), checklistItems...)
+	// Options spread across one row and wrap only when the screen is too narrow.
+	checklists := container.New(newSpreadRowLayout(), checklistItems...)
 	mediasubsbuttons := container.New(layout.NewGridLayout(2), mfile, sfile)
-	sfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearsubs), clearsubs, sfiletext)
-	mfiletextArea := container.New(layout.NewBorderLayout(nil, nil, nil, clearmedia), clearmedia, mfiletext)
+	radio := newRadioButton(s)
+	radio.SetIcon(theme.MediaMusicIcon())
+	sfiletextArea := container.NewBorder(nil, nil, nil, clearsubs, subsField)
+	mfiletextArea := container.NewBorder(nil, nil, nil, clearmedia, container.NewStack(mfiletext, mediaField))
 	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
-	buttons := container.NewVBox(mediasubsbuttons, newTorrentButton(s), newTorrentControls(s), s.TorrentSubsCheck, viewfilescont, checklists, sliderArea, actionbuttons, container.NewPadded(deviceHeader))
-	content := container.New(layout.NewBorderLayout(buttons, nil, nil, nil), buttons, list)
+	sourceScroll := container.NewVScroll(container.NewVBox(mediasubsbuttons, container.NewGridWithColumns(2, newTorrentButton(s), radio), newTorrentControls(s), viewfilescont, checklists))
+	deviceArea := container.NewBorder(container.NewPadded(deviceHeader), nil, nil, nil, container.NewStack(list, container.NewPadded(noDevicesHint)))
+	player := newPlayerBar(container.NewVBox(container.NewStack(rowHeight, centered(sliderArea), centered(playbackStatus), radioRow), actionbuttons))
+	content := container.New(&mobileMainLayout{source: sourceScroll}, newContentSized(sourceScroll), deviceArea, player)
 
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
-		playpause.Enable()
+		defer s.refreshPlaybackReadiness()
+		defer list.Refresh()
 
+		// Discovery reorders rows and reselects the same device; keep its state.
+		if data[id].addr == s.selectedDevice.addr && data[id].deviceType == s.selectedDeviceType &&
+			(s.selectedDeviceType == devices.DeviceTypeChromecast || s.controlURL != "" || s.connectingDevice != "") {
+			return
+		}
 		s.selectedDevice = data[id]
 		s.selectedDeviceType = data[id].deviceType
 
@@ -218,19 +290,37 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 		switch data[id].deviceType {
 		case devices.DeviceTypeDLNA:
-			t, err := soapcalls.DMRextractor(context.Background(), data[id].addr)
-			check(w, err)
-			if err == nil {
-				s.controlURL = t.AvtransportControlURL
-				s.eventlURL = t.AvtransportEventSubURL
-				s.renderingControlURL = t.RenderingControlURL
-				s.connectionManagerURL = t.ConnectionManagerURL
-				if s.tvdata != nil {
-					s.tvdata.RenderingControlURL = s.renderingControlURL
-				}
-			}
+			// Play stays disabled until this renderer's URLs arrive.
+			s.controlURL, s.eventlURL, s.renderingControlURL, s.connectionManagerURL = "", "", "", ""
+			device := data[id]
+			s.connectingDevice = device.addr
+			go func() {
+				t, err := soapcalls.DMRextractor(context.Background(), device.addr)
+				fyne.Do(func() {
+					if s.selectedDevice.addr != device.addr || s.connectingDevice != device.addr {
+						return
+					}
+					s.connectingDevice = ""
+					if err != nil {
+						// Unselect so tapping the row retries the lookup.
+						s.clearDeviceSelection()
+						check(w, err)
+						s.refreshPlaybackReadiness()
+						return
+					}
+					s.controlURL = t.AvtransportControlURL
+					s.eventlURL = t.AvtransportEventSubURL
+					s.renderingControlURL = t.RenderingControlURL
+					s.connectionManagerURL = t.ConnectionManagerURL
+					if s.tvdata != nil {
+						s.tvdata.RenderingControlURL = s.renderingControlURL
+					}
+					s.refreshPlaybackReadiness()
+				})
+			}()
 		case devices.DeviceTypeChromecast:
 			// Clear DLNA-specific state when selecting Chromecast
+			s.connectingDevice = ""
 			s.controlURL = ""
 			s.eventlURL = ""
 			s.renderingControlURL = ""
@@ -241,14 +331,42 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	var mediafileOld fyne.URI
 	var mediafileOldText string
 
+	// updateMediaField shows a radio station by name, a typed URL in the
+	// entry, or the selected file. Live radio cannot loop.
+	updateMediaField := func() {
+		station, radio := s.radioStationForURL(mfiletext.Text)
+		switch {
+		case radio:
+			mediafilelabel.SetText(lang.L("Station") + ":")
+			mediaField.Set(station.Name, "")
+			mediaField.OnTapped = func() { showRadioDialog(s) }
+			mfiletext.Hide()
+			mediaField.Show()
+			medialoop.SetChecked(false)
+			medialoop.Disable()
+			return
+		case externalmedia.Checked:
+			mediafilelabel.SetText(lang.L("URL") + ":")
+			mediaField.Hide()
+			mfiletext.Show()
+		default:
+			mediafilelabel.SetText(lang.L("Media File") + ":")
+			mediaField.Set(mfiletext.Text, lang.L("No media selected"))
+			mediaField.OnTapped = func() { mediaAction(s) }
+			mfiletext.Hide()
+			mediaField.Show()
+		}
+		medialoop.Enable()
+	}
+	mfiletext.OnChanged = func(text string) {
+		s.invalidateRadioURL(text)
+		updateMediaField()
+		s.refreshPlaybackReadiness()
+	}
+	updateMediaField()
+
 	externalmedia.OnChanged = func(b bool) {
 		if b {
-			mfile.Disable()
-
-			// rename the label
-			mediafilelabel.Text = lang.L("URL") + ":"
-			mediafilelabel.Refresh()
-
 			// keep old values
 			mediafileOld = s.mediafile
 			mediafileOldText = s.MediaText.Text
@@ -259,23 +377,14 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 			// Clear the Media Text Area
 			clearmediaAction(s)
-
-			// Set some Media text defaults
-			// to indicate that we're expecting a URL
-			mfiletext.SetPlaceHolder(lang.L("Enter URL here"))
-			mfiletext.Enable()
+			updateMediaField()
 			return
 		}
 
-		medialoop.Enable()
-		mfile.Enable()
-		mediafilelabel.Text = lang.L("Media File") + ":"
-		mfiletext.SetPlaceHolder("")
 		s.MediaText.SetText(mediafileOldText)
 		s.mediafile = mediafileOld
 		resolveSelectedMobileArtwork(s, mediafileOld)
-		mediafilelabel.Refresh()
-		mfiletext.Disable()
+		updateMediaField()
 	}
 
 	medialoop.OnChanged = func(b bool) {
@@ -285,7 +394,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	// Device list auto-refresh
 	go func() {
 		<-blockGetDevices
-		refreshDevList(s, &data, discoveryStatus)
+		refreshDevList(s, &data, discoveryStatus, noDevicesHint, rescan)
 	}()
 
 	// Check mute status for selected device
@@ -294,14 +403,20 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	// Keep track of the media progress and reflect that to the slide bar.
 	go sliderUpdate(s)
 
+	s.refreshPlaybackReadiness()
+
 	return content
 }
 
-func refreshDevList(s *FyneScreen, data *[]devType, discoveryStatus *widget.Label) {
+func refreshDevList(s *FyneScreen, data *[]devType, discoveryStatus, noDevicesHint *widget.Label, rescan <-chan struct{}) {
 	refreshDevices := time.NewTicker(5 * time.Second)
 	defer refreshDevices.Stop()
 
-	for range refreshDevices.C {
+	for {
+		select {
+		case <-refreshDevices.C:
+		case <-rescan:
+		}
 		datanew, discoveryErr := getDevices()
 		if errors.Is(discoveryErr, devices.ErrNoDeviceAvailable) {
 			discoveryErr = nil
@@ -371,18 +486,23 @@ func refreshDevList(s *FyneScreen, data *[]devType, discoveryStatus *widget.Labe
 		fyne.DoAndWait(func() {
 			*data = datanew
 			discoveryStatus.SetText(discoveryStatusText(len(datanew), true, discoveryErr))
+			noDevicesHint.Hidden = len(datanew) > 0
+			noDevicesHint.Refresh()
 
-			if clearSelection {
-				s.controlURL = ""
-				s.selectedDevice = devType{}
-				s.DeviceList.UnselectAll()
-			} else if foundIdx >= 0 {
+			state := s.getScreenState()
+			playing := state == "Playing" || state == "Paused"
+			switch {
+			case clearSelection, foundIdx < 0 && selectedDeviceAddr != "" && !playing:
+				// A vanished device must not stay selected without a checked row.
+				s.clearDeviceSelection()
+			case foundIdx >= 0:
 				s.DeviceList.Select(foundIdx)
-			} else {
+			default:
 				s.DeviceList.UnselectAll()
 			}
 
 			s.DeviceList.Refresh()
+			s.refreshPlaybackReadiness()
 		})
 	}
 }
@@ -395,29 +515,33 @@ func checkMutefunc(s *FyneScreen) {
 		// Chromecast mute state is synced by chromecastStatusWatcher from the
 		// status it already polls; a second concurrent GetStatus loop only
 		// doubles control traffic and races the library's state updates.
-		if s.selectedDeviceType == devices.DeviceTypeChromecast {
-			continue
-		}
-
-		// Handle DLNA mute status
-		// Stop trying after 5 failures
-		// to get the mute status
-		if checkMuteCounter == 5 {
-			s.renderingControlURL = ""
+		// Device fields belong to the UI thread; snapshot them there.
+		var payload *soapcalls.TVPayload
+		var renderingURL string
+		fyne.DoAndWait(func() {
+			if s.selectedDeviceType == devices.DeviceTypeChromecast || s.renderingControlURL == "" {
+				return
+			}
+			renderingURL = s.renderingControlURL
+			payload = renderingPayload(s)
+		})
+		if payload == nil {
 			checkMuteCounter = 0
-		}
-
-		if s.renderingControlURL == "" {
 			continue
 		}
 
-		if s.tvdata == nil {
-			s.tvdata = &soapcalls.TVPayload{RenderingControlURL: s.renderingControlURL}
-		}
-
-		isMuted, err := s.tvdata.GetMuteSoapCall()
+		isMuted, err := payload.GetMuteSoapCall()
 		if err != nil {
-			checkMuteCounter++
+			// Stop trying after 5 failures to get the mute status.
+			if checkMuteCounter++; checkMuteCounter == 5 {
+				checkMuteCounter = 0
+				fyne.Do(func() {
+					if s.renderingControlURL == renderingURL {
+						s.renderingControlURL = ""
+						s.refreshPlaybackStatus()
+					}
+				})
+			}
 			continue
 		}
 

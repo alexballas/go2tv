@@ -32,6 +32,7 @@ type mediaSelectionCard struct {
 	subtitles   *ttwidget.Select
 	media, subs *selectionRow
 	content     *fyne.Container
+	radio       *widget.Button
 	syncing     bool
 }
 
@@ -147,7 +148,9 @@ func newMediaSelectionCard(s *FyneScreen, preview, clearSubs *widget.Button) *me
 	sourceLabel := widget.NewLabel(lang.L("Source"))
 	subtitleLabel := widget.NewLabel(lang.L("Subtitles"))
 	labelWidth := fyne.Max(sourceLabel.MinSize().Width, subtitleLabel.MinSize().Width)
-	sourceRow := container.New(selectionFieldLayout{labelWidth: labelWidth}, sourceLabel, c.source)
+	c.radio = newRadioButton(s)
+	sourceControl := container.NewBorder(nil, nil, nil, c.radio, c.source)
+	sourceRow := container.New(selectionFieldLayout{labelWidth: labelWidth}, sourceLabel, sourceControl)
 	subtitleRow := container.New(selectionFieldLayout{labelWidth: labelWidth}, subtitleLabel, c.subtitles)
 	selectors := container.NewGridWithColumns(2, sourceRow, subtitleRow)
 	mediaArea := container.New(reservedSelectionLayout{}, c.media, s.MediaText)
@@ -232,6 +235,13 @@ func (c *mediaSelectionCard) refresh() {
 	} else {
 		c.source.Enable()
 	}
+	fyne.Do(func() {
+		if s.ExternalMediaURL.Disabled() {
+			c.radio.Disable()
+		} else {
+			c.radio.Enable()
+		}
+	})
 	mediaKind := mediamodel.KindForPath(s.mediafile)
 	subtitlesUnavailable := mediaKind == mediamodel.MediaKindAudio || mediaKind == mediamodel.MediaKindImage
 	if subtitlesUnavailable {

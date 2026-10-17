@@ -551,3 +551,26 @@ func TestSetAVTransportSoapBuildLegacyCompatEscapesCurrentURI(t *testing.T) {
 		t.Fatalf("expected CurrentURI to stay XML escaped, got %q", got)
 	}
 }
+
+func TestRadioTranscodeMetadataAdvertisesAACAudio(t *testing.T) {
+	payload := &TVPayload{MediaURL: "http://host/radio", MediaType: "audio/ogg", Transcode: true}
+	data, err := buildDIDLLite(payload, payload.MediaURL, metadata.Media{Title: "Radio & Jazz"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		Item struct {
+			Title    string `xml:"title"`
+			Class    string `xml:"class"`
+			Resource struct {
+				ProtocolInfo string `xml:"protocolInfo,attr"`
+			} `xml:"res"`
+		} `xml:"item"`
+	}
+	if err := xml.Unmarshal(data, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Item.Title != "Radio & Jazz" || result.Item.Class != "object.item.audioItem.musicTrack" || result.Item.Resource.ProtocolInfo != "http-get:*:audio/aac:DLNA.ORG_CI=1" {
+		t.Fatalf("radio metadata = %#v", result.Item)
+	}
+}

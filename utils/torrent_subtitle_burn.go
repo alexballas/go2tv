@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 
+	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/internal/mkvsubs"
 )
 
@@ -28,12 +29,13 @@ const (
 )
 
 type subtitleBurn struct {
-	filter     string
-	overlay    string
-	bitmap     *EmbeddedSubtitle
-	bitmapSeek bool
-	origin     float64
-	cleanup    func()
+	filter       string
+	filterOrigin float64
+	overlay      string
+	bitmap       *EmbeddedSubtitle
+	bitmapSeek   bool
+	origin       float64
+	cleanup      func()
 }
 
 // prepareSubtitleBurn keeps external captions on the existing file-filter path.
@@ -56,7 +58,24 @@ func prepareSubtitleBurn(ctx context.Context, opts *TranscodeOptions) (*subtitle
 			return burn, nil
 		}
 		if ffmpegFilterAvailable(opts.FFmpegPath, "subtitles") {
+			// Read local Matroska captions in windows too: libass's container
+			// filter scans the entire movie before producing the first frame.
+			if selected.PlainText {
+				if source := localTextBurnSource(selected); source != nil {
+					windowed, err := prepareWindowedSubtitleBurn(ctx, opts, source, selected.Track)
+					if err == nil && windowed.overlay != "" {
+						return windowed, nil
+					}
+					if ctx.Err() != nil {
+						return burn, ctx.Err()
+					}
+				}
+			}
 			burn.filter = fmt.Sprintf("subtitles='%s':si=%d", escapeFFmpegPath(selected.Path), selected.Track)
+			if selected.PlainText {
+				burn.filter += subtitleBurnStyle(opts.SubtitleSize)
+			}
+			burn.filterOrigin = selected.StartTime
 		}
 		return burn, nil
 	}
@@ -83,13 +102,26 @@ func prepareSubtitleBurn(ctx context.Context, opts *TranscodeOptions) (*subtitle
 		}
 		return burn, err
 	}
+	return prepareWindowedSubtitleBurn(ctx, opts, opts.TorrentSource, -1)
+}
+
+func prepareWindowedSubtitleBurn(ctx context.Context, opts *TranscodeOptions, source mediasource.Source, track int) (*subtitleBurn, error) {
+	burn := &subtitleBurn{cleanup: func() {}}
 	for _, filter := range []string{"subtitles", "overlay", "scale2ref"} {
 		if !ffmpegFilterAvailable(opts.FFmpegPath, filter) {
 			return burn, nil
 		}
 	}
-	parser := mkvsubs.New(opts.TorrentSource)
-	origin, err := parser.PrepareBurn(ctx)
+	newParser := func(ctx context.Context) (*mkvsubs.Parser, float64, error) {
+		parser := mkvsubs.NewForSubtitle(source, track)
+		if track >= 0 {
+			origin, err := parser.PrepareBurnForSeek(ctx, float64(opts.SeekSeconds))
+			return parser, origin, err
+		}
+		origin, err := parser.PrepareBurn(ctx)
+		return parser, origin, err
+	}
+	parser, origin, err := newParser(ctx)
 	if errors.Is(err, mkvsubs.ErrNoSubtitles) {
 		return burn, nil
 	}
@@ -113,6 +145,7 @@ func prepareSubtitleBurn(ctx context.Context, opts *TranscodeOptions) (*subtitle
 	var requests sync.WaitGroup
 	var requestMu sync.Mutex
 	closing := false
+	firstParser := parser
 	server := &http.Server{ConnContext: func(ctx context.Context, conn net.Conn) context.Context {
 		// Large socket buffers could let compressed blank frames pull many
 		// future windows before the main encoder consumes the current one.
@@ -129,6 +162,8 @@ func prepareSubtitleBurn(ctx context.Context, opts *TranscodeOptions) (*subtitle
 			return
 		}
 		requests.Add(1)
+		parser := firstParser
+		firstParser = nil
 		requestMu.Unlock()
 		defer requests.Done()
 		requestCtx, cancelRequest := context.WithCancel(r.Context())
@@ -138,7 +173,17 @@ func prepareSubtitleBurn(ctx context.Context, opts *TranscodeOptions) (*subtitle
 		// A fresh parser and zero-based image sequence make startup retries
 		// deterministic. Only the current window reaches the renderer.
 		written := &countingWriter{w: w}
-		if err := renderTorrentCaptions(requestCtx, written, opts, origin, assets); err != nil && requestCtx.Err() == nil {
+		render := func() error {
+			if parser == nil {
+				var err error
+				parser, _, err = newParser(requestCtx)
+				if err != nil {
+					return err
+				}
+			}
+			return renderTorrentCaptions(requestCtx, written, opts, origin, assets, parser)
+		}
+		if err := render(); err != nil && requestCtx.Err() == nil {
 			opts.LogError("renderTorrentCaptions", "torrent subtitle rendering failed", err)
 			if written.n == 0 {
 				// image2pipe needs dimensions even when caption preparation
@@ -177,6 +222,16 @@ func (b *subtitleBurn) enabled() string {
 	return b.filter
 }
 
+// videoFilter evaluates embedded text in its container timeline, then restores
+// the video's rebased timestamps. Seeks using -copyts already share that timeline.
+func (b *subtitleBurn) videoFilter(copyTS bool) string {
+	if copyTS || b.filter == "" || b.filterOrigin == 0 {
+		return b.filter
+	}
+	origin := strconv.FormatFloat(b.filterOrigin, 'f', -1, 64)
+	return joinVideoFilters("setpts=PTS+("+origin+")/TB", b.filter, "setpts=PTS-("+origin+")/TB")
+}
+
 // videoArgs overlays local bitmap tracks or adds a progressive torrent PNG input.
 // Preserve input PTS, including nonzero media origins and transcoded seeks.
 func (b *subtitleBurn) videoArgs(base, tail string) []string {
@@ -206,17 +261,12 @@ func (b *subtitleBurn) videoArgs(base, tail string) []string {
 	}
 }
 
-func renderTorrentCaptions(ctx context.Context, w io.Writer, opts *TranscodeOptions, origin float64, fontsDir string) error {
-	parser := mkvsubs.New(opts.TorrentSource)
-	if _, err := parser.PrepareBurn(ctx); err != nil {
-		return err
-	}
+func renderTorrentCaptions(ctx context.Context, w io.Writer, opts *TranscodeOptions, origin float64, fontsDir string, parser *mkvsubs.Parser) error {
 	metadata := parser.BurnMetadata()
 	ext := ".srt"
-	width, height := 640, 360
+	width, height := subtitleCanvasSize(metadata.Width, metadata.Height)
 	if metadata.Styled() {
 		ext = ".ass"
-		width, height = subtitleCanvasSize(metadata.Width, metadata.Height)
 	}
 	file, err := os.CreateTemp("", "go2tv-torrent-sub-*"+ext)
 	if err != nil {
@@ -229,7 +279,7 @@ func renderTorrentCaptions(ctx context.Context, w io.Writer, opts *TranscodeOpti
 	}
 	defer os.Remove(path)
 	// Parser validates UTF-8. Keep the same styling as external burn-in.
-	filter := fmt.Sprintf("subtitles='%s'%s:alpha=1", escapeFFmpegPath(path), subtitleBurnStyle(opts.SubtitleSize))
+	filter := fmt.Sprintf("subtitles='%s':fontsdir='%s'%s:alpha=1", escapeFFmpegPath(path), escapeFFmpegPath(fontsDir), subtitleBurnStyle(opts.SubtitleSize))
 	if metadata.Styled() {
 		filter = fmt.Sprintf("subtitles='%s':fontsdir='%s':alpha=1", escapeFFmpegPath(path), escapeFFmpegPath(fontsDir))
 	}

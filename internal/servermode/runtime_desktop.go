@@ -70,7 +70,7 @@ func newRuntime(cfg Config, log *serverLogger, discovery playback.Discovery) (*r
 		}
 	}
 	control := controller.New(controller.NewRuntimeConfig(controller.RuntimeConfig{MediaServer: media, Callbacks: callbacks, LogOutput: log.protocolOutput(), Logger: log, Artwork: artwork, DurationProbe: durationProbe, Discovery: discovery}))
-	web, err := webui.New(webui.Config{Version: cfg.Version, Controller: control, Library: lib, Artwork: artwork, FFmpegPath: ffmpeg, TranscodeAvailable: ffmpeg != "", Logger: log, ManagedByGUI: cfg.ManagedChild})
+	web, err := webui.New(webui.Config{Version: cfg.Version, Controller: control, Library: lib, Artwork: artwork, FFmpegPath: ffmpeg, TranscodeAvailable: ffmpeg != "", Logger: log, ManagedByGUI: cfg.ManagedChild, RadioStorePath: radioStorePath()})
 	if err != nil {
 		control.Close()
 		callbacks.Close()
@@ -78,6 +78,16 @@ func newRuntime(cfg Config, log *serverLogger, discovery playback.Discovery) (*r
 		return nil, err
 	}
 	return &runtime{library: lib, controller: control, callbacks: callbacks, web: web}, nil
+}
+
+// radioStorePath keeps Web radio favorites with the user's configuration;
+// without a config directory they last for the server's lifetime.
+func radioStorePath() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(dir, "go2tv", "webui-radio.json")
 }
 
 // verifiedFFmpegPath resolves and verifies ffmpeg. An explicitly configured
@@ -177,6 +187,11 @@ type memoryFile struct{ bytes.Reader }
 func (*memoryFile) Close() error { return nil }
 
 func transcode(ctx context.Context, w http.ResponseWriter, input io.ReadCloser, request playback.ServerRequest, ffmpeg string) error {
+	if live := request.Live; live != nil {
+		// FFmpeg reads the station itself, including HLS playlists.
+		var command exec.Cmd
+		return utils.ServeAudioTranscodedStream(ctx, w, utils.RemoteAudio{URL: live.URL, OnTitle: live.OnTitle}, &command, &utils.TranscodeOptions{FFmpegPath: ffmpeg, AudioOnly: true})
+	}
 	subtitlePath := ""
 	fontsDir := ""
 	var err error

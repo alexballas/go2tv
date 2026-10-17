@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -246,6 +247,86 @@ func GetMediaCodecInfoContext(ctx context.Context, ffmpeg string, f string) (*Me
 	}
 
 	return result, nil
+}
+
+type ffprobeRotation struct {
+	Streams []struct {
+		SideDataList []struct {
+			Rotation int `json:"rotation"`
+		} `json:"side_data_list"`
+		Tags struct {
+			Rotate string `json:"rotate"`
+		} `json:"tags"`
+	} `json:"streams"`
+}
+
+// videoRotationContext returns the first video stream's display rotation in
+// degrees. in is the FFmpeg input URL; "fd:" probes the *os.File input.
+func videoRotationContext(ctx context.Context, ffmpegPath string, input any, in string) (int, error) {
+	ffprobePath, err := ResolveFFprobePath(ffmpegPath)
+	if err != nil {
+		return 0, fmt.Errorf("video rotation: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx,
+		ffprobePath,
+		"-loglevel", "error",
+		"-select_streams", "v:0",
+		"-show_entries", "stream_side_data=rotation:stream_tags=rotate",
+		"-of", "json",
+		in,
+	)
+	setSysProcAttr(cmd)
+	cmd.WaitDelay = time.Second
+
+	switch in {
+	case "fd:":
+		// ffprobe shares the offset; runFFmpegTranscode rewinds again.
+		f, ok := input.(*os.File)
+		if !ok {
+			return 0, ErrInvalidInput
+		}
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			return 0, fmt.Errorf("video rotation: rewind input: %w", err)
+		}
+		cmd.Stdin = f
+	case "pipe:0":
+		// Probing would consume the stream FFmpeg still needs.
+		return 0, ErrInvalidInput
+	}
+
+	output, err := cmd.Output()
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return 0, ctxErr
+	}
+	if err != nil {
+		return 0, fmt.Errorf("video rotation: %w", err)
+	}
+
+	var info ffprobeRotation
+	if err := json.Unmarshal(output, &info); err != nil {
+		return 0, fmt.Errorf("video rotation: decode: %w", err)
+	}
+	if len(info.Streams) == 0 {
+		return 0, nil
+	}
+	stream := info.Streams[0]
+	for _, side := range stream.SideDataList {
+		if side.Rotation != 0 {
+			return side.Rotation, nil
+		}
+	}
+	// FFmpeg before 5.0 also reported rotation as a stream tag.
+	if stream.Tags.Rotate == "" {
+		return 0, nil
+	}
+	rotation, err := strconv.Atoi(stream.Tags.Rotate)
+	if err != nil {
+		return 0, fmt.Errorf("video rotation: parse tag: %w", err)
+	}
+	return rotation, nil
 }
 
 func IsChromecastCompatible(info *MediaCodecInfo) bool {

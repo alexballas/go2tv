@@ -49,6 +49,9 @@ func validateRendererLocation(ctx context.Context, raw string) (*url.URL, net.IP
 func rendererHTTPClient(location *url.URL, pinned net.IP) *http.Client {
 	base := soapHTTPTransport.Clone()
 	base.Proxy = nil
+	// Each call gets its own transport, so pooled conns are never reused; some
+	// renderers (e.g. Chromecast) ignore Connection: close and would sit idle.
+	base.DisableKeepAlives = true
 	base.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
 		port := location.Port()
 		if port == "" {

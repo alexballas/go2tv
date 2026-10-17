@@ -63,9 +63,6 @@ func (p *Parser) videoSize(r io.ReadSeeker, parent element) error {
 // not scan clusters to locate attachments placed after the playable media.
 // Generated names keep container filenames from becoming filesystem paths.
 func (p *Parser) ExtractFonts(ctx context.Context, dir string) error {
-	if !p.burn.Styled() {
-		return nil
-	}
 	r, err := p.source.Open(ctx)
 	if err != nil {
 		return err

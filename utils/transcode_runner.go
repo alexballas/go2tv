@@ -12,13 +12,20 @@ import (
 )
 
 type countingWriter struct {
-	w io.Writer
-	n int64
+	w       io.Writer
+	n       int64
+	onError func(error)
 }
 
 func (c *countingWriter) Write(p []byte) (int, error) {
 	n, err := c.w.Write(p)
 	c.n += int64(n)
+	if err == nil && n != len(p) {
+		err = io.ErrShortWrite
+	}
+	if err != nil && c.onError != nil {
+		c.onError(err)
+	}
 	return n, err
 }
 
@@ -33,6 +40,8 @@ func runFFmpegTranscode(
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 	cmd := exec.Command(args[0], args[1:]...)
 	setSysProcAttr(cmd)
 
@@ -50,7 +59,9 @@ func runFFmpegTranscode(
 		ff.Stdin = input.(io.Reader)
 	}
 
-	cw := &countingWriter{w: w}
+	// A failed stdout copy can leave FFmpeg blocked on its full pipe forever.
+	// Cancel and reap the child promptly when the renderer closes the stream.
+	cw := &countingWriter{w: w, onError: cancel}
 	var stderr bytes.Buffer
 	ff.Stdout = cw
 	ff.Stderr = &stderr
@@ -70,8 +81,11 @@ func runFFmpegTranscode(
 			_ = ff.Process.Kill()
 		}
 		<-done
-		return cw.n, ctx.Err()
+		return cw.n, context.Cause(ctx)
 	case err := <-done:
+		if ctx.Err() != nil {
+			return cw.n, context.Cause(ctx)
+		}
 		if err != nil {
 			return cw.n, fmt.Errorf("%w: %s", err, tailFFmpegStderr(strings.TrimSpace(stderr.String()), 240))
 		}

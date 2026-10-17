@@ -71,7 +71,7 @@ func newDeviceList(s *FyneScreen, dd *[]devType) *deviceList {
 
 		// Swap icon based on state
 		if isActive {
-			row.setLeadingIcon(theme.MediaPlayIcon())
+			row.setLeadingIcon(playingIcon())
 		} else if item.addr == s.selectedDevice.addr {
 			row.setLeadingIcon(theme.ConfirmIcon())
 		} else {
@@ -160,6 +160,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	mfiletext := widget.NewEntry()
 	mfiletext.OnChanged = func(v string) {
+		s.invalidateRadioURL(v)
 		if s.ExternalMediaURL != nil && s.ExternalMediaURL.Checked &&
 			s.TranscodeCheckBox != nil && s.TranscodeCheckBox.Checked &&
 			utils.IsHLSStream(v, "") {
@@ -614,11 +615,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 				if gaplessOption == "Enabled" && target.device.deviceType == devices.DeviceTypeDLNA {
 					switch s.getScreenState() {
 					case "Playing", "Paused":
-						newTVPayload, err := queueNext(s, false)
-						if err == nil && s.GaplessMediaWatcher == nil {
-							s.GaplessMediaWatcher = gaplessMediaWatcher
-							go s.GaplessMediaWatcher(s.serverStopCTX, s, newTVPayload)
-						}
+						_, _ = queueNext(s, false)
 					}
 				}
 				return

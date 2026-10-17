@@ -91,6 +91,21 @@ func newHubWithConfig(c snapshotController, command commandFunc, cfg hubConfig) 
 	go h.snapshots()
 	return h
 }
+
+// broadcast sends handler-owned state that has no controller revision.
+func (h *hub) broadcast(kind string, payload any) {
+	data := mustEnvelope(kind, "", payload)
+	h.mu.Lock()
+	clients := make([]*client, 0, len(h.clients))
+	for c := range h.clients {
+		clients = append(clients, c)
+	}
+	h.mu.Unlock()
+	for _, c := range clients {
+		c.enqueue(kind, data)
+	}
+}
+
 func (h *hub) close() {
 	h.mu.Lock()
 	if h.closed {
@@ -414,7 +429,7 @@ func mustEnvelope(kind, id string, payload any) []byte {
 
 func stateUpdates(previous, current snapshotDTO) []outbound {
 	// Active playback identity has no granular protocol message.
-	if previous.ActiveDeviceID != current.ActiveDeviceID || previous.ActiveMediaName != current.ActiveMediaName {
+	if previous.ActiveDeviceID != current.ActiveDeviceID || previous.ActiveMediaName != current.ActiveMediaName || previous.ActiveStation != current.ActiveStation || previous.ActiveLive != current.ActiveLive {
 		return []outbound{{kind: "state.snapshot", data: mustEnvelope("state.snapshot", "", current)}}
 	}
 	updates := make([]outbound, 0, 5)
@@ -427,11 +442,11 @@ func stateUpdates(previous, current snapshotDTO) []outbound {
 	if !slices.Equal(previous.Queue, current.Queue) {
 		updates = append(updates, outbound{kind: "state.queue", data: mustEnvelope("state.queue", "", map[string]any{"revision": current.Revision, "queue": current.Queue})})
 	}
-	if previous.PlaybackState != current.PlaybackState || previous.Position != current.Position || previous.Duration != current.Duration || previous.Volume != current.Volume || previous.Muted != current.Muted || previous.HasSession != current.HasSession {
-		updates = append(updates, outbound{kind: "state.playback", data: mustEnvelope("state.playback", "", map[string]any{"revision": current.Revision, "state": current.PlaybackState, "position": current.Position, "duration": current.Duration, "volume": current.Volume, "muted": current.Muted, "has_session": current.HasSession})})
+	if previous.PlaybackState != current.PlaybackState || previous.Position != current.Position || previous.Duration != current.Duration || previous.Volume != current.Volume || previous.Muted != current.Muted || previous.HasSession != current.HasSession || previous.StreamTitle != current.StreamTitle {
+		updates = append(updates, outbound{kind: "state.playback", data: mustEnvelope("state.playback", "", map[string]any{"revision": current.Revision, "state": current.PlaybackState, "position": current.Position, "duration": current.Duration, "volume": current.Volume, "muted": current.Muted, "has_session": current.HasSession, "stream_title": current.StreamTitle})})
 	}
-	if previous.SelectedDeviceID != current.SelectedDeviceID || previous.SelectedMedia != current.SelectedMedia || previous.SelectedMediaName != current.SelectedMediaName || previous.SelectedSubtitle != current.SelectedSubtitle || previous.SelectedSubtitleName != current.SelectedSubtitleName || previous.Transcode != current.Transcode || previous.MediaType != current.MediaType || previous.ArtworkID != current.ArtworkID {
-		updates = append(updates, outbound{kind: "state.selection", data: mustEnvelope("state.selection", "", map[string]any{"revision": current.Revision, "device_id": current.SelectedDeviceID, "media": current.SelectedMedia, "media_name": current.SelectedMediaName, "subtitle": current.SelectedSubtitle, "subtitle_name": current.SelectedSubtitleName, "transcode": current.Transcode, "media_type": current.MediaType, "artwork_id": current.ArtworkID})})
+	if previous.SelectedDeviceID != current.SelectedDeviceID || previous.SelectedMedia != current.SelectedMedia || previous.SelectedMediaName != current.SelectedMediaName || previous.SelectedSubtitle != current.SelectedSubtitle || previous.SelectedSubtitleName != current.SelectedSubtitleName || previous.Transcode != current.Transcode || previous.MediaType != current.MediaType || previous.ArtworkID != current.ArtworkID || previous.SelectedLive != current.SelectedLive || previous.SelectedStation != current.SelectedStation {
+		updates = append(updates, outbound{kind: "state.selection", data: mustEnvelope("state.selection", "", map[string]any{"revision": current.Revision, "device_id": current.SelectedDeviceID, "media": current.SelectedMedia, "media_name": current.SelectedMediaName, "subtitle": current.SelectedSubtitle, "subtitle_name": current.SelectedSubtitleName, "transcode": current.Transcode, "media_type": current.MediaType, "artwork_id": current.ArtworkID, "live": current.SelectedLive, "station": current.SelectedStation})})
 	}
 	if previous.Policy != current.Policy {
 		updates = append(updates, outbound{kind: "state.policy", data: mustEnvelope("state.policy", "", map[string]any{"revision": current.Revision, "policy": current.Policy})})

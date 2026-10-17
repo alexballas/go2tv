@@ -1,7 +1,13 @@
+import { radioControls } from "./radio.js";
 import { torrentControls } from "./torrent.js";
 
 const protocolVersion = 1;
 const maxConflictRetries = 2;
+const radioErrors = {
+  "station offline or unreachable":
+    "That station is offline or unreachable. Try another one.",
+  "station unavailable": "That station is no longer listed.",
+};
 
 export function startClient(env) {
   const {
@@ -60,6 +66,11 @@ export function startClient(env) {
     muted: false,
     media_type: "",
     artwork_id: "",
+    selected_live: false,
+    active_live: false,
+    stream_title: "",
+    selected_station: "",
+    active_station: "",
   };
   let ws,
     serial = 0,
@@ -90,6 +101,7 @@ export function startClient(env) {
       "player.stop",
       "torrent.select",
       "torrent.cancel",
+      "radio.play",
     ]),
     playbackPendingTypes = new Set([
       ...queuePendingTypes,
@@ -238,6 +250,24 @@ export function startClient(env) {
   setButtonIcon(byID("volume-up"), "volume-2", "Volume up");
   setButtonIcon(byID("queue-clear"), "list-x", "Clear playlist");
   setButtonIcon(folderUp, "arrow-left", "Up one folder");
+  const radio = radioControls(env, {
+    send: (...args) => send(...args),
+    state: () => state,
+    playbackState,
+    pendingRequests: () => [...pending.values()],
+    canMutate: () => connected && !shuttingDown,
+    icon,
+    setButtonIcon,
+  });
+  // The player shows the incoming selection while it loads, then the session.
+  const shownLive = () =>
+      playbackState() === "LOADING" || !state.has_session
+        ? !!state.selected_live
+        : !!state.active_live,
+    shownStation = () =>
+      playbackState() === "LOADING" || !state.has_session
+        ? state.selected_station
+        : state.active_station;
   function applyTheme() {
     const resolved =
       themeChoice === "auto"
@@ -329,6 +359,7 @@ export function startClient(env) {
     byID("torrent-subtitles").disabled =
       !connected || hasPending("playback.policy");
     torrents.render();
+    radio.render();
     pendingNode.textContent = pending.size ? `${pending.size} working` : "";
     const type = request?.type;
     if (!type) {
@@ -635,7 +666,19 @@ export function startClient(env) {
     }
   }
   function renderProgress() {
-    const seek = byID("seek");
+    const seek = byID("seek"),
+      live = shownLive(),
+      liveTimeline = byID("live-timeline");
+    liveTimeline.hidden = !live;
+    liveTimeline.dataset.active = String(
+      live && state.has_session && playbackState() === "PLAYING",
+    );
+    byID("time").hidden = live;
+    seek.hidden = live;
+    text(
+      "live-elapsed",
+      live && state.has_session ? format(state.position) : "",
+    );
     const sliderPosition = Math.min(
       seekPreview ?? state.position ?? 0,
       state.duration || 0,
@@ -664,6 +707,7 @@ export function startClient(env) {
         ? state.selected_media_name
         : state.active_media_name || state.selected_media_name;
     text("now-playing-title", title || "Nothing playing");
+    renderLive();
     const volumePending = hasPending("player.volume"),
       canControlVolume =
         connected && (state.has_session || !!state.selected_device_id),
@@ -735,9 +779,10 @@ export function startClient(env) {
       hasPending("player.stop");
     const art = byID("artwork"),
       placeholder = byID("artwork-placeholder"),
+      // A station previews its logo until playback supplies renderer artwork.
       artworkURL = state.artwork_id
         ? `/api/artwork/${encodeURIComponent(state.artwork_id)}.jpg`
-        : "";
+        : (shownLive() && radio.station(shownStation())?.icon_url) || "";
     if (artworkURL) {
       art.src = artworkURL;
       art.hidden = false;
@@ -747,6 +792,46 @@ export function startClient(env) {
       art.hidden = true;
       placeholder.hidden = false;
     }
+  }
+  function renderLive() {
+    const live = shownLive(),
+      station = shownStation(),
+      streamTitle = live && state.has_session ? state.stream_title || "" : "",
+      favorite = byID("player-favorite"),
+      placeholder = byID("artwork-placeholder"),
+      glyph = live ? "radio" : "note";
+    byID("player-card").dataset.live = String(live);
+    text("now-playing-label", live ? "Live radio" : "Now playing");
+    text("stream-title-text", streamTitle);
+    byID("stream-title-text").title = streamTitle;
+    byID("stream-title").hidden = !streamTitle;
+    if (placeholder.dataset.glyph !== glyph) {
+      placeholder.dataset.glyph = glyph;
+      if (live) placeholder.replaceChildren(icon("radio"));
+      else placeholder.textContent = "♪";
+    }
+    favorite.hidden = !live || !station;
+    if (!favorite.hidden) {
+      const saved = radio.isFavorite(station),
+        name = state.has_session
+          ? state.active_media_name || state.selected_media_name
+          : state.selected_media_name;
+      setButtonIcon(
+        favorite,
+        "star",
+        saved ? `Remove ${name} from favorites` : `Add ${name} to favorites`,
+      );
+      favorite.title = saved ? "Remove from favorites" : "Add to favorites";
+      favorite.ariaPressed = String(saved);
+      favorite.disabled =
+        !connected ||
+        [...pending.values()].some(
+          (request) =>
+            request?.type === "radio.favorite" &&
+            request.payload?.station_id === station,
+        );
+    }
+    radio.render();
   }
   function renderPolicy() {
     const p = state.policy || {};
@@ -804,6 +889,9 @@ export function startClient(env) {
     state.artwork_id = payload.artwork_id ?? "";
     state.selected_media_name = payload.selected_media_name ?? "";
     state.active_media_name = payload.active_media_name ?? "";
+    state.stream_title = payload.stream_title ?? "";
+    state.selected_station = payload.selected_station ?? "";
+    state.active_station = payload.active_station ?? "";
     state.playback_state = payload.playback_state ?? state.playback_state;
     state.policy = payload.policy ?? state.policy;
     state.revision = payload.revision ?? state.revision;
@@ -845,6 +933,7 @@ export function startClient(env) {
           volume: p.volume ?? state.volume,
           muted: p.muted ?? state.muted,
           has_session: p.has_session ?? state.has_session,
+          stream_title: p.stream_title ?? state.stream_title,
         };
         const progressChanged =
             state.position !== playback.position ||
@@ -854,6 +943,7 @@ export function startClient(env) {
             "volume",
             "muted",
             "has_session",
+            "stream_title",
           ].some((key) => state[key] !== playback[key]),
           playbackStateChanged =
             state.playback_state !== playback.playback_state;
@@ -879,11 +969,17 @@ export function startClient(env) {
           transcode: p.transcode ?? state.transcode,
           media_type: p.media_type ?? state.media_type,
           artwork_id: p.artwork_id ?? state.artwork_id,
+          selected_live: p.live ?? state.selected_live,
+          selected_station: p.station ?? state.selected_station,
         });
         renderDevices();
         renderPlayback();
         renderPolicy();
         if (mediaChanged) renderLibrary();
+        break;
+      case "state.radio":
+        radio.setLibrary(p);
+        renderLive();
         break;
       case "state.policy":
         state.revision = p.revision ?? state.revision;
@@ -900,6 +996,8 @@ export function startClient(env) {
         state.revision = p.revision ?? state.revision;
         if (request?.type === "queue.add_many")
           bulkAddToast(p, request.truncated || 0);
+        if (request?.type === "radio.play" && !state.selected_device_id)
+          showToast("Station ready. Choose a renderer, then press Play.");
         renderPending(request);
         if (request?.type?.startsWith("torrent.")) torrents.refresh();
         break;
@@ -929,7 +1027,7 @@ export function startClient(env) {
         showToast(
           p.code === "conflict"
             ? "The app kept changing. Please try that action again."
-            : p.message || p.code || "Request failed",
+            : radioErrors[p.message] || p.message || p.code || "Request failed",
           "error",
         );
         renderPending(request);
@@ -1005,6 +1103,7 @@ export function startClient(env) {
         bootstrap.torrent,
         bootstrap.limits?.torrent_bytes,
       );
+      radio.configure(bootstrap.features, bootstrap.radio);
       if (instanceID !== (bootstrap.instance_id || ""))
         await refreshLibrary(bootstrap);
       shuttingDown = false;
@@ -1299,6 +1398,7 @@ export function startClient(env) {
       bootstrap.limits?.torrent_bytes,
     );
     queueLimit = bootstrap.limits?.queue_items || queueLimit;
+    radio.configure(bootstrap.features, bootstrap.radio);
     mergeSnapshot(bootstrap.snapshot);
     roots.replaceChildren();
     for (const root of bootstrap.roots || [])
@@ -1388,6 +1488,10 @@ export function startClient(env) {
   byID("transcode").addEventListener("change", (event) =>
     send("player.transcode", { enabled: event.target.checked }),
   );
+  byID("player-favorite").addEventListener("click", () => {
+    const station = shownStation();
+    if (station) radio.toggleFavorite(station);
+  });
   byID("subtitle-clear").addEventListener("click", () =>
     send("library.clear_subtitle"),
   );

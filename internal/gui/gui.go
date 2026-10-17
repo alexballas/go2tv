@@ -30,6 +30,7 @@ import (
 	"go2tv.app/go2tv/v2/httphandlers"
 	"go2tv.app/go2tv/v2/internal/crashlog"
 	"go2tv.app/go2tv/v2/internal/mediamodel"
+	"go2tv.app/go2tv/v2/internal/radiobrowser"
 	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/rtmp"
 	"go2tv.app/go2tv/v2/soapcalls"
@@ -66,6 +67,12 @@ func (p *FyneScreen) refreshMPRISProgress() {
 
 // FyneScreen .
 type FyneScreen struct {
+	radioSong                radioSongState
+	radio                    *radioView
+	radioArtworkCache        *radioArtworkCache
+	radioArtworkResolved     bool
+	radioArtwork             *metadata.ArtworkAsset
+	radioSelected            radiobrowser.Station
 	mpris                    mprisBridge
 	mediaSelection           *mediaSelectionCard
 	playbackStatus           *playbackStatusLabel
@@ -103,7 +110,13 @@ type FyneScreen struct {
 	MediaText                *widget.Entry
 	ExternalMediaURL         *widget.Check
 	SkinNextOnlySameTypes    bool
-	GaplessMediaWatcher      func(context.Context, *FyneScreen, *soapcalls.TVPayload)
+	dlnaMonitor              *dlnaPlaybackSession
+	dlnaTeardownDone         chan struct{}
+	dlnaGaplessUnavailable   map[string]bool
+	dlnaGaplessStrikes       map[string]int
+	dlnaFollowupCancel       context.CancelFunc
+	dlnaActionID             atomic.Uint64
+	subtitleProbeCancel      context.CancelFunc
 	SlideBar                 *tappedSlider
 	MuteUnmute               *widget.Button
 	VolumeDown               *widget.Button
@@ -455,11 +468,11 @@ func (p *FyneScreen) EmitMsg(a string) {
 	fyne.Do(func() {
 		switch a {
 		case "Playing":
-			setPlayPauseView("Pause", p)
 			p.updateScreenState("Playing")
+			setPlayPauseView("Pause", p)
 		case "Paused":
-			setPlayPauseView("Play", p)
 			p.updateScreenState("Paused")
+			setPlayPauseView("Play", p)
 		case "Stopped":
 			stopAction(p)
 		default:
@@ -484,7 +497,6 @@ func (p *FyneScreen) Fini() {
 			return
 		}
 
-		gaplessOption := fyne.CurrentApp().Preferences().StringWithFallback("Gapless", "Disabled")
 		target := autoPlayPlaybackTarget(p)
 
 		// An item removed from the playlist has no successor.
@@ -503,7 +515,7 @@ func (p *FyneScreen) Fini() {
 		// For Chromecast, ignore gapless setting (it's DLNA-specific)
 		isChromecast := target.device.deviceType == devices.DeviceTypeChromecast
 
-		if p.NextMediaCheck.Checked && (isChromecast || gaplessOption == "Disabled") {
+		if p.NextMediaCheck.Checked {
 			_, nextMediaPath, err := getNextAutoPlayMediaOrError(p)
 			if err != nil {
 				if isTraversalBoundaryError(err) {
@@ -526,7 +538,12 @@ func (p *FyneScreen) Fini() {
 				return
 			}
 
-			go playActionOnTarget(p, target)
+			go func() {
+				if !isChromecast {
+					stopActionSync(p)
+				}
+				playActionOnTarget(p, target)
+			}()
 			return
 		}
 		// Main media loop logic
@@ -539,6 +556,8 @@ func (p *FyneScreen) Fini() {
 func check(s *FyneScreen, err error) {
 	checkInWindow(s, err, s.Current)
 }
+
+func (s *FyneScreen) showPlaybackError(err error) { check(s, err) }
 
 func checkInWindow(s *FyneScreen, err error, parent fyne.Window) {
 	s.muError.Lock()
@@ -569,12 +588,16 @@ func getAdjacentMedia(screen *FyneScreen, delta int) (string, string, error) {
 }
 
 func getAdjacentQueuedMedia(screen *FyneScreen, delta int, wrap bool) (string, string, error) {
+	return getAdjacentQueuedMediaFromPath(screen, screen.mediafile, delta, wrap)
+}
+
+func getAdjacentQueuedMediaFromPath(screen *FyneScreen, mediaPath string, delta int, wrap bool) (string, string, error) {
 	queue, _ := screen.queueSnapshot()
 	if queue == nil || queue.Len() == 0 {
 		return "", "", errors.New(lang.L("queue is empty"))
 	}
 
-	currentIndex := queue.IndexByPath(screen.mediafile)
+	currentIndex := queue.IndexByPath(mediaPath)
 	if currentIndex == -1 {
 		return "", "", errors.New(lang.L("current media file is not in the queue"))
 	}
@@ -623,7 +646,6 @@ func getNextPossibleSubs(v string) string {
 }
 
 func setPlayPauseView(s string, screen *FyneScreen) {
-	screen.cancelPlayTimer()
 	fyne.Do(func() {
 		if screen.mediaSelection != nil {
 			screen.mediaSelection.refresh()
@@ -681,7 +703,7 @@ func refreshPlaybackControls(s string, screen *FyneScreen) {
 		}
 		screen.refreshPlaybackReadiness()
 		state := screen.getScreenState()
-		if screen.torrentPlaybackPending() || screen.playbackStartupPending() || screen.chromecastCompatibilityPending() && state != "Playing" && state != "Paused" {
+		if screen.torrentPlaybackPending() || screen.playbackStartupPending() || screen.dlnaPlaybackPending() || screen.chromecastCompatibilityPending() && state != "Playing" && state != "Paused" {
 			screen.PlayPause.Disable()
 		}
 		screen.PlayPause.Refresh()
@@ -720,6 +742,8 @@ func (p *FyneScreen) isMuted() bool {
 // the GUI interface to control certain flows.
 func (p *FyneScreen) updateScreenState(a string) {
 	p.mu.Lock()
+	cancel := p.cancelEnablePlay
+	p.cancelEnablePlay = nil
 	p.State = a
 	if a == "Stopped" {
 		p.playingMediaPath = ""
@@ -727,6 +751,12 @@ func (p *FyneScreen) updateScreenState(a string) {
 		p.playingMediaPath = p.mediafile
 	}
 	p.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if a == "Stopped" {
+		p.stopRadioSongMonitor()
+	}
 	if p.mpris != nil {
 		p.mpris.refresh()
 	}
