@@ -57,11 +57,14 @@ func (screen *FyneScreen) chromecastRadioReplaceable() bool {
 // endReplacedChromecastSession stops a station the failed switch was meant to
 // replace, so it does not keep playing behind a stopped UI.
 func (screen *FyneScreen) endReplacedChromecastSession(device devType) {
+	screen.mu.Lock()
 	client := screen.chromecastClient
 	if !chromecastClientOwnsDevice(client, device) {
+		screen.mu.Unlock()
 		return
 	}
 	screen.chromecastClient = nil
+	screen.mu.Unlock()
 	if client.IsConnected() {
 		_ = client.Stop()
 	}

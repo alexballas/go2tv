@@ -22,6 +22,7 @@ import (
 	"github.com/alexballas/refyne/v2/test"
 	"github.com/alexballas/refyne/v2/widget"
 
+	"go2tv.app/go2tv/v2/castprotocol"
 	"go2tv.app/go2tv/v2/castprotocol/v2/application"
 	"go2tv.app/go2tv/v2/castprotocol/v2/cast"
 	pb "go2tv.app/go2tv/v2/castprotocol/v2/cast/proto"
@@ -205,14 +206,24 @@ func TestRadioChromecastSwitchReusesReceiver(t *testing.T) {
 			playAction(screen)
 			load(first)
 			waitUI(t, 5*time.Second, func() bool { return screen.getScreenState() == "Playing" })
+			receiver := func() (stopped, closed bool) {
+				conn.mu.Lock()
+				defer conn.mu.Unlock()
+				return conn.stopped, conn.closed
+			}
+			sessionClient := func() *castprotocol.CastClient {
+				screen.mu.RLock()
+				defer screen.mu.RUnlock()
+				return screen.chromecastClient
+			}
 			use(1)
 			if !tc.reachable {
-				waitUI(t, 5*time.Second, func() bool { return screen.getScreenState() == "Stopped" && screen.chromecastClient == nil })
-				conn.mu.Lock()
-				stopped, closed := conn.stopped, conn.closed
-				conn.mu.Unlock()
-				if !stopped || !closed {
-					t.Fatalf("previous station left on receiver: stopped=%v closed=%v", stopped, closed)
+				waitUI(t, 5*time.Second, func() bool {
+					stopped, closed := receiver()
+					return stopped && closed && screen.getScreenState() == "Stopped"
+				})
+				if sessionClient() != nil {
+					t.Fatal("failed switch kept the stopped Chromecast session")
 				}
 				return
 			}
@@ -220,11 +231,8 @@ func TestRadioChromecastSwitchReusesReceiver(t *testing.T) {
 				t.Fatalf("switch loaded %q, want %q", media.ContentId, next.StreamURL())
 			}
 			waitUI(t, 5*time.Second, func() bool { return screen.getScreenState() == "Playing" })
-			conn.mu.Lock()
-			stopped, closed := conn.stopped, conn.closed
-			conn.mu.Unlock()
-			if stopped || closed || screen.chromecastClient != client {
-				t.Fatalf("switch relaunched receiver: stopped=%v closed=%v sameClient=%v", stopped, closed, screen.chromecastClient == client)
+			if stopped, closed := receiver(); stopped || closed || sessionClient() != client {
+				t.Fatalf("switch relaunched receiver: stopped=%v closed=%v sameClient=%v", stopped, closed, sessionClient() == client)
 			}
 		})
 	}
