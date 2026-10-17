@@ -502,6 +502,22 @@ func (c *CastClient) LoadMediaOnExisting(req LoadRequest) error {
 	return err
 }
 
+// SetTrackTitle shows a live stream's current track without reloading it.
+// An empty title restores the loaded title. Requires go2tv's receiver.
+func (c *CastClient) SetTrackTitle(title string) error {
+	app := c.app.App()
+	if !c.IsConnected() || app == nil || app.TransportId == "" {
+		return errors.New("set track title: media receiver unavailable")
+	}
+	payload := &TrackPayload{Type: "TRACK", Title: title}
+	requestID := nextRequestID()
+	payload.SetRequestId(requestID)
+	if err := c.conn.Send(requestID, payload, "sender-0", app.TransportId, TrackNamespace); err != nil {
+		return fmt.Errorf("set track title: %w", err)
+	}
+	return nil
+}
+
 // Play resumes playback.
 func (c *CastClient) Play() error {
 	c.mu.Lock()

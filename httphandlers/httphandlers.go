@@ -15,9 +15,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go2tv.app/go2tv/v2/internal/mediasource"
+	"go2tv.app/go2tv/v2/internal/radiometadata"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
 )
@@ -577,6 +579,7 @@ func serveContentWithDLNAOptions(w http.ResponseWriter, r *http.Request, tv *soa
 
 	switch f := mf.(type) {
 	case RemoteMediaURL:
+		w, f.OnTitle = icyRelay(w, r, f.OnTitle)
 		if !transcode {
 			if r.Method != http.MethodGet {
 				serveContentReadClose(w, r, tv, tcOpts, mediaType, false, http.NoBody, ff, dlnaOpts)
@@ -697,6 +700,36 @@ type RemoteMediaURL struct {
 	URL     string
 	OnTitle func(string)
 }
+
+// icyRelay forwards station titles in-band to renderers that request ICY
+// metadata. DLNA cannot otherwise retitle a playing item without reloading it.
+func icyRelay(w http.ResponseWriter, r *http.Request, onTitle func(string)) (http.ResponseWriter, func(string)) {
+	if onTitle == nil || r.Method != http.MethodGet || strings.TrimSpace(r.Header.Get("Icy-MetaData")) != "1" {
+		return w, onTitle
+	}
+	var title atomic.Pointer[string]
+	w.Header()["icy-metaint"] = []string{strconv.Itoa(radiometadata.WriterInterval)}
+	icy := radiometadata.NewWriter(w, radiometadata.WriterInterval, func() string {
+		if current := title.Load(); current != nil {
+			return *current
+		}
+		return ""
+	})
+	return icyResponseWriter{ResponseWriter: w, icy: icy}, func(current string) {
+		title.Store(&current)
+		onTitle(current)
+	}
+}
+
+type icyResponseWriter struct {
+	http.ResponseWriter
+	icy *radiometadata.Writer
+}
+
+func (w icyResponseWriter) Write(p []byte) (int, error) { return w.icy.Write(p) }
+
+// Unwrap keeps http.ResponseController flushing the underlying writer.
+func (w icyResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 // LiveStream borrows the reader of a live, non-seekable stream for the
 // duration of one request. Unlike MediaReaderSeeker it cannot hand out a fresh

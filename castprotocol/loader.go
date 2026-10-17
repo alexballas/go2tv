@@ -146,6 +146,21 @@ func newMediaMeta(contentType string, mediaMetadata metadata.Media) *MediaMeta {
 // Ensure CustomLoadPayload implements the cast.Payload interface
 var _ cast.Payload = (*CustomLoadPayload)(nil)
 
+// TrackNamespace carries live track titles to go2tv's receiver.
+const TrackNamespace = "urn:x-cast:app.go2tv.track"
+
+// TrackPayload updates the receiver's now-playing track in place.
+type TrackPayload struct {
+	Type      string `json:"type"`
+	RequestId int    `json:"requestId"`
+	Title     string `json:"title"`
+}
+
+// SetRequestId implements cast.Payload interface
+func (p *TrackPayload) SetRequestId(id int) {
+	p.RequestId = id
+}
+
 // LaunchRequest is a payload to launch an app on Chromecast without loading media.
 type LaunchRequest struct {
 	Type      string `json:"type"`

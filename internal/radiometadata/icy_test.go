@@ -177,3 +177,24 @@ func TestICYReaderRelaysAudioWithoutMetadata(t *testing.T) {
 		t.Fatalf("relayed titles = %q", titles)
 	}
 }
+
+func TestICYWriterRoundTripsAudioAndTitleChanges(t *testing.T) {
+	audio := bytes.Repeat([]byte("0123456789"), 10)
+	title := "Artist - First"
+	var stream bytes.Buffer
+	writer := NewWriter(&stream, 7, func() string { return title })
+	// Uneven writes cross interval boundaries; the title changes mid-stream.
+	for i, chunk := range [][]byte{audio[:5], audio[5:40], audio[40:41], audio[41:]} {
+		if i == 2 {
+			title = "Don';t Stop"
+		}
+		if n, err := writer.Write(chunk); err != nil || n != len(chunk) {
+			t.Fatalf("write = %d, %v; want %d audio bytes", n, err, len(chunk))
+		}
+	}
+	var titles []string
+	relayed, err := io.ReadAll(NewReader(&stream, 7, func(title string) { titles = append(titles, title) }))
+	if err != nil || !bytes.Equal(relayed, audio) || !reflect.DeepEqual(titles, []string{"Artist - First", "Don' ;t Stop"}) {
+		t.Fatalf("relayed %q, titles %q, error %v", relayed, titles, err)
+	}
+}

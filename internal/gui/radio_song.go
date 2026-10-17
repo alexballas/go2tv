@@ -185,4 +185,8 @@ func (s *FyneScreen) applyRadioSongTitle(generation uint64, mediaURL, title stri
 	s.radioSong.title = title
 	s.mu.Unlock()
 	s.refreshRadioSongView()
+	// DLNA renderers read titles from the relayed stream's ICY metadata.
+	if client := s.chromecastSessionClient(); client != nil {
+		go func() { s.logRadioError("track title", client.SetTrackTitle(title)) }()
+	}
 }

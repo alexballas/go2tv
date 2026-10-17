@@ -8,11 +8,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"go2tv.app/go2tv/v2/internal/radiometadata"
 	"go2tv.app/go2tv/v2/soapcalls"
 )
 
@@ -178,5 +180,58 @@ func TestRadioRelayReportsICYTitlesWithoutSecondConnection(t *testing.T) {
 		}
 	default:
 		t.Fatal("relayed ICY title not reported")
+	}
+}
+
+func TestRadioRelayForwardsICYTitlesToRequestingRenderer(t *testing.T) {
+	audio := bytes.Repeat([]byte("audio"), radiometadata.WriterInterval/2)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "audio/mpeg")
+		w.Header().Set("icy-metaint", "100")
+		metadata := "\x02StreamTitle='Song';" + strings.Repeat("\x00", 13)
+		for chunk := range slices.Chunk(audio, 100) {
+			_, _ = w.Write(chunk)
+			_, _ = io.WriteString(w, metadata)
+			metadata = "\x00"
+		}
+	}))
+	defer upstream.Close()
+	server := NewServer("")
+	server.AddHandler("/radio", &soapcalls.TVPayload{MediaType: "audio/mpeg"}, nil, RemoteMediaURL{URL: upstream.URL, OnTitle: func(string) {}})
+	relay := httptest.NewServer(server.ServeMediaHandler())
+	defer relay.Close()
+	tt := []struct {
+		name   string
+		icy    bool
+		titles []string
+	}{
+		{name: "renderer requests ICY", icy: true, titles: []string{"Song"}},
+		{name: "plain renderer", icy: false},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			request, _ := http.NewRequest(http.MethodGet, relay.URL+"/radio", nil)
+			if tc.icy {
+				request.Header.Set("Icy-MetaData", "1")
+			}
+			response, err := relay.Client().Do(request)
+			if err != nil {
+				t.Fatalf("renderer request: %v", err)
+			}
+			defer response.Body.Close()
+			var titles []string
+			var body io.Reader = response.Body
+			interval, ok := radiometadata.Interval(response.Header.Get("icy-metaint"))
+			if ok != tc.icy {
+				t.Fatalf("icy-metaint %q for ICY request %v", response.Header.Get("icy-metaint"), tc.icy)
+			}
+			if ok {
+				body = radiometadata.NewReader(body, interval, func(title string) { titles = append(titles, title) })
+			}
+			received, err := io.ReadAll(body)
+			if err != nil || !bytes.Equal(received, audio) || strings.Join(titles, "|") != strings.Join(tc.titles, "|") {
+				t.Fatalf("renderer received %d/%d audio bytes, titles %q, error %v", len(received), len(audio), titles, err)
+			}
+		})
 	}
 }

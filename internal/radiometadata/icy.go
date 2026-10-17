@@ -146,6 +146,75 @@ func (r *Reader) readMetadata() error {
 	return nil
 }
 
+// WriterInterval is the metadata interval go2tv advertises to renderers.
+const WriterInterval = 16000
+
+// Writer interleaves ICY metadata into relayed audio so renderers that
+// request it show the current track without reloading the stream.
+// Unchanged titles are sent as empty blocks, as Icecast does.
+type Writer struct {
+	writer    io.Writer
+	interval  int
+	remaining int
+	title     func() string
+	sent      string
+}
+
+// NewWriter expects an interval accepted by Interval.
+func NewWriter(writer io.Writer, interval int, title func() string) *Writer {
+	return &Writer{writer: writer, interval: interval, remaining: interval, title: title}
+}
+
+// Write reports audio bytes only; metadata blocks are not counted.
+func (w *Writer) Write(p []byte) (int, error) {
+	written := 0
+	for len(p) > 0 {
+		if w.remaining == 0 {
+			if err := w.writeMetadata(); err != nil {
+				return written, err
+			}
+			w.remaining = w.interval
+		}
+		n, err := w.writer.Write(p[:min(len(p), w.remaining)])
+		written += n
+		w.remaining -= n
+		p = p[n:]
+		if err != nil {
+			return written, err
+		}
+	}
+	return written, nil
+}
+
+func (w *Writer) writeMetadata() error {
+	title := w.title()
+	if title == w.sent {
+		_, err := w.writer.Write([]byte{0})
+		return err
+	}
+	if _, err := w.writer.Write(metadataBlock(title)); err != nil {
+		return err
+	}
+	w.sent = title
+	return nil
+}
+
+func metadataBlock(title string) []byte {
+	// ICY has no escaping; the closing "';" would end the title early.
+	title = strings.ReplaceAll(strings.ToValidUTF8(title, "�"), "';", "' ;")
+	const maxLength = 255*16 - len("StreamTitle='';")
+	for len(title) > maxLength {
+		_, size := utf8.DecodeLastRuneInString(title)
+		title = title[:len(title)-size]
+	}
+	content := "StreamTitle='" + title + "';"
+	blocks := (len(content) + 15) / 16
+	block := make([]byte, 1+blocks*16)
+	block[0] = byte(blocks)
+	copy(block[1:], content)
+	return block
+}
+
 func readTitles(ctx context.Context, cancel context.CancelCauseFunc, reader io.Reader, interval int, timeout time.Duration, onTitle func(string)) error {
 	if _, ok := Interval(strconv.Itoa(interval)); !ok {
 		return errors.New("ICY: invalid metadata interval")
