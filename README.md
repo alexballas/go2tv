@@ -8,14 +8,6 @@
 
 [![Release Version](https://img.shields.io/github/v/release/alexballas/Go2TV?label=Release)](https://github.com/alexballas/Go2TV/releases/latest)
 [![Tests](https://github.com/alexballas/go2tv/actions/workflows/go.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/go.yml)
-
-[![Build for ARMv6 (32-bit)](https://github.com/alexballas/go2tv/actions/workflows/build-arm.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-arm.yml)
-[![Build for ARMv8 (64-bit)](https://github.com/alexballas/go2tv/actions/workflows/build-arm64.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-arm64.yml)
-[![Android source build](https://github.com/alexballas/go2tv/actions/workflows/build-android-source.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-android-source.yml)
-[![Build for Linux](https://github.com/alexballas/go2tv/actions/workflows/build-linux.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-linux.yml)
-[![Build for MacOS Intel](https://github.com/alexballas/go2tv/actions/workflows/build-mac-intel.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-mac-intel.yml)
-[![Build for MacOS Apple Silicon](https://github.com/alexballas/go2tv/actions/workflows/build-mac.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-mac.yml)
-[![Build for Windows](https://github.com/alexballas/go2tv/actions/workflows/build-windows.yml/badge.svg?branch=devel)](https://github.com/alexballas/go2tv/actions/workflows/build-windows.yml)
 </p>
 Cast media files to Smart TVs and Chromecast devices.
 </div>
@@ -95,6 +87,12 @@ Or **download the latest release** from the [releases page](https://github.com/a
 
 For release downloads, Go2TV is a single executable with no installation required. Just download and run.
 
+Windows releases are not code-signed, so SmartScreen may show "Windows protected your PC" on
+first run. Click **More info**, then **Run anyway**.
+
+On Android, opening the downloaded APK asks you to allow installs from that app (your
+browser or file manager). Allow **Install unknown apps** for it, then go back and install.
+
 ### Optional: FFmpeg for Transcoding
 
 For maximum compatibility with all devices and file formats, install [FFmpeg](https://ffmpeg.org/download.html). Go2TV will automatically use it when needed.
@@ -102,9 +100,12 @@ When transcoding is enabled, Go2TV probes available GPU H.264 encoders first and
 
 - **Linux**: `sudo apt install ffmpeg` or equivalent for your distro
 - **macOS**: `brew install ffmpeg`
-- **Windows**: Download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to PATH
+- **Windows**: `winget install Gyan.FFmpeg`, or download from [ffmpeg.org](https://ffmpeg.org/download.html) and add it to `PATH`
 - **Flatpak**: FFmpeg is bundled automatically
 - **Android**: FFmpeg is bundled in the default APK. It is arm64-only and requires Android 9.0+.
+
+If Go2TV can't find FFmpeg, point it at the binary in **Settings → Advanced → ffmpeg Path**
+(GUI) or pass `-ffmpeg /path/to/ffmpeg` (CLI).
 
 ---
 
@@ -135,7 +136,24 @@ the main window replaces the playlist; dragging them onto the Playlist window ap
 
 ### CLI
 
-Run `go2tv -h` for all options. Common commands:
+Run `go2tv -h` for all options.
+
+First, find your device's URL. `go2tv -l` keeps scanning and lists each device
+with its URL in brackets; press `q` to quit:
+
+``` console
+$ go2tv -l
+Scanning devices... (q to quit)
+
+• Living Room TV DLNA [http://192.168.1.100:8060/]
+• Kitchen speaker Chromecast [http://192.168.1.50:8009]
+```
+
+Pass that URL to `-t`. The addresses below are examples; use the ones `-l`
+shows for your devices. Chromecast URLs normally end in `:8009`; DLNA URLs vary
+by TV.
+
+Common commands:
 
 ``` console
 # List available devices
@@ -183,35 +201,6 @@ stops torrent playback and removes its queue item and temporary cache. Loading
 metadata leaves the current stream intact; choosing another torrent replaces it.
 Server shutdown removes torrent caches. FFmpeg transcoding supports input seeks.
 
-Desktop GUI **Automatic** subtitles prefer a matching sidecar (`.srt`, `.vtt`,
-`.ass`, then `.ssa`). Without a sidecar, DLNA leaves embedded subtitles to the
-TV during direct playback; with transcoding, it burns the first supported local
-embedded track. Chromecast selects the first supported embedded text track for
-receiver captions, or the first supported text or bitmap track for burn-in.
-DLNA serves sidecars and explicitly selected embedded text tracks as SRT without
-transcoding. Unreadable automatic tracks never block playback.
-
-**Automatic torrent subtitles** controls embedded torrent text subtitles.
-External SRT/VTT/ASS/SSA captions use the Chromecast receiver during direct and
-transcoded playback; transcoded seeks shift captions to the new stream start. Enable
-**Playback → Burn Chromecast Subtitles (Compatibility Fallback)** for a compatibility fallback requiring
-transcoding, including automatic embedded MKV/WebM torrent captions. Desktop GUI
-and mobile offer the same fallback in **Settings → Playback**. DLNA burns selected
-subtitles and automatic embedded torrent text subtitles during transcoding.
-Embedded torrent burning renders captions in short windows as playback advances,
-so startup does not require the entire track or video. The current caption window
-and its timing lookahead still need verified torrent pieces; missing pieces can
-delay playback. External subtitles take priority. Embedded torrent captions use
-their original ASS/SSA styles, positioning, animation and attached fonts when
-burned during transcoding. Local embedded ASS/SSA tracks are also burned directly
-from their container, preserving attached fonts. External ASS/SSA files preserve
-their styles and can use font files alongside the subtitle file. Receiver WebVTT
-captions retain simplified formatting. Local bitmap subtitles (PGS, DVD, DVB,
-XSub) require transcoding and are burned into the video; Chromecast also requires
-**Burn Chromecast Subtitles**. Bitmap captions cannot be served as SRT or WebVTT.
-FFmpeg must include `overlay` and `scale2ref` for bitmap burn-in, and `subtitles`,
-`overlay`, and `scale2ref` filters and PNG support for embedded torrent burn-in.
-
 From the GUI, open **Settings → Remote Web Session…**, add media folders, choose local or
 LAN access, and start the session.
 
@@ -245,6 +234,37 @@ go2tv -server \
 
 > LAN mode uses HTTP without TLS. Use it only on trusted networks.
 
+### Subtitles
+
+Desktop GUI **Automatic** subtitles prefer a matching sidecar: a subtitle file
+next to the video with the same name (`.srt`, `.vtt`, `.ass`, then `.ssa`).
+Without a sidecar, DLNA leaves embedded subtitles to the TV during direct playback; with transcoding, it burns the first supported local
+embedded track. Chromecast selects the first supported embedded text track for
+receiver captions, or the first supported text or bitmap track for burn-in.
+DLNA serves sidecars and explicitly selected embedded text tracks as SRT without
+transcoding. Unreadable automatic tracks never block playback.
+
+**Automatic torrent subtitles** controls embedded torrent text subtitles.
+External SRT/VTT/ASS/SSA captions use the Chromecast receiver during direct and
+transcoded playback; transcoded seeks shift captions to the new stream start. Enable
+**Playback → Burn Chromecast Subtitles (Compatibility Fallback)** for a compatibility fallback requiring
+transcoding, including automatic embedded MKV/WebM torrent captions. Desktop GUI
+and mobile offer the same fallback in **Settings → Playback**. DLNA burns selected
+subtitles and automatic embedded torrent text subtitles during transcoding.
+Embedded torrent burning renders captions in short windows as playback advances,
+so startup does not require the entire track or video. The current caption window
+and its timing lookahead still need verified torrent pieces; missing pieces can
+delay playback. External subtitles take priority. Embedded torrent captions use
+their original ASS/SSA styles, positioning, animation and attached fonts when
+burned during transcoding. Local embedded ASS/SSA tracks are also burned directly
+from their container, preserving attached fonts. External ASS/SSA files preserve
+their styles and can use font files alongside the subtitle file. Receiver WebVTT
+captions retain simplified formatting. Local bitmap subtitles (PGS, DVD, DVB,
+XSub) require transcoding and are burned into the video; Chromecast also requires
+**Burn Chromecast Subtitles**. Bitmap captions cannot be served as SRT or WebVTT.
+FFmpeg must include `overlay` and `scale2ref` for bitmap burn-in, and `subtitles`,
+`overlay`, and `scale2ref` filters and PNG support for embedded torrent burn-in.
+
 ### RTMP Streaming (Chromecast only)
 
 Select a Chromecast, enable **RTMP Server**, and click **Play**. Use the displayed URL in
@@ -276,6 +296,21 @@ URLs, and stop playback. For direct control, use the Go2TV GUI or CLI.
 
 ## Troubleshooting
 
+### Device not listed
+
+- Put the computer and the TV/Chromecast on the same network. Guest Wi-Fi, separate
+  2.4/5 GHz networks on some routers, and different subnets block discovery.
+- Disconnect from any VPN; it can route discovery traffic away from your local network.
+- Turn the TV fully on and check that its DLNA/media-sharing setting is enabled
+  (the name varies by brand).
+- Allow Go2TV through your firewall (see below).
+- `go2tv -l` keeps scanning; give slow devices a few seconds to appear.
+
+### Device listed but playback fails
+
+- Try again with **Transcode** enabled (`-tc` in the CLI). It requires FFmpeg.
+- Check the firewall's TCP port range below; the TV fetches media from your computer.
+
 ### Firewall Configuration
 
 If you're behind a firewall, allow inbound traffic from devices on your local network:
@@ -295,7 +330,13 @@ Go2TV uses a custom Chromecast receiver hosted at https://cast-receiver.go2tv.ap
 
 ## Building from Source
 
-**Requirements**: Go 1.26.9 or later (Go 1.27 requires 1.27.2 or later)
+**Requirements**:
+
+- Go 1.26.9 or later (Go 1.27 requires 1.27.2 or later)
+- A C compiler and the GUI toolkit headers:
+  - **Debian/Ubuntu**: `sudo apt install gcc pkg-config xorg-dev libwayland-dev libxkbcommon-dev libegl-dev libpipewire-0.3-dev`
+  - **macOS**: `xcode-select --install`
+  - **Windows**: MSYS2 UCRT64 with `mingw-w64-ucrt-x86_64-gcc`, `mingw-w64-ucrt-x86_64-cppwinrt`, and `mingw-w64-ucrt-x86_64-pkg-config`
 
 ``` console
 git clone https://github.com/alexballas/go2tv
@@ -303,76 +344,8 @@ cd go2tv
 make build
 ```
 
-### AppImage builds (Linux)
-
-``` console
-make appimage          # Without FFmpeg
-make appimage-ffmpeg   # With FFmpeg
-```
-
-Release AppImages are built on Ubuntu 22.04 (glibc 2.35) for compatibility with
-older systems and named `go2tv_vX.Y.Z_amd64.AppImage`. The lowercase prefix and
-underscores match other release artifacts; `linux` is omitted because AppImages
-are Linux-only. Build on Ubuntu 22.04 when distributing local AppImages;
-building on a newer system can require a newer glibc.
-
-Standalone Linux amd64 and arm64 releases use the same Ubuntu 22.04 baseline.
-ARMv6 releases use a pinned Raspberry Pi OS Bookworm image (glibc 2.36), which
-provides the Wayland and PipeWire headers required by current dependencies.
-CI tests Go packages on both Ubuntu 22.04 and the latest Ubuntu runner.
-
-For the FFmpeg build, `APPIMAGE_FFMPEG_MODE` supports `auto` (default), `system`,
-`download`, or `none`. Downloaded builds pin a month-end FFmpeg 8.1.2 build for
-Pascal/NVENC compatibility. BtbN retains month-end builds for two years; daily
-builds expire after 14 releases. Override binary paths with `APPIMAGE_FFMPEG_BIN`
-and `APPIMAGE_FFPROBE_BIN`, or override the archive with `APPIMAGE_FFMPEG_URL` and
-`APPIMAGE_FFMPEG_SHA256`.
-
-Release AppImages include update information for AppImageUpdate and a matching
-`.AppImage.zsync` asset. Local builds omit update information by default. To
-generate the pair locally, install `zsyncmake` and set `APPIMAGE_UPDATE_INFO`
-and `APPIMAGE_OUT` (using the final release filename) when running `make`.
-
-### Android builds
-
-``` console
-make android
-```
-
-`make android` builds the arm64 APK and bundles Android `ffmpeg`/`ffprobe` executables as native libraries. Set `ANDROID_NDK_HOME` and `ANDROID_HOME`.
-
-To compile the bundled FFmpeg tools from an official source checkout:
-
-``` console
-git clone --branch n8.1.1 --depth 1 https://github.com/FFmpeg/FFmpeg.git ffmpeg-source
-git clone --branch stable --depth 1 https://code.videolan.org/videolan/x264.git x264-source
-make android-source \
-  ANDROID_FFMPEG_SOURCE_DIR="$PWD/ffmpeg-source" \
-  ANDROID_X264_SOURCE_DIR="$PWD/x264-source"
-```
-
-`android-source` performs no dependency downloads. It builds x264, then a GPL
-FFmpeg arm64 configuration with both MediaCodec and libx264 using the NDK. It
-verifies required transcoding features and 16 KB ELF alignment before packaging.
-The source-build workflow pins FFmpeg, x264, and the official Android NDK. GPL
-notices and exact source revisions are embedded in the APK and uploaded with the
-corresponding source archives.
-
-Set `ANDROID_SIGN=false` to produce a zip-aligned unsigned APK for downstream
-packagers such as F-Droid. Signed builds remain the default.
-
-### Using Docker
-
-Build the image:
-``` console
-docker build --force-rm -t go2tv .
-```
-
-Run the container (Linux with X11):
-``` console
-xhost +local:docker
-docker run -it --network host -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix go2tv go2tv
-```
+The binary is written to `build/go2tv`. AppImage, Android, and Docker builds are
+covered in [BUILDING.md](BUILDING.md).
 
 ---
 
