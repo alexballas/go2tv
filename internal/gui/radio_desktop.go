@@ -23,6 +23,11 @@ func (s *FyneScreen) cancelQueuedRadioPlayback() { s.cancelPendingTorrentPlaybac
 
 func (s *FyneScreen) playRadioStation() { playAction(s) }
 
+func (s *FyneScreen) replaceRadioStation() {
+	s.cancelDLNAFollowup()
+	playActionOnTargetContext(s, selectedPlaybackTarget(s), context.Background(), true)
+}
+
 func (s *FyneScreen) radioSongDisplayAvailable() bool { return s.playbackStatus != nil }
 
 func (s *FyneScreen) refreshRadioSongView() {

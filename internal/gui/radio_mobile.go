@@ -24,6 +24,8 @@ func (s *FyneScreen) cancelQueuedRadioPlayback() {
 // Mobile playback claims the UI thread with DoAndWait.
 func (s *FyneScreen) playRadioStation() { go playAction(s) }
 
+func (s *FyneScreen) replaceRadioStation() { go replaceAction(s) }
+
 func (s *FyneScreen) radioSongDisplayAvailable() bool { return s.radioSong.label != nil }
 
 // The player bar shows the song in place of the live stream's timeline.

@@ -27,7 +27,7 @@ func claimMobilePlayback(s *FyneScreen) bool {
 
 func startMobilePlayback(s *FyneScreen) {
 	if claimMobilePlayback(s) {
-		go playMobileAction(s)
+		go playMobileAction(s, false)
 	}
 }
 

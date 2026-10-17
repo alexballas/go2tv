@@ -558,7 +558,7 @@ func (s *FyneScreen) beginDLNAFollowup(target playbackTarget, nextPath string, e
 			if !preserveSource {
 				updateInternalSubsDropdownAsync(s, nextPath)
 			}
-			go playActionOnTargetContext(s, target, followupCtx)
+			go playActionOnTargetContext(s, target, followupCtx, false)
 		})
 	}()
 }

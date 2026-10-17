@@ -42,6 +42,40 @@ func (screen *FyneScreen) installChromecastClientForAction(actionID uint64, clie
 	return true
 }
 
+// chromecastRadioReplaceable reports whether a station switch can LOAD over
+// the playing session instead of relaunching the receiver, as server mode does.
+func (screen *FyneScreen) chromecastRadioReplaceable() bool {
+	if done := screen.cancelPlaybackStartup(); done != nil {
+		<-done
+	}
+	if screen.getScreenState() != "Playing" {
+		return false
+	}
+	return chromecastClientOwnsDevice(screen.chromecastSessionClient(), screen.selectedDevice)
+}
+
+// endReplacedChromecastSession stops a station the failed switch was meant to
+// replace, so it does not keep playing behind a stopped UI.
+func (screen *FyneScreen) endReplacedChromecastSession(device devType) {
+	client := screen.chromecastClient
+	if !chromecastClientOwnsDevice(client, device) {
+		return
+	}
+	screen.chromecastClient = nil
+	if client.IsConnected() {
+		_ = client.Stop()
+	}
+	_ = client.Close(false)
+	if server := screen.httpserver; server != nil {
+		screen.httpserver = nil
+		server.StopServer()
+	}
+	if screen.cancelServerStop != nil {
+		screen.cancelServerStop()
+		screen.cancelServerStop = nil
+	}
+}
+
 func connectChromecastForAction(screen *FyneScreen, actionID uint64, device devType) (*castprotocol.CastClient, error) {
 	ctx := screen.playbackStartupContext()
 	var lastErr error

@@ -674,10 +674,11 @@ func playAction(screen *FyneScreen) {
 
 func playActionOnTarget(screen *FyneScreen, target playbackTarget) {
 	screen.cancelDLNAFollowup()
-	playActionOnTargetContext(screen, target, context.Background())
+	playActionOnTargetContext(screen, target, context.Background(), false)
 }
 
-func playActionOnTargetContext(screen *FyneScreen, target playbackTarget, parentCtx context.Context) {
+// replace loads over a playing Chromecast session instead of toggling pause.
+func playActionOnTargetContext(screen *FyneScreen, target playbackTarget, parentCtx context.Context, replace bool) {
 	if parentCtx.Err() != nil {
 		return
 	}
@@ -741,7 +742,7 @@ func playActionOnTargetContext(screen *FyneScreen, target playbackTarget, parent
 	}
 
 	// Active Chromecast session: control the session owner, not a warm reusable client.
-	if client := screen.activeChromecastPlaybackClient(); client != nil && isActivePlayback {
+	if client := screen.activeChromecastPlaybackClient(); client != nil && isActivePlayback && !replace {
 		// Network round trips, so off the tap thread; hand the permit over.
 		permitHandedOff = true
 		go func() {
@@ -826,7 +827,7 @@ func playActionOnTargetContext(screen *FyneScreen, target playbackTarget, parent
 			if err := screen.waitDLNATeardown(startupCtx); err != nil {
 				return
 			}
-			chromecastPlayAction(screen, actionID, target.device, startupCtx)
+			chromecastPlayAction(screen, actionID, target.device, startupCtx, replace)
 		}()
 		return
 	}
@@ -1390,7 +1391,7 @@ func stopScreencastSession(screen *FyneScreen) {
 
 // chromecastPlayAction handles playback on Chromecast devices.
 // Supports both local files (via internal HTTP server) and external URLs (direct).
-func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice devType, startupCtx context.Context) {
+func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice devType, startupCtx context.Context, replace bool) {
 	streamCtx, detachStream := playbackStreamContext(startupCtx)
 	defer detachStream()
 	if startupCtx.Err() != nil || !screen.isChromecastActionCurrent(actionID) {
@@ -1398,7 +1399,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 	}
 
 	// Handle pause/resume if already playing on the active Chromecast session.
-	if client := screen.activeChromecastPlaybackClient(); client != nil {
+	if client := screen.activeChromecastPlaybackClient(); client != nil && !replace {
 		currentState := screen.getScreenState()
 		if currentState == "Paused" {
 			if err := client.Play(); err != nil {
@@ -1423,6 +1424,14 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 		}
 	}
 	var artworkAsset *metadata.ArtworkAsset
+	loaded := false
+	if replace {
+		defer func() {
+			if !loaded && startupCtx.Err() == nil {
+				screen.endReplacedChromecastSession(sessionDevice)
+			}
+		}()
+	}
 
 	screen.setActiveDevice(sessionDevice)
 
@@ -1852,7 +1861,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 			startAfreshPlayButton(screen)
 			return
 		}
-		client = loadedClient
+		client, loaded = loadedClient, true
 		if !screen.isChromecastActionCurrent(actionID) {
 			return
 		}

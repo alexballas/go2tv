@@ -282,11 +282,20 @@ func playAction(screen *FyneScreen) {
 	var claimed bool
 	fyne.DoAndWait(func() { claimed = claimMobilePlayback(screen) })
 	if claimed {
-		playMobileAction(screen)
+		playMobileAction(screen, false)
 	}
 }
 
-func playMobileAction(screen *FyneScreen) {
+// replaceAction loads over a playing Chromecast session instead of toggling pause.
+func replaceAction(screen *FyneScreen) {
+	var claimed bool
+	fyne.DoAndWait(func() { claimed = claimMobilePlayback(screen) })
+	if claimed {
+		playMobileAction(screen, true)
+	}
+}
+
+func playMobileAction(screen *FyneScreen, replace bool) {
 	claimCtx := screen.mobilePlaybackContext()
 	finishStartup := func() {}
 	defer func() {
@@ -342,7 +351,7 @@ func playMobileAction(screen *FyneScreen) {
 	}
 
 	// Active Chromecast session: client connected and playing/paused
-	if client := screen.chromecastClient; client != nil && client.IsConnected() && isActivePlayback {
+	if client := screen.chromecastClient; client != nil && client.IsConnected() && isActivePlayback && !replace {
 		// The screen state can be stale (a session that died or finished
 		// while unobserved), so toggle on the device's live state instead
 		// of writing a command into a possibly dead socket.
@@ -410,7 +419,7 @@ func playMobileAction(screen *FyneScreen) {
 	defer detachStream()
 	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
 		actionID := screen.nextChromecastActionID()
-		chromecastPlayAction(screen, actionID, startupCtx)
+		chromecastPlayAction(screen, actionID, startupCtx, replace)
 		return
 	}
 
@@ -1194,7 +1203,7 @@ func startAfreshPlayButton(screen *FyneScreen) {
 
 // chromecastPlayAction handles playback on Chromecast devices.
 // Supports both local files (via internal HTTP server) and external URLs (direct).
-func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx context.Context) {
+func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx context.Context, replace bool) {
 	streamCtx, detachStream := playbackStreamContext(startupCtx)
 	defer detachStream()
 	if startupCtx.Err() != nil || !screen.isChromecastActionCurrent(actionID) {
@@ -1205,7 +1214,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx contex
 	sessionDevice := screen.selectedDevice
 
 	// Handle pause/resume if already playing - query Chromecast status directly
-	if screen.chromecastClient != nil && screen.chromecastClient.IsConnected() {
+	if screen.chromecastClient != nil && screen.chromecastClient.IsConnected() && !replace {
 		status, err := screen.chromecastClient.GetStatus()
 		if err == nil {
 			switch status.PlayerState {
@@ -1236,6 +1245,14 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx contex
 		check(w, errors.New(lang.L("please select a media file or enter a media URL")))
 		startAfreshPlayButton(screen)
 		return
+	}
+	loaded := false
+	if replace {
+		defer func() {
+			if !loaded && startupCtx.Err() == nil {
+				screen.endReplacedChromecastSession(sessionDevice)
+			}
+		}()
 	}
 	screen.setActiveDevice(sessionDevice)
 
@@ -1503,6 +1520,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx contex
 		startAfreshPlayButton(screen)
 		return
 	}
+	loaded = true
 	if !screen.isChromecastActionCurrent(actionID) {
 		return
 	}

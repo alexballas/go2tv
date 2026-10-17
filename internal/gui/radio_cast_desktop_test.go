@@ -9,11 +9,13 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os/exec"
 	"reflect"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/data/binding"
@@ -147,6 +149,87 @@ func TestRadioChromecastPlaybackFromSelection(t *testing.T) {
 	}
 }
 
+func TestRadioChromecastSwitchReusesReceiver(t *testing.T) {
+	tt := []struct {
+		name      string
+		reachable bool
+	}{
+		{name: "next station loads on running receiver", reachable: true},
+		{name: "failed switch stops previous station"},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "audio/mpeg")
+				_, _ = io.WriteString(w, "audio")
+			}))
+			defer upstream.Close()
+			unreachable := httptest.NewServer(http.NotFoundHandler())
+			unreachable.Close()
+			first := radiobrowser.Station{UUID: "first", Name: "First", URL: upstream.URL + "/first"}
+			next := radiobrowser.Station{UUID: "next", Name: "Next", URL: upstream.URL + "/next"}
+			if !tc.reachable {
+				next.URL = unreachable.URL + "/next"
+			}
+			screen, card := newRadioPlaybackTestScreen(t)
+			screen.selectedDevice = devType{addr: "http://127.0.0.1:8009", deviceType: devices.DeviceTypeChromecast, isAudioOnly: true}
+			screen.selectedDeviceType = devices.DeviceTypeChromecast
+			radioWindow(t.Context(), screen)
+			r := screen.radio
+			r.client = radioTestDirectory{stations: []radiobrowser.Station{first, next}}
+			conn := &radioCastReceiver{messages: make(chan *pb.CastMessage, 8), loaded: make(chan cast.MediaItem, 4)}
+			app := application.NewApplication(application.WithConnection(conn), application.WithConnectionRetries(1))
+			client := newConnectedCastClientForTest(t, screen.selectedDevice.addr)
+			value := reflectValueElem(t, client)
+			reflectNewAtField(value.FieldByName("conn")).Set(reflect.ValueOf(conn))
+			reflectNewAtField(value.FieldByName("app")).Set(reflect.ValueOf(app))
+			screen.chromecastClient = client
+			defer func() { stopActionSync(screen); _ = app.Close(false) }()
+			load := func(station radiobrowser.Station) cast.MediaItem {
+				t.Helper()
+				select {
+				case media := <-conn.loaded:
+					return media
+				case <-time.After(5 * time.Second):
+					t.Fatalf("%s did not reach Chromecast LOAD", station.Name)
+				}
+				return cast.MediaItem{}
+			}
+			use := func(index int) {
+				fyne.DoAndWait(func() { test.Tap(card.radio) })
+				waitRadioUI(t, func() bool { return r.list.Length() == 2 })
+				fyne.DoAndWait(func() { r.list.Select(index); test.Tap(r.useStation) })
+			}
+			use(0)
+			waitRadioUI(t, func() bool { return screen.MediaText.Text == first.StreamURL() && r.modal == nil })
+			playAction(screen)
+			load(first)
+			waitUI(t, 5*time.Second, func() bool { return screen.getScreenState() == "Playing" })
+			use(1)
+			if !tc.reachable {
+				waitUI(t, 5*time.Second, func() bool { return screen.getScreenState() == "Stopped" && screen.chromecastClient == nil })
+				conn.mu.Lock()
+				stopped, closed := conn.stopped, conn.closed
+				conn.mu.Unlock()
+				if !stopped || !closed {
+					t.Fatalf("previous station left on receiver: stopped=%v closed=%v", stopped, closed)
+				}
+				return
+			}
+			if media := load(next); media.ContentId != next.StreamURL() {
+				t.Fatalf("switch loaded %q, want %q", media.ContentId, next.StreamURL())
+			}
+			waitUI(t, 5*time.Second, func() bool { return screen.getScreenState() == "Playing" })
+			conn.mu.Lock()
+			stopped, closed := conn.stopped, conn.closed
+			conn.mu.Unlock()
+			if stopped || closed || screen.chromecastClient != client {
+				t.Fatalf("switch relaunched receiver: stopped=%v closed=%v sameClient=%v", stopped, closed, screen.chromecastClient == client)
+			}
+		})
+	}
+}
+
 // A software receiver acknowledges control/status requests. Media still passes
 // through the GUI's production casting path and real HTTP/FFmpeg processing.
 type radioCastReceiver struct {
@@ -154,6 +237,8 @@ type radioCastReceiver struct {
 	messages chan *pb.CastMessage
 	loaded   chan cast.MediaItem
 	media    cast.MediaItem
+	session  int
+	stopped  bool // receiver app STOP, which quits the receiver
 	closed   bool
 }
 
@@ -194,7 +279,12 @@ func (c *radioCastReceiver) Send(id int, payload cast.Payload, source, destinati
 	switch command.Type {
 	case "LOAD":
 		c.media = command.Media
+		c.session++
 		c.loaded <- command.Media
+	case "STOP":
+		if strings.HasSuffix(namespace, ".receiver") {
+			c.stopped = true
+		}
 	case "GET_STATUS":
 		var response any
 		if strings.HasSuffix(namespace, ".media") {
@@ -202,7 +292,7 @@ func (c *radioCastReceiver) Send(id int, payload cast.Payload, source, destinati
 			if c.media.ContentId != "" {
 				state = "PLAYING"
 			}
-			response = map[string]any{"type": "MEDIA_STATUS", "requestId": id, "status": []any{map[string]any{"mediaSessionId": 1, "playerState": state, "currentTime": 0, "media": c.media, "volume": map[string]any{"level": 0.5, "muted": false}}}}
+			response = map[string]any{"type": "MEDIA_STATUS", "requestId": id, "status": []any{map[string]any{"mediaSessionId": c.session, "playerState": state, "currentTime": 0, "media": c.media, "volume": map[string]any{"level": 0.5, "muted": false}}}}
 		} else {
 			response = map[string]any{"type": "RECEIVER_STATUS", "requestId": id, "status": map[string]any{"applications": []any{map[string]any{"appId": cast.DefaultMediaReceiverAppID, "transportId": "radio", "sessionId": "radio"}}, "volume": map[string]any{"level": 0.5, "muted": false}}}
 		}

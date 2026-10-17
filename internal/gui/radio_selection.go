@@ -144,6 +144,7 @@ func (r *radioView) useRadioStation() {
 			return
 		}
 		switching := !sameRadio || previous.UUID != station.UUID || previous.StreamURL() != station.StreamURL()
+		replace := false
 		if switching {
 			// Validate before stopping so a refused selection keeps playback.
 			var err error
@@ -159,7 +160,11 @@ func (r *radioView) useRadioStation() {
 				})
 				return
 			}
-			stopActionSync(r.screen)
+			// Chromecast swaps stations with one LOAD on the running receiver.
+			replace = resume && sameRadio && r.screen.chromecastRadioReplaceable()
+			if !replace {
+				stopActionSync(r.screen)
+			}
 		}
 		fyne.Do(func() {
 			if ctx.Err() != nil || r.ctx != ctx {
@@ -183,7 +188,10 @@ func (r *radioView) useRadioStation() {
 			if !cached && station.Favicon != "" {
 				r.screen.loadSelectedRadioArtwork(r.parentCtx, station)
 			}
-			if switching && resume {
+			switch {
+			case replace:
+				r.screen.replaceRadioStation()
+			case switching && resume:
 				r.screen.playRadioStation()
 			}
 		})
