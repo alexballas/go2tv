@@ -71,7 +71,7 @@ func newDeviceList(s *FyneScreen, dd *[]devType) *deviceList {
 
 		// Swap icon based on state
 		if isActive {
-			row.setLeadingIcon(theme.MediaPlayIcon())
+			row.setLeadingIcon(playingIcon())
 		} else if item.addr == s.selectedDevice.addr {
 			row.setLeadingIcon(theme.ConfirmIcon())
 		} else {

@@ -8,9 +8,50 @@ import (
 	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/canvas"
 	"github.com/alexballas/refyne/v2/container"
+	"github.com/alexballas/refyne/v2/layout"
 	"github.com/alexballas/refyne/v2/theme"
 	"github.com/alexballas/refyne/v2/widget"
 )
+
+// spreadRowLayout spreads items edge to edge with equal gaps when they fit on
+// one row, and falls back to row wrapping when the screen is too narrow.
+type spreadRowLayout struct {
+	wrap fyne.Layout
+}
+
+func newSpreadRowLayout() *spreadRowLayout {
+	return &spreadRowLayout{wrap: layout.NewRowWrapLayout()}
+}
+
+func (l *spreadRowLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	return l.wrap.MinSize(objects)
+}
+
+func (l *spreadRowLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	// Always wrap first: it also caches the min size the parent relies on.
+	l.wrap.Layout(objects, size)
+
+	var visible []fyne.CanvasObject
+	var used, h float32
+	for _, o := range objects {
+		if !o.Visible() {
+			continue
+		}
+		visible = append(visible, o)
+		used += o.MinSize().Width
+		h = max(h, o.MinSize().Height)
+	}
+	if len(visible) < 2 || l.wrap.MinSize(objects).Height > h {
+		return
+	}
+
+	gap := (size.Width - used) / float32(len(visible)-1)
+	var x float32
+	for _, o := range visible {
+		o.Move(fyne.NewPos(x, 0))
+		x += o.MinSize().Width + gap
+	}
+}
 
 // playerButtonsLayout gives Play a pill filling the free width, followed by
 // round icon buttons. The player bar theme turns square buttons into circles.

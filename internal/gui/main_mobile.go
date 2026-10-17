@@ -60,7 +60,7 @@ func newDeviceList(s *FyneScreen, dd *[]devType) *deviceList {
 		active := s.getActiveDevice()
 		switch {
 		case (state == "Playing" || state == "Paused") && item.addr == active.addr && item.deviceType == active.deviceType:
-			row.setLeadingIcon(theme.MediaPlayIcon())
+			row.setLeadingIcon(playingIcon())
 		case item.addr == s.selectedDevice.addr:
 			row.setLeadingIcon(theme.ConfirmIcon())
 		default:
@@ -252,8 +252,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	if err := utils.CheckFFmpeg(s.ffmpegPath); err == nil {
 		checklistItems = append(checklistItems, transcode)
 	}
-	// Options share a row and wrap only when the screen is too narrow.
-	checklists := container.New(layout.NewRowWrapLayout(), checklistItems...)
+	// Options spread across one row and wrap only when the screen is too narrow.
+	checklists := container.New(newSpreadRowLayout(), checklistItems...)
 	mediasubsbuttons := container.New(layout.NewGridLayout(2), mfile, sfile)
 	radio := newRadioButton(s)
 	radio.SetIcon(theme.MediaMusicIcon())
