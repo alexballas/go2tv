@@ -27,6 +27,11 @@ const (
 	maxResponseBytes = 2 << 20
 	DefaultLimit     = 100
 
+	// Radio Browser often runs a single server, so transient failures are
+	// retried there too, backing off retryDelay then 3×retryDelay.
+	minAttempts = 3
+	retryDelay  = 500 * time.Millisecond
+
 	// The directory changes slowly; caching spares Radio Browser repeat
 	// requests from dialog reopens and multiple WebUI remotes.
 	searchCacheTTL    = 5 * time.Minute
@@ -35,6 +40,15 @@ const (
 )
 
 var ErrHTTPStatus = errors.New("radio browser HTTP status")
+
+// fallbackMirrors follow discovered servers so a DNS hiccup or a stale
+// reverse record never leaves the client without a known endpoint.
+var fallbackMirrors = []string{"https://de1.api.radio-browser.info", "https://de2.api.radio-browser.info", "https://all.api.radio-browser.info"}
+
+type httpStatusError int
+
+func (e httpStatusError) Error() string        { return fmt.Sprintf("%v: %d", ErrHTTPStatus, int(e)) }
+func (e httpStatusError) Is(target error) bool { return target == ErrHTTPStatus }
 
 type Station struct {
 	UUID        string `json:"stationuuid"`
@@ -101,6 +115,8 @@ type Client struct {
 	http        *http.Client
 	userAgent   string
 	now         func() time.Time
+	discover    func(context.Context) []string
+	retryDelay  time.Duration
 	mu          sync.Mutex
 	mirrors     []string
 	discovered  bool
@@ -112,17 +128,18 @@ type Client struct {
 }
 
 func New(userAgent string) *Client {
-	return &Client{http: &http.Client{Timeout: requestTimeout}, userAgent: userAgent, now: time.Now}
+	return &Client{http: &http.Client{Timeout: requestTimeout}, userAgent: userAgent, now: time.Now, discover: discoverMirrors, retryDelay: retryDelay}
 }
 
-func (c *Client) cachedSearch(key string) ([]Station, bool) {
+// cachedSearch returns a stored search and whether it is still fresh.
+func (c *Client) cachedSearch(key string) ([]Station, bool, bool) {
 	c.cacheMu.Lock()
 	defer c.cacheMu.Unlock()
 	entry, ok := c.searches[key]
-	if !ok || !c.now().Before(entry.expires) {
-		return nil, false
+	if !ok {
+		return nil, false, false
 	}
-	return slices.Clone(entry.stations), true
+	return slices.Clone(entry.stations), true, c.now().Before(entry.expires)
 }
 
 func (c *Client) storeSearch(key string, stations []Station) {
@@ -145,32 +162,55 @@ func (c *Client) servers(ctx context.Context) []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if !c.discovered {
-		lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-		defer cancel()
-		addresses, err := net.DefaultResolver.LookupHost(lookupCtx, "all.api.radio-browser.info")
-		seen := make(map[string]bool)
-		if err == nil {
-			for _, address := range addresses {
-				hosts, lookupErr := net.DefaultResolver.LookupAddr(lookupCtx, address)
-				if lookupErr != nil {
-					continue
-				}
-				for _, host := range hosts {
-					name := strings.TrimSuffix(host, ".")
-					if strings.HasSuffix(name, ".api.radio-browser.info") && !seen[name] {
-						seen[name] = true
-						c.mirrors = append(c.mirrors, "https://"+name)
-					}
-				}
-			}
-		}
-		if len(c.mirrors) == 0 {
-			c.mirrors = []string{"https://de1.api.radio-browser.info", "https://nl1.api.radio-browser.info", "https://all.api.radio-browser.info"}
-		}
-		rand.Shuffle(len(c.mirrors), func(i, j int) { c.mirrors[i], c.mirrors[j] = c.mirrors[j], c.mirrors[i] })
+		c.mirrors = c.discover(ctx)
 		c.discovered = true
 	}
 	return append([]string(nil), c.mirrors...)
+}
+
+// rediscover forgets the mirror list after every server failed, so the next
+// request looks up the current Radio Browser servers again.
+func (c *Client) rediscover() {
+	c.mu.Lock()
+	c.discovered = false
+	c.mu.Unlock()
+}
+
+// discoverMirrors resolves all.api.radio-browser.info and names each address
+// by reverse lookup, as Radio Browser recommends.
+func discoverMirrors(ctx context.Context) []string {
+	lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	var mirrors []string
+	addresses, err := net.DefaultResolver.LookupHost(lookupCtx, "all.api.radio-browser.info")
+	if err == nil {
+		for _, address := range addresses {
+			hosts, lookupErr := net.DefaultResolver.LookupAddr(lookupCtx, address)
+			if lookupErr != nil {
+				continue
+			}
+			for _, host := range hosts {
+				name := strings.TrimSuffix(host, ".")
+				if strings.HasSuffix(name, ".api.radio-browser.info") {
+					mirrors = append(mirrors, "https://"+name)
+				}
+			}
+		}
+	}
+	rand.Shuffle(len(mirrors), func(i, j int) { mirrors[i], mirrors[j] = mirrors[j], mirrors[i] })
+	return withFallbackMirrors(mirrors)
+}
+
+// withFallbackMirrors keeps discovered servers first, then adds every
+// fallback not already present.
+func withFallbackMirrors(discovered []string) []string {
+	mirrors := make([]string, 0, len(discovered)+len(fallbackMirrors))
+	for _, mirror := range slices.Concat(discovered, fallbackMirrors) {
+		if !slices.Contains(mirrors, mirror) {
+			mirrors = append(mirrors, mirror)
+		}
+	}
+	return mirrors
 }
 
 func (c *Client) Search(ctx context.Context, q Query) ([]Station, error) {
@@ -189,11 +229,16 @@ func (c *Client) Search(ctx context.Context, q Query) ([]Station, error) {
 		values.Set("tag", tag)
 	}
 	key := values.Encode()
-	if stations, ok := c.cachedSearch(key); ok {
-		return stations, nil
+	cached, ok, fresh := c.cachedSearch(key)
+	if ok && fresh {
+		return cached, nil
 	}
 	var stations []Station
 	if err := c.getJSON(ctx, "/json/stations/search", values, &stations); err != nil {
+		// An unreachable directory still serves the last results for this search.
+		if ok && ctx.Err() == nil {
+			return cached, nil
+		}
 		return nil, err
 	}
 	result := make([]Station, 0, len(stations))
@@ -373,11 +418,24 @@ func (c *Client) Click(ctx context.Context, uuid string) error {
 func (c *Client) getJSON(ctx context.Context, path string, query url.Values, target any) error {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
+	servers := c.servers(ctx)
+	if len(servers) == 0 {
+		return errors.New("radio browser: no servers")
+	}
 	var lastErr error
-	for _, server := range c.servers(ctx) {
+	for attempt := range max(len(servers), minAttempts) {
+		if attempt > 0 && retryable(lastErr) {
+			if err := c.backoff(ctx, attempt); err != nil {
+				return err
+			}
+		} else if attempt >= len(servers) {
+			// Revisit servers only for failures that may clear up.
+			break
+		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		server := servers[attempt%len(servers)]
 		// Reserve time for failover within the overall request deadline.
 		attemptCtx, attemptCancel := context.WithTimeout(ctx, 5*time.Second)
 		err := c.request(attemptCtx, server+path+"?"+query.Encode(), target)
@@ -395,7 +453,35 @@ func (c *Client) getJSON(ctx context.Context, path string, query url.Values, tar
 		}
 		lastErr = err
 	}
+	c.rediscover()
 	return fmt.Errorf("radio browser: %w", lastErr)
+}
+
+// backoff waits before retrying a transient failure: retryDelay after the
+// first attempt, then 3×retryDelay.
+func (c *Client) backoff(ctx context.Context, attempt int) error {
+	delay := c.retryDelay
+	if attempt > 1 {
+		delay *= 3
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+// retryable reports failures that may clear up on a retry: network errors,
+// timeouts, rate limiting and server errors.
+func retryable(err error) bool {
+	if status, ok := errors.AsType[httpStatusError](err); ok {
+		return status == http.StatusTooManyRequests || status >= 500
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr) || errors.Is(err, context.DeadlineExceeded)
 }
 
 func (c *Client) request(ctx context.Context, endpoint string, target any) error {
@@ -411,7 +497,7 @@ func (c *Client) request(ctx context.Context, endpoint string, target any) error
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("%w: %d", ErrHTTPStatus, resp.StatusCode)
+		return httpStatusError(resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -14,7 +15,11 @@ import (
 )
 
 func testClient(servers ...string) *Client {
-	return &Client{http: http.DefaultClient, userAgent: "Go2TV/test", now: time.Now, mirrors: servers, discovered: true}
+	return &Client{
+		http: http.DefaultClient, userAgent: "Go2TV/test", now: time.Now, retryDelay: time.Millisecond,
+		mirrors: servers, discovered: true,
+		discover: func(context.Context) []string { return slices.Clone(servers) },
+	}
 }
 
 func TestSearchFiltersAndPlayableStations(t *testing.T) {
@@ -288,5 +293,87 @@ func TestCountriesServeStaleListWhenDirectoryFails(t *testing.T) {
 	countries, err := client.Countries(context.Background())
 	if err != nil || len(countries) != 1 || countries[0].Code != "GR" {
 		t.Fatalf("stale countries = %#v, %v", countries, err)
+	}
+}
+
+func TestSingleMirrorRetriesTransientFailures(t *testing.T) {
+	tt := []struct {
+		name     string
+		status   int
+		requests int32
+		ok       bool
+	}{
+		{name: "server error recovers", status: http.StatusServiceUnavailable, requests: 2, ok: true},
+		{name: "rate limit recovers", status: http.StatusTooManyRequests, requests: 2, ok: true},
+		{name: "client error is final", status: http.StatusNotFound, requests: 1},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			var requests atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if requests.Add(1) == 1 {
+					w.WriteHeader(tc.status)
+					return
+				}
+				fmt.Fprint(w, `[{"stationuuid":"one","name":"Station","url_resolved":"https://station.test/live"}]`)
+			}))
+			defer server.Close()
+			stations, err := testClient(server.URL).Search(context.Background(), Query{})
+			if (err == nil) != tc.ok || requests.Load() != tc.requests || (tc.ok && len(stations) != 1) {
+				t.Fatalf("stations=%#v err=%v requests=%d", stations, err, requests.Load())
+			}
+		})
+	}
+}
+
+func TestMirrorsRediscoveredAfterEveryServerFails(t *testing.T) {
+	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusBadGateway) }))
+	defer dead.Close()
+	live := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `[{"stationuuid":"one","name":"Station","url_resolved":"https://station.test/live"}]`)
+	}))
+	defer live.Close()
+	client := testClient(dead.URL)
+	client.discover = func(context.Context) []string { return []string{live.URL} }
+	if _, err := client.Search(context.Background(), Query{Name: "first"}); err == nil {
+		t.Fatal("dead mirror reported success")
+	}
+	if _, err := client.Search(context.Background(), Query{Name: "second"}); err != nil {
+		t.Fatalf("mirror list not rediscovered: %v", err)
+	}
+}
+
+func TestFallbackMirrorsFollowDiscoveredServers(t *testing.T) {
+	discovered := []string{"https://xx1.api.radio-browser.info", "https://de1.api.radio-browser.info"}
+	want := []string{"https://xx1.api.radio-browser.info", "https://de1.api.radio-browser.info", "https://de2.api.radio-browser.info", "https://all.api.radio-browser.info"}
+	if got := withFallbackMirrors(discovered); !reflect.DeepEqual(got, want) {
+		t.Fatalf("mirrors = %v", got)
+	}
+}
+
+func TestSearchServesStaleResultsWhenDirectoryFails(t *testing.T) {
+	var fail atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if fail.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		fmt.Fprint(w, `[{"stationuuid":"one","name":"Station","url_resolved":"https://station.test/live"}]`)
+	}))
+	defer server.Close()
+	now := time.Now()
+	client := testClient(server.URL)
+	client.now = func() time.Time { return now }
+	if _, err := client.Search(context.Background(), Query{CountryCode: "GR"}); err != nil {
+		t.Fatal(err)
+	}
+	fail.Store(true)
+	now = now.Add(searchCacheTTL)
+	stations, err := client.Search(context.Background(), Query{CountryCode: "GR"})
+	if err != nil || len(stations) != 1 || stations[0].UUID != "one" {
+		t.Fatalf("stale search = %#v, %v", stations, err)
+	}
+	if _, err := client.Search(context.Background(), Query{CountryCode: "DE"}); err == nil {
+		t.Fatal("uncached search hid directory failure")
 	}
 }
