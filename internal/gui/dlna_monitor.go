@@ -100,6 +100,15 @@ func (s *dlnaPlaybackSession) noteTail(payload *soapcalls.TVPayload, position, d
 	s.tail = dlnaTail{payload: payload, position: position, duration: duration}
 }
 
+// clearTail forgets payload's tail once its duration is gone (live stream).
+func (s *dlnaPlaybackSession) clearTail(payload *soapcalls.TVPayload) {
+	s.tailMu.Lock()
+	defer s.tailMu.Unlock()
+	if s.tail.payload == payload {
+		s.tail = dlnaTail{}
+	}
+}
+
 func (s *dlnaPlaybackSession) tailFor(payload *soapcalls.TVPayload) (int, int, bool) {
 	s.tailMu.Lock()
 	defer s.tailMu.Unlock()
@@ -352,14 +361,11 @@ func (s *dlnaPlaybackSession) handleMonitorEvent(event playback.MonitorEvent, ep
 		return
 	}
 	current := s.current.Load()
-	if event.PositionValid && event.Duration <= 0 {
-		s.tailMu.Lock()
-		if s.tail.payload == current {
-			s.tail = dlnaTail{}
-		}
-		s.tailMu.Unlock()
-	} else if event.Duration > 0 {
+	switch {
+	case event.Duration > 0:
 		s.noteTail(current, event.Position, event.Duration)
+	case event.PositionValid:
+		s.clearTail(current)
 	}
 	fyne.Do(func() {
 		if s.monitorEpoch.Load() != epoch || !s.isCurrent() || s.finished.Load() || s.current.Load() != current {
@@ -374,7 +380,8 @@ func (s *dlnaPlaybackSession) handleMonitorEvent(event playback.MonitorEvent, ep
 			s.updateScreenState("Paused")
 			setPlayPauseView("Play", s.FyneScreen)
 		}
-		if event.Duration > 0 {
+		switch {
+		case event.Duration > 0:
 			position := min(max(event.Position, 0), event.Duration)
 			s.SlideBar.setDLNADuration(current, float64(event.Duration))
 			if !s.sliderActive {
@@ -384,7 +391,7 @@ func (s *dlnaPlaybackSession) handleMonitorEvent(event playback.MonitorEvent, ep
 			}
 			s.persistResumeProgress(position, float64(event.Duration), false)
 			s.refreshMPRISProgress()
-		} else if event.PositionValid {
+		case event.PositionValid:
 			s.SlideBar.setDLNADuration(current, 0)
 			if !s.sliderActive {
 				s.SlideBar.SetValue(0)

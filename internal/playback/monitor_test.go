@@ -129,7 +129,7 @@ func TestDLNAMonitorReportsUnknownDurationAndRecovers(t *testing.T) {
 	events := make(chan MonitorEvent, 1)
 	dlna := &seekDLNA{}
 	go RunDLNAMonitor(t.Context(), MonitorConfig{Clock: clock, Sink: monitorCollector{events}}, dlna, nil)
-	for _, tc := range []struct {
+	tt := []struct {
 		name               string
 		position, duration int
 		valid              bool
@@ -139,7 +139,8 @@ func TestDLNAMonitorReportsUnknownDurationAndRecovers(t *testing.T) {
 		{"advancing without duration is live", 5, 0, true},
 		{"live restarts at zero", 0, 0, true},
 		{"file duration recovers", 1, 40, true},
-	} {
+	}
+	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			dlna.pos = Position{Current: tc.position, Duration: tc.duration}
 			clock.tick.ch <- time.Time{}

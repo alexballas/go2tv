@@ -3093,12 +3093,7 @@ func startRTMPServer(screen *FyneScreen) {
 	// RTMP can end in a cast; it is renderer-mutating for exclusivity purposes.
 	releasePermit, permitted := screen.rendererPermit(true)
 	if !permitted {
-		fyne.Do(func() {
-			// Skip the stop callback: it would restore an uninitialized
-			// previous source over the current one.
-			screen.rtmpServerCheck.Checked = false
-			screen.rtmpServerCheck.Refresh()
-		})
+		fyne.Do(func() { clearRTMPCheck(screen) })
 		return
 	}
 	permitHandedOff := false
@@ -3133,10 +3128,7 @@ func startRTMPServer(screen *FyneScreen) {
 			screen.rtmpServer = nil
 			screen.rtmpMu.Unlock()
 			fyne.Do(func() {
-				// No RTMP input took over, so do not run the stop callback
-				// and restore an uninitialized previous source.
-				screen.rtmpServerCheck.Checked = false
-				screen.rtmpServerCheck.Refresh()
+				clearRTMPCheck(screen)
 				if screen.ffmpegStatus() == nil && !screen.Screencast {
 					screen.rtmpServerCheck.Enable()
 				} else {
@@ -3202,6 +3194,13 @@ func startRTMPServer(screen *FyneScreen) {
 		})
 		screen.rtmpMu.Unlock()
 	}()
+}
+
+// clearRTMPCheck unchecks RTMP without its stop callback, which would
+// restore a previous source that RTMP never took over.
+func clearRTMPCheck(screen *FyneScreen) {
+	screen.rtmpServerCheck.Checked = false
+	screen.rtmpServerCheck.Refresh()
 }
 
 func formatRTMPServerWaitError(err error) error {

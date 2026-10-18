@@ -15,13 +15,14 @@ import (
 )
 
 func TestRTMPFailedStartPreservesSelectedRadio(t *testing.T) {
-	for _, tc := range []struct {
+	tt := []struct {
 		name   string
 		remote bool
 	}{
 		{"FFmpeg missing", false},
 		{"remote session owns renderer", true},
-	} {
+	}
+	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			s, _ := newRadioPlaybackTestScreen(t)
 			// Startup kills go2tv RTMP FFmpeg on this port; keep clear of a real 1935 session.
@@ -60,13 +61,14 @@ func TestRTMPFailedStartPreservesSelectedRadio(t *testing.T) {
 }
 
 func TestRTMPStopRestoresControlsForCurrentFFmpegAvailability(t *testing.T) {
-	for _, tc := range []struct {
+	tt := []struct {
 		name      string
 		ffmpegErr error
 	}{
 		{"FFmpeg still available", nil},
 		{"FFmpeg removed while RTMP running", errors.New("FFmpeg unavailable")},
-	} {
+	}
+	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			s, _ := newMediaCardTestScreen(t)
 			s.TranscodeCheckBox = widget.NewCheck("", nil)

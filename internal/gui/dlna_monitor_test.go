@@ -47,7 +47,7 @@ func TestDLNATimelineClearsPreviousDurationForLiveStream(t *testing.T) {
 	s.tvdata.Seekable = true
 	s.setActiveDevice(devType{addr: "renderer", deviceType: devices.DeviceTypeDLNA})
 	session := s.prepareDLNAMonitor(s.serverStopCTX, s.tvdata)
-	for _, tc := range []struct {
+	tt := []struct {
 		name         string
 		event        playback.MonitorEvent
 		current, end string
@@ -59,7 +59,8 @@ func TestDLNATimelineClearsPreviousDurationForLiveStream(t *testing.T) {
 		{"radio restarts at zero", playback.MonitorEvent{State: "PLAYING", PositionValid: true}, "00:00:00", "00:00:00", false},
 		{"duration returns", playback.MonitorEvent{State: "PLAYING", Position: 2, Duration: 40, PositionValid: true}, "00:00:02", "00:00:40", true},
 		{"pause without position", playback.MonitorEvent{State: "PAUSED"}, "00:00:02", "00:00:40", true},
-	} {
+	}
+	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			session.handleMonitorEvent(tc.event, 0)
 			fyne.DoAndWait(func() {})
