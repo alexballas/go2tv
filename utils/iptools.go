@@ -1,13 +1,11 @@
 package utils
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"net/url"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -63,7 +61,7 @@ func checkAndPickPort(ip string, port int) (string, error) {
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		conn, err := net.Listen("tcp", net.JoinHostPort(ip, strconv.Itoa(port)))
 		if err != nil {
-			if errors.Is(err, syscall.EADDRINUSE) {
+			if isAddrInUse(err) {
 				if attempt == maxAttempts {
 					break
 				}
