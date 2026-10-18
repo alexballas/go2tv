@@ -377,7 +377,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 				s.rtmpServerCheck.SetChecked(false)
 				s.rtmpServerCheck.Disable()
 			} else {
-				if s.rtmpServer == nil {
+				if s.rtmpServer == nil && !s.Screencast {
 					s.rtmpServerCheck.Enable()
 				}
 			}
