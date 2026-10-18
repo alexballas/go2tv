@@ -544,3 +544,40 @@ func TestURLInputSurvivesLocalFileRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func TestURLSubtitleAvailabilityFollowsInput(t *testing.T) {
+	tt := []struct {
+		name         string
+		stationURL   string
+		typed        string
+		wantDisabled bool
+	}{
+		{name: "radio without extension", stationURL: "https://station.test/live", wantDisabled: true},
+		{name: "video URL replaces radio", stationURL: "https://station.test/live.mp3", typed: "https://example.org/movie.mp4"},
+		{name: "audio URL with query", typed: "https://example.org/song.mp3?token=1", wantDisabled: true},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			screen, card := newMediaCardTestScreen(t)
+			screen.selectedArtwork = newSelectedArtwork()
+			screen.TranscodeCheckBox = widget.NewCheck("", nil)
+			screen.MediaText.OnChanged = func(v string) {
+				screen.invalidateRadioURL(v)
+				card.refresh()
+			}
+			fyne.DoAndWait(func() {
+				if tc.stationURL != "" {
+					screen.selectRadioStation(radiobrowser.Station{UUID: "one", Name: "Station", URL: tc.stationURL, Codec: "MP3"})
+				} else {
+					card.source.SetSelected(lang.L("URL"))
+				}
+				if tc.typed != "" {
+					screen.MediaText.SetText(tc.typed)
+				}
+				if got := card.subtitles.Disabled(); got != tc.wantDisabled {
+					t.Fatalf("subtitles disabled = %v, want %v", got, tc.wantDisabled)
+				}
+			})
+		})
+	}
+}
