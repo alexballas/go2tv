@@ -4,9 +4,7 @@ package gui
 
 import (
 	"image/color"
-	"net/url"
 	"path/filepath"
-	"strings"
 
 	ttwidget "github.com/alexballas/fyne-tooltip/widget"
 	"github.com/alexballas/refyne/v2"
@@ -291,20 +289,12 @@ func (c *mediaSelectionCard) refresh() {
 }
 
 // subtitleMediaKind classifies what subtitles would attach to. URL mode
-// follows the current input, since s.mediafile lags URL edits; radio
-// stations are always audio whatever their URL looks like.
+// follows the current input, since s.mediafile lags URL edits.
 func (s *FyneScreen) subtitleMediaKind() mediamodel.MediaKind {
 	if !s.ExternalMediaURL.Checked {
 		return mediamodel.KindForPath(s.mediafile)
 	}
-	input := strings.TrimSpace(s.MediaText.Text)
-	if _, radio := s.radioStationForURL(input); radio {
-		return mediamodel.MediaKindAudio
-	}
-	if u, err := url.Parse(input); err == nil {
-		input = u.Path
-	}
-	return mediamodel.KindForPath(input)
+	return s.subtitleKindForInput(s.MediaText.Text)
 }
 
 // Keep source transitions shared with queue selection and live-stream controls.

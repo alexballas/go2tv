@@ -4,16 +4,34 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/lang"
 
+	"go2tv.app/go2tv/v2/internal/mediamodel"
 	"go2tv.app/go2tv/v2/internal/radiobrowser"
 	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/utils"
 )
+
+// subtitleKindForInput classifies typed media input (URL, file name or
+// radio stream) for subtitle availability. Radio is always audio, whatever
+// its URL looks like; URL queries don't hide the extension.
+func (s *FyneScreen) subtitleKindForInput(input string) mediamodel.MediaKind {
+	input = strings.TrimSpace(input)
+	if _, radio := s.radioStationForURL(input); radio {
+		return mediamodel.MediaKindAudio
+	}
+	if strings.Contains(input, "://") {
+		if u, err := url.Parse(input); err == nil {
+			input = u.Path
+		}
+	}
+	return mediamodel.KindForPath(input)
+}
 
 // radioStationForURL prevents stale radio metadata affecting a pasted URL/file.
 func (s *FyneScreen) radioStationForURL(mediaURL string) (radiobrowser.Station, bool) {

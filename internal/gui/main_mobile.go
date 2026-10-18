@@ -131,8 +131,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	sfiletext := widget.NewEntry()
 	mediaField := newValueField(nil)
 	subsField := newValueField(func() { subsAction(s) })
-	subsField.Set("", lang.L("No subtitle selected"))
-	sfiletext.OnChanged = func(text string) { subsField.Set(text, lang.L("No subtitle selected")) }
+	subsControls := &mobileSubtitleControls{field: subsField, placeholder: lang.L("No subtitle selected")}
+	subsField.Set("", subsControls.placeholder)
+	sfiletext.OnChanged = func(text string) { subsField.Set(text, subsControls.placeholder) }
 
 	mfile := widget.NewButton(lang.L("Select Media File"), func() {
 		mediaAction(s)
@@ -331,9 +332,12 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	var mediafileOld fyne.URI
 	var mediafileOldText string
 
+	subsControls.browse, subsControls.clear = sfile, clearsubs
+
 	// updateMediaField shows a radio station by name, a typed URL in the
 	// entry, or the selected file. Live radio cannot loop.
 	updateMediaField := func() {
+		defer subsControls.refresh(s, mfiletext.Text)
 		station, radio := s.radioStationForURL(mfiletext.Text)
 		switch {
 		case radio:
