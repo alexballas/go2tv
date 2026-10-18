@@ -87,6 +87,7 @@ func TestRTMPStopRestoresControlsForCurrentFFmpegAvailability(t *testing.T) {
 			s.ffmpegCheckValid, s.ffmpegCheckErr = true, tc.ffmpegErr
 			s.TranscodeCheckBox.Disable()
 			s.ScreencastCheckBox.Disable()
+			s.LoopSelectedCheck.Disable()
 			fyne.DoAndWait(func() { stopRTMPServer(s) })
 			waitUI(t, time.Second, func() bool { return s.rtmpURLEntry.Text == "" })
 			fyne.DoAndWait(func() {
@@ -96,6 +97,9 @@ func TestRTMPStopRestoresControlsForCurrentFFmpegAvailability(t *testing.T) {
 				}
 				if s.rtmpServerCheck.Checked || s.ExternalMediaURL.Disabled() || s.MediaText.Disabled() || s.MediaText.Text != s.rtmpPrevMediaText || s.rtmpURLCard.Visible() {
 					t.Fatal("RTMP stop failed to restore editable URL source")
+				}
+				if s.LoopSelectedCheck.Disabled() {
+					t.Fatal("RTMP stop left Loop locked on the restored URL source")
 				}
 			})
 		})

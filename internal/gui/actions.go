@@ -3299,14 +3299,29 @@ func resetRTMPUI(screen *FyneScreen) {
 	}
 	if screen.LoopSelectedCheck != nil {
 		screen.LoopSelectedCheck.SetChecked(screen.rtmpPrevLoop)
-		if !screen.ExternalMediaURL.Checked && (screen.NextMediaCheck == nil || !screen.NextMediaCheck.Checked) {
-			screen.LoopSelectedCheck.Enable()
-		} else {
-			screen.LoopSelectedCheck.Disable()
-		}
+		refreshLoopAutoplay(screen)
 	}
 
 	screen.updateFFmpegDependentCheckTooltips()
+}
+
+// refreshLoopAutoplay unlocks Loop and Auto-play after RTMP or desktop
+// casting. Loop also works for URLs; Auto-play needs a local file. The two
+// exclude each other.
+func refreshLoopAutoplay(screen *FyneScreen) {
+	loop, next := screen.LoopSelectedCheck, screen.NextMediaCheck
+	if loop == nil {
+		return
+	}
+	if next == nil || !next.Checked {
+		loop.Enable()
+	} else {
+		loop.Disable()
+	}
+	local := screen.ExternalMediaURL != nil && !screen.ExternalMediaURL.Checked
+	if next != nil && local && !loop.Checked {
+		next.Enable()
+	}
 }
 
 func waitForRTMPStream(startupCtx context.Context, screen *FyneScreen) error {

@@ -551,14 +551,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		medialoop.SetChecked(s.screencastPrevLoop)
 		nextmedia.SetChecked(s.screencastPrevNext)
 
-		if s.ExternalMediaURL != nil && !s.ExternalMediaURL.Checked {
-			if !nextmedia.Checked {
-				medialoop.Enable()
-			}
-			if !medialoop.Checked {
-				nextmedia.Enable()
-			}
-		}
+		refreshLoopAutoplay(s)
 
 		if s.ExternalMediaURL != nil && s.ExternalMediaURL.Checked {
 			mbrowse.Disable()
