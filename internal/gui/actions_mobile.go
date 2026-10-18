@@ -1181,6 +1181,17 @@ func dropDeadChromecastSession(screen *FyneScreen, client *castprotocol.CastClie
 	startAfreshPlayButton(screen)
 }
 
+// finishChromecastMedia hands finished media to loop; without it, the
+// session ends and its media server is freed.
+func finishChromecastMedia(screen *FyneScreen) {
+	screen.Fini()
+	if screen.Medialoop {
+		return
+	}
+	screen.releaseChromecastServer()
+	startAfreshPlayButton(screen)
+}
+
 func startAfreshPlayButton(screen *FyneScreen) {
 	screen.persistDisplayedResumeProgress(true)
 	screen.clearResumeSession()
@@ -1717,10 +1728,7 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 				if nearEnd {
 					// Last good sample was already at EOF, so a dead status
 					// channel is equivalent to the receiver never sending IDLE.
-					screen.Fini()
-					if !screen.Medialoop {
-						startAfreshPlayButton(screen)
-					}
+					finishChromecastMedia(screen)
 					return
 				}
 
@@ -1780,10 +1788,7 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 					if !screen.isChromecastActionCurrent(actionID) {
 						return
 					}
-					screen.Fini()
-					if !screen.Medialoop {
-						startAfreshPlayButton(screen)
-					}
+					finishChromecastMedia(screen)
 					return
 				}
 				startupIdleTicks = chromecastStartupIdleCount(startupIdleTicks, server.TranscodeStatus(""))
@@ -1882,10 +1887,7 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 			if !screen.isChromecastActionCurrent(actionID) {
 				return
 			}
-			screen.Fini()
-			if !screen.Medialoop {
-				startAfreshPlayButton(screen)
-			}
+			finishChromecastMedia(screen)
 			return
 		}
 	}

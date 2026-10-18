@@ -267,3 +267,68 @@ func TestStopDuringChromecastReconnectStopsMediaServer(t *testing.T) {
 		})
 	}
 }
+
+func TestFinishedChromecastMediaFreesServer(t *testing.T) {
+	tt := []struct {
+		name     string
+		autoPlay bool
+	}{
+		{name: "nothing queued next"},
+		{name: "auto-play at the end of the queue", autoPlay: true},
+	}
+	for _, tt := range tt {
+		t.Run(tt.name, func(t *testing.T) {
+			app := test.NewApp()
+			defer app.Quit()
+			client := newConnectedCastClientForTest(t, "http://living-room:8009")
+			t.Cleanup(func() { _ = client.Close(false) })
+			server := httphandlers.NewServer("127.0.0.1:0")
+			t.Cleanup(server.StopServer)
+			started := make(chan error, 1)
+			stopped := make(chan struct{})
+			go func() {
+				server.StartServing(started)
+				close(stopped)
+			}()
+			if err := <-started; err != nil {
+				t.Fatal(err)
+			}
+			media := "/videos/first.mp4"
+			device := devType{addr: "http://living-room:8009", deviceType: devices.DeviceTypeChromecast}
+			screen := &FyneScreen{
+				mediafile:          media,
+				mediaFormats:       []string{".mp4"},
+				videoFormats:       []string{".mp4"},
+				chromecastClient:   client,
+				activeDevice:       device,
+				selectedDevice:     device,
+				httpserver:         server,
+				NextMediaCheck:     widget.NewCheck("", nil),
+				PlayPause:          widget.NewButton("", nil),
+				SkipNextButton:     widget.NewButton("", nil),
+				SkipPreviousButton: widget.NewButton("", nil),
+				SlideBar:           &tappedSlider{Slider: widget.NewSlider(0, 100)},
+				CurrentPos:         binding.NewString(),
+				EndPos:             binding.NewString(),
+				State:              "Playing",
+			}
+			screen.NextMediaCheck.Checked = tt.autoPlay
+			screen.SessionQueue = newSessionQueue(testQueueItems(media), 0)
+
+			finishChromecastMedia(screen)
+			fyne.DoAndWait(func() {})
+
+			select {
+			case <-stopped:
+			case <-time.After(2 * time.Second):
+				t.Fatal("finished session left the media server holding its port")
+			}
+			if screen.httpserver != nil || screen.getScreenState() != "Stopped" {
+				t.Fatalf("server = %v, state = %q; want released and Stopped", screen.httpserver, screen.getScreenState())
+			}
+			if screen.chromecastClient != client {
+				t.Fatal("finished session dropped the reusable Chromecast client")
+			}
+		})
+	}
+}

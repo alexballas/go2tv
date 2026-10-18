@@ -501,6 +501,15 @@ func (p *FyneScreen) Fini() {
 
 		target := autoPlayPlaybackTarget(p)
 
+		// For Chromecast, ignore gapless setting (it's DLNA-specific)
+		isChromecast := target.device.deviceType == devices.DeviceTypeChromecast
+		endSession := func() {
+			if isChromecast {
+				p.releaseChromecastServer()
+			}
+			startAfreshPlayButton(p)
+		}
+
 		// An item removed from the playlist has no successor.
 		queue, _ := p.queueSnapshot()
 		removed := (p.ExternalMediaURL == nil || !p.ExternalMediaURL.Checked) &&
@@ -510,22 +519,17 @@ func (p *FyneScreen) Fini() {
 		// Otherwise playAction may interpret the follow-up as pause/resume.
 		p.updateScreenState("Stopped")
 		if removed {
-			startAfreshPlayButton(p)
+			endSession()
 			return
 		}
-
-		// For Chromecast, ignore gapless setting (it's DLNA-specific)
-		isChromecast := target.device.deviceType == devices.DeviceTypeChromecast
 
 		if p.NextMediaCheck.Checked {
 			_, nextMediaPath, err := getNextAutoPlayMediaOrError(p)
 			if err != nil {
-				if isTraversalBoundaryError(err) {
-					startAfreshPlayButton(p)
-					return
+				if !isTraversalBoundaryError(err) {
+					check(p, err)
 				}
-				check(p, err)
-				startAfreshPlayButton(p)
+				endSession()
 				return
 			}
 
@@ -536,7 +540,7 @@ func (p *FyneScreen) Fini() {
 
 			if err := setCurrentMediaPath(p, nextMediaPath); err != nil {
 				check(p, err)
-				startAfreshPlayButton(p)
+				endSession()
 				return
 			}
 

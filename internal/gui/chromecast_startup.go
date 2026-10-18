@@ -54,6 +54,20 @@ func (screen *FyneScreen) chromecastRadioReplaceable() bool {
 	return chromecastClientOwnsDevice(screen.chromecastSessionClient(), screen.selectedDevice)
 }
 
+// releaseChromecastServer frees the media server of a Chromecast session that
+// has ended, so the next cast can bind its port. The client stays for reuse.
+func (screen *FyneScreen) releaseChromecastServer() {
+	if server := screen.httpserver; server != nil {
+		screen.httpserver = nil
+		go server.StopServer()
+	}
+	if screen.cancelServerStop != nil {
+		screen.cancelServerStop()
+		screen.cancelServerStop = nil
+	}
+	screen.serverStopCTX = nil
+}
+
 // endReplacedChromecastSession stops a station the failed switch was meant to
 // replace, so it does not keep playing behind a stopped UI.
 func (screen *FyneScreen) endReplacedChromecastSession(device devType) {

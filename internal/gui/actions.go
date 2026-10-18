@@ -2058,11 +2058,7 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 				if nearEnd {
 					// Last good sample was already at EOF, so a dead status
 					// channel is equivalent to the receiver never sending IDLE.
-					screen.Fini()
-					// Only reset UI if not looping or auto-playing next
-					if !screen.Medialoop && !screen.NextMediaCheck.Checked {
-						startAfreshPlayButton(screen)
-					}
+					finishChromecastMedia(screen)
 					return
 				}
 
@@ -2137,13 +2133,7 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 						continue
 					}
 
-					// Media finished - trigger auto-play next or loop via Fini()
-					screen.Fini()
-
-					// Only reset UI if not looping or auto-playing next
-					if !screen.Medialoop && !screen.NextMediaCheck.Checked {
-						startAfreshPlayButton(screen)
-					}
+					finishChromecastMedia(screen)
 					return
 				}
 				// If we haven't started yet, just ignore IDLE
@@ -2267,14 +2257,21 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 			if !screen.isChromecastActionCurrent(actionID) {
 				return
 			}
-			screen.Fini()
-			// Only reset UI if not looping or auto-playing next
-			if !screen.Medialoop && !screen.NextMediaCheck.Checked {
-				startAfreshPlayButton(screen)
-			}
+			finishChromecastMedia(screen)
 			return
 		}
 	}
+}
+
+// finishChromecastMedia hands finished media to loop or auto-play; with
+// neither, the session ends and its media server is freed.
+func finishChromecastMedia(screen *FyneScreen) {
+	screen.Fini()
+	if screen.Medialoop || screen.NextMediaCheck.Checked {
+		return
+	}
+	screen.releaseChromecastServer()
+	startAfreshPlayButton(screen)
 }
 
 func startAfreshPlayButton(screen *FyneScreen) {
