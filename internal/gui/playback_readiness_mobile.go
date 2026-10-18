@@ -64,7 +64,9 @@ func (s *FyneScreen) refreshPlaybackStatus() {
 		return
 	}
 	state := s.getScreenState()
-	active := state == "Playing" || state == "Paused" || s.dlnaSeekRestart || s.mobilePlaybackBusy()
+	playing := state == "Playing" || state == "Paused"
+	busy := s.mobilePlaybackBusy()
+	active := playing || s.dlnaSeekRestart || busy
 	if s.Stop != nil {
 		if active {
 			s.Stop.Enable()
@@ -85,6 +87,18 @@ func (s *FyneScreen) refreshPlaybackStatus() {
 	}
 
 	song := s.radioSong.label
+	// Startup has no timeline or song yet; say so instead of a blank row.
+	if busy && !playing {
+		status := lang.L("Loading media…")
+		if s.selectedDevice.name != "" {
+			status += " · " + s.selectedDevice.name
+		}
+		s.playbackStatus.SetText(status)
+		s.timeline.Hide()
+		s.radioRow.Hide()
+		s.playbackStatus.Show()
+		return
+	}
 	if active {
 		s.playbackStatus.Hide()
 		if title, detail, ok := s.radioPlayerLines(); ok {
