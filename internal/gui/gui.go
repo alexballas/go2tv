@@ -384,11 +384,13 @@ func Start(ctx context.Context, s *FyneScreen) {
 			s.updateFFmpegDependentCheckTooltips()
 
 			if s.ffmpegPathChanged {
-				// Re-probe ffmpeg-derived state only; reselecting would
-				// rebuild the queue and treat URLs as local paths.
+				// Re-probe ffmpeg-derived state only (subs, compatibility,
+				// video thumbnail); reselecting would rebuild the queue and
+				// treat URLs as local paths.
 				if ffmpegErr == nil && s.mediafile != "" && !s.ExternalMediaURL.Checked {
 					updateInternalSubsDropdownAsync(s, s.mediafile)
 					s.checkChromecastCompatibility()
+					s.selectArtwork(s.mediafile)
 				}
 				s.ffmpegPathChanged = false
 			}
