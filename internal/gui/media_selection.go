@@ -274,7 +274,8 @@ func (c *mediaSelectionCard) refresh() {
 		s.SubsBrowse.Disable()
 	}
 	s.refreshPlaybackReadiness()
-	if c.subtitles.Disabled() {
+	// No tracks means no probe result (e.g. ffmpeg missing); nothing to pick.
+	if c.subtitles.Disabled() || len(s.SelectInternalSubs.Options) == 0 {
 		s.SelectInternalSubs.Disable()
 	} else {
 		s.SelectInternalSubs.Enable()

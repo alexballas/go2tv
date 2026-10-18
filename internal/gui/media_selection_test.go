@@ -340,3 +340,29 @@ func TestMediaCardURLKeepsFocusDuringRefresh(t *testing.T) {
 		t.Fatal("selectors must unlock after live streaming")
 	}
 }
+
+func TestMediaCardEmbeddedPickerNeedsTracks(t *testing.T) {
+	tt := []struct {
+		name        string
+		tracks      []string
+		wantEnabled bool
+	}{
+		{"no tracks", nil, false},
+		{"tracks found", []string{"eng"}, true},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			s, c := newMediaCardTestScreen(t)
+			s.mediafile = "/media/movie.mp4"
+			if tc.tracks == nil {
+				setInternalSubsDropdownNoSubs(s)
+			} else {
+				setInternalSubsDropdownWithSubs(s, tc.tracks)
+			}
+			c.subtitles.SetSelected(lang.L(subtitleEmbedded))
+			if got := !s.SelectInternalSubs.Disabled(); got != tc.wantEnabled {
+				t.Fatalf("embedded picker enabled = %v, want %v", got, tc.wantEnabled)
+			}
+		})
+	}
+}
