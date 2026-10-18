@@ -7,6 +7,7 @@
     "Pause": "Pause",
     "Stop": "Stop",
     "No Embedded Subs": "No Embedded Subs",
+    "Requires ffmpeg": "Requires ffmpeg",
     "Embedded Subs": "Embedded Subs",
     "Select Device": "Select Device",
     "Searching for devices…": "Searching for devices…",

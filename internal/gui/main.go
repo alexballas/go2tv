@@ -328,7 +328,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.rtmpURLCard = widget.NewCard(lang.L("RTMP Server"), "", rtmpRows)
 	s.rtmpURLCard.Hide()
 
-	selectInternalSubs := widget.NewSelect([]string{}, nil)
+	internalSubsToolTip := ttwidget.NewSelect([]string{}, nil)
+	selectInternalSubs := &internalSubsToolTip.Select
 
 	selectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
 	selectInternalSubs.Disable()
@@ -353,6 +354,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.CurrentPos = curPos
 	s.EndPos = endPos
 	s.SelectInternalSubs = selectInternalSubs
+	s.internalSubsToolTip = internalSubsToolTip
 	s.TranscodeCheckBox = &transcode.Check
 	s.ScreencastCheckBox = &screencast.Check
 	s.LoopSelectedCheck = medialoop

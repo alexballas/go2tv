@@ -156,7 +156,12 @@ func newMediaSelectionCard(s *FyneScreen, preview, clearSubs *widget.Button) *me
 	subtitleRow := container.New(selectionFieldLayout{labelWidth: labelWidth}, subtitleLabel, c.subtitles)
 	selectors := container.NewGridWithColumns(2, sourceRow, subtitleRow)
 	mediaArea := container.New(reservedSelectionLayout{}, c.media, s.MediaText)
-	c.content = container.NewVBox(selectors, mediaArea, newTorrentControls(s), s.SelectInternalSubs, c.subs)
+	// Lay out the tooltip wrapper so hover events reach it.
+	var internalSubs fyne.CanvasObject = s.SelectInternalSubs
+	if s.internalSubsToolTip != nil {
+		internalSubs = s.internalSubsToolTip
+	}
+	c.content = container.NewVBox(selectors, mediaArea, newTorrentControls(s), internalSubs, c.subs)
 	c.bindSource(preview)
 	c.refresh()
 	return c

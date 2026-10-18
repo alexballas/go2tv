@@ -209,6 +209,7 @@ type FyneScreen struct {
 	transcodeToolTipCheck    *ttwidget.Check
 	screencastToolTipCheck   *ttwidget.Check
 	rtmpServerToolTipCheck   *ttwidget.Check
+	internalSubsToolTip      *ttwidget.Select
 	rtmpURLCard              *widget.Card
 	rtmpURLEntry             *widget.Entry
 	rtmpKeyEntry             *widget.Entry
@@ -370,7 +371,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 					s.ScreencastCheckBox.SetChecked(false)
 					s.ScreencastCheckBox.Disable()
 				}
-				setInternalSubsDropdownNoSubs(s)
+				setInternalSubsDropdownNoSubs(s, true)
 			}
 
 			if ffmpegErr != nil {

@@ -416,7 +416,7 @@ func replaceCurrentMediaSelection(screen *FyneScreen, text string) {
 		screen.mpris.refresh()
 	}
 	screen.clearQueueCurrent()
-	setInternalSubsDropdownNoSubs(screen)
+	setInternalSubsDropdownNoSubs(screen, false)
 	screen.refreshQueueStateUI()
 	setPlayPauseView("", screen)
 }
@@ -427,7 +427,7 @@ func restoreMediaInputState(screen *FyneScreen, mediaPath, mediaText string) {
 			screen.MediaText.SetText(mediaText)
 		}
 		screen.mediafile = mediaPath
-		setInternalSubsDropdownNoSubs(screen)
+		setInternalSubsDropdownNoSubs(screen, false)
 		screen.refreshQueueStateUI()
 		setPlayPauseView("", screen)
 		return
@@ -496,9 +496,19 @@ func openMediaPickerForWindow(screen *FyneScreen, w fyne.Window, onPaths func(*F
 	showFilePicker(fd, w)
 }
 
-func setInternalSubsDropdownNoSubs(screen *FyneScreen) {
+// setInternalSubsDropdownNoSubs empties the embedded subtitles dropdown.
+// ffmpegMissing means tracks are unknown, not absent, so say why.
+func setInternalSubsDropdownNoSubs(screen *FyneScreen, ffmpegMissing bool) {
 	screen.SelectInternalSubs.Options = []string{}
 	screen.SelectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
+	toolTip := ""
+	if ffmpegMissing {
+		screen.SelectInternalSubs.PlaceHolder = lang.L("Requires ffmpeg")
+		toolTip = lang.L("ffmpeg is required. install it or update ffmpeg path in Settings")
+	}
+	if screen.internalSubsToolTip != nil {
+		screen.internalSubsToolTip.SetToolTip(toolTip)
+	}
 	screen.SelectInternalSubs.ClearSelected()
 	screen.SelectInternalSubs.Disable()
 }
@@ -506,31 +516,27 @@ func setInternalSubsDropdownNoSubs(screen *FyneScreen) {
 func setInternalSubsDropdownWithSubs(screen *FyneScreen, subs []string) {
 	screen.SelectInternalSubs.Options = subs
 	screen.SelectInternalSubs.PlaceHolder = lang.L("Embedded Subs")
+	if screen.internalSubsToolTip != nil {
+		screen.internalSubsToolTip.SetToolTip("")
+	}
 	screen.SelectInternalSubs.ClearSelected()
 	screen.SelectInternalSubs.Enable()
 }
 
-func getInternalSubsDropdownOptions(screen *FyneScreen, mediaFile string) ([]string, bool) {
-	subs, err := utils.GetSubs(screen.ffmpegPath, mediaFile)
+func showInternalSubsProbe(screen *FyneScreen, subs []string, err error) {
 	if err != nil {
-		return nil, false
+		setInternalSubsDropdownNoSubs(screen, errors.Is(err, utils.ErrFFmpegUnavailable))
+		return
 	}
-
-	return subs, true
+	setInternalSubsDropdownWithSubs(screen, subs)
 }
 
 // updateInternalSubsDropdown refreshes the embedded subtitles dropdown
 // for the given media file. Should be called when media file changes
 // (e.g., via Next button or auto-play).
 func updateInternalSubsDropdown(screen *FyneScreen, mediaFile string) {
-	subs, ok := getInternalSubsDropdownOptions(screen, mediaFile)
-	fyne.Do(func() {
-		if !ok {
-			setInternalSubsDropdownNoSubs(screen)
-			return
-		}
-		setInternalSubsDropdownWithSubs(screen, subs)
-	})
+	subs, err := utils.GetSubs(screen.ffmpegPath, mediaFile)
+	fyne.Do(func() { showInternalSubsProbe(screen, subs, err) })
 }
 
 func updateInternalSubsDropdownAsync(screen *FyneScreen, mediaFile string) {
@@ -549,11 +555,7 @@ func updateInternalSubsDropdownAsync(screen *FyneScreen, mediaFile string) {
 			if ctx.Err() != nil || screen.mediafile != mediaFile || screen.SelectInternalSubs == nil {
 				return
 			}
-			if err != nil {
-				setInternalSubsDropdownNoSubs(screen)
-				return
-			}
-			setInternalSubsDropdownWithSubs(screen, subs)
+			showInternalSubsProbe(screen, subs, err)
 		})
 	}()
 }

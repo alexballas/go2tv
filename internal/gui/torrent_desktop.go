@@ -83,7 +83,7 @@ func selectTorrentMedia(s *FyneScreen, path string) {
 			s.NextMediaCheck.SetChecked(false)
 		}
 		s.MediaText.SetText(filepath.Base(path))
-		setInternalSubsDropdownNoSubs(s)
+		setInternalSubsDropdownNoSubs(s, false)
 		s.refreshQueueStateUI()
 		setPlayPauseView("", s)
 	})

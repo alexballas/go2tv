@@ -7,6 +7,7 @@
     "Pause": "暂停",
     "Stop": "停止",
     "No Embedded Subs": "无嵌入字幕",
+    "Requires ffmpeg": "需要 ffmpeg",
     "Embedded Subs": "嵌入字幕",
     "Select Device": "选择设备",
     "Searching for devices…": "正在搜索设备…",
