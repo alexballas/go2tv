@@ -301,8 +301,14 @@ func (c *mediaSelectionCard) bindSource(preview *widget.Button) {
 			mediafileOld = s.mediafile
 			mediafileOldText = s.MediaText.Text
 
-			// Clear the Media Text Area
-			clearCurrentMediaSelection(s)
+			// Bring back the last URL, with its radio station and artwork.
+			s.mu.RLock()
+			urlInput := s.urlInput
+			s.mu.RUnlock()
+			replaceCurrentMediaSelection(s, urlInput)
+			if _, radio := s.radioStationForURL(urlInput); radio {
+				s.mediafile = urlInput
+			}
 
 			// Set some Media text defaults
 			// to indicate that we're expecting a URL

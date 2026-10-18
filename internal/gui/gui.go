@@ -73,6 +73,7 @@ type FyneScreen struct {
 	radioArtworkResolved     bool
 	radioArtwork             *metadata.ArtworkAsset
 	radioSelected            radiobrowser.Station
+	urlInput                 string // last URL-mode input, restored when URL mode returns
 	mpris                    mprisBridge
 	mediaSelection           *mediaSelectionCard
 	playbackStatus           *playbackStatusLabel

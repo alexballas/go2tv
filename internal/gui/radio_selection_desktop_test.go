@@ -497,3 +497,50 @@ func TestRadioArtworkReturnsAfterTemporaryDesktopModes(t *testing.T) {
 		})
 	}
 }
+
+func TestURLInputSurvivesLocalFileRoundTrip(t *testing.T) {
+	asset, err := metadata.LoadArtwork(radioTestPNG(t), "logo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	station := radiobrowser.Station{UUID: "one", Name: "Station", URL: "https://station.test/live", Favicon: "https://station.test/logo.png"}
+	tt := []struct {
+		name  string
+		radio bool
+		url   string
+	}{
+		{name: "radio station", radio: true, url: station.StreamURL()},
+		{name: "typed URL", url: "https://example.org/movie.mp4"},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			screen, card := newMediaCardTestScreen(t)
+			screen.selectedArtwork = newSelectedArtwork()
+			screen.TranscodeCheckBox = widget.NewCheck("", nil)
+			screen.MediaText.OnChanged = screen.invalidateRadioURL
+			fyne.DoAndWait(func() {
+				if tc.radio {
+					screen.selectRadioStation(station)
+					screen.setSelectedRadioArtwork(station, asset)
+				} else {
+					card.source.SetSelected(lang.L("URL"))
+					screen.MediaText.SetText(tc.url)
+				}
+				card.source.SetSelected(lang.L("Local File"))
+				card.source.SetSelected(lang.L("URL"))
+				if screen.MediaText.Text != tc.url {
+					t.Fatalf("URL input = %q, want %q", screen.MediaText.Text, tc.url)
+				}
+				if !tc.radio {
+					return
+				}
+				if screen.radioTitle(tc.url) != station.Name {
+					t.Fatal("returning to URL lost the radio station")
+				}
+				if !screen.selectedArtwork.picture.Visible() {
+					t.Fatal("returning to URL lost the station artwork")
+				}
+			})
+		})
+	}
+}

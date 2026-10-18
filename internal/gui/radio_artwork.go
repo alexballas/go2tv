@@ -129,7 +129,12 @@ func (s *FyneScreen) invalidateRadioURL(mediaURL string) {
 		s.stopRadioSongMonitor()
 		return
 	}
+	// Local selections reuse the entry; only URL edits may replace the station.
+	if s.ExternalMediaURL != nil && !s.ExternalMediaURL.Checked {
+		return
+	}
 	s.mu.Lock()
+	s.urlInput = mediaURL
 	station := s.radioSelected
 	if station.UUID == "" {
 		s.mu.Unlock()

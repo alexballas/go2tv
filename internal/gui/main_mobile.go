@@ -375,8 +375,16 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 				mediafileOldText = ""
 			}
 
-			// Clear the Media Text Area
-			clearmediaAction(s)
+			// Bring back the last URL; clearing first would drop its radio station.
+			if torrentMediaSelected(s) {
+				cancelTorrent(s)
+			}
+			s.mediafile = nil
+			s.setCurrentArtwork(nil)
+			s.mu.RLock()
+			urlInput := s.urlInput
+			s.mu.RUnlock()
+			s.MediaText.SetText(urlInput)
 			updateMediaField()
 			return
 		}

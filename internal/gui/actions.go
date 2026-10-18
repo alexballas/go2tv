@@ -398,17 +398,23 @@ func setCurrentMediaPathWithSubtitleProbe(screen *FyneScreen, mediaPath string, 
 }
 
 func clearCurrentMediaSelection(screen *FyneScreen) {
+	replaceCurrentMediaSelection(screen, "")
+}
+
+// replaceCurrentMediaSelection drops the selected media and shows text. URL
+// mode passes its saved input so a radio station never sees an empty entry.
+func replaceCurrentMediaSelection(screen *FyneScreen, text string) {
 	screen.selectArtwork("")
-	if screen.MediaText != nil {
-		screen.MediaText.SetText("")
-	}
+	screen.setCurrentArtwork(nil)
 	screen.mediafile = ""
+	if screen.MediaText != nil {
+		screen.MediaText.SetText(text)
+	}
 	screen.embeddedSubtitle = nil
 	screen.checkChromecastCompatibility()
 	if screen.mpris != nil {
 		screen.mpris.refresh()
 	}
-	screen.setCurrentArtwork(nil)
 	screen.clearQueueCurrent()
 	setInternalSubsDropdownNoSubs(screen)
 	screen.refreshQueueStateUI()
