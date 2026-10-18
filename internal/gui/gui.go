@@ -22,7 +22,6 @@ import (
 	"github.com/alexballas/refyne/v2/data/binding"
 	"github.com/alexballas/refyne/v2/dialog"
 	"github.com/alexballas/refyne/v2/lang"
-	"github.com/alexballas/refyne/v2/storage"
 	"github.com/alexballas/refyne/v2/theme"
 	"github.com/alexballas/refyne/v2/widget"
 	"go2tv.app/go2tv/v2/castprotocol"
@@ -385,8 +384,11 @@ func Start(ctx context.Context, s *FyneScreen) {
 			s.updateFFmpegDependentCheckTooltips()
 
 			if s.ffmpegPathChanged {
-				if ffmpegErr == nil && s.mediafile != "" {
-					selectMediaFile(s, mediaFileURI(s.mediafile))
+				// Re-probe ffmpeg-derived state only; reselecting would
+				// rebuild the queue and treat URLs as local paths.
+				if ffmpegErr == nil && s.mediafile != "" && !s.ExternalMediaURL.Checked {
+					updateInternalSubsDropdownAsync(s, s.mediafile)
+					s.checkChromecastCompatibility()
 				}
 				s.ffmpegPathChanged = false
 			}
@@ -458,10 +460,6 @@ func Start(ctx context.Context, s *FyneScreen) {
 	showPendingCrashPopup(s)
 
 	w.ShowAndRun()
-}
-
-func mediaFileURI(path string) fyne.URI {
-	return storage.NewFileURI(path)
 }
 
 // EmitMsg Method to implement the screen interface

@@ -530,41 +530,49 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 		s.Screencast = false
 		go stopScreencastSession(s)
-		if err := s.ffmpegStatus(); err == nil && s.rtmpServer == nil {
+		if s.rtmpServer != nil {
+			return
+		}
+		// Media inputs never need ffmpeg; restore them even when it went missing.
+		ffmpegErr := s.ffmpegStatus()
+		if ffmpegErr == nil {
 			transcode.Enable()
-			externalmedia.Enable()
-			sfilecheck.Enable()
 			transcode.SetChecked(s.screencastPrevTranscode)
-			externalmedia.SetChecked(s.screencastPrevExternal)
-			sfilecheck.SetChecked(s.screencastPrevManualSubs)
-			medialoop.SetChecked(s.screencastPrevLoop)
-			nextmedia.SetChecked(s.screencastPrevNext)
+		} else {
+			transcode.SetChecked(false)
+			transcode.Disable()
+		}
+		externalmedia.Enable()
+		sfilecheck.Enable()
+		externalmedia.SetChecked(s.screencastPrevExternal)
+		sfilecheck.SetChecked(s.screencastPrevManualSubs)
+		medialoop.SetChecked(s.screencastPrevLoop)
+		nextmedia.SetChecked(s.screencastPrevNext)
 
-			if s.ExternalMediaURL != nil && !s.ExternalMediaURL.Checked {
-				if !nextmedia.Checked {
-					medialoop.Enable()
-				}
-				if !medialoop.Checked {
-					nextmedia.Enable()
-				}
+		if s.ExternalMediaURL != nil && !s.ExternalMediaURL.Checked {
+			if !nextmedia.Checked {
+				medialoop.Enable()
 			}
+			if !medialoop.Checked {
+				nextmedia.Enable()
+			}
+		}
 
-			if s.ExternalMediaURL != nil && s.ExternalMediaURL.Checked {
-				mbrowse.Disable()
-				s.MediaText.Enable()
-			} else {
-				mbrowse.Enable()
-				s.MediaText.Disable()
-			}
-			clearmedia.Enable()
-			s.SlideBar.Enable()
-			s.MediaText.SetPlaceHolder("")
-			if s.screencastPrevExternal {
-				restoreMediaInputState(s, s.screencastPrevMediaFile, s.screencastPrevMediaText)
-			}
-			if s.rtmpServerCheck != nil {
-				s.rtmpServerCheck.Enable()
-			}
+		if s.ExternalMediaURL != nil && s.ExternalMediaURL.Checked {
+			mbrowse.Disable()
+			s.MediaText.Enable()
+		} else {
+			mbrowse.Enable()
+			s.MediaText.Disable()
+		}
+		clearmedia.Enable()
+		s.SlideBar.Enable()
+		s.MediaText.SetPlaceHolder("")
+		if s.screencastPrevExternal {
+			restoreMediaInputState(s, s.screencastPrevMediaFile, s.screencastPrevMediaText)
+		}
+		if ffmpegErr == nil && s.rtmpServerCheck != nil {
+			s.rtmpServerCheck.Enable()
 		}
 	}
 
