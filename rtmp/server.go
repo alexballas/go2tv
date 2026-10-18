@@ -70,7 +70,7 @@ func (s *Server) Start(ffmpegPath, streamKey, port string) (string, error) {
 
 	// Start the command
 	if err := cmd.Start(); err != nil {
-		s.Cleanup()
+		s.internalCleanup()
 		if cleanupErr != nil {
 			return "", fmt.Errorf("failed to start ffmpeg (cleanup err: %v): %w", cleanupErr, err)
 		}

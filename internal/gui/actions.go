@@ -3094,7 +3094,10 @@ func startRTMPServer(screen *FyneScreen) {
 	releasePermit, permitted := screen.rendererPermit(true)
 	if !permitted {
 		fyne.Do(func() {
-			screen.rtmpServerCheck.SetChecked(false)
+			// Skip the stop callback: it would restore an uninitialized
+			// previous source over the current one.
+			screen.rtmpServerCheck.Checked = false
+			screen.rtmpServerCheck.Refresh()
 		})
 		return
 	}
@@ -3130,8 +3133,16 @@ func startRTMPServer(screen *FyneScreen) {
 			screen.rtmpServer = nil
 			screen.rtmpMu.Unlock()
 			fyne.Do(func() {
-				screen.rtmpServerCheck.Enable()
-				screen.rtmpServerCheck.SetChecked(false)
+				// No RTMP input took over, so do not run the stop callback
+				// and restore an uninitialized previous source.
+				screen.rtmpServerCheck.Checked = false
+				screen.rtmpServerCheck.Refresh()
+				if screen.ffmpegStatus() == nil && !screen.Screencast {
+					screen.rtmpServerCheck.Enable()
+				} else {
+					screen.rtmpServerCheck.Disable()
+				}
+				screen.updateFFmpegDependentCheckTooltips()
 			})
 			return
 		}
@@ -3243,7 +3254,6 @@ func stopRTMPServer(screen *FyneScreen) {
 
 		fyne.Do(func() {
 			resetRTMPUI(screen)
-			screen.rtmpServerCheck.Enable()
 		})
 		screen.rtmpMu.Unlock()
 	}()
@@ -3266,9 +3276,18 @@ func resetRTMPUI(screen *FyneScreen) {
 	if err := screen.ffmpegStatus(); err == nil {
 		if !screen.Screencast {
 			screen.TranscodeCheckBox.Enable()
+			screen.rtmpServerCheck.Enable()
+		} else {
+			screen.rtmpServerCheck.Disable()
 		}
 		if screen.ScreencastCheckBox != nil {
 			screen.ScreencastCheckBox.Enable()
+		}
+	} else {
+		screen.TranscodeCheckBox.Disable()
+		screen.rtmpServerCheck.Disable()
+		if screen.ScreencastCheckBox != nil {
+			screen.ScreencastCheckBox.Disable()
 		}
 	}
 	screen.SlideBar.Enable()
