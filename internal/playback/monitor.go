@@ -41,11 +41,15 @@ const (
 )
 
 type MonitorEvent struct {
-	Generation      uint64
-	TimerEpoch      uint64
-	State           string
-	Position        int
-	Duration        int
+	Generation uint64
+	TimerEpoch uint64
+	State      string
+	Position   int
+	Duration   int
+	// PositionValid marks a current-track timeline: a sample with a duration,
+	// or a confirmed live stream (Duration 0). Transient zero-duration samples,
+	// state-only notifications and failed requests leave it false.
+	PositionValid   bool
 	ImageReady      bool
 	NextURI         string
 	NextURIObserved bool
@@ -153,6 +157,7 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNAPositi
 		lastPosition, lastDuration, lastSample = cfg.InitialPosition, cfg.InitialDuration, clockNow(cfg.Clock)
 	}
 	startup := dlnaStartup{}
+	var live dlnaLiveTimeline
 	// stateErr is the latest transport-state result; nil when no fresh poll ran.
 	// callbackStop records an accepted STOPPED callback awaiting confirmation.
 	// stateLostAt is when that confirmation first failed during gapless.
@@ -190,7 +195,7 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNAPositi
 				return false
 			}
 		}
-		event, terminal := pollDLNA(ctx, cfg, transport, now, &state, &currentURI, &lastPosition, &lastDuration, &lastProgress, &boundaryStop, &lastSample, &stateErr, stopGate, &startup)
+		event, terminal := pollDLNA(ctx, cfg, transport, now, &state, &currentURI, &lastPosition, &lastDuration, &lastProgress, &boundaryStop, &lastSample, &stateErr, stopGate, &startup, &live)
 		if ctx.Err() != nil {
 			release()
 			return false
@@ -200,7 +205,7 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNAPositi
 			finish(event)
 			return true
 		}
-		if event.State != "" || event.Duration != 0 || event.Position != 0 || event.NextURIObserved || event.GaplessPromoted {
+		if event.State != "" || event.PositionValid || event.Duration != 0 || event.Position != 0 || event.NextURIObserved || event.GaplessPromoted {
 			emitMonitor(ctx, cfg, event)
 		}
 		release()
@@ -291,7 +296,7 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNAPositi
 	}
 }
 
-func pollDLNA(ctx context.Context, cfg MonitorConfig, transport DLNAPositionTransport, now time.Time, state, currentURI *string, lastPosition, lastDuration *int, lastProgress, boundaryStop, lastSample *time.Time, stateErr *error, stopGate *DLNAStopGate, startup *dlnaStartup) (MonitorEvent, bool) {
+func pollDLNA(ctx context.Context, cfg MonitorConfig, transport DLNAPositionTransport, now time.Time, state, currentURI *string, lastPosition, lastDuration *int, lastProgress, boundaryStop, lastSample *time.Time, stateErr *error, stopGate *DLNAStopGate, startup *dlnaStartup, live *dlnaLiveTimeline) (MonitorEvent, bool) {
 	event := MonitorEvent{}
 	// State gets first chance even when position requests hang at EOF. Each
 	// SOAP operation has its own deadline; one timeout cannot starve the next.
@@ -334,6 +339,7 @@ func pollDLNA(ctx context.Context, cfg MonitorConfig, transport DLNAPositionTran
 	if estimate, guarded := dlnaTailEstimate(now, *state, *lastPosition, *lastDuration, *lastSample); guarded && stopGate.started.Load() {
 		positionErr = errDLNATailGuard
 		event.Position, event.Duration = estimate, *lastDuration
+		event.PositionValid = true
 	} else {
 		requestCtx, cancel := context.WithTimeout(ctx, DLNAPollTimeout)
 		position, positionErr = transport.Position(requestCtx)
@@ -383,6 +389,7 @@ func pollDLNA(ctx context.Context, cfg MonitorConfig, transport DLNAPositionTran
 			event.Position, event.Duration = position.Current, position.Duration
 		}
 		if position.Duration > 0 {
+			*live = dlnaLiveTimeline{}
 			if position.Current != *lastPosition || position.Duration != *lastDuration || lastProgress.IsZero() {
 				*lastProgress = now
 			}
@@ -391,6 +398,14 @@ func pollDLNA(ctx context.Context, cfg MonitorConfig, transport DLNAPositionTran
 				*lastSample = now
 			}
 			*lastPosition, *lastDuration = position.Current, position.Duration
+		} else if live.observe(position.Current) {
+			// Live streams can briefly retain the previous file's duration.
+			// Once it disappears, retire its tail/stall estimate as well.
+			*lastPosition, *lastDuration = -1, 0
+			*lastSample = time.Time{}
+		}
+		if stopGate.started.Load() && (position.Duration > 0 || live.active) {
+			event.PositionValid = true
 		}
 	}
 	retrier, retryable := transport.(DLNAStartupRetryTransport)
@@ -417,6 +432,7 @@ func pollDLNA(ctx context.Context, cfg MonitorConfig, transport DLNAPositionTran
 		event.State = "PLAYING"
 		*state, *currentURI = "PLAYING", queuedURI
 		*lastPosition, *lastDuration = -1, 0
+		*live = dlnaLiveTimeline{}
 		*lastProgress, *boundaryStop = now, time.Time{}
 		return event, false
 	}
@@ -433,6 +449,23 @@ func pollDLNA(ctx context.Context, cfg MonitorConfig, transport DLNAPositionTran
 		return MonitorEvent{Recovery: RecoveryStalledNearEnd}, true
 	}
 	return event, false
+}
+
+// dlnaLiveTimeline separates live streams from renderers that briefly or
+// permanently report an empty timeline (seek transitions, stuck EOF): only
+// zero-duration samples whose position advances confirm a live stream.
+type dlnaLiveTimeline struct {
+	position     int
+	seen, active bool
+}
+
+// observe records a zero-duration sample and reports when it confirms a
+// live stream for the first time.
+func (l *dlnaLiveTimeline) observe(position int) bool {
+	confirmed := !l.active && l.seen && position > l.position
+	l.active = l.active || confirmed
+	l.position, l.seen = position, true
+	return confirmed
 }
 
 // dlnaTailEstimate extrapolates a playing track's position from the last

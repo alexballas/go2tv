@@ -48,7 +48,7 @@ func TestDLNAStartupFailureDoesNotBecomeCompletion(t *testing.T) {
 			var last MonitorEvent
 			for i, seconds := range tc.times {
 				var terminal bool
-				last, terminal = pollDLNA(t.Context(), MonitorConfig{}, dlna, time.Unix(100+seconds, 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, startup)
+				last, terminal = pollDLNA(t.Context(), MonitorConfig{}, dlna, time.Unix(100+seconds, 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, startup, new(dlnaLiveTimeline))
 				if last.Terminal == TerminalFinished || terminal && (last.Terminal != TerminalError || i != len(tc.times)-1) {
 					t.Fatalf("premature completion at %d: %#v", seconds, last)
 				}
@@ -100,7 +100,7 @@ func TestDLNAStartupRetriesDroppedPlay(t *testing.T) {
 				if terminal {
 					t.Fatalf("terminal before %ds: %#v", seconds, last)
 				}
-				last, terminal = pollDLNA(t.Context(), MonitorConfig{}, dlna, time.Unix(100+seconds, 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, startup)
+				last, terminal = pollDLNA(t.Context(), MonitorConfig{}, dlna, time.Unix(100+seconds, 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, startup, new(dlnaLiveTimeline))
 			}
 			if fmt.Sprint(dlna.retries) != fmt.Sprint(tc.retries) {
 				t.Fatalf("retries = %q, want %q", dlna.retries, tc.retries)
@@ -125,7 +125,7 @@ func TestDLNAStartupHidesStaleTrackProgress(t *testing.T) {
 	var progress, boundary, sampled time.Time
 	gate, startup := &DLNAStopGate{}, &dlnaStartup{}
 	for i := range dlna.samples {
-		event, _ := pollDLNA(t.Context(), MonitorConfig{}, dlna, time.Unix(100+int64(i), 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, startup)
+		event, _ := pollDLNA(t.Context(), MonitorConfig{}, dlna, time.Unix(100+int64(i), 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, startup, new(dlnaLiveTimeline))
 		if event.Duration != 0 || event.Position != 0 {
 			t.Fatalf("pre-start sample %d reached UI: %#v", i, event)
 		}

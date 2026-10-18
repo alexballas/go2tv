@@ -352,7 +352,13 @@ func (s *dlnaPlaybackSession) handleMonitorEvent(event playback.MonitorEvent, ep
 		return
 	}
 	current := s.current.Load()
-	if event.Duration > 0 {
+	if event.PositionValid && event.Duration <= 0 {
+		s.tailMu.Lock()
+		if s.tail.payload == current {
+			s.tail = dlnaTail{}
+		}
+		s.tailMu.Unlock()
+	} else if event.Duration > 0 {
 		s.noteTail(current, event.Position, event.Duration)
 	}
 	fyne.Do(func() {
@@ -377,6 +383,14 @@ func (s *dlnaPlaybackSession) handleMonitorEvent(event playback.MonitorEvent, ep
 				s.EndPos.Set(utils.SecondsToClockTime(event.Duration))
 			}
 			s.persistResumeProgress(position, float64(event.Duration), false)
+			s.refreshMPRISProgress()
+		} else if event.PositionValid {
+			s.SlideBar.setDLNADuration(current, 0)
+			if !s.sliderActive {
+				s.SlideBar.SetValue(0)
+				s.CurrentPos.Set(utils.SecondsToClockTime(max(event.Position, 0)))
+				s.EndPos.Set("00:00:00")
+			}
 			s.refreshMPRISProgress()
 		}
 	})

@@ -46,6 +46,7 @@ func TestDLNAMonitorRecoversStuckEndings(t *testing.T) {
 	seekBack.position.Current = 20
 	unreachable := playing
 	unreachable.stateErr = errors.New("status unavailable")
+	emptyTimeline := dlnaSample{position: Position{TrackURI: "a"}, state: "PLAYING"}
 	tt := []struct {
 		name     string
 		samples  []dlnaSample
@@ -54,6 +55,7 @@ func TestDLNAMonitorRecoversStuckEndings(t *testing.T) {
 	}{
 		{name: "missing STOPPED callback", samples: []dlnaSample{playing, stopped}, finished: true},
 		{name: "stuck PLAYING at final second", samples: []dlnaSample{playing, playing, playing, playing, playing}, finished: true},
+		{name: "stuck PLAYING with empty timeline", samples: []dlnaSample{playing, emptyTimeline, emptyTimeline, emptyTimeline, emptyTimeline}, finished: true},
 		{name: "pause at final second", samples: []dlnaSample{playing, paused, paused, paused, paused}},
 		{name: "seek back resets deadline", samples: []dlnaSample{playing, playing, playing, seekBack, seekBack}},
 		{name: "network errors never mean finished", samples: []dlnaSample{playing, unreachable, unreachable, unreachable, unreachable}},
@@ -209,7 +211,7 @@ func TestDLNAMonitorWithholdsPositionAtTrackEnd(t *testing.T) {
 	var shown []int
 	for second := range int64(6) {
 		dlna.at = second
-		event, terminal := pollDLNA(t.Context(), MonitorConfig{}, dlna, time.Unix(100+second, 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, startup)
+		event, terminal := pollDLNA(t.Context(), MonitorConfig{}, dlna, time.Unix(100+second, 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, startup, new(dlnaLiveTimeline))
 		if terminal {
 			if second != 5 || event.Terminal != "" || !event.DLNAStopped {
 				t.Fatalf("unexpected completion at %ds: %#v", second, event)
@@ -289,7 +291,7 @@ func TestDLNAGaplessPromotionToleratesReencodedURI(t *testing.T) {
 	var progress, boundary, sampled time.Time
 	gate := &DLNAStopGate{}
 	gate.Arm()
-	event, _ := pollDLNA(t.Context(), MonitorConfig{GaplessActive: func() bool { return true }, QueuedURI: func() string { return queued }}, &scriptedDLNA{samples: []dlnaSample{sample}}, time.Unix(100, 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, &dlnaStartup{})
+	event, _ := pollDLNA(t.Context(), MonitorConfig{GaplessActive: func() bool { return true }, QueuedURI: func() string { return queued }}, &scriptedDLNA{samples: []dlnaSample{sample}}, time.Unix(100, 0), &state, &currentURI, &position, &duration, &progress, &boundary, &sampled, new(error), gate, &dlnaStartup{}, new(dlnaLiveTimeline))
 	if !event.GaplessPromoted || event.GaplessURI != queued {
 		t.Fatalf("re-encoded handoff not promoted: %#v", event)
 	}

@@ -41,6 +41,42 @@ func newDLNARecoveryScreen(t *testing.T) *FyneScreen {
 	return s
 }
 
+func TestDLNATimelineClearsPreviousDurationForLiveStream(t *testing.T) {
+	s := newDLNARecoveryScreen(t)
+	s.SlideBar = newTappableSlider(s)
+	s.tvdata.Seekable = true
+	s.setActiveDevice(devType{addr: "renderer", deviceType: devices.DeviceTypeDLNA})
+	session := s.prepareDLNAMonitor(s.serverStopCTX, s.tvdata)
+	for _, tc := range []struct {
+		name         string
+		event        playback.MonitorEvent
+		current, end string
+		seekable     bool
+	}{
+		{"file duration", playback.MonitorEvent{State: "PLAYING", Position: 3, Duration: 25, PositionValid: true}, "00:00:03", "00:00:25", true},
+		{"transient empty duration keeps file", playback.MonitorEvent{State: "PLAYING", Position: 7}, "00:00:03", "00:00:25", true},
+		{"radio loses stale duration", playback.MonitorEvent{State: "PLAYING", Position: 4, PositionValid: true}, "00:00:04", "00:00:00", false},
+		{"radio restarts at zero", playback.MonitorEvent{State: "PLAYING", PositionValid: true}, "00:00:00", "00:00:00", false},
+		{"duration returns", playback.MonitorEvent{State: "PLAYING", Position: 2, Duration: 40, PositionValid: true}, "00:00:02", "00:00:40", true},
+		{"pause without position", playback.MonitorEvent{State: "PAUSED"}, "00:00:02", "00:00:40", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			session.handleMonitorEvent(tc.event, 0)
+			fyne.DoAndWait(func() {})
+			current, _ := s.CurrentPos.Get()
+			end, _ := s.EndPos.Get()
+			if current != tc.current || end != tc.end || s.SlideBar.Disabled() == tc.seekable {
+				t.Fatalf("timeline = %s/%s, disabled=%v", current, end, s.SlideBar.Disabled())
+			}
+			if !tc.seekable {
+				if _, known := s.dlnaKnownDuration(s.tvdata); known || s.SlideBar.Value != 0 {
+					t.Fatalf("live stream retained old duration or slider position: %v", s.SlideBar.Value)
+				}
+			}
+		})
+	}
+}
+
 func TestDLNACompletionOrdersStopBeforeAutoplay(t *testing.T) {
 	for _, cancelNext := range []bool{false, true} {
 		name := "advances after cleanup"
