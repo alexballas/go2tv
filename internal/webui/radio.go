@@ -1,6 +1,7 @@
 package webui
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -175,7 +176,7 @@ func toStationDTO(station radiobrowser.Station) stationDTO {
 			dto.Tags = append(dto.Tags, tag)
 		}
 	}
-	if strings.TrimSpace(station.Favicon) != "" {
+	if !station.Icon().Empty() {
 		dto.IconURL = "/api/radio/icon?" + url.Values{"id": {station.UUID}}.Encode()
 	}
 	return dto
@@ -368,11 +369,11 @@ func (h *Handler) radioIcon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	station, _, ok := h.radio.lookup(id)
-	if !ok || strings.TrimSpace(station.Favicon) == "" {
+	if !ok || station.Icon().Empty() {
 		apiError(w, http.StatusNotFound, "not_found")
 		return
 	}
-	asset, err := h.stationIcon(r.Context(), station.Favicon)
+	asset, err := h.stationIcon(r.Context(), station.Icon())
 	if err != nil {
 		if r.Context().Err() == nil {
 			// Missing logos are common; let the browser keep its fallback.
@@ -384,18 +385,19 @@ func (h *Handler) radioIcon(w http.ResponseWriter, r *http.Request) {
 	serveJPEG(w, r, asset.Data, "private, max-age=86400")
 }
 
-// stationIcon shares one normalized logo per favicon between station rows and
-// renderer artwork. Failures are remembered so missing logos are not
+// stationIcon shares one normalized logo per icon source between station rows
+// and renderer artwork. Failures are remembered so missing logos are not
 // refetched for every listing.
-func (h *Handler) stationIcon(ctx context.Context, favicon string) (*metadata.ArtworkAsset, error) {
+func (h *Handler) stationIcon(ctx context.Context, icon radiobrowser.IconSource) (*metadata.ArtworkAsset, error) {
 	r := &h.radio
+	key := icon.Key()
 	r.mu.Lock()
-	retryAt, failed := r.iconFails[favicon]
+	retryAt, failed := r.iconFails[key]
 	r.mu.Unlock()
 	if failed && time.Now().Before(retryAt) {
 		return nil, errors.New("radio icon unavailable")
 	}
-	sum := sha256.Sum256([]byte(favicon))
+	sum := sha256.Sum256([]byte(key))
 	value, err := h.cfg.Artwork.Get(ctx, "radio-icon:"+hex.EncodeToString(sum[:16]), func(ctx context.Context) ([]byte, string, error) {
 		select {
 		case r.icons <- struct{}{}:
@@ -403,14 +405,14 @@ func (h *Handler) stationIcon(ctx context.Context, favicon string) (*metadata.Ar
 		case <-ctx.Done():
 			return nil, "", ctx.Err()
 		}
-		asset, err := radiobrowser.FetchIcon(ctx, favicon)
+		asset, err := radiobrowser.FetchIcon(ctx, icon)
 		if err != nil {
 			if ctx.Err() == nil {
 				r.mu.Lock()
 				if len(r.iconFails) >= maxRadioIconFails {
 					clear(r.iconFails)
 				}
-				r.iconFails[favicon] = time.Now().Add(radioIconRetry)
+				r.iconFails[key] = time.Now().Add(radioIconRetry)
 				r.mu.Unlock()
 			}
 			return nil, "", err
@@ -420,7 +422,7 @@ func (h *Handler) stationIcon(ctx context.Context, favicon string) (*metadata.Ar
 	if err != nil {
 		return nil, err
 	}
-	return mediaartwork.AssetFromJPEG(value.Data, favicon)
+	return mediaartwork.AssetFromJPEG(value.Data, cmp.Or(icon.Favicon, icon.Homepage))
 }
 
 func (h *Handler) radioCommand(ctx context.Context, message envelope) controller.Result {
@@ -503,12 +505,12 @@ func (h *Handler) radioMediaRef(ctx context.Context, station radiobrowser.Statio
 		mediaType = inferred
 	}
 	ref := controller.MediaRef{RootID: radioRootID, ID: station.UUID, Name: station.Name, Kind: mediamodel.MediaKindAudio, MIMEType: mediaType, Live: &controller.LiveStream{URL: streamURL, HLS: hls}}
-	if favicon := station.Favicon; strings.TrimSpace(favicon) != "" {
+	if icon := station.Icon(); !icon.Empty() {
 		ref.LoadArtwork = func(ctx context.Context) (*metadata.ArtworkAsset, error) {
-			asset, err := h.stationIcon(ctx, favicon)
+			asset, err := h.stationIcon(ctx, icon)
 			if err == nil {
 				h.rememberArtwork(asset.ID, func(ctx context.Context) ([]byte, string, error) {
-					asset, err := h.stationIcon(ctx, favicon)
+					asset, err := h.stationIcon(ctx, icon)
 					if err != nil {
 						return nil, "", err
 					}

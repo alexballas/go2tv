@@ -88,7 +88,7 @@ func TestRadioArtworkConcurrentCallersShareFetch(t *testing.T) {
 	defer upstream.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
-	cache := newRadioArtworkCache()
+	cache := newRadioArtworkCache("")
 	type result struct {
 		asset *metadata.ArtworkAsset
 		err   error
@@ -97,7 +97,7 @@ func TestRadioArtworkConcurrentCallersShareFetch(t *testing.T) {
 	results := make(chan result, callers)
 	for range callers {
 		go func() {
-			asset, err := cache.fetch(ctx, upstream.URL)
+			asset, err := cache.fetch(ctx, radiobrowser.IconSource{Favicon: upstream.URL})
 			results <- result{asset: asset, err: err}
 		}()
 	}
@@ -135,11 +135,11 @@ func TestRadioArtworkCancellationDoesNotBlockNextFetch(t *testing.T) {
 		_, _ = w.Write(valid)
 	}))
 	defer upstream.Close()
-	cache := newRadioArtworkCache()
+	cache := newRadioArtworkCache("")
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { _, err := cache.fetch(ctx, upstream.URL); done <- err }()
+	go func() { _, err := cache.fetch(ctx, radiobrowser.IconSource{Favicon: upstream.URL}); done <- err }()
 	select {
 	case <-started:
 	case <-time.After(time.Second):
@@ -156,8 +156,50 @@ func TestRadioArtworkCancellationDoesNotBlockNextFetch(t *testing.T) {
 	}
 	ctx, stop := context.WithTimeout(t.Context(), time.Second)
 	defer stop()
-	asset, err := cache.fetch(ctx, upstream.URL)
+	asset, err := cache.fetch(ctx, radiobrowser.IconSource{Favicon: upstream.URL})
 	if err != nil || asset == nil || requests.Load() != 2 {
 		t.Fatalf("canceled request poisoned artwork cache: %v, %d requests", err, requests.Load())
+	}
+}
+
+func TestRadioArtworkPersistsAcrossRestarts(t *testing.T) {
+	tt := []struct {
+		name         string
+		age          time.Duration
+		upstreamDown bool
+		wantRequests int32
+	}{
+		{name: "fresh logo skips network", age: radioIconTTL - time.Hour, upstreamDown: true, wantRequests: 1},
+		{name: "expired logo refreshes", age: radioIconTTL + time.Hour, wantRequests: 2},
+		{name: "expired logo kept when refresh fails", age: radioIconTTL + time.Hour, upstreamDown: true, wantRequests: 2},
+	}
+	valid := radioTestPNG(t)
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			var requests atomic.Int32
+			var down atomic.Bool
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests.Add(1)
+				if down.Load() {
+					http.Error(w, "unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				_, _ = w.Write(valid)
+			}))
+			defer upstream.Close()
+			dir := t.TempDir()
+			source := radiobrowser.IconSource{Favicon: upstream.URL}
+			if asset, err := newRadioArtworkCache(dir).fetch(t.Context(), source); err != nil || asset == nil {
+				t.Fatalf("first fetch = %v, %v", asset, err)
+			}
+			down.Store(tc.upstreamDown)
+			restarted := newRadioArtworkCache(dir)
+			base := time.Now()
+			restarted.now = func() time.Time { return base.Add(tc.age) }
+			asset, err := restarted.fetch(t.Context(), source)
+			if err != nil || asset == nil || requests.Load() != tc.wantRequests {
+				t.Fatalf("after restart = %v, %v, %d requests; want %d", asset, err, requests.Load(), tc.wantRequests)
+			}
+		})
 	}
 }

@@ -38,6 +38,7 @@ type FyneScreen struct {
 	radioSong              radioSongState
 	radio                  *radioView
 	radioArtworkCache      *radioArtworkCache
+	radioIconDir           string
 	radioArtworkResolved   bool
 	radioArtwork           *metadata.ArtworkAsset
 	radioSelected          radiobrowser.Station
@@ -349,6 +350,7 @@ func NewFyneScreen(version string, crash *crashlog.Session) *FyneScreen {
 		version:          version,
 		Crash:            crash,
 		PendingCrashPath: crashPath(crash),
+		radioIconDir:     radioIconStoreDir(go2tv),
 	}
 }
 

@@ -15,25 +15,26 @@ const maxRadioIconCacheEntries = 64
 
 // Only visible list rows start fetches; four concurrent requests share a cache.
 func (r *radioView) loadRadioIcon(station radiobrowser.Station) {
-	favicon := station.Favicon
-	if favicon == "" || r.iconsPending[favicon] {
+	icon := station.Icon()
+	key := icon.Key()
+	if icon.Empty() || r.iconsPending[key] {
 		return
 	}
-	if _, _, cached := r.artwork.lookup(favicon); cached {
+	if _, _, cached := r.artwork.lookup(icon); cached {
 		return
 	}
-	r.iconsPending[favicon] = true
+	r.iconsPending[key] = true
 	ctx := r.ctx
 	go func() {
-		_, err := r.artwork.fetch(ctx, favicon)
+		_, err := r.artwork.fetch(ctx, icon)
 		fyne.Do(func() {
 			if ctx.Err() != nil || r.ctx != ctx {
 				return
 			}
-			delete(r.iconsPending, favicon)
+			delete(r.iconsPending, key)
 			r.screen.logRadioError("artwork", err)
 			for id, station := range r.stations {
-				if station.Favicon == favicon {
+				if station.Icon() == icon {
 					r.list.RefreshItem(id)
 				}
 			}
@@ -42,18 +43,18 @@ func (r *radioView) loadRadioIcon(station radiobrowser.Station) {
 }
 
 func radioArtworkIdentity(station radiobrowser.Station) string {
-	return "radio:" + station.UUID + ":" + station.StreamURL() + ":" + station.Favicon
+	return "radio:" + station.UUID + ":" + station.StreamURL() + ":" + station.Icon().Key()
 }
 
 // Selection binds artwork to both station UUID and URL before UI/network work.
 func (s *FyneScreen) setSelectedRadioArtwork(station radiobrowser.Station, asset *metadata.ArtworkAsset) {
 	temporary := s.radioTemporaryMode()
 	s.mu.Lock()
-	if s.radioSelected.UUID != station.UUID || s.radioSelected.StreamURL() != station.StreamURL() || s.radioSelected.Favicon != station.Favicon {
+	if s.radioSelected.UUID != station.UUID || s.radioSelected.StreamURL() != station.StreamURL() || s.radioSelected.Icon() != station.Icon() {
 		s.mu.Unlock()
 		return
 	}
-	s.radioArtworkResolved = asset != nil || station.Favicon == ""
+	s.radioArtworkResolved = asset != nil || station.Icon().Empty()
 	s.radioArtwork = asset
 	preview := !temporary && s.currentArtworkIdentity == radioArtworkIdentity(station)
 	if preview {
@@ -79,10 +80,10 @@ func (s *FyneScreen) resolveCurrentRadioArtwork(ctx context.Context, mediaURL st
 	s.currentArtworkIdentity = radioArtworkIdentity(station)
 	s.currentArtwork = asset
 	s.mu.Unlock()
-	if resolved || station.Favicon == "" {
+	if resolved || station.Icon().Empty() {
 		return asset
 	}
-	asset, err := s.getRadioArtworkCache().fetch(ctx, station.Favicon)
+	asset, err := s.getRadioArtworkCache().fetch(ctx, station.Icon())
 	if ctx.Err() != nil {
 		return nil
 	}
@@ -104,7 +105,7 @@ func (s *FyneScreen) resolveCurrentRadioArtwork(ctx context.Context, mediaURL st
 
 func (s *FyneScreen) loadSelectedRadioArtwork(ctx context.Context, station radiobrowser.Station) {
 	go func() {
-		asset, err := s.getRadioArtworkCache().fetch(ctx, station.Favicon)
+		asset, err := s.getRadioArtworkCache().fetch(ctx, station.Icon())
 		fyne.Do(func() {
 			if ctx.Err() == nil {
 				s.logRadioError("artwork", err)

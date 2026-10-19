@@ -91,7 +91,7 @@ func TestRadioListUsesStationLogoAndBoundsCache(t *testing.T) {
 		r.artwork.storeLocked(fmt.Sprint(i), asset, nil)
 	}
 	entries := len(r.artwork.entries)
-	r.artwork.storeLocked(station.Favicon, asset, nil)
+	r.artwork.storeLocked(station.Icon().Key(), asset, nil)
 	r.artwork.mu.Unlock()
 	if entries != maxRadioIconCacheEntries {
 		t.Fatalf("icon cache grew to %d entries", entries)

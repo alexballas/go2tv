@@ -94,7 +94,7 @@ func radioWindow(ctx context.Context, screen *FyneScreen) fyne.CanvasObject {
 		return newRadioStationRow(r.tapRadioRow)
 	}, func(id widget.ListItemID, object fyne.CanvasObject) {
 		station := r.stations[id]
-		asset, _, _ := r.artwork.lookup(station.Favicon)
+		asset, _, _ := r.artwork.lookup(station.Icon())
 		object.(*radioStationRow).setStation(id, station, r.isFavorite(station.UUID), r.screen.radioStationPlaying(station.UUID), asset)
 		r.loadRadioIcon(station)
 	})

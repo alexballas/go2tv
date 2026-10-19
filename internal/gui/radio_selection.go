@@ -140,7 +140,7 @@ func (r *radioView) useRadioStation() {
 	ctx := r.ctx
 	// Saved entries can outlive a station's stream URL or artwork.
 	refreshFavorite := r.mode != radioModeSearch || r.isFavorite(station.UUID)
-	asset, _, cached := r.artwork.lookup(station.Favicon)
+	asset, _, cached := r.artwork.lookup(station.Icon())
 	cached = cached && asset != nil
 	previous, sameRadio := r.screen.radioStationForURL(r.screen.MediaText.Text)
 	go func() {
@@ -149,7 +149,7 @@ func (r *radioView) useRadioStation() {
 			refreshed, err := r.client.Station(refreshCtx, station.UUID)
 			cancel()
 			if err == nil {
-				if refreshed.Favicon != station.Favicon {
+				if refreshed.Icon() != station.Icon() {
 					cached = false
 					asset = nil
 				}
@@ -203,7 +203,7 @@ func (r *radioView) useRadioStation() {
 			if r.modal != nil {
 				r.modal.Hide()
 			}
-			if !cached && station.Favicon != "" {
+			if !cached && !station.Icon().Empty() {
 				r.screen.loadSelectedRadioArtwork(r.parentCtx, station)
 			}
 			switch {
@@ -220,7 +220,7 @@ func (s *FyneScreen) resetRadioSelection(station radiobrowser.Station) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.radioSelected = station
-	s.radioArtworkResolved = station.Favicon == ""
+	s.radioArtworkResolved = station.Icon().Empty()
 	s.radioArtwork = nil
 	s.currentArtworkIdentity = radioArtworkIdentity(station)
 	s.currentArtwork = nil

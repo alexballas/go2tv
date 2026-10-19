@@ -69,6 +69,7 @@ type FyneScreen struct {
 	radioSong                radioSongState
 	radio                    *radioView
 	radioArtworkCache        *radioArtworkCache
+	radioIconDir             string
 	radioArtworkResolved     bool
 	radioArtwork             *metadata.ArtworkAsset
 	radioSelected            radiobrowser.Station
@@ -996,6 +997,7 @@ func NewFyneScreen(version string, crash *crashlog.Session) *FyneScreen {
 		lastQueueTapIndex:  -1,
 		remoteSession:      newRemoteSessionManager(),
 		shutdownDone:       make(chan struct{}),
+		radioIconDir:       radioIconStoreDir(go2tv),
 	}
 }
 
