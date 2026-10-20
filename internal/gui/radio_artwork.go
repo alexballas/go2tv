@@ -149,14 +149,13 @@ func (s *FyneScreen) invalidateRadioURL(mediaURL string) {
 		s.previewRadioArtwork(asset)
 		return
 	}
-	s.radioSelected = radiobrowser.Station{}
-	s.radioArtworkResolved = false
-	s.radioArtwork = nil
+	// Keep the station: radioStationForURL ignores it while the URL differs,
+	// and a typo fixed back restores artwork and song details. The song
+	// monitor keeps following the station still on the receiver.
 	if strings.HasPrefix(s.currentArtworkIdentity, "radio:") {
 		s.currentArtworkIdentity = ""
 		s.currentArtwork = nil
 	}
 	s.mu.Unlock()
-	s.stopRadioSongMonitor()
 	s.previewRadioArtwork(nil)
 }

@@ -491,8 +491,12 @@ func TestRadioArtworkReturnsAfterTemporaryDesktopModes(t *testing.T) {
 				t.Fatal("temporary mode permanently erased radio artwork")
 			}
 			screen.invalidateRadioURL("https://other.test/live")
-			if screen.radioSelected.UUID != "" || screen.getCurrentArtwork() != nil {
-				t.Fatal("manual URL edit failed to invalidate radio")
+			if screen.radioTitle("https://other.test/live") != "" || screen.getCurrentArtwork() != nil || screen.selectedArtwork.picture.Visible() {
+				t.Fatal("manual URL edit kept radio artwork")
+			}
+			screen.invalidateRadioURL(station.StreamURL())
+			if screen.radioTitle(station.StreamURL()) != station.Name || screen.getCurrentArtwork() != asset || !screen.selectedArtwork.picture.Visible() {
+				t.Fatal("restoring station URL lost radio artwork")
 			}
 		})
 	}
