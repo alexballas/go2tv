@@ -8,7 +8,12 @@ import (
 
 	"go2tv.app/go2tv/v2/castprotocol"
 	"go2tv.app/go2tv/v2/devices"
+	"go2tv.app/go2tv/v2/soapcalls"
 )
+
+func (s *FyneScreen) progressSeekingAllowed() bool {
+	return !strings.HasPrefix(s.castingMediaType, "image/")
+}
 
 func (s *FyneScreen) rendererPermit(bool) (func(), bool) {
 	return func() {}, true
@@ -57,3 +62,11 @@ func (s *FyneScreen) activeChromecastPlaybackClient() *castprotocol.CastClient {
 		return nil
 	}
 }
+
+func (s *FyneScreen) dlnaProgressMonitored(*soapcalls.TVPayload) bool { return false }
+
+func (s *FyneScreen) beginDLNASeek(*soapcalls.TVPayload) func() { return func() {} }
+
+func (s *FyneScreen) noteDLNASeek(*soapcalls.TVPayload, int, int) {}
+
+func (s *FyneScreen) dlnaKnownDuration(*soapcalls.TVPayload) (int, bool) { return 0, false }

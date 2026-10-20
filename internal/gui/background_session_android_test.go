@@ -10,6 +10,7 @@ import (
 	"github.com/alexballas/refyne/v2/test"
 
 	"go2tv.app/go2tv/v2/internal/torrentstream"
+	"go2tv.app/go2tv/v2/soapcalls"
 )
 
 type backgroundTestApp struct {
@@ -109,6 +110,29 @@ func (d *backgroundTestDriver) StartBackgroundSession(string, string, fyne.Resou
 }
 func (d *backgroundTestDriver) StopBackgroundSession()         { d.stops++ }
 func (d *backgroundTestDriver) RequestNotificationPermission() {}
+
+func TestDLNALoadingKeepsAndroidBackgroundSession(t *testing.T) {
+	app := test.NewApp()
+	t.Cleanup(app.Quit)
+	driver := &backgroundTestDriver{Driver: app.Driver()}
+	fyne.SetCurrentApp(&backgroundTestApp{App: app, driver: driver})
+	t.Cleanup(func() {
+		fyne.SetCurrentApp(app)
+		backgroundSessionState.running = false
+	})
+	s := &FyneScreen{State: "Stopped"}
+	s.waitForDLNAPlayback(&soapcalls.TVPayload{})
+	t.Cleanup(s.cancelPlayTimer)
+	syncBackgroundSession(s, "Stopped")
+	if driver.starts != 1 || driver.stops != 0 {
+		t.Fatal("waiting for DLNA playback lost the foreground service")
+	}
+	s.cancelPlayTimer()
+	syncBackgroundSession(s, "Stopped")
+	if driver.stops != 1 {
+		t.Fatal("canceling DLNA startup retained the foreground service")
+	}
+}
 
 func TestTorrentKeepsAndroidBackgroundSessionAfterStop(t *testing.T) {
 	app := test.NewApp()

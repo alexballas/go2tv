@@ -3,13 +3,14 @@ package main
 import (
 	"fmt"
 	"go/ast"
+	"go/build"
+	"go/importer"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"maps"
 	"os"
-	"path"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
@@ -122,9 +123,9 @@ type Violation struct {
 type analysisContext struct {
 	filePath      string
 	fset          *token.FileSet
-	importAliases map[string]bool
 	fyneAliases   map[string]bool
 	dotImportFyne bool
+	typeInfo      *types.Info
 }
 
 type fileData struct {
@@ -150,76 +151,15 @@ func main() {
 		guiDir = os.Args[1]
 	}
 
-	var violations []Violation
-	var files []fileData
-
-	err := filepath.Walk(guiDir, func(p string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil || info.IsDir() || !strings.HasSuffix(p, ".go") {
-			return nil
-		}
-
-		fset := token.NewFileSet()
-		node, parseErr := parser.ParseFile(fset, p, nil, parser.ParseComments)
-		if parseErr != nil {
-			return nil
-		}
-
-		importAliases, fyneAliases, dotImportFyne := collectImportInfo(node)
-		files = append(files, fileData{
-			file: node,
-			ctx: analysisContext{
-				filePath:      p,
-				fset:          fset,
-				importAliases: importAliases,
-				fyneAliases:   fyneAliases,
-				dotImportFyne: dotImportFyne,
-			},
-		})
-		return nil
-	})
+	violations, err := checkDirectory(guiDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	functions := map[string][]FuncMeta{}
-	methods := map[string][]FuncMeta{}
-	seenViolations := map[string]bool{}
-	for _, fd := range files {
-		for _, decl := range fd.file.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Body == nil {
-				continue
-			}
-
-			meta := FuncMeta{
-				decl:            fn,
-				ctx:             fd.ctx,
-				uiInterfaceVars: collectFuncDeclUIVars(fn, fd.ctx),
-			}
-			if fn.Recv == nil {
-				functions[fn.Name.Name] = append(functions[fn.Name.Name], meta)
-				continue
-			}
-			methods[fn.Name.Name] = append(methods[fn.Name.Name], meta)
-		}
-	}
-
-	for _, fd := range files {
-		v := &visitor{
-			ctx:        fd.ctx,
-			violations: &violations,
-			seen:       seenViolations,
-			functions:  functions,
-			methods:    methods,
-			checked:    map[visitKey]bool{},
-		}
-		ast.Inspect(fd.file, v.visit)
-	}
-
 	if len(violations) == 0 {
 		fmt.Println("✅ No fyne.Do violations found!")
-		os.Exit(0)
+		return
 	}
 
 	fmt.Printf("\n❌ Found %d fyne.Do violations:\n\n", len(violations))
@@ -229,12 +169,115 @@ func main() {
 	os.Exit(1)
 }
 
+func checkDirectory(guiDir string) ([]Violation, error) {
+	var files []fileData
+	fset := token.NewFileSet()
+
+	err := filepath.Walk(guiDir, func(p string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if info.IsDir() || !strings.HasSuffix(p, ".go") {
+			return nil
+		}
+
+		node, parseErr := parser.ParseFile(fset, p, nil, parser.ParseComments)
+		if parseErr != nil {
+			return fmt.Errorf("parse %s: %w", p, parseErr)
+		}
+
+		fyneAliases, dotImportFyne := collectImportInfo(node)
+		files = append(files, fileData{
+			file: node,
+			ctx: analysisContext{
+				filePath:      p,
+				fset:          fset,
+				fyneAliases:   fyneAliases,
+				dotImportFyne: dotImportFyne,
+			},
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("check directory: %w", err)
+	}
+
+	var violations []Violation
+	seenViolations := map[string]bool{}
+	// Resolve each supported platform separately so mutually exclusive helpers
+	// and receiver types cannot shadow one another. Shared reports are deduped.
+	platforms := []struct{ os, arch string }{
+		{"linux", "amd64"}, {"windows", "amd64"}, {"darwin", "arm64"},
+		{"android", "arm64"}, {"ios", "arm64"},
+	}
+	for _, platform := range platforms {
+		buildContext := build.Default
+		buildContext.GOOS, buildContext.GOARCH = platform.os, platform.arch
+		buildContext.CgoEnabled = true
+		buildContext.BuildTags = append([]string{"migrated_fynedo"}, buildContext.BuildTags...)
+		var selected []fileData
+		for _, fd := range files {
+			matches, err := buildContext.MatchFile(filepath.Dir(fd.ctx.filePath), filepath.Base(fd.ctx.filePath))
+			if err != nil {
+				return nil, fmt.Errorf("match %s for %s: %w", fd.ctx.filePath, platform.os, err)
+			}
+			if matches {
+				selected = append(selected, fd)
+			}
+		}
+		targets := collectCallTargets(selected, fset)
+		for _, fd := range selected {
+			v := &visitor{
+				ctx: fd.ctx, violations: &violations, seen: seenViolations,
+				targets: targets, checked: map[visitKey]bool{},
+			}
+			ast.Inspect(fd.file, v.visit)
+		}
+	}
+	return violations, nil
+}
+
+func collectCallTargets(files []fileData, fset *token.FileSet) map[*types.Func]FuncMeta {
+	packages := make(map[string][]int)
+	for i, fd := range files {
+		key := filepath.Join(filepath.Dir(fd.ctx.filePath), fd.file.Name.Name)
+		packages[key] = append(packages[key], i)
+	}
+	targets := make(map[*types.Func]FuncMeta)
+	for name, indices := range packages {
+		info := &types.Info{Defs: make(map[*ast.Ident]types.Object), Uses: make(map[*ast.Ident]types.Object)}
+		nodes := make([]*ast.File, 0, len(indices))
+		for _, i := range indices {
+			nodes = append(nodes, files[i].file)
+		}
+		// Unavailable dependency exports can prevent full type checking. Retain
+		// valid local symbols; never guess by method name.
+		config := types.Config{Importer: importer.Default(), Error: func(error) {}}
+		_, _ = config.Check(name, fset, nodes, info)
+		for _, i := range indices {
+			files[i].ctx.typeInfo = info
+			fd := files[i]
+			for _, decl := range fd.file.Decls {
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Body == nil {
+					continue
+				}
+				object, ok := info.Defs[fn.Name].(*types.Func)
+				if !ok {
+					continue
+				}
+				targets[object] = FuncMeta{decl: fn, ctx: fd.ctx, uiInterfaceVars: collectFuncDeclUIVars(fn, fd.ctx)}
+			}
+		}
+	}
+	return targets
+}
+
 type visitor struct {
 	ctx        analysisContext
 	violations *[]Violation
 	seen       map[string]bool
-	functions  map[string][]FuncMeta
-	methods    map[string][]FuncMeta
+	targets    map[*types.Func]FuncMeta
 	checked    map[visitKey]bool
 }
 
@@ -424,22 +467,28 @@ func (v *visitor) checkCallTargets(call *ast.CallExpr, insideFyneDo bool, inConc
 }
 
 func (v *visitor) resolveCallTargets(call *ast.CallExpr, ctx analysisContext) []FuncMeta {
+	var ident *ast.Ident
 	switch fn := call.Fun.(type) {
 	case *ast.Ident:
-		return v.functions[fn.Name]
+		ident = fn
 	case *ast.SelectorExpr:
-		if isPackageSelector(fn, ctx) {
-			return nil
-		}
-		// Avoid broad cross-type false positives from nested selectors
-		// (e.g. external widget methods like s.PlayPause.Tapped).
+		// Nested selectors remain outside this checker's local call graph.
 		if _, ok := fn.X.(*ast.Ident); !ok {
 			return nil
 		}
-		return v.methods[fn.Sel.Name]
+		ident = fn.Sel
 	default:
 		return nil
 	}
+	object, ok := ctx.typeInfo.Uses[ident].(*types.Func)
+	if !ok {
+		return nil
+	}
+	target, ok := v.targets[object]
+	if !ok {
+		return nil
+	}
+	return []FuncMeta{target}
 }
 
 func (v *visitor) checkFunction(meta FuncMeta, insideFyneDo bool, inConcurrent bool, stack map[*ast.FuncDecl]bool) {
@@ -516,8 +565,7 @@ func (v *visitor) getReceiver(expr ast.Expr) string {
 	}
 }
 
-func collectImportInfo(file *ast.File) (map[string]bool, map[string]bool, bool) {
-	importAliases := map[string]bool{}
+func collectImportInfo(file *ast.File) (map[string]bool, bool) {
 	fyneAliases := map[string]bool{}
 	dotImportFyne := false
 
@@ -525,17 +573,6 @@ func collectImportInfo(file *ast.File) (map[string]bool, map[string]bool, bool) 
 		importPath := strings.Trim(spec.Path.Value, "\"")
 		if importPath == "" {
 			continue
-		}
-
-		var alias string
-		if spec.Name != nil {
-			alias = spec.Name.Name
-		} else {
-			alias = defaultImportName(importPath)
-		}
-
-		if alias != "" && alias != "_" && alias != "." {
-			importAliases[alias] = true
 		}
 
 		if importPath != "github.com/alexballas/refyne/v2" {
@@ -554,7 +591,7 @@ func collectImportInfo(file *ast.File) (map[string]bool, map[string]bool, bool) 
 		}
 	}
 
-	return importAliases, fyneAliases, dotImportFyne
+	return fyneAliases, dotImportFyne
 }
 
 func collectFuncDeclUIVars(fn *ast.FuncDecl, ctx analysisContext) map[string]bool {
@@ -694,22 +731,4 @@ func hasFuncLitArg(call *ast.CallExpr) bool {
 		}
 	}
 	return false
-}
-
-var semverSuffix = regexp.MustCompile(`^v[0-9]+$`)
-
-func defaultImportName(importPath string) string {
-	base := path.Base(importPath)
-	if semverSuffix.MatchString(base) {
-		return path.Base(path.Dir(importPath))
-	}
-	return base
-}
-
-func isPackageSelector(sel *ast.SelectorExpr, ctx analysisContext) bool {
-	ident, ok := sel.X.(*ast.Ident)
-	if !ok {
-		return false
-	}
-	return ctx.importAliases[ident.Name]
 }

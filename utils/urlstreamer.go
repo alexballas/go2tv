@@ -6,18 +6,22 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"mime"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
+
+	"go2tv.app/go2tv/v2/internal/radiometadata"
 )
 
 var ErrBadStatus = errors.New("streamURL bad status code")
 
 const (
-	streamHTTPClientTimeout         = 20 * time.Second
+	streamHTTPPreparationTimeout    = 20 * time.Second
 	streamHTTPDialTimeout           = 5 * time.Second
 	streamHTTPKeepAlive             = 30 * time.Second
 	streamHTTPTLSHandshakeTimeout   = 5 * time.Second
@@ -27,7 +31,6 @@ const (
 )
 
 var streamHTTPClient = &http.Client{
-	Timeout: streamHTTPClientTimeout,
 	Transport: &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
@@ -41,20 +44,80 @@ var streamHTTPClient = &http.Client{
 	},
 }
 
+// Playback bodies keep the caller's cancellation without a total deadline.
+// Acquisition, MIME sniffing and image downloads each have a bounded deadline.
+type streamURLBody struct {
+	io.ReadCloser
+	cancel      context.CancelCauseFunc
+	stopTimeout func() bool
+	closeOnce   sync.Once
+	closeErr    error
+}
+
+func (b *streamURLBody) startTimeout() {
+	done := make(chan struct{})
+	timer := time.AfterFunc(streamHTTPPreparationTimeout, func() {
+		b.cancel(context.DeadlineExceeded)
+		close(done)
+	})
+	var once sync.Once
+	stopped := false
+	b.stopTimeout = func() bool {
+		once.Do(func() {
+			stopped = timer.Stop()
+			if !stopped {
+				// Finish an already-started callback before handing off playback.
+				<-done
+			}
+		})
+		return stopped
+	}
+}
+
+func (b *streamURLBody) Close() error {
+	b.closeOnce.Do(func() {
+		b.stopTimeout()
+		b.cancel(context.Canceled)
+		b.closeErr = b.ReadCloser.Close()
+	})
+	return b.closeErr
+}
+
 func streamURLResponse(ctx context.Context, s string) (*http.Response, error) {
+	return streamURLResponseHeaders(ctx, s, nil)
+}
+
+func streamURLResponseHeaders(ctx context.Context, s string, headers http.Header) (*http.Response, error) {
 	_, err := url.ParseRequestURI(s)
 	if err != nil {
 		return nil, fmt.Errorf("streamURL failed to parse url: %w", err)
 	}
+	if ctx == nil {
+		return nil, errors.New("streamURL: nil context")
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s, nil)
+	requestCtx, cancel := context.WithCancelCause(ctx)
+	body := &streamURLBody{cancel: cancel}
+	body.startTimeout()
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, s, nil)
 	if err != nil {
+		body.stopTimeout()
+		cancel(context.Canceled)
 		return nil, fmt.Errorf("streamURL failed to call NewRequest: %w", err)
 	}
 
+	maps.Copy(req.Header, headers)
 	resp, err := streamHTTPClient.Do(req)
+	acquired := body.stopTimeout()
 	if err != nil {
+		cancel(context.Canceled)
 		return nil, fmt.Errorf("streamURL failed to client.Do: %w", err)
+	}
+	body.ReadCloser = resp.Body
+	resp.Body = body
+	if !acquired {
+		body.Close()
+		return nil, fmt.Errorf("streamURL failed to acquire response: %w", context.DeadlineExceeded)
 	}
 
 	if resp.StatusCode >= 400 {
@@ -98,6 +161,32 @@ func StreamURL(ctx context.Context, s string) (io.ReadCloser, error) {
 	return resp.Body, nil
 }
 
+// StreamURLWithTitles opens live audio and, when onTitle is set, requests ICY
+// metadata on the same connection. Metadata blocks are stripped from the body.
+func StreamURLWithTitles(ctx context.Context, s string, onTitle func(string)) (io.ReadCloser, error) {
+	if onTitle == nil {
+		return StreamURL(ctx, s)
+	}
+	resp, err := streamURLResponseHeaders(ctx, s, http.Header{"Icy-MetaData": {"1"}})
+	if err != nil {
+		return nil, err
+	}
+	return icyBody(resp, onTitle), nil
+}
+
+type icyReadCloser struct {
+	io.Reader
+	io.Closer
+}
+
+func icyBody(resp *http.Response, onTitle func(string)) io.ReadCloser {
+	interval, ok := radiometadata.Interval(resp.Header.Get("icy-metaint"))
+	if !ok || onTitle == nil {
+		return resp.Body
+	}
+	return icyReadCloser{Reader: radiometadata.NewReader(resp.Body, interval, onTitle), Closer: resp.Body}
+}
+
 // StreamURLWithMime returns the stream body and inferred media type from
 // response headers first, with body sniffing fallback.
 func StreamURLWithMime(ctx context.Context, s string) (io.ReadCloser, string, error) {
@@ -107,12 +196,21 @@ func StreamURLWithMime(ctx context.Context, s string) (io.ReadCloser, string, er
 	}
 
 	mediaType := normalizeContentType(resp.Header.Get("Content-Type"))
+	body := resp.Body.(*streamURLBody)
 	if !shouldSniffContentType(mediaType) {
+		if strings.Contains(mediaType, "image") {
+			body.startTimeout()
+		}
 		return resp.Body, mediaType, nil
 	}
 
 	head := make([]byte, 261)
+	body.startTimeout()
 	n, err := io.ReadFull(resp.Body, head)
+	if !body.stopTimeout() {
+		resp.Body.Close()
+		return nil, "", fmt.Errorf("streamURL failed to read body for mime detection: %w", context.DeadlineExceeded)
+	}
 	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		resp.Body.Close()
 		return nil, "", fmt.Errorf("streamURL failed to read body for mime detection: %w", err)
@@ -125,6 +223,9 @@ func StreamURLWithMime(ctx context.Context, s string) (io.ReadCloser, string, er
 
 	if sniffedType != "" && sniffedType != "/" {
 		mediaType = sniffedType
+	}
+	if strings.Contains(mediaType, "image") {
+		body.startTimeout()
 	}
 
 	return struct {

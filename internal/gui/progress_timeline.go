@@ -9,6 +9,15 @@ import (
 	"go2tv.app/go2tv/v2/utils"
 )
 
+// FFmpeg seeks the source before emitting a new stream starting at zero.
+// Native media still needs the receiver to seek to the saved source position.
+func chromecastReceiverStartTime(sourceStart int, transcoded bool) int {
+	if transcoded {
+		return 0
+	}
+	return sourceStart
+}
+
 func chromecastProgressTimeline(mediaDuration float64, ffmpegSeek int, rendererDuration, rendererCurrent float32) (float64, float64) {
 	duration := float64(rendererDuration)
 	current := float64(rendererCurrent)
@@ -91,6 +100,10 @@ func showDLNATranscodeTimeline(screen *FyneScreen, tvdata *soapcalls.TVPayload) 
 	current := min(max(tvdata.FFmpegSeek, 0), total)
 	value := float64(current) * screen.SlideBar.Max / float64(total)
 	fyne.Do(func() {
+		if screen.tvdata != tvdata {
+			return
+		}
+		screen.SlideBar.setDLNADuration(tvdata, float64(total))
 		screen.SlideBar.SetValue(value)
 		screen.CurrentPos.Set(utils.SecondsToClockTime(current))
 		screen.EndPos.Set(utils.SecondsToClockTime(total))

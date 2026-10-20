@@ -37,6 +37,9 @@ type tags struct {
 // ErrNoSubs - No subs detected
 var ErrNoSubs = errors.New("no subs")
 
+// ErrFFmpegUnavailable - ffmpeg/ffprobe can't run, so tracks are unknown
+var ErrFFmpegUnavailable = errors.New("ffmpeg unavailable")
+
 // ErrBitmapSubtitles identifies captions requiring video burn-in, not text extraction.
 var ErrBitmapSubtitles = errors.New("image-based subtitles cannot be converted to text")
 
@@ -107,12 +110,15 @@ func GetSubsContext(ctx context.Context, ffmpeg string, f string) ([]string, err
 	// We assume the ffprobe path based on the ffmpeg one.
 	// So we need to ensure that the ffmpeg one exists.
 	if err := CheckFFmpegContext(ctx, ffmpeg); err != nil {
-		return nil, err
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, fmt.Errorf("GetSubsContext: %w: %w", ErrFFmpegUnavailable, err)
 	}
 
 	ffprobePath, err := ResolveFFprobePath(ffmpeg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetSubsContext: %w: %w", ErrFFmpegUnavailable, err)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)

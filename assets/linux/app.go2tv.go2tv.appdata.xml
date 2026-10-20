@@ -51,6 +51,31 @@
   </branding>
 
   <releases>
+      <release version="2.8.0" date="2026-10-21" type="stable">
+        <description>
+          <ul>
+            <li>Added internet radio with station search, country filtering, favorites, and casting support for DLNA and Chromecast devices.</li>
+            <li>Improved audio streaming reliability for URL casting, including transcoded playback.</li>
+            <li>Improved the embedded subtitles picker: it now says when FFmpeg is required and is disabled for videos without subtitle tracks.</li>
+            <li>Improved subtitle options: they are now disabled for audio files and images, including on Android, and follow the URL you type.</li>
+            <li>Fixed large videos failing to start or taking too long to load when casting with transcoding and subtitles.</li>
+            <li>Fixed seeking and subtitle timing, including on Samsung TVs.</li>
+            <li>Fixed the Cast button re-enabling before playback starts on DLNA devices.</li>
+            <li>Fixed DLNA autoplay and gapless playback stalling, skipping, or stopping early at the end of tracks on some renderers.</li>
+            <li>Fixed DLNA devices showing the previous video's length and progress after switching to a live stream.</li>
+            <li>Fixed the media server staying active after Chromecast playback finished.</li>
+            <li>Fixed go2tv leaving many idle network connections open to cast devices.</li>
+            <li>Fixed changing the FFmpeg location clearing the selected media, URL or playlist; video thumbnails now refresh right away.</li>
+            <li>Fixed media controls staying locked after leaving Cast Desktop when FFmpeg is unavailable.</li>
+            <li>Fixed the app freezing when the RTMP server was started without a working FFmpeg.</li>
+            <li>Fixed the RTMP server option turning back on while casting the desktop or after FFmpeg became unavailable.</li>
+            <li>Android: Redesigned the main screen with a rounded bottom player bar, landscape layout, larger touch targets, and clearer playback, device and radio status.</li>
+            <li>Android: Preserved read access to files selected through the system picker across app restarts.</li>
+            <li>Windows: Fixed casting failing when another app was already using port 3500.</li>
+          </ul>
+        </description>
+        <url type="details">https://github.com/alexballas/go2tv/releases/tag/v2.8.0</url>
+      </release>
       <release version="2.7.0" date="2026-10-09" type="stable">
         <description>
           <ul>

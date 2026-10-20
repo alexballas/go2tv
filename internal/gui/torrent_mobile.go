@@ -68,7 +68,7 @@ func torrentMediaSelected(s *FyneScreen) bool {
 }
 
 func mobileTorrentSubtitleSource(s *FyneScreen) mediasource.Source {
-	if s.mediafile == nil || s.subsfile != nil || (s.TorrentSubsCheck != nil && !s.TorrentSubsCheck.Checked) ||
+	if s.mediafile == nil || s.subsfile != nil ||
 		(s.ExternalMediaURL != nil && s.ExternalMediaURL.Checked) {
 		return nil
 	}
@@ -80,9 +80,9 @@ func registerMobileTorrentSubtitles(s *FyneScreen, host string, offset int, tran
 	if s.mediafile != nil {
 		path = s.mediafile.Path()
 	}
-	automatic := (s.TorrentSubsCheck == nil || s.TorrentSubsCheck.Checked) && s.subsfile == nil &&
+	automatic := s.subsfile == nil &&
 		(s.ExternalMediaURL == nil || !s.ExternalMediaURL.Checked) && !(transcode && s.castBurnSubtitles)
-	return registerTorrentSubtitles(s.httpserver, host, path, automatic, offset)
+	return registerTorrentSubtitles(s.httpserver, host, path, automatic, offset, transcode)
 }
 
 func clearTorrentSelection(s *FyneScreen, path string) {

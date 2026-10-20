@@ -682,6 +682,9 @@ func checkSflag() error {
 	// srt from the media file filename.
 	*subsArg = (*mediaArg)[0:len(*mediaArg)-
 		len(filepath.Ext(*mediaArg))] + ".srt"
+	if _, err := os.Stat(*subsArg); os.IsNotExist(err) {
+		*subsArg = ""
+	}
 
 	return nil
 }

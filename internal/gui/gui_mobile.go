@@ -23,6 +23,7 @@ import (
 	"go2tv.app/go2tv/v2/httphandlers"
 	"go2tv.app/go2tv/v2/internal/crashlog"
 	"go2tv.app/go2tv/v2/internal/mediamodel"
+	"go2tv.app/go2tv/v2/internal/radiobrowser"
 	"go2tv.app/go2tv/v2/metadata"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
@@ -34,6 +35,14 @@ func (p *FyneScreen) notifyMPRISSeek(int) {}
 
 // FyneScreen .
 type FyneScreen struct {
+	radioSong              radioSongState
+	radio                  *radioView
+	radioArtworkCache      *radioArtworkCache
+	radioIconDir           string
+	radioArtworkResolved   bool
+	radioArtwork           *metadata.ArtworkAsset
+	radioSelected          radiobrowser.Station
+	urlInput               string // last URL-mode input, restored when URL mode returns
 	mu                     sync.RWMutex
 	Debug                  *debugWriter
 	DiscoveryDebug         *debugWriter
@@ -45,13 +54,20 @@ type FyneScreen struct {
 	chromecastClient       *castprotocol.CastClient
 	chromecastActionID     uint64
 	playbackStarting       bool
+	playbackStartCtx       context.Context
+	playbackStartCancel    context.CancelFunc
 	Stop                   *widget.Button
 	MuteUnmute             *widget.Button
 	CheckVersion           *widget.Button
 	burnSubtitlesCheck     *wrappingCheck
 	castBurnSubtitles      bool
-	TorrentSubsCheck       *widget.Check
 	ExternalMediaURL       *widget.Check
+	playbackStatus         *widget.Label
+	timeline               fyne.CanvasObject
+	volumeControls         []fyne.Disableable
+	radioDetail            *widget.Label
+	radioRow               fyne.CanvasObject
+	connectingDevice       string // DLNA device whose control URLs are still loading
 	cancelEnablePlay       context.CancelFunc
 	serverStopCTX          context.Context
 	cancelServerStop       context.CancelFunc
@@ -68,6 +84,7 @@ type FyneScreen struct {
 	activeDevice           devType
 	selectedDeviceType     string
 	NextMediaCheck         *widget.Check
+	LoopSelectedCheck      *widget.Check
 	State                  string
 	controlURL             string
 	eventlURL              string
@@ -118,7 +135,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 	settingsTab := container.NewTabItem(lang.L("Settings"), container.NewVScroll(container.NewPadded(settingsContent)))
 
 	tabs := container.NewAppTabs(
-		container.NewTabItem("Go2TV", container.NewVScroll(container.NewPadded(mainWindow(s)))),
+		container.NewTabItem("Go2TV", container.NewPadded(mainWindow(s))),
 		settingsTab,
 		container.NewTabItem(lang.L("About"), container.NewVScroll(aboutWindow(s))),
 	)
@@ -165,14 +182,14 @@ func Start(ctx context.Context, s *FyneScreen) {
 func (p *FyneScreen) EmitMsg(a string) {
 	switch a {
 	case "Playing":
-		setPlayPauseView("Pause", p)
 		p.updateScreenState("Playing")
+		setPlayPauseView("Pause", p)
 	case "Paused":
-		setPlayPauseView("Play", p)
 		p.updateScreenState("Paused")
-	case "Stopped":
 		setPlayPauseView("Play", p)
+	case "Stopped":
 		p.updateScreenState("Stopped")
+		setPlayPauseView("Play", p)
 		// Clear casting media type
 		p.SetMediaType("")
 		stopAction(p)
@@ -203,13 +220,27 @@ func (p *FyneScreen) Fini() {
 // the GUI interface to control certain flows.
 func (p *FyneScreen) updateScreenState(a string) {
 	p.mu.Lock()
+	cancel := p.cancelEnablePlay
+	p.cancelEnablePlay = nil
 	p.State = a
 	p.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if a == "Stopped" {
+		p.stopRadioSongMonitor()
+	}
 
 	// Confirmed playback backs up the eager Play-callback start, while every
 	// terminal path stops the background service here. Called after the unlock:
 	// it reaches into the platform and has no business doing that under a lock.
 	syncBackgroundSession(p, a)
+	fyne.Do(func() {
+		if p.SlideBar != nil {
+			p.SlideBar.Enable()
+		}
+		p.refreshPlaybackStatus()
+	})
 }
 
 func (p *FyneScreen) setActiveDevice(device devType) {
@@ -249,7 +280,6 @@ func (p *FyneScreen) isChromecastActionCurrent(actionID uint64) bool {
 }
 
 func setPlayPauseView(s string, screen *FyneScreen) {
-	screen.cancelPlayTimer()
 	refreshPlaybackControls(s, screen)
 }
 
@@ -266,9 +296,9 @@ func refreshPlaybackControls(s string, screen *FyneScreen) {
 		if isImage {
 			screen.PlayPause.Disable()
 			screen.PlayPause.SetIcon(theme.FileImageIcon())
-			screen.PlayPause.SetText("Image")
+			screen.PlayPause.SetText(lang.L("Image Casting"))
 		} else {
-			if screen.mobilePlaybackStarting() || screen.playbackStartupPending() {
+			if screen.mobilePlaybackBusy() || screen.playbackRequirement() != "" {
 				screen.PlayPause.Disable()
 			} else {
 				screen.PlayPause.Enable()
@@ -283,6 +313,7 @@ func refreshPlaybackControls(s string, screen *FyneScreen) {
 			}
 		}
 		screen.PlayPause.Refresh()
+		screen.refreshPlaybackStatus()
 	})
 }
 
@@ -319,8 +350,11 @@ func NewFyneScreen(version string, crash *crashlog.Session) *FyneScreen {
 		version:          version,
 		Crash:            crash,
 		PendingCrashPath: crashPath(crash),
+		radioIconDir:     radioIconStoreDir(go2tv),
 	}
 }
+
+func (s *FyneScreen) showPlaybackError(err error) { check(s.Current, err) }
 
 func check(win fyne.Window, err error) {
 	if err != nil {

@@ -28,9 +28,9 @@ jobs:
             sudo apt install -y xorg-dev libwayland-dev libxkbcommon-dev libegl-dev libpipewire-0.3-dev pkg-config
             sudo apt clean
             sudo rm -rf /var/lib/apt/lists/*
-            wget -nv https://go.dev/dl/go1.26.0.linux-armv6l.tar.gz
-            tar -xzf go1.26.0.linux-armv6l.tar.gz
-            rm go1.26.0.linux-armv6l.tar.gz
+            wget -nv https://go.dev/dl/go1.26.9.linux-armv6l.tar.gz
+            tar -xzf go1.26.9.linux-armv6l.tar.gz
+            rm go1.26.9.linux-armv6l.tar.gz
             export GOROOT=/go
             # The pipewire pkg-config exposes -fno-strict-overflow as of
             # PipeWire 1.6.0, which cgo rejects unless it is explicitly allowed.

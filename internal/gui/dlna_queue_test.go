@@ -106,18 +106,19 @@ func TestStopCancelsGaplessSubtitlePreparation(t *testing.T) {
 	}
 	media := createEmbeddedSubtitleTestMedia(t, ffmpeg, t.TempDir(), "webvtt")
 	tt := []struct {
-		name       string
-		blockProbe bool
+		name, probeArg string
+		fallback       bool
 	}{
-		{name: "during discovery", blockProbe: true},
-		{name: "during extraction"},
+		{name: "during discovery", probeArg: "-show_streams"},
+		{name: "during burn probe", probeArg: "-select_streams"},
+		{name: "during fallback extraction", fallback: true},
 	}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			gate := filepath.Join(dir, "gate")
 			if output, err := exec.Command("mkfifo", gate).CombinedOutput(); err != nil {
-				t.Fatalf("create extraction gate: %v: %s", err, output)
+				t.Fatalf("create preparation gate: %v: %s", err, output)
 			}
 			started := filepath.Join(dir, "started")
 			t.Setenv("GO2TV_QUEUE_TEST_STARTED", started)
@@ -129,10 +130,12 @@ func TestStopCancelsGaplessSubtitlePreparation(t *testing.T) {
 			block := ": > \"$GO2TV_QUEUE_TEST_STARTED\"\nread -r value < \"$GO2TV_QUEUE_TEST_GATE\"\n"
 			ffmpegScript := "#!/bin/sh\n"
 			ffprobeScript := "#!/bin/sh\n"
-			if tc.blockProbe {
-				ffprobeScript += block
-			} else {
+			if tc.fallback {
+				// Failed track probes retain the cancellable extraction fallback.
+				ffprobeScript += "for arg do\nif [ \"$arg\" = \"-select_streams\" ]; then exit 1; fi\ndone\n"
 				ffmpegScript += "if [ \"$1\" = \"-nostdin\" ]; then\n" + block + "fi\n"
+			} else {
+				ffprobeScript += "for arg do\nif [ \"$arg\" = \"" + tc.probeArg + "\" ]; then\n" + block + "fi\ndone\n"
 			}
 			ffmpegScript += "exec \"$GO2TV_QUEUE_TEST_FFMPEG\" \"$@\"\n"
 			ffprobeScript += "exec \"$GO2TV_QUEUE_TEST_FFPROBE\" \"$@\"\n"
@@ -170,7 +173,7 @@ func TestStopCancelsGaplessSubtitlePreparation(t *testing.T) {
 				}
 				time.Sleep(time.Millisecond)
 			}
-			if !tc.blockProbe {
+			if tc.fallback {
 				files, err := filepath.Glob(filepath.Join(dir, "go2tv-sub-*.srt"))
 				if err != nil || len(files) != 1 {
 					t.Fatalf("gate did not block subtitle extraction: files=%v error=%v", files, err)

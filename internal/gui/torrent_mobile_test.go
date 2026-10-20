@@ -94,7 +94,7 @@ func TestMobileReplacementWaitsForTorrentCancellation(t *testing.T) {
 	}
 	playDone := make(chan struct{})
 	go func() {
-		playMobileAction(s)
+		playMobileAction(s, false)
 		close(playDone)
 	}()
 	premature := false
@@ -171,7 +171,7 @@ func TestMobileTorrentCancelDuringDLNAStartup(t *testing.T) {
 				t.Fatal("first Play rejected")
 			}
 			playDone := make(chan struct{})
-			go func() { playMobileAction(s); close(playDone) }()
+			go func() { playMobileAction(s, false); close(playDone) }()
 			waitForTorrentTestProbe(t, entered)
 			if tc.stop {
 				stopAction(s)

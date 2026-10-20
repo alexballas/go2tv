@@ -83,6 +83,14 @@ func writeDiagnostics(w io.Writer, s *FyneScreen) error {
 			return fmt.Errorf("read crash report: %w", err)
 		}
 
+		info, err := os.Stat(crashPath)
+		if err != nil {
+			return fmt.Errorf("stat crash report: %w", err)
+		}
+		if _, err := fmt.Fprintf(w, "Crash time: %s\n", info.ModTime().UTC().Format(time.RFC3339)); err != nil {
+			return err
+		}
+
 		if _, err := w.Write(b); err != nil {
 			return err
 		}

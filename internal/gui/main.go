@@ -71,7 +71,7 @@ func newDeviceList(s *FyneScreen, dd *[]devType) *deviceList {
 
 		// Swap icon based on state
 		if isActive {
-			row.setLeadingIcon(theme.MediaPlayIcon())
+			row.setLeadingIcon(playingIcon())
 		} else if item.addr == s.selectedDevice.addr {
 			row.setLeadingIcon(theme.ConfirmIcon())
 		} else {
@@ -160,6 +160,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	mfiletext := widget.NewEntry()
 	mfiletext.OnChanged = func(v string) {
+		s.invalidateRadioURL(v)
 		if s.ExternalMediaURL != nil && s.ExternalMediaURL.Checked &&
 			s.TranscodeCheckBox != nil && s.TranscodeCheckBox.Checked &&
 			utils.IsHLSStream(v, "") {
@@ -327,7 +328,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.rtmpURLCard = widget.NewCard(lang.L("RTMP Server"), "", rtmpRows)
 	s.rtmpURLCard.Hide()
 
-	selectInternalSubs := widget.NewSelect([]string{}, nil)
+	internalSubsToolTip := ttwidget.NewSelect([]string{}, nil)
+	selectInternalSubs := &internalSubsToolTip.Select
 
 	selectInternalSubs.PlaceHolder = lang.L("No Embedded Subs")
 	selectInternalSubs.Disable()
@@ -352,6 +354,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.CurrentPos = curPos
 	s.EndPos = endPos
 	s.SelectInternalSubs = selectInternalSubs
+	s.internalSubsToolTip = internalSubsToolTip
 	s.TranscodeCheckBox = &transcode.Check
 	s.ScreencastCheckBox = &screencast.Check
 	s.LoopSelectedCheck = medialoop
@@ -529,41 +532,42 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 		s.Screencast = false
 		go stopScreencastSession(s)
-		if err := s.ffmpegStatus(); err == nil && s.rtmpServer == nil {
+		if s.rtmpServer != nil {
+			return
+		}
+		// Media inputs never need ffmpeg; restore them even when it went missing.
+		ffmpegErr := s.ffmpegStatus()
+		if ffmpegErr == nil {
 			transcode.Enable()
-			externalmedia.Enable()
-			sfilecheck.Enable()
 			transcode.SetChecked(s.screencastPrevTranscode)
-			externalmedia.SetChecked(s.screencastPrevExternal)
-			sfilecheck.SetChecked(s.screencastPrevManualSubs)
-			medialoop.SetChecked(s.screencastPrevLoop)
-			nextmedia.SetChecked(s.screencastPrevNext)
+		} else {
+			transcode.SetChecked(false)
+			transcode.Disable()
+		}
+		externalmedia.Enable()
+		sfilecheck.Enable()
+		externalmedia.SetChecked(s.screencastPrevExternal)
+		sfilecheck.SetChecked(s.screencastPrevManualSubs)
+		medialoop.SetChecked(s.screencastPrevLoop)
+		nextmedia.SetChecked(s.screencastPrevNext)
 
-			if s.ExternalMediaURL != nil && !s.ExternalMediaURL.Checked {
-				if !nextmedia.Checked {
-					medialoop.Enable()
-				}
-				if !medialoop.Checked {
-					nextmedia.Enable()
-				}
-			}
+		refreshLoopAutoplay(s)
 
-			if s.ExternalMediaURL != nil && s.ExternalMediaURL.Checked {
-				mbrowse.Disable()
-				s.MediaText.Enable()
-			} else {
-				mbrowse.Enable()
-				s.MediaText.Disable()
-			}
-			clearmedia.Enable()
-			s.SlideBar.Enable()
-			s.MediaText.SetPlaceHolder("")
-			if s.screencastPrevExternal {
-				restoreMediaInputState(s, s.screencastPrevMediaFile, s.screencastPrevMediaText)
-			}
-			if s.rtmpServerCheck != nil {
-				s.rtmpServerCheck.Enable()
-			}
+		if s.ExternalMediaURL != nil && s.ExternalMediaURL.Checked {
+			mbrowse.Disable()
+			s.MediaText.Enable()
+		} else {
+			mbrowse.Enable()
+			s.MediaText.Disable()
+		}
+		clearmedia.Enable()
+		s.SlideBar.Enable()
+		s.MediaText.SetPlaceHolder("")
+		if s.screencastPrevExternal {
+			restoreMediaInputState(s, s.screencastPrevMediaFile, s.screencastPrevMediaText)
+		}
+		if ffmpegErr == nil && s.rtmpServerCheck != nil {
+			s.rtmpServerCheck.Enable()
 		}
 	}
 
@@ -614,11 +618,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 				if gaplessOption == "Enabled" && target.device.deviceType == devices.DeviceTypeDLNA {
 					switch s.getScreenState() {
 					case "Playing", "Paused":
-						newTVPayload, err := queueNext(s, false)
-						if err == nil && s.GaplessMediaWatcher == nil {
-							s.GaplessMediaWatcher = gaplessMediaWatcher
-							go s.GaplessMediaWatcher(s.serverStopCTX, s, newTVPayload)
-						}
+						_, _ = queueNext(s, false)
 					}
 				}
 				return

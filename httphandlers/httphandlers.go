@@ -3,7 +3,6 @@ package httphandlers
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -19,6 +18,7 @@ import (
 	"time"
 
 	"go2tv.app/go2tv/v2/internal/mediasource"
+	"go2tv.app/go2tv/v2/internal/radiometadata"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
 )
@@ -32,6 +32,7 @@ type HTTPserver struct {
 	ffmpeg      *exec.Cmd
 	handlers    map[string]handler
 	dirHandlers map[string]string // Handlers for serving entire directories (e.g. HLS)
+	transcodes  map[string]*transcodeState
 	mu          sync.Mutex
 }
 
@@ -45,6 +46,7 @@ type handler struct {
 	media     any
 	mediaType string
 	static    bool
+	state     *transcodeState
 }
 
 // Screen interface is used to push message back to the user
@@ -62,6 +64,8 @@ type osFileType struct {
 	time time.Time
 	file io.ReadSeeker
 	path string
+	// onTitle marks path as a remote station relayed by audio transcoding.
+	onTitle func(string)
 }
 
 // AddHandler dynamically adds a new handler. Currently used by the gapless playback logic where we use
@@ -71,8 +75,38 @@ type osFileType struct {
 // For Chromecast without transcoding: pass both as nil
 func (s *HTTPserver) AddHandler(path string, payload *soapcalls.TVPayload, transcode *utils.TranscodeOptions, media any) {
 	s.mu.Lock()
-	s.handlers[path] = handler{payload: payload, transcode: transcode, media: media}
+	state := &transcodeState{}
+	s.transcodes[path] = state
+	s.handlers[path] = handler{payload: payload, transcode: transcode, media: media, state: state}
 	s.mu.Unlock()
+}
+
+// SetDLNATranscodeSeek publishes media seek options and receiver captions at
+// the same point. HTTP requests snapshot both under the handler lock.
+func (s *HTTPserver) SetDLNATranscodeSeek(payload *soapcalls.TVPayload, seconds int, subsPath string, embedded *utils.EmbeddedSubtitle, subtitleRoute string, subtitles any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	payload.SetTranscodeSeek(seconds, subsPath, embedded)
+	for path, out := range s.handlers {
+		if out.payload == payload {
+			out.state = &transcodeState{}
+			s.transcodes[path] = out.state
+			s.handlers[path] = out
+		}
+	}
+	if subtitleRoute != "" {
+		s.handlers[subtitleRoute] = handler{media: subtitles}
+		delete(s.transcodes, subtitleRoute)
+	}
+}
+
+type dlnaTranscodeOptionsKey struct{}
+
+// DLNATranscodeOptionsForRequest returns the seek configuration captured when
+// this request selected its handler, including custom media HTTP handlers.
+func DLNATranscodeOptionsForRequest(r *http.Request) *utils.TranscodeOptions {
+	options, _ := r.Context().Value(dlnaTranscodeOptionsKey{}).(*utils.TranscodeOptions)
+	return options
 }
 
 // AddStaticHandler adds GET/HEAD static content with explicit MIME and CORS.
@@ -80,6 +114,7 @@ func (s *HTTPserver) AddHandler(path string, payload *soapcalls.TVPayload, trans
 func (s *HTTPserver) AddStaticHandler(path, mediaType string, media any) {
 	s.mu.Lock()
 	s.handlers[path] = handler{media: media, mediaType: mediaType, static: true}
+	delete(s.transcodes, path)
 	s.mu.Unlock()
 }
 
@@ -87,6 +122,7 @@ func (s *HTTPserver) AddStaticHandler(path, mediaType string, media any) {
 func (s *HTTPserver) RemoveHandler(path string) {
 	s.mu.Lock()
 	delete(s.handlers, path)
+	delete(s.transcodes, path)
 	s.mu.Unlock()
 }
 
@@ -256,6 +292,17 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 				}
 			}
 		}
+		var dlnaOpts *utils.TranscodeOptions
+		if out.payload != nil {
+			dlnaOpts = out.payload.TranscodeOptionsSnapshot()
+		}
+		if dlnaOpts != nil {
+			r = r.WithContext(context.WithValue(r.Context(), dlnaTranscodeOptionsKey{}, dlnaOpts))
+		}
+		r = r.WithContext(context.WithValue(r.Context(), transcodeServerKey{}, s))
+		if out.state != nil {
+			r = r.WithContext(context.WithValue(r.Context(), transcodeStateKey{}, out.state))
+		}
 		s.mu.Unlock()
 
 		if !exists {
@@ -336,7 +383,7 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 			}
 		}
 
-		serveContent(w, r, out.payload, out.transcode, out.media, s.ffmpeg)
+		serveContentWithDLNAOptions(w, r, out.payload, out.transcode, out.media, s.ffmpeg, dlnaOpts)
 	}
 }
 
@@ -391,7 +438,7 @@ type legacyScreenSink struct {
 	screen Screen
 }
 
-func (s *legacyScreenSink) HandleCallbackEvent(_ context.Context, event CallbackEvent) {
+func (s *legacyScreenSink) HandleCallbackEvent(ctx context.Context, event CallbackEvent) {
 	processStop, err := s.tv.GetProcessStop(event.SID)
 	if err != nil {
 		return
@@ -401,6 +448,13 @@ func (s *legacyScreenSink) HandleCallbackEvent(_ context.Context, event Callback
 		return
 	}
 	if !s.tv.UpdateMRstate(event.TransportState, event.SID) {
+		return
+	}
+	if sink, ok := s.screen.(CallbackEventSink); ok {
+		if event.TransportState == "PLAYING" {
+			s.tv.SetProcessStopTrue(event.SID)
+		}
+		sink.HandleCallbackEvent(ctx, event)
 		return
 	}
 	switch event.TransportState {
@@ -472,12 +526,21 @@ func NewServer(a string) *HTTPserver {
 		ffmpeg:      new(exec.Cmd),
 		handlers:    make(map[string]handler),
 		dirHandlers: make(map[string]string),
+		transcodes:  make(map[string]*transcodeState),
 	}
 
 	return &srv
 }
 
 func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mf any, ff *exec.Cmd) {
+	var dlnaOpts *utils.TranscodeOptions
+	if tv != nil {
+		dlnaOpts = tv.TranscodeOptionsSnapshot()
+	}
+	serveContentWithDLNAOptions(w, r, tv, tcOpts, mf, ff, dlnaOpts)
+}
+
+func serveContentWithDLNAOptions(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mf any, ff *exec.Cmd, dlnaOpts *utils.TranscodeOptions) {
 	var (
 		isMedia   bool
 		transcode bool
@@ -500,7 +563,10 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 	if tcOpts != nil {
 		isMedia = true
 		transcode = true
-		mediaType = "video/mp4" // Chromecast transcoding outputs fragmented MP4
+		mediaType = "video/mp4" // Chromecast video outputs fragmented MP4
+		if tcOpts.AudioOnly {
+			mediaType = utils.AudioTranscodeMediaType
+		}
 	}
 
 	w.Header()["transferMode.dlna.org"] = []string{utils.DLNATransferMode(mediaType)}
@@ -511,8 +577,27 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 	}
 
 	switch f := mf.(type) {
+	case RemoteMediaURL:
+		w, f.OnTitle = radiometadata.Relay(w, r, f.OnTitle)
+		if !transcode {
+			if r.Method != http.MethodGet {
+				serveContentReadClose(w, r, tv, tcOpts, mediaType, false, http.NoBody, ff, dlnaOpts)
+				return
+			}
+			rc, err := utils.StreamURLWithTitles(r.Context(), f.URL, f.OnTitle)
+			if err != nil {
+				if tv != nil {
+					tv.Log().Debug("remote media acquisition failed", "Method", "DLNAMediaHTTP", "Action", "UpstreamError", "Path", r.URL.Path, "Error", err)
+				}
+				http.Error(w, "remote media unavailable", http.StatusBadGateway)
+				return
+			}
+			serveContentReadClose(w, r, tv, tcOpts, mediaType, false, rc, ff, dlnaOpts)
+			return
+		}
+		serveContentCustomType(w, r, tv, tcOpts, mediaType, transcode, false, osFileType{path: f.URL, onTitle: f.OnTitle}, ff, dlnaOpts)
 	case osFileType:
-		serveContentCustomType(w, r, tv, tcOpts, mediaType, transcode, seek, f, ff)
+		serveContentCustomType(w, r, tv, tcOpts, mediaType, transcode, seek, f, ff, dlnaOpts)
 	case MediaReaderSeeker:
 		rsc, err := f()
 		if err != nil {
@@ -520,7 +605,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 			return
 		}
 		if transcode {
-			serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, rsc, ff)
+			serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, rsc, ff, dlnaOpts)
 			return
 		}
 		serveContentSeekCloser(w, r, mediaType, seek, rsc)
@@ -530,7 +615,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 		// A probe must not take the reader, or the GET that follows it finds
 		// the stream busy and the renderer never starts playing.
 		if r.Method != http.MethodGet {
-			serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, http.NoBody, ff)
+			serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, http.NoBody, ff, dlnaOpts)
 			return
 		}
 
@@ -539,9 +624,9 @@ func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayloa
 			http.Error(w, "stream busy", http.StatusServiceUnavailable)
 			return
 		}
-		serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, rc, ff)
+		serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, borrowedLiveReader{rc}, ff, dlnaOpts)
 	case io.ReadCloser:
-		serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, f, ff)
+		serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, f, ff, dlnaOpts)
 	default:
 		http.NotFound(w, r)
 		return
@@ -564,52 +649,55 @@ func serveContentBytes(w http.ResponseWriter, r *http.Request, mediaType string,
 	http.ServeContent(w, r, name, time.Now(), bReader)
 }
 
-func dlnaTranscodeOptions(tv *soapcalls.TVPayload) *utils.TranscodeOptions {
-	return &utils.TranscodeOptions{
-		FFmpegPath: tv.FFmpegPath, SubsPath: tv.FFmpegSubsPath,
-		SeekSeconds: tv.FFmpegSeek, SubtitleSize: utils.SubtitleSizeMedium,
-		TorrentSource: tv.TorrentSource, LogOutput: tv.LogOutput,
-		EmbeddedSubtitle: tv.FFmpegEmbeddedSubtitle,
+func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode bool, f io.ReadCloser, ff *exec.Cmd, dlnaOpts *utils.TranscodeOptions) {
+	var closeOnce sync.Once
+	closeReader := func() { closeOnce.Do(func() { _ = f.Close() }) }
+	defer closeReader()
+	if _, borrowed := f.(borrowedLiveReader); !borrowed {
+		stopClosing := context.AfterFunc(r.Context(), closeReader)
+		defer stopClosing()
 	}
-}
-
-func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode bool, f io.ReadCloser, ff *exec.Cmd) {
-	defer f.Close()
 
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
 		w.Header()["contentFeatures.dlna.org"] = []string{utils.BuildDLNAContentFeatures(utils.DLNAContentFeaturesOptions{Converted: transcode})}
 	}
 	// In ffmpeg we can emulate seek support for live streams
-	if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "video") {
+	if transcode && r.Method == http.MethodGet && (strings.HasPrefix(mediaType, "video/") || strings.HasPrefix(mediaType, "audio/")) {
 		// Route based on which config is provided
 		switch {
+		case strings.HasPrefix(mediaType, "audio/"):
+			opts := dlnaOpts
+			if tcOpts != nil {
+				opts = tcOpts
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			}
+			serveAudioTranscode(w, r, f, opts)
+
 		case tcOpts != nil:
 			// Chromecast transcoding (fragmented MP4)
 			w.Header().Set("Content-Type", "video/mp4")
 			w.Header().Set("Access-Control-Allow-Origin", "*")
-			err := utils.ServeChromecastTranscodedStream(r.Context(), w, f, ff, tcOpts)
-			if err != nil {
-				if errors.Is(err, utils.ErrTranscodeBusy) {
-					http.Error(w, "busy", http.StatusServiceUnavailable)
-					return
-				}
-				tcOpts.LogError("serveContentReadClose", "ChromecastTranscode", err)
-			}
+			serveVideoTranscode(w, r, f, ff, tcOpts, true)
 		case tv != nil:
 			// DLNA transcoding (MPEGTS)
 			var command exec.Cmd
-			err := utils.ServeDLNATranscodedStream(r.Context(), w, f, &command, dlnaTranscodeOptions(tv))
-			if err != nil {
-				tv.Log().Error("", "function", "serveContentReadClose", "Action", "Transcode", "error", err)
-			}
+			serveVideoTranscode(w, r, f, &command, dlnaOpts, false)
 		}
 		return
 	}
 
 	// No seek support
 	if r.Method == http.MethodGet {
-		_, _ = io.Copy(w, f)
+		serveMediaStream(w, r, tv, mediaType, f)
 	}
+}
+
+// RemoteMediaURL opens a fresh upstream per request. Direct streams use the
+// receiver request context; transcoding lets FFmpeg open URLs, including HLS.
+// OnTitle receives ICY track titles parsed from the relayed connection.
+type RemoteMediaURL struct {
+	URL     string
+	OnTitle func(string)
 }
 
 // LiveStream borrows the reader of a live, non-seekable stream for the
@@ -620,6 +708,13 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 // with 503 rather than a garbled body. Closing the returned reader returns the
 // borrow; whether that also stops the producer is the implementation's call.
 type LiveStream func() (io.ReadCloser, error)
+
+// Closing a borrowed reader may only release its lease, without interrupting
+// Read. Keep the lease until the handler exits so reconnects cannot read the
+// same producer concurrently.
+type borrowedLiveReader struct {
+	io.ReadCloser
+}
 
 // MediaReaderSeeker returns a fresh seekable reader for the media on each call.
 // It is used on mobile, where a content:// URI can provide a seekable file
@@ -641,14 +736,17 @@ func serveContentSeekCloser(w http.ResponseWriter, r *http.Request, mediaType st
 	http.ServeContent(w, r, name, time.Now(), f)
 }
 
-func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode, seek bool, f osFileType, ff *exec.Cmd) {
+func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode, seek bool, f osFileType, ff *exec.Cmd, dlnaOpts *utils.TranscodeOptions) {
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
 		w.Header()["contentFeatures.dlna.org"] = []string{utils.BuildDLNAContentFeatures(utils.DLNAContentFeaturesOptions{
 			ByteSeek:  seek && !transcode,
 			Converted: transcode,
 		})}
 	}
-	if transcode && r.Method == http.MethodGet && strings.Contains(mediaType, "video") {
+	if transcode && r.Method == http.MethodHead && f.file == nil {
+		return
+	}
+	if transcode && r.Method == http.MethodGet && (strings.HasPrefix(mediaType, "video/") || strings.HasPrefix(mediaType, "audio/")) {
 		// Since we're dealing with an io.Reader we can't
 		// allow any HEAD requests that some DMRs trigger.
 		var input any = f.file
@@ -660,25 +758,26 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcall
 
 		// Route based on which config is provided
 		switch {
+		case strings.HasPrefix(mediaType, "audio/"):
+			opts := dlnaOpts
+			if tcOpts != nil {
+				opts = tcOpts
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			}
+			if f.onTitle != nil {
+				input = utils.RemoteAudio{URL: f.path, OnTitle: f.onTitle}
+			}
+			serveAudioTranscode(w, r, input, opts)
+
 		case tcOpts != nil:
 			// Chromecast transcoding (fragmented MP4)
 			w.Header().Set("Content-Type", "video/mp4")
 			w.Header().Set("Access-Control-Allow-Origin", "*")
-			err := utils.ServeChromecastTranscodedStream(r.Context(), w, input, ff, tcOpts)
-			if err != nil {
-				if errors.Is(err, utils.ErrTranscodeBusy) {
-					http.Error(w, "busy", http.StatusServiceUnavailable)
-					return
-				}
-				tcOpts.LogError("serveContentCustomType", "ChromecastTranscode", err)
-			}
+			serveVideoTranscode(w, r, input, ff, tcOpts, true)
 		case tv != nil:
 			// DLNA transcoding (MPEGTS)
 			var command exec.Cmd
-			err := utils.ServeDLNATranscodedStream(r.Context(), w, input, &command, dlnaTranscodeOptions(tv))
-			if err != nil {
-				tv.Log().Error("", "function", "serveContentCustomType", "Action", "Transcode", "error", err)
-			}
+			serveVideoTranscode(w, r, input, &command, dlnaOpts, false)
 		}
 		return
 	}
@@ -703,6 +802,26 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcall
 
 		if !f.time.IsZero() && !f.time.Equal(time.Unix(0, 0)) {
 			w.Header().Set("Last-Modified", f.time.UTC().Format(http.TimeFormat))
+		}
+	}
+}
+
+func serveAudioTranscode(w http.ResponseWriter, r *http.Request, input any, opts *utils.TranscodeOptions) {
+	writer := newMediaStreamWriter(w, r, utils.AudioTranscodeMediaType)
+	writer.transcoded = true
+	if opts != nil && opts.LogOutput != nil {
+		writer.log = opts.Log()
+	}
+	// Receiver probes/reconnects must not replace an active request's process.
+	var command exec.Cmd
+	err := utils.ServeAudioTranscodedStream(r.Context(), writer, input, &command, opts)
+	writer.logEnd(r, err)
+	if err != nil {
+		if opts != nil {
+			opts.LogError("serveContent", "AudioTranscode", err)
+		}
+		if writer.bytes == 0 && r.Context().Err() == nil {
+			http.Error(w, "audio transcode unavailable", http.StatusBadGateway)
 		}
 	}
 }

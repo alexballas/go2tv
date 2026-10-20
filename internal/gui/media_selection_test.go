@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	ttwidget "github.com/alexballas/fyne-tooltip/widget"
 	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/container"
 	"github.com/alexballas/refyne/v2/driver/desktop"
@@ -17,6 +18,7 @@ import (
 	"github.com/alexballas/refyne/v2/widget"
 
 	"go2tv.app/go2tv/v2/internal/mediasource"
+	"go2tv.app/go2tv/v2/utils"
 )
 
 func newMediaCardTestScreen(t *testing.T) (*FyneScreen, *mediaSelectionCard) {
@@ -338,5 +340,50 @@ func TestMediaCardURLKeepsFocusDuringRefresh(t *testing.T) {
 	c.refresh()
 	if c.source.Disabled() || c.subtitles.Disabled() {
 		t.Fatal("selectors must unlock after live streaming")
+	}
+}
+
+func TestMediaCardEmbeddedPickerExplainsProbe(t *testing.T) {
+	media := filepath.Join(t.TempDir(), "movie.mp4")
+	if err := os.WriteFile(media, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, ffmpegErr := utils.GetSubs(filepath.Join(t.TempDir(), "missing-ffmpeg"), media)
+	if ffmpegErr == nil {
+		t.Fatal("probe with missing ffmpeg succeeded")
+	}
+	ffmpegHint := lang.L("ffmpeg is required. install it or update ffmpeg path in Settings")
+	tt := []struct {
+		name        string
+		tracks      []string
+		err         error
+		wantEnabled bool
+		placeholder string
+		toolTip     string
+	}{
+		{"ffmpeg missing", nil, ffmpegErr, false, lang.L("Requires ffmpeg"), ffmpegHint},
+		{"no tracks", nil, utils.ErrNoSubs, false, lang.L("No Embedded Subs"), ""},
+		{"tracks found", []string{"eng"}, nil, true, lang.L("Embedded Subs"), ""},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			s, c := newMediaCardTestScreen(t)
+			s.internalSubsToolTip = ttwidget.NewSelect(nil, nil)
+			s.SelectInternalSubs = &s.internalSubsToolTip.Select
+			s.mediafile = media
+			// Start from the ffmpeg hint so stale explanations would show.
+			showInternalSubsProbe(s, nil, ffmpegErr)
+			showInternalSubsProbe(s, tc.tracks, tc.err)
+			c.subtitles.SetSelected(lang.L(subtitleEmbedded))
+			if got := !s.SelectInternalSubs.Disabled(); got != tc.wantEnabled {
+				t.Fatalf("embedded picker enabled = %v, want %v", got, tc.wantEnabled)
+			}
+			if got := s.SelectInternalSubs.PlaceHolder; got != tc.placeholder {
+				t.Fatalf("placeholder = %q, want %q", got, tc.placeholder)
+			}
+			if got := s.internalSubsToolTip.ToolTip(); got != tc.toolTip {
+				t.Fatalf("tooltip = %q, want %q", got, tc.toolTip)
+			}
+		})
 	}
 }

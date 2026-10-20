@@ -37,6 +37,9 @@ func (l *playbackStatusLabel) MouseIn(e *desktop.MouseEvent) {
 
 // Called on the UI thread; keep all playback slots present in every state.
 func (s *FyneScreen) refreshPlaybackReadiness() {
+	if s.SlideBar != nil {
+		s.SlideBar.Enable()
+	}
 	if s.playbackStatus == nil {
 		return
 	}
@@ -47,7 +50,7 @@ func (s *FyneScreen) refreshPlaybackReadiness() {
 	switch {
 	case active:
 		status = lang.L(state)
-	case s.playbackStartupPending() || s.torrentPlaybackPending():
+	case s.playbackStartupPending() || s.torrentPlaybackPending() || s.dlnaPlaybackPending():
 		status = lang.L("Loading media…")
 		toolTip = status
 	case s.selectedDevice.addr == "":
@@ -78,6 +81,12 @@ func (s *FyneScreen) refreshPlaybackReadiness() {
 	s.playbackStatus.SetToolTip("")
 	if mediaPath := s.nowPlayingPath(); mediaPath != "" {
 		s.playbackStatus.filename = filepath.Base(mediaPath)
+		if station, song, _, selected := s.radioNowPlaying(mediaPath); selected {
+			s.playbackStatus.filename = station.Name
+			if song != "" {
+				s.playbackStatus.filename = song
+			}
+		}
 		status += " · " + s.playbackStatus.filename
 	}
 	s.playbackStatus.SetText(status)
@@ -88,14 +97,11 @@ func (s *FyneScreen) refreshPlaybackReadiness() {
 			s.Stop.Disable()
 		}
 	}
-	if s.SlideBar != nil {
-		if active && !strings.HasPrefix(s.castingMediaType, "image/") && !s.Screencast && s.rtmpServer == nil && !s.renderGate.remoteLeaseHeld() {
-			s.SlideBar.Enable()
-		} else {
-			s.SlideBar.Disable()
-		}
-	}
 	if s.mpris != nil {
 		s.mpris.refresh()
 	}
+}
+
+func (s *FyneScreen) progressSeekingAllowed() bool {
+	return !strings.HasPrefix(s.castingMediaType, "image/") && !s.Screencast && s.rtmpServer == nil && !s.renderGate.remoteLeaseHeld()
 }

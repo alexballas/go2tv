@@ -254,7 +254,10 @@ func TestStateUpdatesOnlyChangedDomains(t *testing.T) {
 		{name: "selection", change: func(s *snapshotDTO) { s.SelectedMediaName = "One" }, want: []string{"state.selection"}},
 		{name: "policy", change: func(s *snapshotDTO) { s.Policy.AutoPlayNext = true }, want: []string{"state.policy"}},
 		{name: "multiple", change: func(s *snapshotDTO) { s.Position = 1; s.Queue[0].Active = true }, want: []string{"state.queue", "state.playback"}},
+		{name: "stream title", change: func(s *snapshotDTO) { s.StreamTitle = "Artist - Song" }, want: []string{"state.playback"}},
+		{name: "selected station", change: func(s *snapshotDTO) { s.SelectedLive, s.SelectedStation = true, "station" }, want: []string{"state.selection"}},
 		{name: "snapshot fallback", change: func(s *snapshotDTO) { s.ActiveMediaName = "One" }, want: []string{"state.snapshot"}},
+		{name: "active station", change: func(s *snapshotDTO) { s.ActiveStation = "station" }, want: []string{"state.snapshot"}},
 		{name: "unmapped change", change: func(*snapshotDTO) {}, want: []string{"state.snapshot"}},
 	}
 	for _, tc := range tt {

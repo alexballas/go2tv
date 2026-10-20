@@ -162,3 +162,44 @@ func findRemoteDialogButton(object fyne.CanvasObject, text string) *widget.Butto
 	}
 	return nil
 }
+
+func TestRemoteLeaseReleaseKeepsModesExclusive(t *testing.T) {
+	tt := []struct {
+		name       string
+		screencast bool
+		wantRTMP   bool
+	}{
+		{"idle restores RTMP", false, true},
+		{"desktop cast keeps RTMP disabled", true, false},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			app := test.NewApp()
+			defer app.Quit()
+			screen := &FyneScreen{
+				Current:            app.NewWindow("main"),
+				remoteSession:      newRemoteSessionManager(),
+				PlayPause:          widget.NewButton("", nil),
+				Stop:               widget.NewButton("", nil),
+				VolumeUp:           widget.NewButton("", nil),
+				VolumeDown:         widget.NewButton("", nil),
+				MuteUnmute:         widget.NewButton("", nil),
+				SlideBar:           &tappedSlider{Slider: widget.NewSlider(0, 100)},
+				ScreencastCheckBox: widget.NewCheck("", nil),
+				rtmpServerCheck:    widget.NewCheck("", nil),
+				Screencast:         tc.screencast,
+				ffmpegPath:         "ffmpeg",
+				ffmpegCheckPath:    "ffmpeg",
+				ffmpegCheckValid:   true,
+			}
+			screen.rtmpServerCheck.Disable()
+
+			screen.recomputeRendererControls()
+			fyne.DoAndWait(func() {})
+
+			if got := !screen.rtmpServerCheck.Disabled(); got != tc.wantRTMP {
+				t.Fatalf("RTMP enabled = %v, want %v", got, tc.wantRTMP)
+			}
+		})
+	}
+}

@@ -171,6 +171,58 @@ func TestAutoplayQueueTraversalMatchesDesktop(t *testing.T) {
 	}
 }
 
+func TestDLNATerminalCleanupHonorsVerifiedStop(t *testing.T) {
+	tt := []struct {
+		name     string
+		terminal playback.TerminalReason
+		verified bool
+		stops    int
+		loop     bool
+	}{
+		{"verified EOF", playback.TerminalFinished, true, 0, false},
+		{"unverified EOF still stops", playback.TerminalFinished, false, 1, false},
+		{"startup failure never advances", playback.TerminalError, true, 0, false},
+		{"startup failure never loops", playback.TerminalError, true, 0, true},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			device := playback.Device{ID: "renderer", Protocol: "DLNA"}
+			c, log, _ := newTestController(device)
+			defer c.Close()
+			awaitDevices(t, c, 1)
+			c.SelectDevice(t.Context(), Mutation{}, device.ID)
+			addTestQueue(t, c, testMedia("a.mp4", mediamodel.MediaKindVideo), testMedia("b.mp4", mediamodel.MediaKindVideo))
+			if result := c.SetPolicy(t.Context(), PolicyRequest{Policy: Policy{AutoPlayNext: !tc.loop, LoopSelected: tc.loop, ImageDurationSeconds: 10}}); !result.OK() {
+				t.Fatal(result)
+			}
+			queued, _ := c.Snapshot(t.Context())
+			if result := c.Play(t.Context(), PlayRequest{QueueItemID: queued.Queue[0].ID}); !result.OK() {
+				t.Fatal(result)
+			}
+			before, _ := c.Snapshot(t.Context())
+			event := playback.MonitorEvent{Generation: before.Generation, Terminal: tc.terminal, DLNAStopped: tc.verified}
+			if tc.terminal == playback.TerminalError {
+				event.Err = errors.New("DLNA playback did not start")
+			}
+			c.HandleMonitorEvent(t.Context(), event)
+			if tc.terminal == playback.TerminalError {
+				after := awaitAutoplaySnapshot(t, c, func(s Snapshot) bool { return !s.HasSession && s.PlaybackState == PlaybackStateStopped })
+				if after.Generation != before.Generation || after.TerminalReason != playback.TerminalError || count(log.snapshot(), "open:renderer") != 1 {
+					t.Fatalf("failed startup advanced queue: %#v", after)
+				}
+			} else {
+				awaitAutoplaySnapshot(t, c, func(s Snapshot) bool {
+					return s.HasSession && s.Generation > before.Generation && s.PlaybackState == PlaybackStatePlaying
+				})
+			}
+			events := log.snapshot()
+			if count(events, "stop:renderer") != tc.stops || count(events, "close:renderer") != 1 || count(events, "server:stop") != 1 {
+				t.Fatalf("cleanup calls = %v, want remote stops=%d and local cleanup", events, tc.stops)
+			}
+		})
+	}
+}
+
 func TestDLNAGaplessPromotesQueuedNextWithoutReload(t *testing.T) {
 	device := playback.Device{ID: "renderer", Protocol: "DLNA"}
 	c, log, factory := newTestController(device)
@@ -207,7 +259,12 @@ func TestDLNAGaplessPromotesQueuedNextWithoutReload(t *testing.T) {
 	if artworkLoads != 1 || staged.Metadata.Artwork == nil || staged.Metadata.Artwork.URL != "http://127.0.0.1/artwork.jpg" || string(staged.ArtworkData) != "art" {
 		t.Fatalf("staged artwork = %#v loads=%d", staged, artworkLoads)
 	}
-	c.HandleMonitorEvent(context.Background(), playback.MonitorEvent{Generation: playing.Generation, NextURIObserved: true})
+	handleControllerMonitor(t, c, playback.MonitorEvent{Generation: playing.Generation, NextURIObserved: true})
+	unverified, _ := c.Snapshot(context.Background())
+	if !unverified.Queue[0].IsActive {
+		t.Fatal("empty next URI promoted an unverified resource")
+	}
+	c.HandleMonitorEvent(context.Background(), playback.MonitorEvent{Generation: playing.Generation, NextURIObserved: true, GaplessPromoted: true, GaplessURI: staged.MediaURL})
 	after := awaitAutoplaySnapshot(t, c, func(snapshot Snapshot) bool {
 		return snapshot.Generation == playing.Generation && snapshot.Queue[1].IsActive
 	})

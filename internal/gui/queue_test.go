@@ -437,14 +437,16 @@ func TestQueueInteractionsLocked(t *testing.T) {
 
 func TestActiveQueueIndexRequiresCurrentMedia(t *testing.T) {
 	screen := &FyneScreen{}
-	queue := newSessionQueue(testQueueItems("/tmp/one.mp4", "/tmp/two.mp4"), 1)
+	dir := t.TempDir()
+	one, two := filepath.Join(dir, "one.mp4"), filepath.Join(dir, "two.mp4")
+	queue := newSessionQueue(testQueueItems(one, two), 1)
 
 	if got := screen.activeQueueIndex(queue); got != -1 {
 		t.Fatalf("expected no active queue item without media selection, got %d", got)
 	}
 
-	screen.mediafile = "/tmp/one.mp4"
-	screen.playingMediaPath = "/tmp/two.mp4"
+	screen.mediafile = one
+	screen.playingMediaPath = two
 	screen.State = "Playing"
 	if got := screen.activeQueueIndex(queue); got != 1 {
 		t.Fatalf("expected active queue index 1, got %d", got)
@@ -506,7 +508,7 @@ func TestRemoveSelectedQueueItemClearsCurrentOnLastRemove(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
-	mediaPath := "/tmp/test.mp4"
+	mediaPath := filepath.Join(t.TempDir(), "test.mp4")
 	screen := &FyneScreen{
 		mediafile:          mediaPath,
 		queueSelectedIndex: 0,
@@ -833,9 +835,11 @@ func TestPlaylistEditsPreservePlayback(t *testing.T) {
 	for _, state := range []string{"Playing", "Paused"} {
 		for _, clear := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/clear=%t", state, clear), func(t *testing.T) {
+				dir := t.TempDir()
+				oldPath, newPath := filepath.Join(dir, "old.mp4"), filepath.Join(dir, "new.mp4")
 				screen := newQueueMediaSelectionTestScreen()
 				screen.State = state
-				screen.mediafile = "/tmp/old.mp4"
+				screen.mediafile = oldPath
 				screen.playingMediaPath = screen.mediafile
 				screen.SessionQueue = newSessionQueue(testQueueItems(screen.mediafile), 0)
 				screen.queueSelectedIndex = 0
@@ -846,12 +850,12 @@ func TestPlaylistEditsPreservePlayback(t *testing.T) {
 				} else {
 					screen.removeSelectedQueueItem()
 				}
-				if err := appendMediaPaths(screen, []string{"/tmp/new.mp4"}); err != nil {
+				if err := appendMediaPaths(screen, []string{newPath}); err != nil {
 					t.Fatal(err)
 				}
 				fyne.DoAndWait(func() { screen.refreshPlaybackReadiness() })
-				assertQueuePaths(t, screen, []string{"/tmp/new.mp4"})
-				if screen.nowPlayingPath() != "/tmp/old.mp4" || screen.mediafile != "/tmp/old.mp4" {
+				assertQueuePaths(t, screen, []string{newPath})
+				if screen.nowPlayingPath() != oldPath || screen.mediafile != oldPath {
 					t.Fatal("playlist edit changed playback")
 				}
 				if _, _, playing := screen.queueItemForList(0); playing {

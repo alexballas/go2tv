@@ -11,8 +11,8 @@ import (
 )
 
 // Handler supplies a bounded caption window in the receiver's timeline. Offset
-// accounts for transcoding starting a new stream at a nonzero source time.
-func Handler(p *Parser, offset float64) http.Handler {
+// accounts for a transcoded seek; transcoded streams also rebase the media origin.
+func Handler(p *Parser, offset float64, transcoded bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
@@ -34,13 +34,22 @@ func Handler(p *Parser, offset float64) http.Handler {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
-		cues, err := p.Window(ctx, start+offset, start+offset+30)
+		sourceOffset := offset
+		if transcoded {
+			origin, originErr := p.TimelineOrigin(ctx)
+			err = originErr
+			sourceOffset += origin
+		}
+		var cues []Cue
+		if err == nil {
+			cues, err = p.Window(ctx, start+sourceOffset, start+sourceOffset+30)
+		}
 		available := !errors.Is(err, ErrNoSubtitles)
 		until := start + 30
 		var incomplete *IncompleteWindow
 		partial := errors.As(err, &incomplete)
 		if partial {
-			until = incomplete.Until - offset
+			until = incomplete.Until - sourceOffset
 		}
 		if err != nil && available && !partial {
 			http.Error(w, "subtitle pieces unavailable", http.StatusServiceUnavailable)
@@ -50,8 +59,8 @@ func Handler(p *Parser, offset float64) http.Handler {
 			cues = []Cue{}
 		}
 		for i := range cues {
-			cues[i].Start -= offset
-			cues[i].End -= offset
+			cues[i].Start -= sourceOffset
+			cues[i].End -= sourceOffset
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(struct {

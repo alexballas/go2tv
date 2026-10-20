@@ -1,6 +1,7 @@
 @import "tailwindcss" source(none);
 @source "./index.html";
 @source "./client.js";
+@source "./radio.js";
 
 /* Dark styles apply when forced, or in auto mode when the OS prefers dark. */
 @custom-variant dark {
@@ -240,7 +241,8 @@
 
   .workspace-grid {
     @apply grid gap-[18px];
-    grid-template-areas: "player" "devices" "queue" "policy" "library";
+    /* Phones are remotes: what to play matters more than set-once behavior. */
+    grid-template-areas: "player" "devices" "library" "queue" "policy";
   }
   .primary-column,
   .side-column {
@@ -380,8 +382,70 @@
   #playback-state {
     @apply shrink-0 rounded-md bg-[#edeaf4] px-2.5 py-1 text-[.62rem] font-bold uppercase tracking-[.12em] text-[#6d6782] ring-1 ring-inset ring-[#ddd8e8] dark:bg-[#1d1a26] dark:text-[#8b86a0] dark:ring-[#26232f];
   }
+  .player-badges {
+    @apply flex shrink-0 items-center gap-1.5;
+  }
+  .player-badges .favorite-action {
+    @apply size-8 min-h-8;
+  }
+  .player-badges .favorite-action .action-icon {
+    @apply size-4;
+  }
+  .stream-title {
+    @apply mt-1 flex min-w-0 items-center gap-1.5 text-sm font-medium text-[#6d6782] dark:text-[#b8b2c6];
+  }
+  .stream-title .action-icon {
+    @apply size-3.5 text-brand-500 dark:text-brand-300;
+  }
+  .stream-title span {
+    @apply min-w-0 truncate;
+  }
   .timeline {
     @apply grid gap-1;
+  }
+  .live-timeline {
+    @apply flex min-h-6 items-center gap-3;
+  }
+  .live-badge {
+    @apply inline-flex shrink-0 items-center gap-1.5 rounded-md bg-red-500/10 px-2 py-1 text-[.62rem] leading-none font-bold tracking-[.14em] text-red-600 uppercase ring-1 ring-red-500/25 ring-inset dark:bg-red-500/15 dark:text-red-400;
+  }
+  .live-badge i {
+    @apply size-1.5 rounded-full bg-current;
+  }
+  .live-timeline[data-active="true"] .live-badge i {
+    animation: live-pulse 1.6s ease-in-out infinite;
+  }
+  .live-track {
+    @apply h-1.5 flex-1 rounded-full bg-[#e6e2ee] dark:bg-[#26232f];
+  }
+  .live-timeline[data-active="true"] .live-track {
+    background: linear-gradient(
+        90deg,
+        rgb(155 59 221 / 0.12),
+        var(--color-brand-500),
+        rgb(0 226 226 / 0.55),
+        rgb(155 59 221 / 0.12)
+      )
+      0 0 / 200% 100%;
+    animation: live-sweep 3.2s linear infinite;
+  }
+  .live-elapsed {
+    @apply min-w-10 text-right font-mono text-[.68rem] text-[#6d6782] tabular-nums dark:text-[#8f899d];
+  }
+  /* Station logos float as a tile on the brand gradient instead of filling
+     it: most are small, square, and designed for a white background. */
+  .player-card[data-live="true"] .artwork-shell img {
+    inset: 17%;
+    width: 66%;
+    height: 66%;
+    border-radius: 18%;
+    object-fit: cover;
+    background: white;
+    box-shadow: 0 14px 30px -14px rgb(11 10 15 / 0.6);
+  }
+  #artwork-placeholder .action-icon {
+    @apply size-14;
+    stroke-width: 1.5;
   }
   #time {
     @apply text-right font-mono text-[.68rem] tabular-nums text-[#6d6782] dark:text-[#8f899d];
@@ -419,18 +483,149 @@
 
   .library-card {
     @apply min-h-72;
+    container: media-browser / inline-size;
   }
+  /* Tools sit level with the source tabs, both 2.5rem tall. */
   .library-heading {
-    @apply items-center;
+    @apply items-end;
   }
   .library-tools {
-    @apply flex min-w-0 items-center justify-end gap-2;
+    @apply flex shrink-0 items-center justify-end gap-2;
   }
   .library-tools #library-filter {
     @apply w-48;
   }
   .library-tools select {
     @apply min-w-32 max-w-52;
+  }
+  .library-heading > div:first-child {
+    @apply min-w-0;
+  }
+  .source-tabs {
+    @apply mt-1 inline-flex gap-1 rounded-xl bg-[#edeaf4] p-1 ring-1 ring-[#e2deea] ring-inset dark:bg-[#1a1722] dark:ring-[#26232f];
+  }
+  .source-tabs button {
+    @apply relative flex min-h-8 items-center gap-1.5 rounded-[9px] border-transparent bg-transparent px-3 text-[.84rem] font-bold text-[#6d6782] shadow-none hover:translate-y-0 hover:border-transparent hover:bg-white/60 hover:text-[#231e30] dark:text-[#8b86a0] dark:hover:border-transparent dark:hover:bg-white/5 dark:hover:text-[#eae7f2];
+  }
+  .source-tabs button[aria-selected="true"] {
+    @apply bg-white text-brand-700 shadow-[0_1px_3px_rgba(35,30,48,.14)] dark:bg-[#26222f] dark:text-brand-300 dark:shadow-none;
+  }
+  .source-tabs .action-icon {
+    @apply size-4;
+  }
+  .tab-live-dot {
+    @apply ml-0.5 size-1.5 rounded-full bg-red-500 shadow-[0_0_0_3px] shadow-red-500/20;
+    animation: live-pulse 1.6s ease-in-out infinite;
+  }
+  .search-field {
+    @apply relative flex w-72 min-w-0 items-center;
+  }
+  .search-field .action-icon {
+    @apply pointer-events-none absolute left-3 size-4 text-[#8f899d] dark:text-[#6d6782];
+  }
+  .search-field input {
+    @apply min-h-10 w-full pl-9;
+  }
+  .radio-tools select {
+    @apply w-44 shrink-0;
+  }
+  .radio-toolbar {
+    @apply mb-1 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-[#e6e2ee] pb-2 dark:border-[#221f2c];
+  }
+  .radio-modes {
+    @apply flex min-w-0 gap-1 overflow-x-auto;
+  }
+  .radio-modes button {
+    @apply flex min-h-8 shrink-0 items-center gap-1.5 rounded-full border-transparent bg-transparent px-3 text-[.78rem] font-semibold text-[#6d6782] shadow-none hover:translate-y-0 hover:border-transparent hover:bg-[#edeaf4] hover:text-brand-600 dark:text-[#8b86a0] dark:hover:border-transparent dark:hover:bg-[#1d1a26] dark:hover:text-brand-300;
+  }
+  .radio-modes button[aria-pressed="true"] {
+    @apply bg-brand-50 text-brand-700 ring-1 ring-brand-500/25 ring-inset hover:bg-brand-50 hover:text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 dark:ring-brand-400/25 dark:hover:bg-brand-500/15 dark:hover:text-brand-300;
+  }
+  .radio-modes .action-icon {
+    @apply size-4;
+  }
+  .mode-count {
+    @apply min-w-4 rounded-full bg-brand-500 px-1 text-center text-[.6rem] leading-4 font-bold text-white;
+  }
+  .radio-status {
+    @apply min-w-0 truncate text-[.72rem] text-[#6d6782] dark:text-[#8f899d];
+  }
+  .station-logo {
+    @apply relative grid size-11 shrink-0 place-items-center overflow-hidden rounded-[10px] text-white/85;
+    background: linear-gradient(
+      140deg,
+      var(--artwork-magenta),
+      var(--artwork-purple) 52%,
+      var(--artwork-cyan)
+    );
+  }
+  .station-logo img {
+    @apply absolute inset-0 size-full bg-white object-cover opacity-0 transition-opacity duration-200;
+  }
+  .station-logo img[data-loaded="true"] {
+    @apply opacity-100;
+  }
+  .station-logo .equalizer {
+    @apply absolute inset-0 hidden items-end justify-center gap-[3px] bg-[#231e30]/60 py-[13px];
+  }
+  .radio-row[data-playing="true"] .equalizer {
+    @apply flex;
+  }
+  .equalizer i {
+    @apply block w-[3px] rounded-full bg-white;
+    height: 40%;
+    animation: equalizer 0.9s ease-in-out infinite alternate;
+  }
+  .equalizer i:nth-child(2) {
+    animation-duration: 0.7s;
+    animation-delay: -0.45s;
+  }
+  .equalizer i:nth-child(3) {
+    animation-duration: 1.1s;
+    animation-delay: -0.2s;
+  }
+  .radio-row[data-paused="true"] .equalizer i {
+    animation-play-state: paused;
+  }
+  .radio-row[data-playing="true"] {
+    @apply rounded-xl bg-brand-50 shadow-[inset_3px_0_0_#9b3bdd] dark:bg-brand-500/10;
+  }
+  .radio-row[data-playing="true"] .entry-name {
+    @apply text-brand-700 dark:text-brand-300;
+  }
+  button.favorite-action {
+    @apply border-transparent bg-transparent text-[#b8b2c6] shadow-none hover:translate-y-0 hover:border-transparent hover:bg-amber-50 hover:text-amber-500 dark:text-[#4a4658] dark:hover:border-transparent dark:hover:bg-amber-400/10 dark:hover:text-amber-300;
+  }
+  button.favorite-action[aria-pressed="true"] {
+    @apply text-amber-500 dark:text-amber-300;
+  }
+  button.favorite-action[aria-pressed="true"] .action-icon {
+    fill: currentColor;
+  }
+  .skeleton-row {
+    @apply flex animate-pulse items-center gap-3;
+  }
+  .skeleton-row .station-logo {
+    @apply bg-[#edeaf4] dark:bg-[#1d1a26];
+    background-image: none;
+  }
+  .skeleton-lines {
+    @apply grid flex-1 gap-2;
+  }
+  .skeleton-lines i {
+    @apply block h-2.5 w-2/5 rounded-full bg-[#edeaf4] dark:bg-[#1d1a26];
+  }
+  .skeleton-lines i + i {
+    @apply h-2 w-3/5;
+  }
+  .radio-list .empty-state button {
+    @apply mt-3;
+  }
+  .radio-credit {
+    @apply mt-3 text-center text-[.68rem] text-[#8f899d] dark:text-[#6d6782];
+  }
+  .radio-credit a {
+    @apply font-semibold text-brand-600 hover:underline dark:text-brand-300;
   }
   .selection-status {
     @apply mb-3 rounded-xl border border-[#ddd8e8] bg-[#f5f3fa] px-4 py-3 dark:border-[#26232f] dark:bg-[#17151f];
@@ -566,7 +761,7 @@
     @apply mr-3 text-[#b8b2c6] dark:text-[#4a4658];
   }
   #library-filter {
-    @apply min-h-9 w-full;
+    @apply min-h-10 w-full;
   }
   .library-list {
     @apply divide-y divide-[#eeeaf3] dark:divide-[#221f2c];
@@ -810,6 +1005,22 @@
     }
   }
 
+  /* Below the width where tabs and tools fit side by side, tools take a
+     full-width row of their own instead of wrapping beneath the tabs. */
+  @container media-browser (width < 43rem) {
+    .library-heading {
+      @apply grid items-stretch;
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .library-tools {
+      @apply w-full;
+    }
+    .library-tools #library-filter,
+    .search-field {
+      @apply w-auto min-w-0 flex-1;
+    }
+  }
+
   @media (max-width: 639px) {
     main {
       @apply px-3 pt-4;
@@ -849,8 +1060,13 @@
       @apply grid min-w-0 w-full grid-cols-1;
     }
     .library-tools #library-filter,
-    .library-tools select {
+    .library-tools select,
+    .search-field,
+    .search-field input {
       @apply w-full max-w-none;
+    }
+    .radio-status {
+      @apply w-full;
     }
     .library-row {
       @apply items-center gap-2 px-0.5 py-2;
@@ -881,5 +1097,41 @@
     #back-to-top {
       display: none;
     }
+  }
+}
+
+@keyframes equalizer {
+  from {
+    height: 20%;
+  }
+  to {
+    height: 100%;
+  }
+}
+
+@keyframes live-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes live-sweep {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .equalizer i,
+  .tab-live-dot,
+  .live-timeline .live-badge i,
+  .live-timeline .live-track {
+    animation: none !important;
+  }
+  .equalizer i {
+    height: 60%;
   }
 }

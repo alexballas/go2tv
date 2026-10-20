@@ -90,7 +90,7 @@ func beginBackgroundSession(screen *FyneScreen) {
 // A paused cast keeps the session: the renderer is still ours to control, and
 // the connection that carries the resume still has to be maintained.
 func syncBackgroundSession(screen *FyneScreen, state string) {
-	want := state == "Playing" || state == "Paused" || screen.hasTorrentSession() || screen.mobilePlaybackStarting()
+	want := state == "Playing" || state == "Paused" || screen.hasTorrentSession() || screen.mobilePlaybackStarting() || screen.dlnaPlaybackPending()
 	if want {
 		backgroundSessionState.Lock()
 		running := backgroundSessionState.running

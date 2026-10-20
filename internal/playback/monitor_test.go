@@ -124,6 +124,34 @@ func TestDLNAMonitorUsesExpectedTranscodeDuration(t *testing.T) {
 	}
 }
 
+func TestDLNAMonitorReportsUnknownDurationAndRecovers(t *testing.T) {
+	clock := newManualClock()
+	events := make(chan MonitorEvent, 1)
+	dlna := &seekDLNA{}
+	go RunDLNAMonitor(t.Context(), MonitorConfig{Clock: clock, Sink: monitorCollector{events}}, dlna, nil)
+	tt := []struct {
+		name               string
+		position, duration int
+		valid              bool
+	}{
+		{"previous file duration", 3, 25, true},
+		{"single empty duration is transient", 4, 0, false},
+		{"advancing without duration is live", 5, 0, true},
+		{"live restarts at zero", 0, 0, true},
+		{"file duration recovers", 1, 40, true},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			dlna.pos = Position{Current: tc.position, Duration: tc.duration}
+			clock.tick.ch <- time.Time{}
+			event := waitMonitor(t, events)
+			if event.PositionValid != tc.valid || event.Position != tc.position || event.Duration != tc.duration {
+				t.Fatalf("timeline sample = %#v", event)
+			}
+		})
+	}
+}
+
 func TestDLNAMonitorObservesConsumedNextURIOnlyWhileGaplessActive(t *testing.T) {
 	clock := newManualClock()
 	events := make(chan MonitorEvent, 2)

@@ -113,7 +113,7 @@ func (s *FyneScreen) recomputeRendererControls() {
 		setEnabled(s.VolumeDown, true)
 		setEnabled(s.MuteUnmute, true)
 		setEnabled(s.SlideBar, s.rtmpServer == nil && !s.Screencast)
-		setEnabled(s.rtmpServerCheck, ffmpegErr == nil)
+		setEnabled(s.rtmpServerCheck, ffmpegErr == nil && !s.Screencast)
 		setEnabled(s.ScreencastCheckBox, ffmpegErr == nil && s.rtmpServer == nil)
 		s.refreshPlaybackReadiness()
 		s.updateFFmpegDependentCheckTooltips()

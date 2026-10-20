@@ -8,6 +8,8 @@ import (
 	ttwidget "github.com/alexballas/fyne-tooltip/widget"
 	"github.com/alexballas/refyne/v2/lang"
 	"github.com/alexballas/refyne/v2/widget"
+
+	"go2tv.app/go2tv/v2/soapcalls"
 )
 
 func TestAudioAndImageSubtitlesResetDisableAndRecover(t *testing.T) {
@@ -69,6 +71,8 @@ func TestPlaybackReadinessKeepsLayoutAndDisablesIdleActions(t *testing.T) {
 	s.playbackStatus = newPlaybackStatusLabel("")
 	s.Stop = widget.NewButton("Stop", nil)
 	s.SlideBar = newTappableSlider(s)
+	s.tvdata = &soapcalls.TVPayload{ControlURL: "http://renderer/control", Seekable: true}
+	s.SlideBar.setDLNADuration(s.tvdata, 120)
 	for _, tc := range []struct {
 		state, media, status string
 		active               bool

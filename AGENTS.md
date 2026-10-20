@@ -1,163 +1,49 @@
-# AGENT.md
-
-This file provides guidance to AI coding agents when working with code in this repository.
+# AGENTS.md
 
 **In all interactions and commit messages, be extremely concise and sacrifice grammar for the sake of concision.**
 
-## Project Overview
+Go2TV casts local/remote media, torrents, internet radio and live streams to DLNA and Chromecast devices. Fyne GUI (desktop + Android), BubbleTea/TCell CLI, and headless server mode with a browser Web UI. Optional runtime dep: ffmpeg.
 
-Go2TV is a Go application that casts local/remote media files to UPnP/DLNA Media Renderers and Chromecast devices. Provides both GUI (Fyne framework) and CLI (BubbleTea/TCell) interfaces. Single binary, no runtime dependencies except optional ffmpeg for transcoding.
-
-## Build & Test Commands
-
-### Core Commands
+## Commands
 
 ```bash
-make build              # Build to build/go2tv
-make windows            # Windows Build
-make test               # Run all tests (go test -v ./...)
-make run                # Build and run
-make clean              # Clean build artifacts
-go test -v ./path/to/pkg                        # Test specific package
-go test -run TestName -v ./path/to/pkg          # Run single test
-go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test ./... # Modernize checks
-go run cmd/fynedo-check/main.go internal/gui/   # Standard fyne.Do violation check
+make build              # build/go2tv
+make build-lite         # CLI-only go2tv-lite
+make webui              # rebuild Web UI bundle (internal/webui/src → dist)
+go test ./...
+npm test                # Web UI JS tests
+go run cmd/fynedo-check/main.go internal/gui/   # UI updates outside fyne.Do
+go run golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize@latest -test ./...
+make check-no-replace   # go.mod must not keep replace directives
 ```
 
-### Testing
+## Done checklist
 
-- Tests are located in `*_test.go` files throughout the codebase
-- Use table-driven tests with struct-based test cases
-- Test files include: httphandlers_test.go, soapbuilders_test.go, dlnatools_test.go, etc.
+- Any Go change: `go test ./...`; modernize on touched packages (exits 3 on findings; older findings exist, fix only those in touched code).
+- `internal/gui/` or code the GUI uses: `fynedo-check`, then `make android` (needs `ANDROID_HOME` = SDK, `ANDROID_NDK_HOME` = NDK r27d; bundles FFmpeg).
+- `internal/webui/src/`: `npm test`, then `make webui`. `dist/` is embedded and committed with hashed names; commit removed old bundles too.
+- `go.mod`: `make check-no-replace`.
 
-### Mobile Build Verification
+## Gotchas
 
-For all phases, verify mobile builds pass:
+- **refyne**: go2tv uses the fork `github.com/alexballas/refyne/v2`, so Android packaging needs refyne's own `cmd/fyne`. `make android` provisions it at the go.mod version; don't pass `FYNE=` (if you do, it must be an executable path, not `go run`). Stock `fyne` fails with `does not import "fyne.io/fyne/v2/internal/driver/mobile/app"`.
+- **fyne.Do**: network work (casting, discovery) runs in goroutines; every UI update from a goroutine goes through `fyne.Do`.
+- **Two stacks**: GUI and CLI drive `soapcalls` (DLNA) and `castprotocol` (Chromecast) directly, branching on `devices.DeviceTypeDLNA`/`DeviceTypeChromecast`. `internal/controller` + `playback`/`playbackadapter`/`mediaserver` serve only server mode and Web UI.
+- **GUI state**: `screen.getScreenState()` gives "Playing"/"Paused"/"Stopped"; reset state explicitly when switching device type.
+- **Audio-only devices** (e.g. Chromecast Audio): block video/image casts when `screen.selectedDevice.isAudioOnly`.
+- **Transcode config** lives in two structs: `soapcalls.TVPayload` (DLNA, `httphandlers`) and `utils.TranscodeOptions` (Chromecast).
+- **Subtitles**: DLNA uses SRT, Chromecast WebVTT (`utils/srt_to_webvtt.go`).
+- **SOAP**: XML entity escaping must stay Samsung-compatible (`soapcalls/soapbuilders.go`).
+- Top-level `torrentstream/`, `mediasource/`, `castsubtitles/` are public facades over their `internal/` packages.
+- Mobile variants: `*_mobile.go` and `//go:build android || ios` tags.
 
-```bash
-ANDROID_HOME=/home/alex/Android/Sdk ANDROID_NDK_HOME=/home/alex/Downloads/android-ndk-r27d make android
-```
+## Style
 
-Android builds bundle FFmpeg by default.
-**Note**: go2tv targets the refyne fork (`github.com/alexballas/refyne/v2`), so it must be packaged with refyne's own `cmd/fyne`. The `android-fyne` target provisions that CLI at the version go.mod pins, so do not pass `FYNE=` unless you want a specific binary — it must be an executable path, not a `go run` command line. The stock `fyne` CLI fails with `does not import "fyne.io/fyne/v2/internal/driver/mobile/app"` because it checks for the upstream import path, not the refyne one.
+- Prefer `switch` over `else if` chains.
+- Wrap errors as `fmt.Errorf("function: %w", err)`; package-level `ErrSomething` for common cases.
+- Tests: table-driven (`tt := []struct{...}`), `t.Run` subtests, `t.Fatalf`.
+- **NO STUPID TESTS:** every test must protect real user-visible behavior or a credible regression. Assert the contract; no implementation trivia, tautologies or redundant coverage.
 
-## Architecture
+## Plans
 
-```
-cmd/go2tv/go2tv.go     - Entry point, CLI flag handling
-cmd/go2tv-lite/        - Minimal CLI-only build (no GUI dependencies)
-internal/gui/          - Fyne desktop GUI (FyneScreen struct in gui.go, handlers in actions.go)
-internal/interactive/  - TCell/BubbleTea CLI mode
-soapcalls/             - DLNA/UPnP SOAP protocol (TVPayload struct, XML builders/parsers)
-castprotocol/          - Chromecast v2 protocol (CastClient wrapper around go-chromecast)
-devices/               - Device discovery (SSDP for DLNA, mDNS for Chromecast)
-httphandlers/          - HTTP server for media streaming and DLNA callbacks
-utils/                 - Shared utilities (transcode, ffprobe, subtitle conversion, IP tools, URL streaming)
-```
-
-**Note**: `soapcalls/utils/` was moved to top-level `utils/` package to support both DLNA and Chromecast codepaths.
-
-## Key Patterns
-
-**Dual Protocol Support**: Code paths often branch on device type:
-
-- `devices.DeviceTypeDLNA` → uses soapcalls package
-- `devices.DeviceTypeChromecast` → uses castprotocol package
-- Check `screen.selectedDeviceType` in GUI code
-
-**Concurrency & UI**: Network operations (casting, discovery) MUST run in goroutines.
-
-- ALL UI updates from goroutines MUST use `fyne.Do(func() { ... })`
-- Use `context.Context` for cancellation and timeouts
-
-**State Management**:
-
-- `TVPayload` (DLNA) and `CastClient` (Chromecast) maintain playback state
-- Use `screen.getScreenState()` to check current state ("Playing", "Paused", "Stopped")
-- When switching device types, state must be explicitly reset
-
-**Audio-Only Support**:
-
-- Check `screen.selectedDevice.isAudioOnly` before casting
-- Block video/image casting on audio-only devices (e.g. Chromecast Audio)
-
-**Theme Customization**:
-
-- `internal/gui/theme.go` handles custom theme logic (`go2tvTheme`)
-- Supports light/dark mode overrides for specific UI elements
-
-**HTTP Server**: Single server serves both media files and DLNA callbacks. Chromecast only needs media serving.
-
-**Subtitles**: DLNA uses SRT, Chromecast uses WebVTT. Conversion in `utils/srt_to_webvtt.go`.
-
-**Platform Code**: Build tags for platform-specific code (`//go:build !(android || ios)`), `*_mobile.go` for mobile variants.
-
-**Transcoding Types**: Two structs handle FFmpeg transcoding config:
-
-- `soapcalls.TVPayload` - DLNA devices (httphandlers.go)
-- `utils.TranscodeOptions` - Chromecast (actions.go)
-
-## Code Style Guidelines
-
-### Imports & Formatting
-
-- Use standard Go formatting (`gofmt`)
-- Group imports: stdlib, third-party, internal packages (separated by blank lines)
-- Use full import paths (e.g., `github.com/alexballas/go2tv/utils`)
-
-### Naming Conventions
-
-- PascalCase for exported types, functions, constants
-- camelCase for unexported items
-- Use descriptive names: `TVPayload`, `BuildContentFeatures`, `FyneScreen`
-- Error variables: `ErrSomething` (e.g., `ErrInvalidSeekFlag`)
-
-### Types & Functions
-
-- Define structs for XML/SOAP message structures with XML tags
-- Use builder pattern for complex constructions (e.g., `setAVTransportSoapBuild`)
-- Return errors with context using `fmt.Errorf("function: %w", err)`
-
-### Control Flow
-
-- Prefer `switch` over `else if` chains
-- Use stdlib functions over custom implementations
-
-### Error Handling
-
-- Always handle returned errors
-- Wrap errors with context about where they occurred
-- Define package-level error variables for common error cases
-
-### Testing Patterns
-
-- **NO STUPID TESTS:** Every test must protect real user-visible behavior or a credible regression. Assert the relevant contract; avoid implementation trivia, tautologies, and redundant coverage.
-- Use `t.Run()` for subtests with descriptive names
-- Table-driven tests with `tt := []struct{...}` pattern
-- Use `t.Fatalf()` for fatal test failures
-- Test both success and error paths
-
-### Platform-specific Code
-
-- Use build tags for platform-specific code (e.g., `//go:build !(android || ios)`)
-- Windows-specific files end with `_windows.go`
-- Use appropriate build tags for mobile vs desktop implementations
-
-### Constants & Configuration
-
-- Define constants for magic strings and numbers
-- Use maps for profile/configuration mappings (e.g., `dlnaprofiles`)
-- Package-level constants for DLNA flags and protocols
-
-### XML/SOAP Handling
-
-- Define explicit struct types for all XML/SOAP messages
-- Use XML struct tags properly
-- Handle XML entity escaping for Samsung TV compatibility
-- Use `xml.Marshal` with proper error handling
-
-### Plans
-
-- At the end of each plan, give me a list of unresolved questions to answer, if any. Make the questions extremely concise. Sacrifice grammar for the sake of concision.
-
-# 
+End each plan with a list of unresolved questions, if any. Extremely concise; sacrifice grammar.

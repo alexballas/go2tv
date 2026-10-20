@@ -57,22 +57,33 @@ func TestURLtoListenIPandPort(t *testing.T) {
 
 func TestCheckAndPickPort(t *testing.T) {
 	tt := []struct {
-		name      string
-		inputHost string
-		inputPort int
+		name     string
+		occupied bool
 	}{
-		{
-			`Test #1`,
-			"127.0.0.1",
-			3000,
-		},
+		{name: "free port is kept", occupied: false},
+		// A leftover media server on the start port must not block casting.
+		{name: "taken port moves on", occupied: true},
 	}
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := checkAndPickPort(tc.inputHost, tc.inputPort)
+			ln, err := net.Listen("tcp", "127.0.0.1:0")
 			if err != nil {
-				t.Fatalf("%s: Failed to call TestCheckAndPickPort due to %s", tc.name, err.Error())
+				t.Fatalf("listen: %v", err)
+			}
+			port := ln.Addr().(*net.TCPAddr).Port
+			if tc.occupied {
+				defer ln.Close()
+			} else {
+				ln.Close()
+			}
+
+			got, err := checkAndPickPort("127.0.0.1", port)
+			if err != nil {
+				t.Fatalf("checkAndPickPort(%d): %v", port, err)
+			}
+			if kept := got == strconv.Itoa(port); kept == tc.occupied {
+				t.Fatalf("checkAndPickPort(%d) = %s, occupied %v", port, got, tc.occupied)
 			}
 		})
 	}

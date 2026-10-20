@@ -301,6 +301,17 @@ type DLNA struct {
 	callbacksActive    bool
 	callbackEpoch      uint64
 	stopGate           playback.DLNAStopGate
+	lifetimeCancel     context.CancelFunc
+	// SetNext rewrites payload media fields, so RetryStart reloads from these.
+	loaded, staged *playback.LoadRequest
+}
+
+func applyLoadRequest(p *soapcalls.TVPayload, req playback.LoadRequest) {
+	p.MediaURL, p.MediaType, p.SubtitlesURL = req.MediaURL, req.MediaType, req.SubtitleURL
+	p.Seekable = req.Seekable
+	p.Transcode = req.Transcode
+	p.MediaDuration = req.Duration
+	p.Metadata = req.Metadata
 }
 
 func NewDLNA(ctx context.Context, cfg DLNAConfig) (*DLNA, error) {
@@ -311,7 +322,9 @@ func NewDLNA(ctx context.Context, cfg DLNAConfig) (*DLNA, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open DLNA transport: %w", err)
 	}
-	return &DLNA{payload: payload, callbackURL: cfg.CallbackURL, callbacks: cfg.Callbacks}, nil
+	lifetime, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	payload.SetContext(lifetime)
+	return &DLNA{payload: payload, callbackURL: cfg.CallbackURL, callbacks: cfg.Callbacks, lifetimeCancel: cancel}, nil
 }
 
 func (d *DLNA) call(ctx context.Context, fn func(*soapcalls.TVPayload) error) error {
@@ -320,7 +333,6 @@ func (d *DLNA) call(ctx context.Context, fn func(*soapcalls.TVPayload) error) er
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.payload.SetContext(ctx)
 	return fn(d.payload)
 }
 
@@ -337,21 +349,18 @@ func (d *DLNA) Load(ctx context.Context, req playback.LoadRequest) error {
 		for _, sid := range p.SubscriptionIDs() {
 			knownSubscriptions[sid] = struct{}{}
 		}
-		p.MediaURL, p.MediaType, p.SubtitlesURL = req.MediaURL, req.MediaType, req.SubtitleURL
-		p.Seekable = req.Seekable
-		p.Transcode = req.Transcode
-		p.MediaDuration = req.Duration
-		p.Metadata = req.Metadata
+		applyLoadRequest(p, req)
+		d.loaded, d.staged = &req, nil
 		d.mediaType = req.MediaType
 		d.sid = ""
 		d.callbacksActive = false
 		d.stopGate.Reset()
 		if d.callbackURL != nil && d.callbackURL.CallbackURL() != "" {
 			p.CallbackURL = d.callbackURL.CallbackURL()
-			if err := p.GetProtocolInfo(); err != nil {
+			if err := p.GetProtocolInfoContext(ctx); err != nil {
 				return err
 			}
-			if err := p.SubscribeSoapCall(""); err != nil {
+			if err := p.SubscribeSoapCallContext(ctx, ""); err != nil {
 				return err
 			}
 			ids := p.SubscriptionIDs()
@@ -376,7 +385,7 @@ func (d *DLNA) Load(ctx context.Context, req playback.LoadRequest) error {
 				return err
 			}
 		}
-		return p.SetAVTransportURI()
+		return p.SetAVTransportURIContext(ctx)
 	})
 }
 
@@ -462,9 +471,8 @@ func (d *DLNA) recoverCallbackGap(ctx context.Context, recovery callbackGapRecov
 		d.mu.Unlock()
 		return
 	}
-	d.payload.SetContext(ctx)
-	_ = d.payload.SubscribeSoapCall(recovery.sid)
-	values, err := d.payload.GetTransportInfo()
+	_ = d.payload.SubscribeSoapCallContext(ctx, recovery.sid)
+	values, err := d.payload.GetTransportInfoContext(ctx)
 	if err != nil || len(values) == 0 {
 		d.mu.Unlock()
 		return
@@ -477,26 +485,43 @@ func (d *DLNA) recoverCallbackGap(ctx context.Context, recovery callbackGapRecov
 }
 
 func (d *DLNA) Play(ctx context.Context) error {
-	return d.call(ctx, func(p *soapcalls.TVPayload) error { return p.PlayPauseStopSoapCall("Play") })
+	return d.call(ctx, func(p *soapcalls.TVPayload) error { return p.PlayPauseStopSoapCallContext(ctx, "Play") })
+}
+
+// RetryStart re-sends a start the renderer acknowledged but never began.
+// SetAVTransportURI drops the renderer's staged item, so it is staged again.
+func (d *DLNA) RetryStart(ctx context.Context, uri string, reload bool) error {
+	return d.call(ctx, func(p *soapcalls.TVPayload) error {
+		if reload && d.loaded != nil && d.loaded.MediaURL == uri {
+			applyLoadRequest(p, *d.loaded)
+			if err := p.SetAVTransportURIContext(ctx); err != nil {
+				return err
+			}
+			if d.staged != nil {
+				applyLoadRequest(p, *d.staged)
+				if err := p.SetNextAVTransportURIContext(ctx, false); err != nil {
+					return err
+				}
+			}
+		}
+		return p.PlayPauseStopSoapCallContext(ctx, "Play")
+	})
 }
 func (d *DLNA) Pause(ctx context.Context) error {
-	return d.call(ctx, func(p *soapcalls.TVPayload) error { return p.PlayPauseStopSoapCall("Pause") })
+	return d.call(ctx, func(p *soapcalls.TVPayload) error { return p.PlayPauseStopSoapCallContext(ctx, "Pause") })
 }
 func (d *DLNA) Stop(ctx context.Context) error {
-	return d.call(ctx, func(p *soapcalls.TVPayload) error { return p.SendtoTV("Stop") })
+	return d.call(ctx, func(p *soapcalls.TVPayload) error { return p.SendtoTVContext(ctx, "Stop") })
 }
 func (d *DLNA) Seek(ctx context.Context, value string) error {
-	return d.call(ctx, func(p *soapcalls.TVPayload) error { return p.SeekSoapCall(value) })
+	return d.call(ctx, func(p *soapcalls.TVPayload) error { return p.SeekSoapCallContext(ctx, value) })
 }
 
 func (d *DLNA) SetNext(ctx context.Context, req playback.LoadRequest) error {
 	return d.call(ctx, func(p *soapcalls.TVPayload) error {
-		p.MediaURL, p.MediaType, p.SubtitlesURL = req.MediaURL, req.MediaType, req.SubtitleURL
-		p.Seekable = req.Seekable
-		p.Transcode = req.Transcode
-		p.MediaDuration = req.Duration
-		p.Metadata = req.Metadata
-		return p.SetNextAVTransportURI(false)
+		applyLoadRequest(p, req)
+		d.staged = &req
+		return p.SetNextAVTransportURIContext(ctx, false)
 	})
 }
 
@@ -504,31 +529,54 @@ func (d *DLNA) NextURI(ctx context.Context) (string, error) {
 	var nextURI string
 	err := d.call(ctx, func(p *soapcalls.TVPayload) error {
 		var err error
-		nextURI, err = p.Gapless()
+		info, err := p.GetMediaInfoContext(ctx)
+		nextURI = info.NextURI
 		return err
 	})
 	return nextURI, err
 }
 
+func (d *DLNA) MediaInfo(ctx context.Context) (string, string, error) {
+	var info soapcalls.MediaInfo
+	err := d.call(ctx, func(p *soapcalls.TVPayload) error {
+		var err error
+		info, err = p.GetMediaInfoContext(ctx)
+		return err
+	})
+	return info.CurrentURI, info.NextURI, err
+}
+
+func (d *DLNA) TransportState(ctx context.Context) (string, error) {
+	var state string
+	err := d.call(ctx, func(p *soapcalls.TVPayload) error {
+		values, err := p.GetTransportInfoContext(ctx)
+		if err == nil {
+			state = values[0]
+		}
+		return err
+	})
+	return state, err
+}
+
 func (d *DLNA) ClearNext(ctx context.Context) error {
-	return d.call(ctx, func(p *soapcalls.TVPayload) error { return p.SetNextAVTransportURI(true) })
+	return d.call(ctx, func(p *soapcalls.TVPayload) error {
+		d.staged = nil
+		return p.SetNextAVTransportURIContext(ctx, true)
+	})
 }
 
 func (d *DLNA) Position(ctx context.Context) (playback.Position, error) {
 	var result playback.Position
 	err := d.call(ctx, func(p *soapcalls.TVPayload) error {
-		values, err := p.GetPositionInfo()
+		values, err := p.GetPositionInfoContext(ctx)
 		if err != nil {
 			return err
 		}
-		if len(values) < 2 {
-			return errors.New("DLNA position response incomplete")
+		result.TrackURI = values.TrackURI
+		if duration, durationErr := parseClock(values.TrackDuration); durationErr == nil {
+			result.Duration = duration
 		}
-		result.Duration, err = parseClock(values[0])
-		if err != nil {
-			return err
-		}
-		result.Current, err = parseClock(values[1])
+		result.Current, err = parseClock(values.RelTime)
 		return err
 	})
 	return result, err
@@ -538,31 +586,29 @@ func (d *DLNA) Volume(ctx context.Context) (int, error) {
 	var volume int
 	err := d.call(ctx, func(p *soapcalls.TVPayload) error {
 		var err error
-		volume, err = p.GetVolumeSoapCall()
+		volume, err = p.GetVolumeSoapCallContext(ctx)
 		return err
 	})
 	return volume, err
 }
 func (d *DLNA) SetVolume(ctx context.Context, volume int) error {
-	return d.call(ctx, func(p *soapcalls.TVPayload) error { return p.SetVolumeSoapCall(strconv.Itoa(volume)) })
+	return d.call(ctx, func(p *soapcalls.TVPayload) error { return p.SetVolumeSoapCallContext(ctx, strconv.Itoa(volume)) })
 }
 func (d *DLNA) SetMute(ctx context.Context, muted bool) error {
 	return d.call(ctx, func(p *soapcalls.TVPayload) error {
 		if muted {
-			return p.SetMuteSoapCall("1")
+			return p.SetMuteSoapCallContext(ctx, "1")
 		}
-		return p.SetMuteSoapCall("0")
+		return p.SetMuteSoapCallContext(ctx, "0")
 	})
 }
 
 func (d *DLNA) Close(ctx context.Context) error {
+	if d.lifetimeCancel != nil {
+		defer d.lifetimeCancel()
+	}
 	return d.call(ctx, func(p *soapcalls.TVPayload) error {
-		var first error
-		for _, sid := range p.SubscriptionIDs() {
-			if err := p.UnsubscribeSoapCall(sid); err != nil && first == nil {
-				first = err
-			}
-		}
+		first := p.CleanupSubscriptionsContext(ctx)
 		if d.callbacks != nil && d.callbacksRequested {
 			d.callbacks.CloseGeneration(d.callbackGeneration)
 			d.callbacksActive = false
@@ -690,14 +736,23 @@ func (c *Chromecast) statusCall(ctx context.Context, fn func() (playback.CastSta
 func (c *Chromecast) Connect(ctx context.Context) error { return c.call(ctx, c.client.Connect) }
 func (c *Chromecast) Load(ctx context.Context, req playback.LoadRequest) error {
 	return c.call(ctx, func() error {
-		return c.client.LoadMedia(castprotocol.LoadRequest{MediaURL: req.MediaURL, ContentType: req.MediaType, Metadata: req.Metadata, StartTime: req.Start, Duration: float64(req.Duration), SubtitleURL: req.SubtitleURL, TorrentSubtitleURL: req.TorrentSubtitleURL})
+		return c.client.LoadMedia(castLoadRequest(req))
 	})
 }
 func (c *Chromecast) LoadOnExisting(ctx context.Context, req playback.LoadRequest) error {
 	return c.call(ctx, func() error {
-		return c.client.LoadMediaOnExisting(castprotocol.LoadRequest{MediaURL: req.MediaURL, ContentType: req.MediaType, Metadata: req.Metadata, StartTime: req.Start, Duration: float64(req.Duration), SubtitleURL: req.SubtitleURL, TorrentSubtitleURL: req.TorrentSubtitleURL})
+		return c.client.LoadMediaOnExisting(castLoadRequest(req))
 	})
 }
+func castLoadRequest(req playback.LoadRequest) castprotocol.LoadRequest {
+	return castprotocol.LoadRequest{MediaURL: req.MediaURL, ContentType: req.MediaType, Metadata: req.Metadata, StartTime: req.Start, Duration: float64(req.Duration), SubtitleURL: req.SubtitleURL, TorrentSubtitleURL: req.TorrentSubtitleURL, Live: req.Live}
+}
+
+// SetTrackTitle shows a live stream's current track without reloading it.
+func (c *Chromecast) SetTrackTitle(ctx context.Context, title string) error {
+	return c.call(ctx, func() error { return c.client.SetTrackTitle(title) })
+}
+
 func (c *Chromecast) Play(ctx context.Context) error  { return c.call(ctx, c.client.Play) }
 func (c *Chromecast) Pause(ctx context.Context) error { return c.call(ctx, c.client.Pause) }
 func (c *Chromecast) Stop(ctx context.Context) error  { return c.call(ctx, c.client.Stop) }
@@ -791,10 +846,11 @@ func RunMonitor(ctx context.Context, cfg playback.MonitorConfig, device playback
 }
 
 var (
-	_ playback.DiscoveryScanner     = Scanner{}
-	_ playback.DLNATransport        = (*DLNA)(nil)
-	_ playback.DLNAGaplessTransport = (*DLNA)(nil)
-	_ playback.Transport            = (*DLNA)(nil)
-	_ playback.ChromecastTransport  = (*Chromecast)(nil)
-	_ playback.Transport            = (*Chromecast)(nil)
+	_ playback.DiscoveryScanner          = Scanner{}
+	_ playback.DLNATransport             = (*DLNA)(nil)
+	_ playback.DLNAGaplessTransport      = (*DLNA)(nil)
+	_ playback.DLNAStartupRetryTransport = (*DLNA)(nil)
+	_ playback.Transport                 = (*DLNA)(nil)
+	_ playback.ChromecastTransport       = (*Chromecast)(nil)
+	_ playback.Transport                 = (*Chromecast)(nil)
 )

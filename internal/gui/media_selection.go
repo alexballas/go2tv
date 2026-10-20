@@ -32,6 +32,7 @@ type mediaSelectionCard struct {
 	subtitles   *ttwidget.Select
 	media, subs *selectionRow
 	content     *fyne.Container
+	radio       *widget.Button
 	syncing     bool
 }
 
@@ -147,11 +148,18 @@ func newMediaSelectionCard(s *FyneScreen, preview, clearSubs *widget.Button) *me
 	sourceLabel := widget.NewLabel(lang.L("Source"))
 	subtitleLabel := widget.NewLabel(lang.L("Subtitles"))
 	labelWidth := fyne.Max(sourceLabel.MinSize().Width, subtitleLabel.MinSize().Width)
-	sourceRow := container.New(selectionFieldLayout{labelWidth: labelWidth}, sourceLabel, c.source)
+	c.radio = newRadioButton(s)
+	sourceControl := container.NewBorder(nil, nil, nil, c.radio, c.source)
+	sourceRow := container.New(selectionFieldLayout{labelWidth: labelWidth}, sourceLabel, sourceControl)
 	subtitleRow := container.New(selectionFieldLayout{labelWidth: labelWidth}, subtitleLabel, c.subtitles)
 	selectors := container.NewGridWithColumns(2, sourceRow, subtitleRow)
 	mediaArea := container.New(reservedSelectionLayout{}, c.media, s.MediaText)
-	c.content = container.NewVBox(selectors, mediaArea, newTorrentControls(s), s.SelectInternalSubs, c.subs)
+	// Lay out the tooltip wrapper so hover events reach it.
+	var internalSubs fyne.CanvasObject = s.SelectInternalSubs
+	if s.internalSubsToolTip != nil {
+		internalSubs = s.internalSubsToolTip
+	}
+	c.content = container.NewVBox(selectors, mediaArea, newTorrentControls(s), internalSubs, c.subs)
 	c.bindSource(preview)
 	c.refresh()
 	return c
@@ -232,7 +240,14 @@ func (c *mediaSelectionCard) refresh() {
 	} else {
 		c.source.Enable()
 	}
-	mediaKind := mediamodel.KindForPath(s.mediafile)
+	fyne.Do(func() {
+		if s.ExternalMediaURL.Disabled() {
+			c.radio.Disable()
+		} else {
+			c.radio.Enable()
+		}
+	})
+	mediaKind := s.subtitleMediaKind()
 	subtitlesUnavailable := mediaKind == mediamodel.MediaKindAudio || mediaKind == mediamodel.MediaKindImage
 	if subtitlesUnavailable {
 		if c.subtitles.Selected != lang.L(subtitleAutomatic) {
@@ -264,12 +279,22 @@ func (c *mediaSelectionCard) refresh() {
 		s.SubsBrowse.Disable()
 	}
 	s.refreshPlaybackReadiness()
-	if c.subtitles.Disabled() {
+	// No tracks means no probe result (e.g. ffmpeg missing); nothing to pick.
+	if c.subtitles.Disabled() || len(s.SelectInternalSubs.Options) == 0 {
 		s.SelectInternalSubs.Disable()
 	} else {
 		s.SelectInternalSubs.Enable()
 	}
 	c.content.Refresh()
+}
+
+// subtitleMediaKind classifies what subtitles would attach to. URL mode
+// follows the current input, since s.mediafile lags URL edits.
+func (s *FyneScreen) subtitleMediaKind() mediamodel.MediaKind {
+	if !s.ExternalMediaURL.Checked {
+		return mediamodel.KindForPath(s.mediafile)
+	}
+	return s.subtitleKindForInput(s.MediaText.Text)
 }
 
 // Keep source transitions shared with queue selection and live-stream controls.
@@ -291,8 +316,14 @@ func (c *mediaSelectionCard) bindSource(preview *widget.Button) {
 			mediafileOld = s.mediafile
 			mediafileOldText = s.MediaText.Text
 
-			// Clear the Media Text Area
-			clearCurrentMediaSelection(s)
+			// Bring back the last URL, with its radio station and artwork.
+			s.mu.RLock()
+			urlInput := s.urlInput
+			s.mu.RUnlock()
+			replaceCurrentMediaSelection(s, urlInput)
+			if _, radio := s.radioStationForURL(urlInput); radio {
+				s.mediafile = urlInput
+			}
 
 			// Set some Media text defaults
 			// to indicate that we're expecting a URL

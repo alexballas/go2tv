@@ -68,6 +68,8 @@ type Media struct {
 	Album       string
 	AlbumArtist string
 	Artwork     *Artwork
+	// AudioOnly preserves the content kind when the transport MIME is HLS.
+	AudioOnly bool
 }
 
 // ArtworkAsset is normalized artwork owned by the HTTP layer.

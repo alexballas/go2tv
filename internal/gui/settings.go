@@ -225,6 +225,10 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		}
 
 		fyne.CurrentApp().Preferences().SetString("Gapless", selection)
+		// Re-enabling is an explicit retry of renderers disabled after failures.
+		s.dlnaQueueMu.Lock()
+		s.dlnaGaplessUnavailable, s.dlnaGaplessStrikes = nil, nil
+		s.dlnaQueueMu.Unlock()
 		if s.NextMediaCheck.Checked {
 			target := traversalPlaybackTarget(s)
 			go func() {
@@ -233,15 +237,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 					switch s.getScreenState() {
 					case "Playing", "Paused":
 						if target.device.deviceType == devices.DeviceTypeDLNA {
-							newTVPayload, err := queueNext(s, false)
-							if err == nil {
-								s.dlnaQueueMu.Lock()
-								if s.serverStopCTX != nil && s.serverStopCTX.Err() == nil && s.GaplessMediaWatcher == nil {
-									s.GaplessMediaWatcher = gaplessMediaWatcher
-									go s.GaplessMediaWatcher(s.serverStopCTX, s, newTVPayload)
-								}
-								s.dlnaQueueMu.Unlock()
-							}
+							_, _ = queueNext(s, false)
 						}
 					}
 				case "Disabled":

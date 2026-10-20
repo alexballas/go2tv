@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -16,7 +18,9 @@ import (
 	"go2tv.app/go2tv/v2/httphandlers"
 	"go2tv.app/go2tv/v2/internal/mediamodel"
 	"go2tv.app/go2tv/v2/internal/playback"
+	"go2tv.app/go2tv/v2/internal/radiometadata"
 	"go2tv.app/go2tv/v2/metadata"
+	"go2tv.app/go2tv/v2/utils"
 )
 
 const (
@@ -53,6 +57,7 @@ type activeSession struct {
 	ctx              context.Context
 	cancel           context.CancelCauseFunc
 	reusable         bool
+	rendererStopped  bool
 	imageReady       bool
 	imageTimer       context.CancelFunc
 	imageEpoch       uint64
@@ -61,6 +66,10 @@ type activeSession struct {
 	queued           *gaplessSession
 	gaplessActive    atomic.Bool
 	gaplessQueueing  bool
+	monitorNext      atomic.Pointer[string]
+	monitorTimeline  atomic.Pointer[playback.Position]
+	// Native seek target for the restarted monitor's end-of-track guard.
+	seekHint *playback.Position
 }
 
 type gaplessCandidate struct {
@@ -141,14 +150,17 @@ type actorState struct {
 	volume       int
 	muted        bool
 	artworkID    string
-	lastError    string
-	terminal     playback.TerminalReason
-	deferred     *playback.MonitorEvent
-	cleanup      bool
+	// streamTitle is the current track of the live stream started by generation.
+	streamTitle string
+	lastError   string
+	terminal    playback.TerminalReason
+	deferred    *playback.MonitorEvent
+	cleanup     bool
 	// gaplessUnsupported remembers renderers that reported they cannot stage a
 	// next URI, so later tracks fall back to ordinary autoplay instead of
 	// re-attempting gapless queueing on every session.
 	gaplessUnsupported map[string]bool
+	gaplessStrikes     map[string]int
 }
 
 type Controller struct {
@@ -409,8 +421,13 @@ func (s *actorState) snapshot() Snapshot {
 		Volume: s.volume, Muted: s.muted, ArtworkID: s.artworkID, Policy: s.policy,
 		LastError: s.lastError, TerminalReason: s.terminal,
 	}
+	result.SelectedMediaID, result.SelectedLive = MediaID{RootID: s.media.RootID, ID: s.media.ID}, s.media.Live != nil
 	if s.active != nil {
 		result.HasSession, result.ActiveDeviceID, result.ActiveMediaName, result.MediaType = true, s.active.target.ID, s.active.media.Name, s.active.kind
+		result.ActiveMediaID, result.ActiveLive = MediaID{RootID: s.active.media.RootID, ID: s.active.media.ID}, s.active.media.Live != nil
+		if result.ActiveLive {
+			result.StreamTitle = s.streamTitle
+		}
 	}
 	if s.queue != nil {
 		current, _ := s.queue.Current()
@@ -818,6 +835,10 @@ func (c *Controller) SetPolicy(ctx context.Context, request PolicyRequest) Resul
 			return fail(request.RequestID, s.revision, ErrInvalidPolicy)
 		}
 		restartImageTimer := s.policy.AutoPlayNext != p.AutoPlayNext || s.policy.ImageDurationSeconds != p.ImageDurationSeconds
+		if p.GaplessEnabled && !s.policy.GaplessEnabled {
+			// Re-enabling is an explicit retry of renderers disabled after failures.
+			s.gaplessUnsupported, s.gaplessStrikes = nil, nil
+		}
 		s.policy = p
 		if restartImageTimer {
 			s.syncImageTimer()
@@ -1046,6 +1067,13 @@ func (c *Controller) Play(ctx context.Context, request PlayRequest) Result {
 	return c.play(ctx, request)
 }
 
+// PlayMedia selects and starts media without adding it to the queue. Live
+// streams use it: they never end, so queue traversal never needs them.
+func (c *Controller) PlayMedia(ctx context.Context, mutation Mutation, media MediaRef) Result {
+	media = cloneMediaRef(media)
+	return c.play(ctx, PlayRequest{Mutation: mutation, media: &media})
+}
+
 // QueueAndPlay atomically adds or reuses, selects, and starts media.
 func (c *Controller) QueueAndPlay(ctx context.Context, mutation Mutation, media MediaRef) Result {
 	media = cloneMediaRef(media)
@@ -1110,6 +1138,7 @@ func (s *actorState) beginPlay(request PlayRequest, response chan<- Result) {
 	}
 	s.media = media
 	s.artworkID = ""
+	s.streamTitle = ""
 	s.commit()
 	opCtx, cancel := context.WithCancelCause(s.controller.ctx)
 	operation := &playOperation{generation: generation, cancel: cancel, done: make(chan struct{})}
@@ -1151,7 +1180,10 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 	generation := operation.generation
 	ioCtx, timeoutCancel := operationContext(ctx, request.ctx, c.cfg.OperationTimeout)
 	defer timeoutCancel()
-	if target.Protocol == "Chromecast" {
+	live := media.Live
+	if live != nil {
+		subtitle, automaticTorrentSubtitles = SubtitleRef{}, false
+	} else if target.Protocol == "Chromecast" {
 		transcode = playback.ChromecastTranscodeEnabled(transcode, media.Name, mediaMIME(media, item.MediaKind()))
 	}
 	var reusedCast existingLoader
@@ -1204,7 +1236,7 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 		return
 	}
 	opener := media.OpenDirect
-	if transcode {
+	if transcode && live == nil {
 		opener = media.OpenTranscode
 		if opener == nil {
 			_ = cleanupTransport(transport, c.cfg.MediaServer, c.cfg.OperationTimeout)
@@ -1216,6 +1248,15 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 	if transcode && target.Protocol == "Chromecast" {
 		serverRequest.MediaExt = ".mp4"
 		serverRequest.MediaType = "video/mp4"
+	}
+	if live != nil {
+		serverRequest.MediaExt = liveExtension(live.URL)
+		serverRequest.Live = &playback.LiveSource{URL: live.URL, OnTitle: c.liveTitles(generation)}
+		// Transcoding re-encodes the station to AAC for receivers that
+		// cannot play its codec.
+		if transcode {
+			serverRequest.MediaExt, serverRequest.MediaType = ".aac", utils.AudioTranscodeMediaType
+		}
 	}
 	if subtitle.valid() {
 		serverRequest.Subtitle, serverRequest.SubtitleExt = subtitle.Open, subtitle.extension()
@@ -1229,7 +1270,7 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 		}
 	}
 	duration := 0.0
-	if transcode && c.cfg.DurationProbe != nil {
+	if transcode && live == nil && c.cfg.DurationProbe != nil {
 		if probed, probeErr := c.cfg.DurationProbe(ioCtx, media.OpenDirect); probeErr == nil && probed > 0 {
 			duration = probed
 		}
@@ -1263,6 +1304,15 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 		Seekable:           !transcode,
 		Transcode:          transcode,
 		Metadata:           metadata.Media{Title: item.BaseName()},
+	}
+	if live != nil {
+		loadRequest.Live, loadRequest.Seekable = true, false
+		loadRequest.Metadata = metadata.Media{Title: media.Name, AudioOnly: item.MediaKind() == mediamodel.MediaKindAudio}
+		// Receivers that fetch the station themselves keep its origin for
+		// relative HLS segments and avoid a relay hop.
+		if !transcode && (live.HLS || target.Protocol == "Chromecast") {
+			loadRequest.MediaURL = live.URL
+		}
 	}
 	c.attachArtwork(ioCtx, item.ID(), &media, &loadRequest, &routeIDs)
 	if err == nil && target.Protocol == "DLNA" {
@@ -1326,6 +1376,62 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 	c.completePlay(playCompletion{generation: generation, operation: operation, session: session, request: request, response: response})
 }
 
+func liveExtension(streamURL string) string {
+	if parsed, err := url.Parse(streamURL); err == nil {
+		return path.Ext(parsed.Path)
+	}
+	return ""
+}
+
+type trackTitler interface {
+	SetTrackTitle(context.Context, string) error
+}
+
+// liveTitles records station track titles for one playback generation.
+func (c *Controller) liveTitles(generation uint64) func(string) {
+	return func(title string) {
+		_ = c.enqueueInternal(message{fn: func(s *actorState) { s.setStreamTitle(generation, title) }})
+	}
+}
+
+// startLiveTitles reads ICY titles for live streams the renderer fetches
+// directly. Relayed streams report titles from the relay connection instead.
+func (c *Controller) startLiveTitles(session *activeSession) {
+	live := session.media.Live
+	if live == nil || live.HLS || session.load.MediaURL != live.URL {
+		return
+	}
+	ctx, onTitle := session.ctx, c.liveTitles(session.generation)
+	c.goOwned(func() {
+		if err := radiometadata.StreamTitles(ctx, live.URL, onTitle); err != nil && ctx.Err() == nil && c.cfg.Logger != nil {
+			c.cfg.Logger.Debug("Live track titles unavailable: " + err.Error())
+		}
+	})
+}
+
+func (s *actorState) setStreamTitle(generation uint64, title string) {
+	if generation != s.generation || title == s.streamTitle {
+		return
+	}
+	s.streamTitle = title
+	s.commit()
+	active := s.active
+	if active == nil || active.generation != generation {
+		return
+	}
+	// DLNA renderers read titles in-band from the relayed stream.
+	if titler, ok := active.transport.(trackTitler); ok {
+		c, ctx := s.controller, active.ctx
+		c.goOwned(func() {
+			ctx, cancel := context.WithTimeout(ctx, c.cfg.OperationTimeout)
+			defer cancel()
+			if err := titler.SetTrackTitle(ctx, title); err != nil && ctx.Err() == nil && c.cfg.Logger != nil {
+				c.cfg.Logger.Debug("Live track title update failed: " + err.Error())
+			}
+		})
+	}
+}
+
 func operationContext(base, request context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
 	if base == nil {
 		base = context.Background()
@@ -1341,17 +1447,43 @@ func operationContext(base, request context.Context, timeout time.Duration) (con
 	}
 }
 
+func (session *activeSession) syncDLNAMonitor() {
+	session.monitorTimeline.Store(&playback.Position{Current: session.seekOffset, Duration: session.expectedDuration})
+	if session.queued != nil {
+		uri := session.queued.load.MediaURL
+		session.monitorNext.Store(&uri)
+	} else {
+		session.monitorNext.Store(nil)
+	}
+}
+
 func (c *Controller) startMonitor(session *activeSession) {
 	if c.cfg.RunMonitor == nil || session == nil {
 		return
 	}
+	session.syncDLNAMonitor()
 	cfg := playback.MonitorConfig{
+		CurrentURI: session.load.MediaURL,
+		QueuedURI: func() string {
+			if uri := session.monitorNext.Load(); uri != nil {
+				return *uri
+			}
+			return ""
+		},
+		DLNATimeline: func() (int, int) {
+			timeline := session.monitorTimeline.Load()
+			return timeline.Current, timeline.Duration
+		},
 		Generation:       session.generation,
 		SeekOffset:       session.seekOffset,
 		ExpectedDuration: session.expectedDuration,
 		Clock:            c.cfg.Clock,
 		Sink:             c,
 		GaplessActive:    session.gaplessActive.Load,
+	}
+	if hint := session.seekHint; hint != nil {
+		cfg.InitialPosition, cfg.InitialDuration = hint.Current, hint.Duration
+		session.seekHint = nil
 	}
 	c.goOwned(func() { c.cfg.RunMonitor(session.ctx, cfg, session.target, session.transport) })
 }
@@ -1463,6 +1595,7 @@ func (s *actorState) reconcileGapless() {
 	// still deferred by the monitor. Promotion is gated on active.queued, which
 	// is cleared here, so the in-flight poll cannot promote a stale next.
 	active.queued = nil
+	active.monitorNext.Store(nil)
 	active.gaplessQueueing = true
 	s.controller.goOwned(func() {
 		ioCtx, cancel := context.WithTimeout(active.ctx, s.controller.cfg.OperationTimeout)
@@ -1505,6 +1638,7 @@ func (s *actorState) reconcileGapless() {
 			} else {
 				active.queued = nil
 			}
+			active.syncDLNAMonitor()
 			active.gaplessActive.Store(active.queued != nil)
 			if err != nil && current.controller.cfg.Logger != nil {
 				current.controller.cfg.Logger.Warning("DLNA gapless playback update failed; using ordinary autoplay")
@@ -1575,7 +1709,7 @@ func teardownSession(ctx context.Context, session *activeSession, server playbac
 			return gapless.ClearNext(ctx)
 		}))
 	}
-	if session.target.Protocol != "Chromecast" || session.reusable {
+	if !session.rendererStopped && (session.target.Protocol != "Chromecast" || session.reusable) {
 		result = errors.Join(result, rendererCleanup(session.transport, closeTimeout, func(ctx context.Context, transport Transport) error {
 			return transport.Stop(ctx)
 		}))
@@ -1606,7 +1740,7 @@ func transitionSession(ctx context.Context, session *activeSession, server playb
 			return gapless.ClearNext(ctx)
 		})
 	}
-	if session.target.Protocol != "Chromecast" || session.reusable {
+	if !session.rendererStopped && (session.target.Protocol != "Chromecast" || session.reusable) {
 		_ = rendererCleanup(session.transport, closeTimeout, func(ctx context.Context, transport Transport) error {
 			return transport.Stop(ctx)
 		})
@@ -1665,6 +1799,7 @@ func (c *Controller) completePlay(completion playCompletion) {
 		}
 		completion.operation.finish()
 		c.startMonitor(completion.session)
+		c.startLiveTitles(completion.session)
 		actorResponded = true
 		completion.response <- Result{RequestID: completion.request.RequestID, Revision: s.revision}
 	}})
@@ -1893,6 +2028,9 @@ func (c *Controller) Seek(ctx context.Context, request SeekRequest) Result {
 				if active.server.Transcode {
 					active.server.SeekOffset = request.Seconds
 					active.seekOffset = request.Seconds
+				} else if active.target.Protocol == "DLNA" && duration > 0 {
+					// Renderers resume on the next keyframe, past the target.
+					active.seekHint = &playback.Position{Current: request.Seconds + 1, Duration: duration}
 				}
 				s.position, s.state = request.Seconds, PlaybackStatePlaying
 				s.commit()
@@ -2072,7 +2210,7 @@ func (c *Controller) deviceControl(ctx context.Context, mutation Mutation, call 
 // HandleMonitorEvent accepts adapter monitor updates. Progress events may be
 // dropped under pressure; terminal events are retained unless shutting down.
 func (c *Controller) HandleMonitorEvent(_ context.Context, event playback.MonitorEvent) {
-	if event.Terminal == "" {
+	if event.Terminal == "" && !event.GaplessPromoted {
 		select {
 		case <-c.ctx.Done():
 		case c.callbacks <- event:
@@ -2121,9 +2259,14 @@ func (s *actorState) monitor(event playback.MonitorEvent) {
 	if event.NextURIObserved && event.NextURI == gaplessUnsupportedURI {
 		s.disableGapless()
 	}
-	promoted := event.NextURIObserved && event.NextURI == "" && s.promoteGapless()
+	promoted := event.GaplessPromoted && s.active.queued != nil && event.GaplessURI == s.active.queued.load.MediaURL && s.promoteGapless()
 	if promoted {
+		delete(s.gaplessStrikes, s.active.target.ID)
 		changed = true
+	}
+	if s.active.media.Live != nil {
+		// Renderers report arbitrary durations for endless streams.
+		event.Duration = 0
 	}
 	if !promoted && (event.Position != 0 || event.Duration != 0) {
 		if s.position != event.Position || s.duration != event.Duration {
@@ -2152,7 +2295,23 @@ func (s *actorState) monitor(event playback.MonitorEvent) {
 		s.syncImageTimer()
 	}
 	if event.Terminal != "" {
+		s.active.rendererStopped = s.active.target.Protocol == "DLNA" && event.DLNAStopped
+		if event.Recovery == playback.RecoveryGaplessHandoffFailed {
+			if s.gaplessStrikes == nil {
+				s.gaplessStrikes = map[string]int{}
+			}
+			s.gaplessStrikes[s.active.target.ID]++
+			if s.gaplessStrikes[s.active.target.ID] >= playback.GaplessHandoffStrikes {
+				if s.gaplessUnsupported == nil {
+					s.gaplessUnsupported = map[string]bool{}
+				}
+				s.gaplessUnsupported[s.active.target.ID] = true
+			}
+		}
 		if s.controller.cfg.Logger != nil {
+			if event.Recovery != "" {
+				s.controller.cfg.Logger.Info("DLNA playback recovery: " + event.Recovery)
+			}
 			switch event.Terminal {
 			case playback.TerminalFinished:
 				s.controller.cfg.Logger.Info("Playback completed")
@@ -2197,6 +2356,7 @@ func (s *actorState) disableGapless() {
 	s.gaplessUnsupported[active.target.ID] = true
 	queued := active.queued
 	active.queued = nil
+	active.syncDLNAMonitor()
 	active.gaplessActive.Store(false)
 	if newlyMarked && s.controller.cfg.Logger != nil {
 		s.controller.cfg.Logger.Info("Renderer does not support DLNA gapless playback; using ordinary autoplay")
@@ -2234,6 +2394,7 @@ func (s *actorState) promoteGapless() bool {
 	active.expectedDuration = int(queued.load.Duration)
 	active.imageReady = true
 	active.queued = nil
+	active.syncDLNAMonitor()
 	active.gaplessActive.Store(false)
 	if index := queueIndex(s.queue, queued.itemID); index >= 0 {
 		s.queue.SetCurrentIndex(index)
