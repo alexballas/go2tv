@@ -341,7 +341,7 @@ Go2TV uses a custom Chromecast receiver hosted at https://cast-receiver.go2tv.ap
 
 **Requirements**:
 
-- Go 1.26.9 or later (Go 1.27 requires 1.27.2 or later)
+- Go 1.26.9 or later
 - A C compiler and the GUI toolkit headers:
   - **Debian/Ubuntu**: `sudo apt install gcc pkg-config xorg-dev libwayland-dev libxkbcommon-dev libegl-dev libpipewire-0.3-dev`
   - **macOS**: `xcode-select --install`
