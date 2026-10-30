@@ -179,7 +179,7 @@ func ServeChromecastTranscodedStream(
 			"-f", "mp4",
 			"pipe:1",
 		)
-		return args
+		return append(args, burn.outputArgs()...)
 	}
 
 	if isRawInput && (opts.RawInput.Width == 0 || opts.RawInput.Height == 0) {

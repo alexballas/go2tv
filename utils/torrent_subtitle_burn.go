@@ -261,6 +261,21 @@ func (b *subtitleBurn) videoArgs(base, tail string) []string {
 	}
 }
 
+func (b *subtitleBurn) outputArgs() []string {
+	if b.bitmap == nil || !b.bitmapSeek {
+		return nil
+	}
+	// FFmpeg 8 can stall the separate bitmap input while the sought input's
+	// audio waits for video. Keep its packets draining so subtitle heartbeats
+	// and EOF reach the overlay. Stream copy avoids decoding duplicate A/V;
+	// the null muxer writes no bytes to the renderer's stdout.
+	return []string{
+		"-map", "1:v:0?", "-map", "1:a:0?",
+		"-map", fmt.Sprintf("1:s:%d", b.bitmap.Track),
+		"-c", "copy", "-f", "null", "-",
+	}
+}
+
 func renderTorrentCaptions(ctx context.Context, w io.Writer, opts *TranscodeOptions, origin float64, fontsDir string, parser *mkvsubs.Parser) error {
 	metadata := parser.BurnMetadata()
 	ext := ".srt"

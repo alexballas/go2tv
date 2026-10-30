@@ -132,7 +132,7 @@ func serveDLNATranscodedStream(ctx context.Context, w io.Writer, input any, ff *
 			"-max_delay", "0",
 		)
 		args = append(args, "-f", "mpegts", "pipe:1")
-		return args
+		return append(args, burn.outputArgs()...)
 	}
 
 	hw := selectTranscodeVideoDecoder(ffmpegPath, encoderPlan, burn.enabled(), in, false)

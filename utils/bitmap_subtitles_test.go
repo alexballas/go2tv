@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -90,6 +91,18 @@ func TestBitmapSubtitleExtractionReportsUnsupportedText(t *testing.T) {
 
 func TestBitmapSubtitleBurnPlayback(t *testing.T) {
 	ffmpeg, media := bitmapSubtitleFixture(t)
+	// Small CPU counts expose FFmpeg 8's multi-input subtitle scheduling
+	// deadlock. Exercise that path even on larger development machines.
+	if runtime.GOOS != "windows" {
+		if err := exec.Command(ffmpeg, "-cpucount", "2", "-version").Run(); err == nil {
+			t.Setenv("GO2TV_BITMAP_TEST_FFMPEG", ffmpeg)
+			ffmpeg = filepath.Join(t.TempDir(), "ffmpeg")
+			script := "#!/bin/sh\nexec \"$GO2TV_BITMAP_TEST_FFMPEG\" -cpucount 2 \"$@\"\n"
+			if err := os.WriteFile(ffmpeg, []byte(script), 0o700); err != nil {
+				t.Fatalf("write limited CPU ffmpeg: %v", err)
+			}
+		}
+	}
 	selected, err := EmbeddedSubtitleForBurn(ffmpeg, media, 1)
 	if err != nil || selected == nil || !selected.Bitmap || selected.Track != 1 {
 		t.Fatalf("select bitmap track: %+v, %v", selected, err)
