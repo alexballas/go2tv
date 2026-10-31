@@ -102,7 +102,7 @@ When transcoding is enabled, Go2TV probes available GPU H.264 encoders first and
 - **macOS**: `brew install ffmpeg`
 - **Windows**: `winget install Gyan.FFmpeg`, or download from [ffmpeg.org](https://ffmpeg.org/download.html) and add it to `PATH`
 - **Flatpak**: FFmpeg is bundled automatically
-- **Android**: FFmpeg is bundled in the default APK. It is arm64-only; source builds target Android API 21 and include MediaCodec and `libx264` encoders.
+- **Android**: FFmpeg is bundled in the default APK. It is arm64-only; source builds target Android API 21 and include MediaCodec, `libx264`, zlib/PNG, and libass for text subtitle burn-in.
 
 If Go2TV can't find FFmpeg, point it at the binary in **Settings → Advanced → ffmpeg Path**
 (GUI) or pass `-ffmpeg /path/to/ffmpeg` (CLI).
@@ -370,3 +370,7 @@ Alexandros Ballas <alex@ballas.org>
 MIT
 
 Artifacts that bundle FFmpeg inherit the bundled FFmpeg build's license obligations. Source-built Android APKs and default bundled AppImages use GPL FFmpeg builds. Local Android builds and CI use the same pinned FFmpeg/x264 sources.
+
+Android subtitle rendering is based in part on the work of the FreeType Team.
+Portions of this software are copyright © 2026 The FreeType Project
+(https://freetype.org). All rights reserved.

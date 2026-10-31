@@ -97,7 +97,11 @@ func TestBitmapSubtitleBurnPlayback(t *testing.T) {
 		if err := exec.Command(ffmpeg, "-cpucount", "2", "-version").Run(); err == nil {
 			t.Setenv("GO2TV_BITMAP_TEST_FFMPEG", ffmpeg)
 			ffmpeg = filepath.Join(t.TempDir(), "ffmpeg")
-			script := "#!/bin/sh\nexec \"$GO2TV_BITMAP_TEST_FFMPEG\" -cpucount 2 \"$@\"\n"
+			shell := "/bin/sh"
+			if runtime.GOOS == "android" {
+				shell = "/system/bin/sh"
+			}
+			script := "#!" + shell + "\nexec \"$GO2TV_BITMAP_TEST_FFMPEG\" -cpucount 2 \"$@\"\n"
 			if err := os.WriteFile(ffmpeg, []byte(script), 0o700); err != nil {
 				t.Fatalf("write limited CPU ffmpeg: %v", err)
 			}

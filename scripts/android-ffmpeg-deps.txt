@@ -1,0 +1,9 @@
+# name upstream revision license
+libiconv https://ftpmirror.gnu.org/libiconv/libiconv-1.18.tar.gz 3b08f5f4f9b4eb82f151a7040bfd6fe6c6fb922efe4b1659c66ea933276965e8 COPYING.LIB
+freetype https://github.com/freetype/freetype.git 37515cf56ba3349656049edbed89ffc6f6466f2d docs/FTL.TXT
+harfbuzz https://github.com/harfbuzz/harfbuzz.git 35f656a1a2bab548ea7f54a6dd3fba2b09680d14 COPYING
+fribidi https://github.com/fribidi/fribidi.git 15393e4937aa95bcf865d92143735746aeb654fa COPYING
+expat https://github.com/libexpat/libexpat.git a76b1174c1ea52abb639a4c69d52b630a8a106a2 expat/COPYING
+fontconfig https://github.com/fontconfig/fontconfig.git 6d0a98982ec351c165c9224c8b7dbdfca3010e47 COPYING
+libunibreak https://github.com/adah1972/libunibreak.git 28a2756b864c343f438cd22537d49d394d4666a5 LICENCE
+libass https://github.com/libass/libass.git 4a05d8127f525943ebf45fdc6497c9e665947f0d COPYING

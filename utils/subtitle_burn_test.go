@@ -137,8 +137,10 @@ func TestLocalTextBurnPreservesAttachedFonts(t *testing.T) {
 				t.Fatal(err)
 			}
 			filter := fmt.Sprintf("setpts=PTS+2/TB,subtitles='%s':si=0%s:alpha=1", escapeFFmpegPath(media), subtitleBurnStyle(opts.SubtitleSize))
-			originalBytes, err := exec.CommandContext(ctx, ffmpeg, "-v", "error", "-f", "lavfi", "-i", "color=c=black@0:size=320x180:rate=25:duration=1,format=rgba", "-vf", filter,
-				"-frames:v", "1", "-c:v", "png", "-threads", "1", "-f", "image2pipe", "pipe:1").Output()
+			reference := exec.CommandContext(ctx, ffmpeg, "-v", "error", "-f", "lavfi", "-i", "color=c=black@0:size=320x180:rate=25:duration=1,format=rgba", "-vf", filter,
+				"-frames:v", "1", "-c:v", "png", "-threads", "1", "-f", "image2pipe", "pipe:1")
+			setSysProcAttr(reference)
+			originalBytes, err := reference.Output()
 			if err != nil {
 				t.Fatalf("render original captions: %v", err)
 			}
@@ -207,6 +209,7 @@ func checkTorrentStyledRendering(t *testing.T, ffmpeg, media string) {
 			at := float64(tc.seek) + float64(tc.frame)/25
 			filter := fmt.Sprintf("setpts=PTS+%.9f/TB,subtitles='%s':si=0:alpha=1", at, escapeFFmpegPath(media))
 			reference := exec.CommandContext(ctx, ffmpeg, "-v", "error", "-f", "lavfi", "-i", "color=c=black@0:size=320x180:rate=25:duration=1,format=rgba", "-vf", filter, "-frames:v", "1", "-c:v", "png", "-threads", "1", "-f", "image2pipe", "pipe:1")
+			setSysProcAttr(reference)
 			originalBytes, err := reference.Output()
 			if err != nil {
 				t.Fatalf("render reference: %v", err)

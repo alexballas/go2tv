@@ -38,12 +38,17 @@ and `APPIMAGE_OUT` (using the final release filename) when running `make`.
 make android
 ```
 
-`make android` builds the arm64 APK with MediaCodec hardware encoding and
-libx264 software fallback. Set `ANDROID_HOME` to the SDK and `ANDROID_NDK_HOME`
-to NDK r27d. Git, Make, a C build toolchain, and pkg-config are also required.
+`make android` builds the arm64 APK with MediaCodec hardware encoding,
+libx264 software fallback, zlib/PNG support, and libass text subtitle rendering.
+Set `ANDROID_HOME` to the SDK and `ANDROID_NDK_HOME` to NDK r27d. Git, Make,
+a C build toolchain, pkg-config, curl, Meson 1.6.1+, Ninja, CMake, gperf,
+Autoconf, Automake, and Libtool are also required.
 
 The first build fetches official FFmpeg/x264 sources at the revisions pinned in
-`Makefile`, then compiles them for Android API 21. Later builds reuse the binaries
+`Makefile` and subtitle dependencies pinned in `scripts/android-ffmpeg-deps.txt`,
+then compiles them for Android API 21. The GNU libiconv release archive is
+verified against its pinned SHA-256; other dependencies use full Git commits.
+Android's system zlib is used. Later builds reuse the binaries
 unless the sources, NDK, API, ABI, or build script change. Set `FFMPEG_BUILD_JOBS`
 to limit compiler concurrency. `make android-source` remains an alias; the old
 third-party binary-download mode has been removed.
@@ -53,6 +58,20 @@ archives from `make android-source-archives`. Required transcoding features and
 16 KB ELF alignment are checked before packaging. GPL notices and exact source
 revisions are embedded in the APK.
 
+Libass uses FreeType, HarfBuzz, FriBidi, libunibreak, and Fontconfig/Expat for
+styled text and device-font fallback. Go2TV supplies an app-local Fontconfig
+configuration and writable font cache; attached MKV fonts and adjacent ASS/SSA
+fonts retain priority. Libiconv supports legacy subtitle encodings on API 21+.
+The build verifies text/bitmap overlay filters and PNG encoding/decoding, so
+local and torrent subtitle burn-in use the same pipeline as desktop builds.
+
+With an arm64 device connected, run `scripts/test-android-subtitles.sh` to verify
+rendered SRT/ASS, legacy encodings, attached fonts, torrent captions, and bitmap
+seek playback. For a native x86_64 emulator, build a separate test FFmpeg with
+`make android-ffmpeg-source ANDROID_ABI=x86_64 ANDROID_FFMPEG_SOURCE_OUT=build/ffmpeg-android-x86_64`
+(requires NASM), then pass that directory to the test script. APK packaging
+remains arm64-only.
+
 To supply binaries built separately:
 
 ``` console
@@ -61,7 +80,8 @@ make android ANDROID_FFMPEG_MODE=local \
   ANDROID_FFPROBE_BIN=/path/to/ffprobe
 ```
 
-Keep `FFmpeg-GPL-2.0.txt`, `x264-GPL-2.0.txt`, and `build-info.txt` beside FFmpeg.
+Keep `FFmpeg-GPL-2.0.txt`, `x264-GPL-2.0.txt`, dependency `*-LICENSE.txt` notices,
+and `build-info.txt` beside FFmpeg.
 For alternative source revisions, override `ANDROID_FFMPEG_REF` and
 `ANDROID_X264_REF` with full commit hashes. Existing checkouts can be supplied
 with `ANDROID_FFMPEG_SOURCE_DIR` and `ANDROID_X264_SOURCE_DIR`; they must match

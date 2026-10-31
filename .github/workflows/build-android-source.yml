@@ -30,6 +30,14 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Install native build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake pkg-config gperf autoconf automake libtool python3-venv
+          python3 -m venv "$RUNNER_TEMP/meson"
+          "$RUNNER_TEMP/meson/bin/pip" install meson==1.10.1
+          echo "$RUNNER_TEMP/meson/bin" >> "$GITHUB_PATH"
+
       - name: Install pinned Android NDK
         run: |
           archive="android-ndk-${NDK_VERSION}-linux.zip"
@@ -78,10 +86,10 @@ jobs:
             README.md
             build/ffmpeg-android-source/FFmpeg-GPL-2.0.txt
             build/ffmpeg-android-source/x264-GPL-2.0.txt
+            build/ffmpeg-android-source/*-LICENSE.txt
             build/ffmpeg-android-source/build-info.txt
             build/ffmpeg-android-source/ffmpeg-config.mak
-            build/FFmpeg-source.tar.xz
-            build/x264-source.tar.xz
+            build/*-source.tar.xz
             Go2TV.apk
           retention-days: 7
 
@@ -94,6 +102,7 @@ jobs:
             README.md
             build/ffmpeg-android-source/FFmpeg-GPL-2.0.txt
             build/ffmpeg-android-source/x264-GPL-2.0.txt
+            build/ffmpeg-android-source/*-LICENSE.txt
             build/ffmpeg-android-source/build-info.txt
             Go2TV-unsigned.apk
           retention-days: 7

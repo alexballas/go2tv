@@ -15,11 +15,41 @@ if [ ! -d "$directory" ]; then
 	trap 'rm -rf "$workdir"' EXIT HUP INT TERM
 	git -C "$workdir" init -q
 	git -C "$workdir" remote add origin "$url"
-	git -C "$workdir" fetch --depth 1 origin "$revision"
-	git -C "$workdir" checkout -q --detach FETCH_HEAD
+	case "$url" in
+		*.tar.gz)
+			archive=$workdir/source.tar.gz
+			curl -fL "$url" -o "$archive"
+			if command -v sha256sum >/dev/null 2>&1; then
+				actual=$(sha256sum "$archive" | awk '{print $1}')
+			else
+				actual=$(shasum -a 256 "$archive" | awk '{print $1}')
+			fi
+			if [ "$actual" != "$revision" ]; then echo "source checksum mismatch: $url" >&2; exit 1; fi
+			tar -xzf "$archive" --strip-components=1 -C "$workdir"
+			rm "$archive"
+			git -C "$workdir" add -f .
+			git -C "$workdir" -c user.name=Go2TV -c user.email=build@go2tv.app -c commit.gpgsign=false commit -qm 'Import verified source archive'
+			git -C "$workdir" config go2tv.archive-sha256 "$revision"
+			git -C "$workdir" config go2tv.archive-commit "$(git -C "$workdir" rev-parse HEAD)"
+			;;
+		*)
+			git -C "$workdir" fetch --depth 1 origin "$revision"
+			git -C "$workdir" checkout -q --detach FETCH_HEAD
+			;;
+	esac
 	mv "$workdir" "$directory"
 fi
-if [ "$(git -C "$directory" rev-parse HEAD)" != "$revision" ]; then
+expected=$revision
+case "$url" in
+	*.tar.gz)
+		if [ "$(git -C "$directory" config go2tv.archive-sha256)" != "$revision" ]; then
+			echo "source checksum mismatch: $directory" >&2
+			exit 1
+		fi
+		expected=$(git -C "$directory" config go2tv.archive-commit)
+		;;
+esac
+if [ "$(git -C "$directory" rev-parse HEAD)" != "$expected" ]; then
 	echo "source revision mismatch: $directory (expected $revision)" >&2
 	exit 1
 fi

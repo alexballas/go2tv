@@ -78,6 +78,7 @@ ANDROID_X264_REF?=b35605ace3ddf7c1a5d67a2eb553f034aef41d55
 ANDROID_FFMPEG_MODE?=source
 ANDROID_FFMPEG_SOURCE_DIR?=$(BUILD_DIR)/android-sources/ffmpeg-$(ANDROID_FFMPEG_REF)
 ANDROID_X264_SOURCE_DIR?=$(BUILD_DIR)/android-sources/x264-$(ANDROID_X264_REF)
+ANDROID_FFMPEG_DEPS_DIR?=$(BUILD_DIR)/android-sources
 ANDROID_FFMPEG_SOURCE_OUT?=$(BUILD_DIR)/ffmpeg-android-source
 ANDROID_FFMPEG_BIN?=$(ANDROID_FFMPEG_SOURCE_OUT)/ffmpeg
 ANDROID_FFPROBE_BIN?=$(ANDROID_FFMPEG_SOURCE_OUT)/ffprobe
@@ -258,9 +259,13 @@ check-no-replace:
 android-ffmpeg-sources:
 	scripts/fetch-android-source.sh https://github.com/FFmpeg/FFmpeg.git "$(ANDROID_FFMPEG_REF)" "$(ANDROID_FFMPEG_SOURCE_DIR)"
 	scripts/fetch-android-source.sh https://code.videolan.org/videolan/x264.git "$(ANDROID_X264_REF)" "$(ANDROID_X264_SOURCE_DIR)"
+	@set -e; while read -r name url revision license; do \
+		case "$$name" in ''|'#'*) continue ;; esac; \
+		scripts/fetch-android-source.sh "$$url" "$$revision" "$(ANDROID_FFMPEG_DEPS_DIR)/$$name-$$revision"; \
+	done < scripts/android-ffmpeg-deps.txt
 
 android-ffmpeg-source: android-ffmpeg-sources
-	ANDROID_ABI="$(ANDROID_ABI)" scripts/build-android-ffmpeg.sh "$(ANDROID_FFMPEG_SOURCE_DIR)" "$(ANDROID_X264_SOURCE_DIR)" "$(ANDROID_FFMPEG_SOURCE_OUT)"
+	ANDROID_ABI="$(ANDROID_ABI)" scripts/build-android-ffmpeg.sh "$(ANDROID_FFMPEG_SOURCE_DIR)" "$(ANDROID_X264_SOURCE_DIR)" "$(ANDROID_FFMPEG_SOURCE_OUT)" "$(ANDROID_FFMPEG_DEPS_DIR)"
 
 android-ffmpeg:
 ifeq ($(ANDROID_FFMPEG_MODE),source)
@@ -273,8 +278,13 @@ android-source:
 	$(MAKE) android ANDROID_FFMPEG_MODE=source
 
 android-source-archives: android-ffmpeg-sources
+	mkdir -p "$(BUILD_DIR)"
 	tar --exclude=.git -cJf "$(BUILD_DIR)/FFmpeg-source.tar.xz" -C "$(ANDROID_FFMPEG_SOURCE_DIR)" .
 	tar --exclude=.git -cJf "$(BUILD_DIR)/x264-source.tar.xz" -C "$(ANDROID_X264_SOURCE_DIR)" .
+	@set -e; while read -r name url revision license; do \
+		case "$$name" in ''|'#'*) continue ;; esac; \
+		tar --exclude=.git -cJf "$(BUILD_DIR)/$$name-source.tar.xz" -C "$(ANDROID_FFMPEG_DEPS_DIR)/$$name-$$revision" .; \
+	done < scripts/android-ffmpeg-deps.txt
 
 android: android-ffmpeg android-fyne
 	set -e; \
@@ -324,6 +334,13 @@ android: android-ffmpeg android-fyne
 			if [ ! -f "$$NOTICE_SOURCE/$$notice" ]; then echo "source-build notice missing: $$NOTICE_SOURCE/$$notice"; exit 1; fi; \
 			cp "$$NOTICE_SOURCE/$$notice" $(ANDROID_APK_LIBS)/assets/licenses/; \
 		done; \
+		for notice in "$$NOTICE_SOURCE/"*-LICENSE.txt; do \
+			[ -f "$$notice" ] || continue; \
+			cp "$$notice" $(ANDROID_APK_LIBS)/assets/licenses/; \
+		done; \
+		if [ -f $(ANDROID_APK_LIBS)/assets/licenses/freetype-LICENSE.txt ]; then \
+			printf '\nGo2TV subtitle rendering is based in part on the work of the FreeType Team.\nPortions of this software are copyright © 2026 The FreeType Project (https://freetype.org). All rights reserved.\n' >> $(ANDROID_APK_LIBS)/assets/licenses/freetype-LICENSE.txt; \
+		fi; \
 		( cd $(ANDROID_APK_LIBS) && zip -q -g ../$(notdir $(APK_OUT)) assets/licenses/* ); \
 	fi; \
 	MANIFEST_DUMP="$$($(ANDROID_BUILD_TOOLS)/aapt dump xmltree $(APK_OUT) AndroidManifest.xml || true)"; \

@@ -2,8 +2,8 @@
 
 set -eu
 
-if [ "$#" -ne 3 ]; then
-	echo "usage: $0 FFMPEG_SOURCE_DIR X264_SOURCE_DIR OUTPUT_DIR" >&2
+if [ "$#" -ne 4 ]; then
+	echo "usage: $0 FFMPEG_SOURCE_DIR X264_SOURCE_DIR OUTPUT_DIR DEPS_DIR" >&2
 	exit 2
 fi
 
@@ -15,6 +15,9 @@ fi
 source_dir=$(cd "$1" && pwd)
 x264_source_dir=$(cd "$2" && pwd)
 output_dir=$3
+deps_dir=$(cd "$4" && pwd)
+script_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+manifest=$script_dir/android-ffmpeg-deps.txt
 android_api=${ANDROID_API:-21}
 android_abi=${ANDROID_ABI:-arm64-v8a}
 
@@ -39,6 +42,13 @@ case "$android_abi" in
 		ffmpeg_arch=aarch64
 		ffmpeg_cpu=armv8-a
 		clang_target=aarch64-linux-android
+		cpu_family=aarch64
+		;;
+	x86_64)
+		ffmpeg_arch=x86_64
+		ffmpeg_cpu=x86-64
+		clang_target=x86_64-linux-android
+		cpu_family=x86_64
 		;;
 	*) echo "unsupported Android ABI: $android_abi" >&2; exit 1 ;;
 esac
@@ -49,6 +59,24 @@ if [ ! -x "$toolchain/bin/${clang_target}${android_api}-clang" ]; then
 	exit 1
 fi
 
+while read -r name url revision license; do
+	case "$name" in ''|'#'*) continue ;; esac
+	directory=$deps_dir/$name-$revision
+	expected=$revision
+	case "$url" in
+		*.tar.gz)
+			if [ "$(git -C "$directory" config go2tv.archive-sha256)" != "$revision" ]; then
+				echo "dependency checksum mismatch: $directory" >&2; exit 1
+			fi
+			expected=$(git -C "$directory" config go2tv.archive-commit)
+			;;
+	esac
+	if [ "$(git -C "$directory" rev-parse HEAD)" != "$expected" ] || ! git -C "$directory" diff --quiet HEAD; then
+		echo "dependency source mismatch or local changes: $directory" >&2
+		exit 1
+	fi
+done < "$manifest"
+
 mkdir -p "$output_dir"
 output_dir=$(cd "$output_dir" && pwd)
 # Reuse binaries only for the same sources, toolchain, ABI, API and recipe.
@@ -58,13 +86,17 @@ cache_key=$({
 	git -C "$source_dir" diff HEAD
 	git -C "$x264_source_dir" rev-parse HEAD
 	git -C "$x264_source_dir" diff HEAD
-	cat "$ANDROID_NDK_HOME/source.properties" "$0"
+	cat "$ANDROID_NDK_HOME/source.properties" "$0" "$manifest" "$script_dir/build-android-subtitle-deps.sh"
 } | cksum)
 if [ -f "$output_dir/.build-key" ] && [ "$(cat "$output_dir/.build-key")" = "$cache_key" ]; then
 	complete=true
 	for file in ffmpeg ffprobe ffmpeg-config.mak build-info.txt FFmpeg-GPL-2.0.txt x264-GPL-2.0.txt; do
 		if [ ! -s "$output_dir/$file" ]; then complete=false; fi
 	done
+	while read -r name url revision license; do
+		case "$name" in ''|'#'*) continue ;; esac
+		if [ ! -s "$output_dir/$name-LICENSE.txt" ]; then complete=false; fi
+	done < "$manifest"
 	if [ "$complete" = true ] && [ -x "$output_dir/ffmpeg" ] && [ -x "$output_dir/ffprobe" ]; then
 		echo "Using cached Android FFmpeg at $output_dir"
 		exit 0
@@ -75,7 +107,9 @@ build_dir=$(mktemp -d "${TMPDIR:-/tmp}/go2tv-ffmpeg-android.XXXXXX")
 trap 'rm -rf "$build_dir"' EXIT HUP INT TERM
 jobs=${FFMPEG_BUILD_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)}
 
-x264_prefix=$build_dir/x264-prefix
+deps_prefix=$build_dir/prefix
+sh "$script_dir/build-android-subtitle-deps.sh" "$deps_dir" "$deps_prefix" "$toolchain" "$clang_target" "$android_api" "$cpu_family"
+x264_prefix=$deps_prefix
 mkdir -p "$build_dir/x264-build"
 cd "$build_dir/x264-build"
 CC="$toolchain/bin/${clang_target}${android_api}-clang" \
@@ -83,7 +117,7 @@ AR="$toolchain/bin/llvm-ar" \
 RANLIB="$toolchain/bin/llvm-ranlib" \
 STRIP="$toolchain/bin/llvm-strip" \
 "$x264_source_dir/configure" \
-	--host=aarch64-linux-android \
+	--host="$clang_target" \
 	--sysroot="$toolchain/sysroot" \
 	--prefix="$x264_prefix" \
 	--enable-static \
@@ -100,7 +134,7 @@ make install-lib-static
 
 mkdir -p "$build_dir/ffmpeg-build"
 cd "$build_dir/ffmpeg-build"
-PKG_CONFIG_PATH="$x264_prefix/lib/pkgconfig" "$source_dir/configure" \
+PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR="$deps_prefix/lib/pkgconfig" "$source_dir/configure" \
 	--target-os=android \
 	--arch="$ffmpeg_arch" \
 	--cpu="$ffmpeg_cpu" \
@@ -120,6 +154,9 @@ PKG_CONFIG_PATH="$x264_prefix/lib/pkgconfig" "$source_dir/configure" \
 	--enable-network \
 	--enable-gpl \
 	--enable-libx264 \
+	--enable-zlib \
+	--enable-libass \
+	--enable-iconv \
 	--pkg-config-flags=--static \
 	--disable-autodetect \
 	--disable-doc \
@@ -134,6 +171,15 @@ PKG_CONFIG_PATH="$x264_prefix/lib/pkgconfig" "$source_dir/configure" \
 for setting in \
 	CONFIG_H264_MEDIACODEC_ENCODER=yes \
 	CONFIG_LIBX264_ENCODER=yes \
+	CONFIG_ZLIB=yes \
+	CONFIG_LIBASS=yes \
+	CONFIG_ICONV=yes \
+	CONFIG_SUBTITLES_FILTER=yes \
+	CONFIG_ASS_FILTER=yes \
+	CONFIG_OVERLAY_FILTER=yes \
+	CONFIG_SCALE2REF_FILTER=yes \
+	CONFIG_PNG_ENCODER=yes \
+	CONFIG_PNG_DECODER=yes \
 	CONFIG_AAC_ENCODER=yes \
 	CONFIG_MJPEG_ENCODER=yes \
 	CONFIG_SCALE_FILTER=yes \
@@ -156,7 +202,11 @@ make -j"$jobs" ffmpeg ffprobe
 "$toolchain/bin/llvm-strip" ffmpeg ffprobe
 
 for binary in ffmpeg ffprobe; do
-	"$toolchain/bin/llvm-readelf" -h "$binary" | grep -q 'Machine:.*AArch64'
+	case "$android_abi" in
+		arm64-v8a) machine=AArch64 ;;
+		x86_64) machine='Advanced Micro Devices X86-64' ;;
+	esac
+	"$toolchain/bin/llvm-readelf" -h "$binary" | grep -q "Machine:.*$machine"
 	if "$toolchain/bin/llvm-readelf" -lW "$binary" | awk '$1 == "LOAD" && $NF != "0x4000" { bad = 1 } END { exit !bad }'; then
 		echo "$binary has LOAD segments that are not 16 KB aligned" >&2
 		exit 1
@@ -170,6 +220,11 @@ x264_revision=$(git -C "$x264_source_dir" rev-parse HEAD 2>/dev/null || echo unk
 printf 'FFmpeg %s\nFFmpeg source https://github.com/FFmpeg/FFmpeg\nFFmpeg revision %s\nx264 source https://code.videolan.org/videolan/x264\nx264 revision %s\nLicense GPL-2.0-or-later\nAndroid API %s\nAndroid ABI %s\n' "$(cat "$source_dir/RELEASE")" "$source_revision" "$x264_revision" "$android_api" "$android_abi" > "$output_dir/build-info.txt"
 cp "$source_dir/COPYING.GPLv2" "$output_dir/FFmpeg-GPL-2.0.txt"
 cp "$x264_source_dir/COPYING" "$output_dir/x264-GPL-2.0.txt"
+while read -r name url revision license; do
+	case "$name" in ''|'#'*) continue ;; esac
+	cp "$deps_dir/$name-$revision/$license" "$output_dir/$name-LICENSE.txt"
+	printf '%s source %s\n%s revision %s\n' "$name" "$url" "$name" "$revision" >> "$output_dir/build-info.txt"
+done < "$manifest"
 printf '%s\n' "$cache_key" > "$output_dir/.build-key"
 
 echo "Android FFmpeg built at $output_dir"
