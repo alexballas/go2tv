@@ -102,7 +102,7 @@ When transcoding is enabled, Go2TV probes available GPU H.264 encoders first and
 - **macOS**: `brew install ffmpeg`
 - **Windows**: `winget install Gyan.FFmpeg`, or download from [ffmpeg.org](https://ffmpeg.org/download.html) and add it to `PATH`
 - **Flatpak**: FFmpeg is bundled automatically
-- **Android**: FFmpeg is bundled in the default APK. It is arm64-only and requires Android 9.0+.
+- **Android**: FFmpeg is bundled in the default APK. It is arm64-only; source builds target Android API 21 and include MediaCodec and `libx264` encoders.
 
 If Go2TV can't find FFmpeg, point it at the binary in **Settings → Advanced → ffmpeg Path**
 (GUI) or pass `-ffmpeg /path/to/ffmpeg` (CLI).
@@ -339,6 +339,9 @@ Go2TV uses a custom Chromecast receiver hosted at https://cast-receiver.go2tv.ap
 
 ## Building from Source
 
+Android builds compile pinned FFmpeg/x264 sources, shared with CI; see
+[Android build instructions](BUILDING.md#android-builds).
+
 **Requirements**:
 
 - Go 1.26.9 or later
@@ -366,4 +369,4 @@ Alexandros Ballas <alex@ballas.org>
 
 MIT
 
-Artifacts that bundle FFmpeg inherit the bundled FFmpeg build's license obligations. Source-built Android APKs and default bundled AppImages use GPL FFmpeg builds. The legacy Android binary-download target uses an LGPL FFmpeg build.
+Artifacts that bundle FFmpeg inherit the bundled FFmpeg build's license obligations. Source-built Android APKs and default bundled AppImages use GPL FFmpeg builds. Local Android builds and CI use the same pinned FFmpeg/x264 sources.

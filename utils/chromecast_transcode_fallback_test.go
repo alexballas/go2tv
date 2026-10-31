@@ -42,6 +42,7 @@ func writeFakeRuntimeFallbackFFmpeg(t *testing.T) string {
 	script := `#!/bin/sh
 if [ "$1" = "-hide_banner" ] && [ "$2" = "-encoders" ]; then
   echo "Encoders:"
+  echo " V..... libx264 fake"
   echo " V..... h264_nvenc           fake"
   exit 0
 fi

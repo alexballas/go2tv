@@ -42,6 +42,7 @@ func TestRetiredMediaCannotPublishTranscodeFailure(t *testing.T) {
 				dir := t.TempDir()
 				ffmpeg := filepath.Join(dir, "ffmpeg")
 				script := `#!/bin/sh
+if [ "$1" = -hide_banner ] && [ "$2" = -encoders ]; then echo " V..... libx264 fake"; exit 0; fi
 if [ "$1" = -hide_banner ]; then exit 1; fi
 while [ ! -f "$GO2TV_RETIRED_DIR/release" ]; do sleep 0.01; done
 echo 'old encoder failed' >&2
@@ -133,6 +134,7 @@ func TestConcurrentDLNAProbeCannotErasePlaybackFailure(t *testing.T) {
 			dir := t.TempDir()
 			ffmpeg := filepath.Join(dir, "ffmpeg")
 			script := `#!/bin/sh
+if [ "$1" = -hide_banner ] && [ "$2" = -encoders ]; then echo " V..... libx264 fake"; exit 0; fi
 if [ "$1" = -hide_banner ]; then exit 1; fi
 IFS= read -r mode || exit 1
 if [ "$mode" != success ]; then
@@ -253,7 +255,7 @@ func TestVideoTranscodeReportsFailureAndAllowsRetry(t *testing.T) {
 			dir := t.TempDir()
 			ffmpeg := filepath.Join(dir, "ffmpeg")
 			media := filepath.Join(dir, "movie.mkv")
-			script := "#!/bin/sh\nif [ \"$1\" = -hide_banner ]; then exit 1; fi\ncase \"$GO2TV_VIDEO_TEST_MODE\" in\nerror) echo 'encoder failed' >&2; exit 1;;\npartial) printf 'encoded video'; echo 'encoder failed' >&2; exit 1;;\nwait) exec sleep 30;;\n*) printf 'encoded video';;\nesac\n"
+			script := "#!/bin/sh\nif [ \"$1\" = -hide_banner ] && [ \"$2\" = -encoders ]; then echo \" V..... libx264 fake\"; exit 0; fi\nif [ \"$1\" = -hide_banner ]; then exit 1; fi\ncase \"$GO2TV_VIDEO_TEST_MODE\" in\nerror) echo 'encoder failed' >&2; exit 1;;\npartial) printf 'encoded video'; echo 'encoder failed' >&2; exit 1;;\nwait) exec sleep 30;;\n*) printf 'encoded video';;\nesac\n"
 			if err := os.WriteFile(ffmpeg, []byte(script), 0700); err != nil {
 				t.Fatal(err)
 			}

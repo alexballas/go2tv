@@ -89,7 +89,10 @@ func serveDLNATranscodedStream(ctx context.Context, w io.Writer, input any, ff *
 		}
 	}
 
-	encoderPlan := selectTranscodeVideoEncoder(ffmpegPath, videoEncoderProfileDLNA)
+	encoderPlan, err := selectTranscodeVideoEncoder(ffmpegPath, videoEncoderProfileDLNA)
+	if err != nil {
+		return err
+	}
 	buildArgs := func(plan videoEncoderPlan, hw string) []string {
 		copyTS := (in != "pipe:0" && seekSeconds > 0) || burn.overlay != ""
 		var vf string

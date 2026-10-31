@@ -38,24 +38,35 @@ and `APPIMAGE_OUT` (using the final release filename) when running `make`.
 make android
 ```
 
-`make android` builds the arm64 APK and bundles Android `ffmpeg`/`ffprobe` executables as native libraries. Set `ANDROID_NDK_HOME` and `ANDROID_HOME`.
+`make android` builds the arm64 APK with MediaCodec hardware encoding and
+libx264 software fallback. Set `ANDROID_HOME` to the SDK and `ANDROID_NDK_HOME`
+to NDK r27d. Git, Make, a C build toolchain, and pkg-config are also required.
 
-To compile the bundled FFmpeg tools from an official source checkout:
+The first build fetches official FFmpeg/x264 sources at the revisions pinned in
+`Makefile`, then compiles them for Android API 21. Later builds reuse the binaries
+unless the sources, NDK, API, ABI, or build script change. Set `FFMPEG_BUILD_JOBS`
+to limit compiler concurrency. `make android-source` remains an alias; the old
+third-party binary-download mode has been removed.
+
+CI calls the same `make android` target and includes the corresponding source
+archives from `make android-source-archives`. Required transcoding features and
+16 KB ELF alignment are checked before packaging. GPL notices and exact source
+revisions are embedded in the APK.
+
+To supply binaries built separately:
 
 ``` console
-git clone --branch n8.1.1 --depth 1 https://github.com/FFmpeg/FFmpeg.git ffmpeg-source
-git clone --branch stable --depth 1 https://code.videolan.org/videolan/x264.git x264-source
-make android-source \
-  ANDROID_FFMPEG_SOURCE_DIR="$PWD/ffmpeg-source" \
-  ANDROID_X264_SOURCE_DIR="$PWD/x264-source"
+make android ANDROID_FFMPEG_MODE=local \
+  ANDROID_FFMPEG_BIN=/path/to/ffmpeg \
+  ANDROID_FFPROBE_BIN=/path/to/ffprobe
 ```
 
-`android-source` performs no dependency downloads. It builds x264, then a GPL
-FFmpeg arm64 configuration with both MediaCodec and libx264 using the NDK. It
-verifies required transcoding features and 16 KB ELF alignment before packaging.
-The source-build workflow pins FFmpeg, x264, and the official Android NDK. GPL
-notices and exact source revisions are embedded in the APK and uploaded with the
-corresponding source archives.
+Keep `FFmpeg-GPL-2.0.txt`, `x264-GPL-2.0.txt`, and `build-info.txt` beside FFmpeg.
+For alternative source revisions, override `ANDROID_FFMPEG_REF` and
+`ANDROID_X264_REF` with full commit hashes. Existing checkouts can be supplied
+with `ANDROID_FFMPEG_SOURCE_DIR` and `ANDROID_X264_SOURCE_DIR`; they must match
+the pins and have no tracked changes. Source trees live under `build/android-sources`
+by default; changing a pin selects a fresh checkout without modifying an old one.
 
 Set `ANDROID_SIGN=false` to produce a zip-aligned unsigned APK for downstream
 packagers such as F-Droid. Signed builds remain the default.

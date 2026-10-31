@@ -128,7 +128,15 @@ func runTranscodeWithFallback(
 			hw = ""
 			nextAction = "software_decode"
 		case plan.hardware:
-			plan = transcodeSoftwareEncoderPlan(profile)
+			available, checkErr := ffmpegVideoEncoderSet(args[0])
+			if checkErr != nil {
+				return fmt.Errorf("software encoder fallback: %w", checkErr)
+			}
+			software, checkErr := transcodeSoftwareEncoderIfAvailable(profile, available)
+			if checkErr != nil {
+				return fmt.Errorf("software encoder fallback after %v: %w", err, checkErr)
+			}
+			plan = software
 			nextAction = "software_encode"
 		default:
 			return err

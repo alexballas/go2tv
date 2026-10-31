@@ -49,12 +49,31 @@ if [ ! -x "$toolchain/bin/${clang_target}${android_api}-clang" ]; then
 	exit 1
 fi
 
+mkdir -p "$output_dir"
+output_dir=$(cd "$output_dir" && pwd)
+# Reuse binaries only for the same sources, toolchain, ABI, API and recipe.
+cache_key=$({
+	printf '%s\n' "$android_api" "$android_abi" "$toolchain"
+	git -C "$source_dir" rev-parse HEAD
+	git -C "$source_dir" diff HEAD
+	git -C "$x264_source_dir" rev-parse HEAD
+	git -C "$x264_source_dir" diff HEAD
+	cat "$ANDROID_NDK_HOME/source.properties" "$0"
+} | cksum)
+if [ -f "$output_dir/.build-key" ] && [ "$(cat "$output_dir/.build-key")" = "$cache_key" ]; then
+	complete=true
+	for file in ffmpeg ffprobe ffmpeg-config.mak build-info.txt FFmpeg-GPL-2.0.txt x264-GPL-2.0.txt; do
+		if [ ! -s "$output_dir/$file" ]; then complete=false; fi
+	done
+	if [ "$complete" = true ] && [ -x "$output_dir/ffmpeg" ] && [ -x "$output_dir/ffprobe" ]; then
+		echo "Using cached Android FFmpeg at $output_dir"
+		exit 0
+	fi
+fi
+
 build_dir=$(mktemp -d "${TMPDIR:-/tmp}/go2tv-ffmpeg-android.XXXXXX")
 trap 'rm -rf "$build_dir"' EXIT HUP INT TERM
 jobs=${FFMPEG_BUILD_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)}
-
-mkdir -p "$output_dir"
-output_dir=$(cd "$output_dir" && pwd)
 
 x264_prefix=$build_dir/x264-prefix
 mkdir -p "$build_dir/x264-build"
@@ -151,5 +170,6 @@ x264_revision=$(git -C "$x264_source_dir" rev-parse HEAD 2>/dev/null || echo unk
 printf 'FFmpeg %s\nFFmpeg source https://github.com/FFmpeg/FFmpeg\nFFmpeg revision %s\nx264 source https://code.videolan.org/videolan/x264\nx264 revision %s\nLicense GPL-2.0-or-later\nAndroid API %s\nAndroid ABI %s\n' "$(cat "$source_dir/RELEASE")" "$source_revision" "$x264_revision" "$android_api" "$android_abi" > "$output_dir/build-info.txt"
 cp "$source_dir/COPYING.GPLv2" "$output_dir/FFmpeg-GPL-2.0.txt"
 cp "$x264_source_dir/COPYING" "$output_dir/x264-GPL-2.0.txt"
+printf '%s\n' "$cache_key" > "$output_dir/.build-key"
 
 echo "Android FFmpeg built at $output_dir"

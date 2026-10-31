@@ -28,7 +28,8 @@ for arg in "$@"; do
   fi
 done
 if [ "$1" = "-hide_banner" ] && [ "$2" = "-encoders" ]; then
-  exit 1
+  echo " V..... libx264 fake"
+  exit 0
 fi
 if [ "$has_lavfi" = "1" ]; then
   exit 1

@@ -101,7 +101,10 @@ func ServeChromecastTranscodedStream(
 	if isRawInput {
 		profile = videoEncoderProfileChromecastRaw
 	}
-	encoderPlan := selectTranscodeVideoEncoder(opts.FFmpegPath, profile)
+	encoderPlan, err := selectTranscodeVideoEncoder(opts.FFmpegPath, profile)
+	if err != nil {
+		return err
+	}
 	buildArgs := func(plan videoEncoderPlan, hw string) []string {
 		copyTS := (in != "pipe:0" && opts.SeekSeconds > 0) || burn.overlay != ""
 		var vf string
