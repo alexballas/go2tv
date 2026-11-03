@@ -532,12 +532,21 @@ func (c *Controller) SelectMedia(ctx context.Context, mutation Mutation, media M
 		if !media.valid() {
 			return fail(mutation.RequestID, s.revision, ErrInvalidOperation)
 		}
-		s.media = cloneMediaRef(media)
+		s.setSelectedMedia(cloneMediaRef(media))
 		s.mediaQueueID = ""
 		s.artworkID = ""
 		s.commit()
 		return Result{RequestID: mutation.RequestID, Revision: s.revision}
 	})
+}
+
+// setSelectedMedia keeps explicit captions scoped to their selected media.
+// A subtitle picked before the first media selection attaches to that media.
+func (s *actorState) setSelectedMedia(media MediaRef) {
+	if s.media.valid() && !sameMediaPath(s.media, media) {
+		s.subtitle = SubtitleRef{}
+	}
+	s.media = media
 }
 
 func cloneMediaRef(media MediaRef) MediaRef {
@@ -694,7 +703,7 @@ func (s *actorState) selectQueueMedia(item mediamodel.QueueItem, media MediaRef)
 	}
 	media = cloneMediaRef(media)
 	s.queueRefs[item.ID()] = media
-	s.media = media
+	s.setSelectedMedia(media)
 	s.mediaQueueID = item.ID()
 	s.artworkID = ""
 }
@@ -715,7 +724,7 @@ func (s *actorState) appendQueueItem(item mediamodel.QueueItem, media MediaRef, 
 	}
 	s.queueRefs[item.ID()] = media
 	if selectItem {
-		s.media = media
+		s.setSelectedMedia(media)
 		s.mediaQueueID = item.ID()
 		s.artworkID = ""
 	}
@@ -733,7 +742,7 @@ func (c *Controller) ClearQueue(ctx context.Context, mutation Mutation) Result {
 				item, _ := s.queue.Item(index)
 				s.queue = mediamodel.NewQueue([]mediamodel.QueueItem{item}, 0)
 				s.queueRefs = map[string]MediaRef{item.ID(): s.active.media}
-				s.media = s.active.media
+				s.setSelectedMedia(s.active.media)
 				s.mediaQueueID = item.ID()
 				s.artworkID = mediaArtworkID(s.active.media)
 				s.commit()
@@ -744,7 +753,8 @@ func (c *Controller) ClearQueue(ctx context.Context, mutation Mutation) Result {
 		s.queue = nil
 		s.queueRefs = nil
 		if s.mediaQueueID != "" {
-			s.media, s.mediaQueueID = MediaRef{}, ""
+			s.setSelectedMedia(MediaRef{})
+			s.mediaQueueID = ""
 			s.artworkID = ""
 		}
 		s.position, s.duration = 0, 0
@@ -766,7 +776,7 @@ func (c *Controller) SelectQueueItem(ctx context.Context, mutation Mutation, id 
 			return fail(mutation.RequestID, s.revision, ErrNotFound)
 		}
 		s.queue.SetCurrentIndex(index)
-		s.media = media
+		s.setSelectedMedia(media)
 		s.mediaQueueID = id
 		s.artworkID = ""
 		s.commit()
@@ -795,7 +805,8 @@ func (c *Controller) RemoveQueueItem(ctx context.Context, mutation Mutation, id 
 		s.queue.Remove(index)
 		delete(s.queueRefs, id)
 		if selectedItem || s.mediaQueueID == id {
-			s.media, s.mediaQueueID = MediaRef{}, ""
+			s.setSelectedMedia(MediaRef{})
+			s.mediaQueueID = ""
 			s.artworkID = ""
 			s.position, s.duration = 0, 0
 		}
@@ -886,7 +897,11 @@ func (s *actorState) desiredGapless(itemID string, target playback.Device) *gapl
 	if !ok {
 		return nil
 	}
-	return &gaplessCandidate{item: item, media: media, subtitle: s.subtitle, transcode: s.transcode}
+	subtitle := s.subtitle
+	if !sameMediaPath(s.media, media) {
+		subtitle = SubtitleRef{}
+	}
+	return &gaplessCandidate{item: item, media: media, subtitle: subtitle, transcode: s.transcode}
 }
 
 func gaplessMatches(candidate *gaplessCandidate, queued *gaplessSession) bool {
@@ -975,7 +990,7 @@ func (c *Controller) rememberPreparedMedia(itemID string, media MediaRef) {
 			s.queueRefs[itemID] = cloneMediaRef(media)
 		}
 		if s.mediaQueueID == itemID || s.mediaQueueID == "" && s.media.valid() && sameMediaPath(s.media, media) {
-			s.media = cloneMediaRef(media)
+			s.setSelectedMedia(cloneMediaRef(media))
 		}
 	}})
 }
@@ -1136,7 +1151,7 @@ func (s *actorState) beginPlay(request PlayRequest, response chan<- Result) {
 	} else {
 		s.mediaQueueID = ""
 	}
-	s.media = media
+	s.setSelectedMedia(media)
 	s.artworkID = ""
 	s.streamTitle = ""
 	s.commit()
@@ -1146,8 +1161,9 @@ func (s *actorState) beginPlay(request PlayRequest, response chan<- Result) {
 	gapless := s.desiredGapless(item.ID(), target)
 	automaticTorrentSubtitles := !s.policy.DisableTorrentSubtitles
 	burnChromecastSubtitles := s.policy.BurnChromecastSubtitles
+	transcode, subtitle := s.transcode, s.subtitle
 	s.controller.goOwned(func() {
-		s.controller.playIO(opCtx, operation, target, item, media, old, request, response, s.transcode, s.subtitle, gapless, automaticTorrentSubtitles, burnChromecastSubtitles)
+		s.controller.playIO(opCtx, operation, target, item, media, old, request, response, transcode, subtitle, gapless, automaticTorrentSubtitles, burnChromecastSubtitles)
 	})
 }
 
@@ -1789,7 +1805,7 @@ func (c *Controller) completePlay(completion playCompletion) {
 		s.mutation = false
 		s.active, s.state, s.position, s.duration, s.lastError, s.terminal = completion.session, PlaybackStatePlaying, 0, 0, "", ""
 		if s.mediaQueueID == completion.session.itemID || s.mediaQueueID == "" && sameMediaPath(s.media, completion.session.media) {
-			s.media = cloneMediaRef(completion.session.media)
+			s.setSelectedMedia(cloneMediaRef(completion.session.media))
 		}
 		s.artworkID = mediaArtworkID(completion.session.media)
 		s.syncImageTimer()
@@ -2400,7 +2416,7 @@ func (s *actorState) promoteGapless() bool {
 		s.queue.SetCurrentIndex(index)
 		s.mediaQueueID = queued.itemID
 	}
-	s.media = queued.media
+	s.setSelectedMedia(queued.media)
 	s.artworkID = mediaArtworkID(queued.media)
 	s.position, s.duration = 0, 0
 	s.state, s.terminal = PlaybackStatePlaying, ""

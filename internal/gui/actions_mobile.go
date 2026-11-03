@@ -219,6 +219,9 @@ func setMobileMediaURI(screen *FyneScreen, uri fyne.URI) {
 	if torrentMediaSelected(screen) {
 		cancelTorrent(screen)
 	}
+	if screen.mediafile != nil && screen.mediafile.String() != uri.String() {
+		clearsubsAction(screen)
+	}
 	screen.MediaText.SetText(uri.Name())
 	screen.mediafile = uri
 	resolveSelectedMobileArtwork(screen, uri)
@@ -689,6 +692,7 @@ func clearmediaAction(screen *FyneScreen) {
 	}
 	screen.MediaText.SetText("")
 	screen.mediafile = nil
+	clearsubsAction(screen)
 	screen.setCurrentArtwork(nil)
 }
 

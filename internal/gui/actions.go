@@ -360,6 +360,10 @@ func setCurrentMediaPathWithSubtitleProbe(screen *FyneScreen, mediaPath string, 
 		})
 	}
 
+	if screen.mediafile != "" && screen.mediafile != absMediaFile {
+		// Explicit files and extracted tracks belong to the previous media.
+		screen.subsfile = ""
+	}
 	screen.mediafile = absMediaFile
 	screen.embeddedSubtitle = nil
 	if screen.mpris != nil {
@@ -411,6 +415,7 @@ func replaceCurrentMediaSelection(screen *FyneScreen, text string) {
 		screen.MediaText.SetText(text)
 	}
 	screen.embeddedSubtitle = nil
+	screen.subsfile = ""
 	screen.checkChromecastCompatibility()
 	if screen.mpris != nil {
 		screen.mpris.refresh()

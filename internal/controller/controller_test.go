@@ -201,6 +201,7 @@ type fakeServer struct {
 	mu     sync.Mutex
 	routes int
 	last   playback.ServerRequest
+	queued playback.ServerRequest
 }
 
 func (s *fakeServer) Start(_ context.Context, request playback.ServerRequest) (playback.MediaRoute, error) {
@@ -223,6 +224,7 @@ func (s *fakeServer) Add(context.Context, playback.RouteRequest) (playback.Media
 func (s *fakeServer) AddMedia(_ context.Context, request playback.ServerRequest) (playback.MediaRoute, error) {
 	s.mu.Lock()
 	s.routes++
+	s.queued = request
 	id := "route-" + strconv.Itoa(s.routes)
 	s.mu.Unlock()
 	s.log.add("server:add-media:" + request.Target.ID)

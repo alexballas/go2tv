@@ -299,6 +299,75 @@ func TestMediaCardSubtitleModes(t *testing.T) {
 	}
 }
 
+func TestMediaChangeSubtitleSelection(t *testing.T) {
+	tt := []struct {
+		name, mode                    string
+		sameMedia, noMedia, clear     bool
+		nextSidecar, wantPreviousSubs bool
+	}{
+		{name: "automatic selects next sidecar", mode: subtitleAutomatic, nextSidecar: true},
+		{name: "automatic clears missing sidecar", mode: subtitleAutomatic},
+		{name: "external clears on next show", mode: subtitleExternal},
+		{name: "external does not enable automatic", mode: subtitleExternal, nextSidecar: true},
+		{name: "embedded extraction clears on next show", mode: subtitleEmbedded},
+		{name: "external survives same show selection", mode: subtitleExternal, sameMedia: true, wantPreviousSubs: true},
+		{name: "external selected before media", mode: subtitleExternal, noMedia: true, wantPreviousSubs: true},
+		{name: "clear media clears external", mode: subtitleExternal, clear: true},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			s, c := newMediaCardTestScreen(t)
+			dir := t.TempDir()
+			s.ffmpegPath = filepath.Join(dir, "missing-ffmpeg")
+			current, next := filepath.Join(dir, "first.mp4"), filepath.Join(dir, "second.mp4")
+			previousSubs, nextSubs := filepath.Join(dir, "first.srt"), filepath.Join(dir, "second.srt")
+			for _, path := range []string{previousSubs, nextSubs} {
+				if err := os.WriteFile(path, []byte("1\n00:00:00,000 --> 00:00:01,000\n"+filepath.Base(path)+"\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !tc.nextSidecar {
+				if err := os.Remove(nextSubs); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !tc.noMedia {
+				if err := setCurrentMediaPath(s, current); err != nil {
+					t.Fatal(err)
+				}
+			}
+			c.subtitles.SetSelected(lang.L(tc.mode))
+			if tc.mode == subtitleExternal {
+				selectSubsFile(s, storage.NewFileURI(previousSubs))
+			}
+			if tc.mode == subtitleEmbedded {
+				s.SelectInternalSubs.SetOptions([]string{"English"})
+				s.SelectInternalSubs.SetSelected("English")
+				s.subsfile = previousSubs
+				s.tempFiles = append(s.tempFiles, previousSubs)
+			}
+			if tc.sameMedia {
+				next = current
+			}
+			if tc.clear {
+				clearCurrentMediaSelection(s)
+			} else if err := setCurrentMediaPath(s, next); err != nil {
+				t.Fatal(err)
+			}
+			want := ""
+			switch {
+			case tc.wantPreviousSubs:
+				want = previousSubs
+			case tc.mode == subtitleAutomatic && tc.nextSidecar:
+				want = nextSubs
+			}
+			if s.subsfile != want || c.subtitles.Selected != lang.L(tc.mode) {
+				t.Fatalf("subtitles = %q, mode = %q; want %q, %q", s.subsfile, c.subtitles.Selected, want, lang.L(tc.mode))
+			}
+		})
+	}
+}
+
 func TestMediaCardFileRowsAlign(t *testing.T) {
 	s, c := newMediaCardTestScreen(t)
 	s.mediafile = "/media/a-long-movie-filename.mp4"
