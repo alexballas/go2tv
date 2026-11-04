@@ -97,7 +97,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 
 	dropdownTheme := widget.NewSelect([]string{lang.L("System Default"), lang.L("Light"), lang.L("Dark")}, parseTheme(s))
 
-	dropdownLanguage := widget.NewSelect([]string{lang.L("System Default"), "English", "中文(简体)"}, parseLanguage(s))
+	dropdownLanguage := widget.NewSelect([]string{lang.L("System Default"), "English", "Polski", "中文(简体)"}, parseLanguage(s))
 	selectedLanguage := fyne.CurrentApp().Preferences().StringWithFallback("Language", "System Default")
 
 	if selectedLanguage == "System Default" {
@@ -481,6 +481,8 @@ func parseLanguage(s *FyneScreen) func(string) {
 			switch t {
 			case "English":
 				fyne.CurrentApp().Preferences().SetString("Language", "English")
+			case "Polski":
+				fyne.CurrentApp().Preferences().SetString("Language", "Polski")
 			case "中文(简体)":
 				fyne.CurrentApp().Preferences().SetString("Language", "中文(简体)")
 			default:

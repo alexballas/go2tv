@@ -298,6 +298,7 @@ func TestRadioCountryNamesFollowAppLanguage(t *testing.T) {
 	newMediaCardTestScreen(t)
 	tt := []struct{ language, want string }{
 		{language: "English", want: "Germany"},
+		{language: "Polski", want: "Niemcy"},
 		{language: "中文(简体)", want: "德国"},
 	}
 	for _, tc := range tt {

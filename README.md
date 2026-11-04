@@ -134,6 +134,12 @@ The **Playlist** window lets you add, remove, reorder, and select files. Draggin
 the main window replaces the playlist; dragging them onto the Playlist window appends them.
 **Next**, **Previous**, and **Auto-Play Next File** follow the playlist order.
 
+#### Language
+
+The GUI follows the system language by default, including Polish. To override it, open
+**Settings → Language** and choose English, Polski, or 中文(简体). Go2TV must be restarted
+for the change to take effect.
+
 ### CLI
 
 Run `go2tv -h` for all options.

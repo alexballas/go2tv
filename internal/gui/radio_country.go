@@ -180,16 +180,17 @@ func radioRegionName(namer display.Namer, code string) string {
 }
 
 // radioDisplayLanguage follows the UI translation in use, so country names
-// never switch to a language the rest of the app is not shown in.
+// never switch to a language the rest of the app is not shown in. The
+// go2tv.language metadata in every catalog reports the catalog the localizer
+// selected, including when a refyne built-in language precedes our translation.
 func radioDisplayLanguage() language.Tag {
-	requested := language.Make(lang.SystemLocale().String())
 	switch fyne.CurrentApp().Preferences().String("Language") {
 	case "English":
-		requested = language.English
+		return language.English
+	case "Polski":
+		return language.Polish
 	case "中文(简体)":
-		requested = language.SimplifiedChinese
+		return language.SimplifiedChinese
 	}
-	supported := []language.Tag{language.English, language.SimplifiedChinese, language.TraditionalChinese}
-	_, index, _ := language.NewMatcher(supported).Match(requested)
-	return supported[index]
+	return language.Make(lang.X("go2tv.language", "en"))
 }
