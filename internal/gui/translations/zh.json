@@ -324,5 +324,6 @@
     "Forget saved playback positions for all media?": "清除所有媒体的已保存播放位置？",
     "Make sure your phone and the TV are on the same Wi-Fi network.": "请确保手机和电视连接到同一个 Wi-Fi 网络。",
     "Connecting to %s…": "正在连接 %s…",
-    "Station": "电台"
+    "Station": "电台",
+    "go2tv.language": "zh-Hans"
 }
