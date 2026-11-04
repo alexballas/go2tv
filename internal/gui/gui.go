@@ -959,6 +959,8 @@ func NewFyneScreen(version string, crash *crashlog.Session) *FyneScreen {
 		content, _ = translations.ReadFile("translations/zh.json")
 	case "English":
 		content, _ = translations.ReadFile("translations/en.json")
+	case "Polski":
+		content, _ = translations.ReadFile("translations/pl.json")
 	}
 
 	if content != nil {
