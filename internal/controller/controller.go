@@ -742,7 +742,11 @@ func (c *Controller) ClearQueue(ctx context.Context, mutation Mutation) Result {
 				item, _ := s.queue.Item(index)
 				s.queue = mediamodel.NewQueue([]mediamodel.QueueItem{item}, 0)
 				s.queueRefs = map[string]MediaRef{item.ID(): s.active.media}
-				s.setSelectedMedia(s.active.media)
+				if !sameMediaPath(s.media, s.active.media) {
+					// Selection returns to the playing item and its captions.
+					s.subtitle = s.active.subtitle
+				}
+				s.media = s.active.media
 				s.mediaQueueID = item.ID()
 				s.artworkID = mediaArtworkID(s.active.media)
 				s.commit()

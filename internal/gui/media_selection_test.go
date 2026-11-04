@@ -368,6 +368,35 @@ func TestMediaChangeSubtitleSelection(t *testing.T) {
 	}
 }
 
+func TestSupersededSkipRestoresSubtitles(t *testing.T) {
+	for _, mode := range []string{subtitleExternal, subtitleEmbedded} {
+		t.Run(mode, func(t *testing.T) {
+			s, c := newMediaCardTestScreen(t)
+			dir := t.TempDir()
+			s.ffmpegPath = filepath.Join(dir, "missing-ffmpeg")
+			current, next, subs := filepath.Join(dir, "first.mp4"), filepath.Join(dir, "second.mp4"), filepath.Join(dir, "first.srt")
+			if err := setCurrentMediaPath(s, current); err != nil {
+				t.Fatal(err)
+			}
+			c.subtitles.SetSelected(lang.L(mode))
+			s.subsfile = subs
+			origin := captureSkipOrigin(s)
+			if err := setCurrentMediaPath(s, next); err != nil {
+				t.Fatal(err)
+			}
+			if s.subsfile != "" {
+				t.Fatalf("skip target inherited %q", s.subsfile)
+			}
+			if err := origin.restore(s); err != nil {
+				t.Fatal(err)
+			}
+			if s.mediafile != current || s.subsfile != subs || c.subtitles.Selected != lang.L(mode) {
+				t.Fatalf("media = %q, subtitles = %q, mode = %q; want %q, %q, %q", s.mediafile, s.subsfile, c.subtitles.Selected, current, subs, lang.L(mode))
+			}
+		})
+	}
+}
+
 func TestMediaCardFileRowsAlign(t *testing.T) {
 	s, c := newMediaCardTestScreen(t)
 	s.mediafile = "/media/a-long-movie-filename.mp4"

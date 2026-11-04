@@ -2352,6 +2352,30 @@ func skipTraversalAction(screen *FyneScreen, delta int) {
 	skipToMediaPathOnTargetAction(screen, nextMediaPath, target)
 }
 
+// skipOrigin is the selection a skip replaces, restored if the skip is superseded.
+type skipOrigin struct {
+	mediaPath string
+	subsfile  string
+	embedded  *utils.EmbeddedSubtitle
+}
+
+func captureSkipOrigin(screen *FyneScreen) skipOrigin {
+	return skipOrigin{mediaPath: screen.mediafile, subsfile: screen.subsfile, embedded: screen.embeddedSubtitle}
+}
+
+// restore runs on the UI thread. The old item keeps playing with its captions,
+// which the media change cleared.
+func (o skipOrigin) restore(screen *FyneScreen) error {
+	if err := setCurrentMediaPathOnUI(screen, o.mediaPath); err != nil {
+		return fmt.Errorf("restore skip origin: %w", err)
+	}
+	screen.subsfile, screen.embeddedSubtitle = o.subsfile, o.embedded
+	if screen.mediaSelection != nil {
+		screen.mediaSelection.refresh()
+	}
+	return nil
+}
+
 func skipToMediaPathAction(screen *FyneScreen, mediaPath string) {
 	skipToMediaPathOnTargetAction(screen, mediaPath, traversalPlaybackTarget(screen))
 }
@@ -2372,7 +2396,7 @@ func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target 
 		}
 	}()
 
-	oldMediaPath := screen.mediafile
+	origin := captureSkipOrigin(screen)
 	oldArtwork := screen.getCurrentArtwork()
 	screen.persistDisplayedResumeProgress(true)
 	screen.clearResumeSession()
@@ -2488,7 +2512,7 @@ func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target 
 				// Remove old media handler and add new one
 				// Handler paths use filepath.Base (decoded) because r.URL.Path is decoded by Go's HTTP server
 				// URL uses ConvertFilename (encoded) for valid HTTP URL with special characters
-				oldHandlerPath := "/" + filepath.Base(oldMediaPath)
+				oldHandlerPath := "/" + filepath.Base(origin.mediaPath)
 				newHandlerPath := "/" + filepath.Base(targetMediaPath)
 				server.RemoveHandler(oldHandlerPath)
 				server.AddHandler(newHandlerPath, nil, nil, targetMediaPath)
@@ -2553,7 +2577,7 @@ func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target 
 		screen.dlnaQueueMu.Unlock()
 		if screen.dlnaActionID.Load() != actionID || !current {
 			// A newer control superseded the skip; the old item keeps playing.
-			if err := setCurrentMediaPathOnUI(screen, oldMediaPath); err != nil {
+			if err := origin.restore(screen); err != nil {
 				check(screen, err)
 			}
 			screen.PlayPause.Enable()

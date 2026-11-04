@@ -213,3 +213,30 @@ func TestGaplessDoesNotReusePreviousSubtitles(t *testing.T) {
 		t.Fatalf("promoted episode retained %q", after.SelectedSubtitle)
 	}
 }
+
+func TestClearQueueRestoresPlayingSubtitles(t *testing.T) {
+	c, _, _ := newTestController(playback.Device{ID: "renderer", Protocol: "DLNA"})
+	t.Cleanup(c.Close)
+	awaitDevices(t, c, 1)
+	ctx := t.Context()
+	first := testMedia("first.mp4", mediamodel.MediaKindVideo)
+	for _, result := range []Result{
+		c.SelectDevice(ctx, Mutation{}, "renderer"),
+		c.SelectMedia(ctx, Mutation{}, first),
+		c.SelectSubtitle(ctx, Mutation{}, SubtitleRef{RootID: "root", ID: "first-subs", Name: "first.srt", Open: first.OpenDirect}),
+		c.QueueAndPlay(ctx, Mutation{}, first),
+		c.SelectMedia(ctx, Mutation{}, testMedia("second.mp4", mediamodel.MediaKindVideo)),
+		c.ClearQueue(ctx, Mutation{}),
+	} {
+		if !result.OK() {
+			t.Fatal(result)
+		}
+	}
+	snapshot, err := c.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.SelectedSubtitle == "" {
+		t.Fatal("playing item lost its captions after queue clear")
+	}
+}
