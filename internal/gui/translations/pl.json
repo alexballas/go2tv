@@ -324,5 +324,6 @@
     "Forget saved playback positions for all media?": "Usunąć zapisane pozycje odtwarzania dla wszystkich multimediów?",
     "Make sure your phone and the TV are on the same Wi-Fi network.": "Upewnij się, że telefon i telewizor są w tej samej sieci Wi-Fi.",
     "Connecting to %s…": "Łączenie z %s…",
-    "Station": "Stacja"
+    "Station": "Stacja",
+    "go2tv.language": "pl"
 }

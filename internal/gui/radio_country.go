@@ -11,7 +11,6 @@ import (
 	"github.com/alexballas/refyne/v2/lang"
 	"github.com/alexballas/refyne/v2/theme"
 	"github.com/alexballas/refyne/v2/widget"
-	"github.com/jeandeaual/go-locale"
 	"golang.org/x/text/language"
 	"golang.org/x/text/language/display"
 
@@ -181,48 +180,17 @@ func radioRegionName(namer display.Namer, code string) string {
 }
 
 // radioDisplayLanguage follows the UI translation in use, so country names
-// never switch to a language the rest of the app is not shown in. Like the
-// GUI localizer it reads the preferred language list rather than the regional
-// system locale: macOS may report AppleLanguages=(en) with AppleLocale=pl_PL.
+// never switch to a language the rest of the app is not shown in. The
+// go2tv.language metadata in every catalog reports the catalog the localizer
+// selected, including when a refyne built-in language precedes our translation.
 func radioDisplayLanguage() language.Tag {
-	preference := fyne.CurrentApp().Preferences().String("Language")
-	if tag, ok := radioLanguagePreference(preference); ok {
-		return tag
-	}
-	locales, err := locale.GetLocales()
-	if err != nil {
-		fyne.LogError("Failed to load user locales", err)
-	}
-	return radioDisplayLanguageFor(locales)
-}
-
-var (
-	radioCountryLanguages = []language.Tag{language.English, language.SimplifiedChinese, language.TraditionalChinese, language.Polish}
-	radioCountryMatcher   = language.NewMatcher(radioCountryLanguages)
-)
-
-func radioLanguagePreference(preference string) (language.Tag, bool) {
-	switch preference {
+	switch fyne.CurrentApp().Preferences().String("Language") {
 	case "English":
-		return language.English, true
-	case "Polski":
-		return language.Polish, true
-	case "中文(简体)":
-		return language.SimplifiedChinese, true
-	}
-	return language.Tag{}, false
-}
-
-func radioDisplayLanguageFor(locales []string) language.Tag {
-	tags := make([]language.Tag, 0, len(locales))
-	for _, loc := range locales {
-		if tag, err := language.Parse(loc); err == nil {
-			tags = append(tags, tag)
-		}
-	}
-	if len(tags) == 0 {
 		return language.English
+	case "Polski":
+		return language.Polish
+	case "中文(简体)":
+		return language.SimplifiedChinese
 	}
-	_, index, _ := radioCountryMatcher.Match(tags...)
-	return radioCountryLanguages[index]
+	return language.Make(lang.X("go2tv.language", "en"))
 }
