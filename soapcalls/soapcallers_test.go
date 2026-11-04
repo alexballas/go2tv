@@ -394,3 +394,42 @@ func TestUpdateMRstate(t *testing.T) {
 		t.Fatalf("third update got new=%q", got.NewState)
 	}
 }
+
+// LG webOS probes large media before answering Play; a late reply must not
+// abort a cast the TV already started.
+func TestPlaySoapCallSlowReply(t *testing.T) {
+	tt := []struct {
+		name    string
+		state   string
+		wantErr bool
+	}{
+		{name: "renderer playing", state: "PLAYING"},
+		{name: "renderer transitioning", state: "TRANSITIONING"},
+		{name: "renderer stopped", state: "STOPPED", wantErr: true},
+	}
+
+	orig := playResponseTimeout
+	playResponseTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { playResponseTimeout = orig })
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			release := make(chan struct{})
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasSuffix(r.Header.Get("SOAPAction"), `#Play"`) {
+					<-release
+					return
+				}
+				_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetTransportInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><CurrentTransportState>` + tc.state + `</CurrentTransportState><CurrentTransportStatus>OK</CurrentTransportStatus><CurrentSpeed>1</CurrentSpeed></u:GetTransportInfoResponse></s:Body></s:Envelope>`))
+			}))
+			defer srv.Close()
+			defer close(release)
+
+			p := &TVPayload{ControlURL: srv.URL}
+			err := p.SendtoTV("Play")
+			if gotErr := err != nil; gotErr != tc.wantErr {
+				t.Fatalf("SendtoTV(Play) err = %v, wantErr %v", err, tc.wantErr)
+			}
+		})
+	}
+}
