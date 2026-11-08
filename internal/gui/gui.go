@@ -163,6 +163,9 @@ type FyneScreen struct {
 	ffmpegCheckDirty         bool
 	Medialoop                bool
 	sliderActive             bool
+	audio                    audioTrackState
+	audioPicker              audioPicker
+	skips                    skipState
 	dlnaSeekRestart          bool
 	imageAutoSkipTimeout     int
 	Transcode                bool
@@ -772,6 +775,7 @@ func (p *FyneScreen) updateScreenState(a string) {
 		if p.DeviceList != nil {
 			p.DeviceList.Refresh()
 		}
+		p.refreshAudioPicker()
 		p.updateActiveDeviceView()
 		p.refreshPlaybackReadiness()
 		p.refreshQueueStateUI()

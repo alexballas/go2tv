@@ -50,21 +50,23 @@ type TVPayload struct {
 	FFmpegSubsPath              string
 	FFmpegEmbeddedSubtitle      *utils.EmbeddedSubtitle
 	TorrentSource               mediasource.Source
-	EventURL                    string
-	ControlURL                  string
-	MediaURL                    string
-	MediaType                   string
-	MediaPath                   string
-	SubtitlesURL                string
-	CallbackURL                 string
-	ConnectionManagerURL        string
-	RenderingControlURL         string
-	PinnedIP                    string
-	Metadata                    metadata.Media
-	mu                          sync.RWMutex
-	initLogOnce                 sync.Once
-	Transcode                   bool
-	Seekable                    bool
+	// FFmpegAudioTrack mirrors utils.TranscodeOptions.AudioTrack.
+	FFmpegAudioTrack     int
+	EventURL             string
+	ControlURL           string
+	MediaURL             string
+	MediaType            string
+	MediaPath            string
+	SubtitlesURL         string
+	CallbackURL          string
+	ConnectionManagerURL string
+	RenderingControlURL  string
+	PinnedIP             string
+	Metadata             metadata.Media
+	mu                   sync.RWMutex
+	initLogOnce          sync.Once
+	Transcode            bool
+	Seekable             bool
 }
 
 type getMuteRespBody struct {

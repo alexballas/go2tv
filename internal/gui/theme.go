@@ -84,3 +84,17 @@ func castIcon() fyne.Resource {
 		fyne.NewStaticResource("cast.svg", castIconSVG),
 	)
 }
+
+// Material replay/forward rings with filled digits: themed icons recolor
+// fills only, so the numbers are shapes rather than text.
+var skipBackIconSVG = []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="#000000" d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/><path fill="#000000" d="M10.15 11.2h1.05v5.2h-1.05v-3.9l-1.1.6v-1.1z"/><path fill="#000000" d="M12 11.2h3v5.2h-3zM13.05 12.25v3.1h.9v-3.1z"/></svg>`)
+
+var skipForwardIconSVG = []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="#000000" d="M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z"/><path fill="#000000" d="M8.6 11.2h3v5.2h-3v-1.05h1.95v-1.05H9v-1h1.55v-1.05H8.6z"/><path fill="#000000" d="M12.4 11.2h3v5.2h-3zM13.45 12.25v3.1h.9v-3.1z"/></svg>`)
+
+func skipBackIcon() fyne.Resource {
+	return theme.NewThemedResource(fyne.NewStaticResource("skip-back-10.svg", skipBackIconSVG))
+}
+
+func skipForwardIcon() fyne.Resource {
+	return theme.NewThemedResource(fyne.NewStaticResource("skip-forward-30.svg", skipForwardIconSVG))
+}

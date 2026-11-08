@@ -103,6 +103,10 @@ type FyneScreen struct {
 	Transcode              bool
 	Medialoop              bool
 	sliderActive           bool
+	audio                  audioTrackState
+	audioPicker            audioPicker
+	tracks                 mobileTracks
+	skips                  skipState
 	dlnaSeekRestart        bool
 	castingMediaType       string // MIME type of currently casting media
 	resumeSession          resumePlaybackSession
@@ -240,6 +244,8 @@ func (p *FyneScreen) updateScreenState(a string) {
 			p.SlideBar.Enable()
 		}
 		p.refreshPlaybackStatus()
+		p.refreshAudioPicker()
+		p.tracks.refresh(p)
 	})
 }
 
@@ -314,6 +320,8 @@ func refreshPlaybackControls(s string, screen *FyneScreen) {
 		}
 		screen.PlayPause.Refresh()
 		screen.refreshPlaybackStatus()
+		screen.refreshAudioPicker()
+		screen.tracks.refresh(screen)
 	})
 }
 

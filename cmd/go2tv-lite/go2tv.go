@@ -52,6 +52,8 @@ var (
 	burnSubtitlesPtr      = flag.Bool("burn-subtitles", false, "Burn Chromecast subtitles when transcoding (compatibility fallback).")
 	noTorrentSubtitlesPtr = flag.Bool("no-torrent-subtitles", false, "Disable automatic embedded torrent subtitles.")
 	listPtr               = flag.Bool("l", false, "List available devices (Smart TVs and Chromecasts).")
+	audioTrackPtr         = flag.Int("a", 0, "Audio track number to cast (from -la output). Non-default tracks stream through ffmpeg.")
+	listAudioPtr          = flag.Bool("la", false, "List the audio tracks of the -v media file.")
 
 	versionPtr    = flag.Bool("version", false, "Print version.")
 	serverOptions = servermode.RegisterCLIFlags(flag.CommandLine)
@@ -247,6 +249,13 @@ func run(crash *crashlog.Session) error {
 
 	// Get ffmpeg path for transcoding
 	ffmpegPath, ffmpegErr := utils.ResolveFFmpegPath(serverOptions.FFmpegPath)
+	audio, err := playback.ResolveCLIAudioTrack(exitCTX, *audioTrackPtr, ffmpegPath, ffmpegErr, absMediaFile, mediaType, localMedia)
+	if err != nil {
+		return err
+	}
+	if audio.Track > 0 {
+		transcode, isSeek = true, false
+	}
 	if transcode {
 		if ffmpegErr != nil {
 			return fmt.Errorf("resolve ffmpeg: %w", ffmpegErr)
@@ -258,24 +267,25 @@ func run(crash *crashlog.Session) error {
 
 	// Branch based on device type
 	if isChromecastTarget {
-		return runChromecastCLI(exitCTX, cancel, flagRes.targetURL, absMediaFile, mediaFile, mediaType, absSubtitlesFile, ffmpegPath, transcode, *mediaArg == "" && *urlArg != "" && !torrentInput)
+		return runChromecastCLI(exitCTX, cancel, flagRes.targetURL, absMediaFile, mediaFile, mediaType, absSubtitlesFile, ffmpegPath, transcode, *mediaArg == "" && *urlArg != "" && !torrentInput, audio)
 	}
 
 	scr := &dummyScreen{ctxCancel: cancel}
 
 	tvdata, err := soapcalls.NewTVPayload(&soapcalls.Options{
-		Ctx:            exitCTX,
-		DMR:            flagRes.targetURL,
-		Media:          absMediaFile,
-		Subs:           absSubtitlesFile,
-		Mtype:          mediaType,
-		Transcode:      transcode,
-		Seek:           isSeek,
-		FFmpegPath:     ffmpegPath,
-		FFmpegSubsPath: absSubtitlesFile,
-		TorrentSource:  castsubtitles.TorrentSource(absMediaFile, !*noTorrentSubtitlesPtr),
-		FFmpegSeek:     0,
-		LogOutput:      nil,
+		Ctx:              exitCTX,
+		DMR:              flagRes.targetURL,
+		Media:            absMediaFile,
+		Subs:             absSubtitlesFile,
+		Mtype:            mediaType,
+		Transcode:        transcode,
+		Seek:             isSeek,
+		FFmpegPath:       ffmpegPath,
+		FFmpegSubsPath:   absSubtitlesFile,
+		TorrentSource:    castsubtitles.TorrentSource(absMediaFile, !*noTorrentSubtitlesPtr),
+		FFmpegSeek:       0,
+		LogOutput:        nil,
+		FFmpegAudioTrack: audio.Track,
 	})
 	if err != nil {
 		return err
@@ -313,7 +323,7 @@ func run(crash *crashlog.Session) error {
 	return nil
 }
 
-func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL, mediaPath string, mediaFile any, mediaType, subsPath, ffmpegPath string, transcode, externalURL bool) error {
+func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL, mediaPath string, mediaFile any, mediaType, subsPath, ffmpegPath string, transcode, externalURL bool, audio playback.AudioChoice) error {
 	if externalURL {
 		transcode = playback.ChromecastExternalURLPolicy(mediaPath, mediaType, transcode, subsPath).Transcode
 	} else {
@@ -349,6 +359,7 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 			SeekSeconds:  0,
 			SubtitleSize: utils.SubtitleSizeMedium,
 			LogOutput:    nil, // CLI uses stdout
+			AudioTrack:   audio.Track,
 		}
 		// Update content type for transcoded output
 		mediaType = "video/mp4"
@@ -626,6 +637,11 @@ func processflags() (*flagResults, error) {
 		return nil, fmt.Errorf("checkflags error: %w", errNoflag)
 	}
 
+	if *listAudioPtr {
+		res.exit = true
+		return res, listAudioTracks()
+	}
+
 	if err := checkTCflag(); err != nil {
 		return nil, fmt.Errorf("checkflags error: %w", err)
 	}
@@ -757,4 +773,12 @@ func (s *dummyScreen) SetMediaType(mediaType string) {
 func checkStdin() bool {
 	stat, _ := os.Stdin.Stat()
 	return (stat.Mode() & os.ModeCharDevice) == 0
+}
+
+func listAudioTracks() error {
+	ffmpegPath, err := utils.ResolveFFmpegPath(serverOptions.FFmpegPath)
+	if err != nil {
+		return fmt.Errorf("listAudioTracks: %w", err)
+	}
+	return playback.PrintAudioTracks(context.Background(), os.Stdout, ffmpegPath, *mediaArg)
 }

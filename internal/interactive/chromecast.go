@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -10,6 +11,8 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/mattn/go-runewidth"
 	"go2tv.app/go2tv/v2/castprotocol"
+	"go2tv.app/go2tv/v2/internal/playback"
+	"go2tv.app/go2tv/v2/utils"
 )
 
 // ChromecastScreen handles interactive CLI for Chromecast devices.
@@ -19,7 +22,18 @@ type ChromecastScreen struct {
 	exitCTXfunc context.CancelFunc
 	mediaTitle  string
 	lastAction  string
-	mu          sync.RWMutex
+	// AudioLabel names a non-default audio track chosen with -a.
+	AudioLabel string
+	// Duration is the source length of a transcoded stream; the receiver
+	// only sees the stream from the last restart offset.
+	Duration float64
+	// Restart reloads a transcoded stream at a source position. Nil means
+	// the receiver seeks natively.
+	Restart func(seconds int) error
+	offset  int
+	skips   *skipper
+	note    notice
+	mu      sync.RWMutex
 }
 
 func (p *ChromecastScreen) emitStr(x, y int, style tcell.Style, str string) {
@@ -58,6 +72,13 @@ func (p *ChromecastScreen) EmitMsg(inputtext string) {
 	s.Clear()
 
 	p.emitStr(w/2-titleLen/2, h/2-2, tcell.StyleDefault, "Title: "+mediaTitle)
+	if p.AudioLabel != "" {
+		audio := "Audio: " + p.AudioLabel
+		p.emitStr(w/2-runewidth.StringWidth(audio)/2, h/2-1, tcell.StyleDefault, audio)
+	}
+	if note := p.note.get(); note != "" {
+		p.emitStr(w/2-len(note)/2, h/2+1, tcell.StyleDefault, note)
+	}
 	switch inputtext {
 	case "Waiting for status...", "Buffering...":
 		p.emitStr(w/2-len(inputtext)/2, h/2, blinkStyle, inputtext)
@@ -82,6 +103,7 @@ func (p *ChromecastScreen) EmitMsg(inputtext string) {
 	p.emitStr(w/2-len(`"p" (Play/Pause)`)/2, h/2+4, tcell.StyleDefault, `"p" (Play/Pause)`)
 	p.emitStr(w/2-len(`"m" (Mute/Unmute)`)/2, h/2+6, tcell.StyleDefault, `"m" (Mute/Unmute)`)
 	p.emitStr(w/2-len(`"Page Up" "Page Down" (Volume Up/Down)`)/2, h/2+8, tcell.StyleDefault, `"Page Up" "Page Down" (Volume Up/Down)`)
+	p.emitStr(w/2-runewidth.StringWidth(skipHelp)/2, h/2+10, tcell.StyleDefault, skipHelp)
 	s.Show()
 }
 
@@ -122,7 +144,7 @@ func (p *ChromecastScreen) InterInit(mediaPath string, c chan error) {
 				mediaStarted = true
 				p.EmitMsg("Playing")
 				// Detect media completion: Chromecast stops updating ~1-2s before end
-				if status.Duration > 0 && status.CurrentTime >= status.Duration-1.5 {
+				if status.Duration > 0 && float32(p.streamOffset())+status.CurrentTime >= status.Duration-1.5 {
 					p.EmitMsg("Stopped")
 					p.Fini()
 				}
@@ -162,6 +184,11 @@ func (p *ChromecastScreen) HandleKeyEvent(ev *tcell.EventKey) {
 	if ev.Key() == tcell.KeyEscape {
 		_ = p.Client.Stop()
 		p.Fini()
+	}
+
+	if delta, ok := skipDelta(ev.Key()); ok {
+		p.queueSkip(delta)
+		return
 	}
 
 	if ev.Key() == tcell.KeyPgUp || ev.Key() == tcell.KeyPgDn {
@@ -237,4 +264,58 @@ func (p *ChromecastScreen) updateLastAction(s string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.lastAction = s
+}
+
+func (p *ChromecastScreen) streamOffset() int {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.offset
+}
+
+func (p *ChromecastScreen) queueSkip(delta int) {
+	p.mu.Lock()
+	if p.skips == nil {
+		p.skips = &skipper{seek: p.skip}
+	}
+	skips := p.skips
+	p.mu.Unlock()
+	skips.add(delta)
+	p.note.set(formatSkip(skips.pending()))
+	p.EmitMsg(p.getLastAction())
+}
+
+func (p *ChromecastScreen) skip(delta int) {
+	target, err := p.seekRelative(delta)
+	if err != nil {
+		p.note.set("Seek unavailable")
+	} else {
+		p.note.set("Seeked to " + utils.SecondsToClockTime(target))
+	}
+	p.EmitMsg(p.getLastAction())
+}
+
+func (p *ChromecastScreen) seekRelative(delta int) (int, error) {
+	status, err := p.Client.GetStatus()
+	if err != nil {
+		return 0, fmt.Errorf("seekRelative: %w", err)
+	}
+	current := int(status.CurrentTime) + p.streamOffset()
+	if p.Restart == nil {
+		target := playback.SkipTarget(current, delta, int(status.Duration))
+		if err := p.Client.Seek(target); err != nil {
+			return 0, fmt.Errorf("seekRelative: %w", err)
+		}
+		return target, nil
+	}
+	if p.Duration <= 0 {
+		return 0, errors.New("seekRelative: transcoded duration unknown")
+	}
+	target := playback.SkipTarget(current, delta, int(p.Duration))
+	if err := p.Restart(target); err != nil {
+		return 0, fmt.Errorf("seekRelative: %w", err)
+	}
+	p.mu.Lock()
+	p.offset = target
+	p.mu.Unlock()
+	return target, nil
 }

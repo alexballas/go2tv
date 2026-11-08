@@ -14,6 +14,7 @@ import (
 	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/internal/playback"
 	"go2tv.app/go2tv/v2/metadata"
+	"go2tv.app/go2tv/v2/utils"
 )
 
 const (
@@ -60,6 +61,8 @@ var (
 	ErrInvalidSubtitle  = errors.New("invalid subtitle reference")
 	ErrInvalidArtwork   = errors.New("invalid artwork")
 	ErrSeekUnsupported  = errors.New("seek unsupported")
+	// ErrInvalidAudioTrack reports a track the selected media does not have.
+	ErrInvalidAudioTrack = errors.New("invalid audio track")
 )
 
 // ErrorCode is a stable machine-readable failure category. New codes may be
@@ -162,7 +165,7 @@ func ErrorCodeOf(err error) ErrorCode {
 	case errors.Is(err, ErrInvalidPolicy), errors.Is(err, ErrInvalidOperation),
 		errors.Is(err, ErrInvalidConfig), errors.Is(err, ErrInvalidMedia),
 		errors.Is(err, ErrInvalidSubtitle), errors.Is(err, ErrInvalidArtwork),
-		errors.Is(err, ErrSeekUnsupported),
+		errors.Is(err, ErrSeekUnsupported), errors.Is(err, ErrInvalidAudioTrack),
 		errors.Is(err, playback.ErrSeekUnsupported), errors.Is(err, playback.ErrSeekNegative),
 		errors.Is(err, playback.ErrSeekPastDuration):
 		return CodeInvalid
@@ -281,6 +284,18 @@ type Snapshot struct {
 	SelectedLive bool   `json:"SelectedLive"`
 	ActiveLive   bool   `json:"ActiveLive"`
 	StreamTitle  string `json:"StreamTitle"`
+	// AudioTracks lists the selected video's audio streams once probed.
+	// SelectedAudioTrack is the chosen one-based Number, zero for the source
+	// default. Non-default tracks apply to the next load of that media.
+	AudioTracks        []AudioTrack `json:"AudioTracks"`
+	SelectedAudioTrack int          `json:"SelectedAudioTrack"`
+}
+
+// AudioTrack is a selectable source audio stream.
+type AudioTrack struct {
+	Number  int    `json:"Number"`
+	Label   string `json:"Label"`
+	Default bool   `json:"Default"`
 }
 
 // MediaID identifies a MediaRef by its caller-supplied root and ID.
@@ -506,6 +521,9 @@ type Config struct {
 	RunMonitor func(context.Context, playback.MonitorConfig, playback.Device, Transport)
 	// DurationProbe is advisory; probe errors do not fail playback.
 	DurationProbe func(context.Context, playback.SourceOpener) (float64, error)
+	// AudioTracksProbe lists a selected video's audio streams. Optional;
+	// without it no audio track can be chosen.
+	AudioTracksProbe func(context.Context, playback.SourceOpener) ([]utils.AudioTrack, error)
 	// Clock is optional and intended for deterministic monitor/timer adapters.
 	Clock playback.Clock
 	// OperationTimeout bounds adapter I/O. Non-positive values default to 30s.

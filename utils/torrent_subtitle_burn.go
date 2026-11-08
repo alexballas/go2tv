@@ -234,7 +234,7 @@ func (b *subtitleBurn) videoFilter(copyTS bool) string {
 
 // videoArgs overlays local bitmap tracks or adds a progressive torrent PNG input.
 // Preserve input PTS, including nonzero media origins and transcoded seeks.
-func (b *subtitleBurn) videoArgs(base, tail string) []string {
+func (b *subtitleBurn) videoArgs(base, tail string, audioTrack int) []string {
 	if b.bitmap != nil {
 		// Match the subtitle canvas before scaling the composed video. Both
 		// streams use the same input timestamps, including after a seek.
@@ -249,7 +249,7 @@ func (b *subtitleBurn) videoArgs(base, tail string) []string {
 		}
 		graph := fmt.Sprintf("[%d:s:%d][0:v:0]scale2ref[sub][video];[video][sub]overlay=eof_action=pass", input, b.bitmap.Track)
 		graph = joinVideoFilters(graph, base, tail) + "[out]"
-		return append(args, "-filter_complex", graph, "-map", "[out]", "-map", "0:a:0?")
+		return append(args, "-filter_complex", graph, "-map", "[out]", "-map", audioStreamMap(audioTrack))
 	}
 	graph := fmt.Sprintf("[0:v]%s[base];[1:v]setpts=PTS+%s/TB[sub];[sub][base]scale2ref[scaled][video];[video][scaled]overlay=eof_action=pass", base, strconv.FormatFloat(b.origin, 'f', -1, 64))
 	graph = joinVideoFilters(graph, tail) + "[out]"
@@ -257,7 +257,7 @@ func (b *subtitleBurn) videoArgs(base, tail string) []string {
 		"-f", "image2pipe", "-framerate", strconv.Itoa(torrentCaptionFPS),
 		"-c:v", "png", "-probesize", "32", "-analyzeduration", "0",
 		"-i", b.overlay, "-filter_complex", graph,
-		"-map", "[out]", "-map", "0:a:0?",
+		"-map", "[out]", "-map", audioStreamMap(audioTrack),
 	}
 }
 

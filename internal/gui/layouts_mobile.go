@@ -200,6 +200,8 @@ func (t liveTheme) Size(n fyne.ThemeSizeName) float32 {
 type valueField struct {
 	widget.BaseWidget
 	label    *widget.Label
+	heading  *widget.Label
+	chevron  *widget.Icon
 	OnTapped func()
 }
 
@@ -208,6 +210,15 @@ func newValueField(onTapped func()) *valueField {
 	label.Truncation = fyne.TextTruncateEllipsis
 	f := &valueField{label: label, OnTapped: onTapped}
 	f.ExtendBaseWidget(f)
+	return f
+}
+
+// A navigation summary separates its bold heading from regular selections.
+func newTrackSummary(onTapped func()) *valueField {
+	f := newValueField(onTapped)
+	f.heading = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	f.heading.Truncation = fyne.TextTruncateEllipsis
+	f.chevron = widget.NewIcon(theme.NavigateNextIcon())
 	return f
 }
 
@@ -230,24 +241,36 @@ func (f *valueField) Tapped(*fyne.PointEvent) {
 func (f *valueField) CreateRenderer() fyne.WidgetRenderer {
 	bg := canvas.NewRectangle(nil)
 	bg.StrokeWidth = 1
-	r := &valueFieldRenderer{field: f, bg: bg}
+	var content fyne.CanvasObject = f.label
+	if f.heading != nil {
+		text := container.NewThemeOverride(
+			container.New(layout.NewCustomPaddedVBoxLayout(0), f.heading, f.label),
+			liveTheme{sizes: map[fyne.ThemeSizeName]float32{theme.SizeNameInnerPadding: 0}},
+		)
+		padding := theme.InnerPadding()
+		content = container.New(layout.NewCustomPaddedLayout(padding, padding, padding, padding),
+			container.NewBorder(nil, nil, nil, container.NewCenter(f.chevron), text))
+	}
+	r := &valueFieldRenderer{field: f, bg: bg, content: content}
 	r.Refresh()
 	return r
 }
 
 type valueFieldRenderer struct {
-	field *valueField
-	bg    *canvas.Rectangle
+	field   *valueField
+	bg      *canvas.Rectangle
+	content fyne.CanvasObject
 }
 
 func (r *valueFieldRenderer) Layout(size fyne.Size) {
 	r.bg.Resize(size)
-	r.field.label.Resize(size)
+	r.content.Resize(size)
 }
 
 func (r *valueFieldRenderer) MinSize() fyne.Size {
 	// Match an Entry's height so swapping with the URL entry keeps the row.
-	return fyne.NewSize(r.field.label.MinSize().Width, widget.NewEntry().MinSize().Height)
+	size := r.content.MinSize()
+	return fyne.NewSize(size.Width, max(size.Height, widget.NewEntry().MinSize().Height))
 }
 
 func (r *valueFieldRenderer) Refresh() {
@@ -257,11 +280,11 @@ func (r *valueFieldRenderer) Refresh() {
 	r.bg.StrokeColor = th.Color(theme.ColorNameInputBorder, v)
 	r.bg.CornerRadius = th.Size(theme.SizeNameInputRadius)
 	r.bg.Refresh()
-	r.field.label.Refresh()
+	r.content.Refresh()
 }
 
 func (r *valueFieldRenderer) Objects() []fyne.CanvasObject {
-	return []fyne.CanvasObject{r.bg, r.field.label}
+	return []fyne.CanvasObject{r.bg, r.content}
 }
 
 func (*valueFieldRenderer) Destroy() {}

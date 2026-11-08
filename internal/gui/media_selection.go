@@ -147,19 +147,26 @@ func newMediaSelectionCard(s *FyneScreen, preview, clearSubs *widget.Button) *me
 	c.subtitles.Selected = lang.L(subtitleAutomatic)
 	sourceLabel := widget.NewLabel(lang.L("Source"))
 	subtitleLabel := widget.NewLabel(lang.L("Subtitles"))
-	labelWidth := fyne.Max(sourceLabel.MinSize().Width, subtitleLabel.MinSize().Width)
+	audioLabel := widget.NewLabel(lang.L("Audio"))
+	labelWidth := fyne.Max(fyne.Max(sourceLabel.MinSize().Width, subtitleLabel.MinSize().Width), audioLabel.MinSize().Width)
 	c.radio = newRadioButton(s)
 	sourceControl := container.NewBorder(nil, nil, nil, c.radio, c.source)
 	sourceRow := container.New(selectionFieldLayout{labelWidth: labelWidth}, sourceLabel, sourceControl)
 	subtitleRow := container.New(selectionFieldLayout{labelWidth: labelWidth}, subtitleLabel, c.subtitles)
 	selectors := container.NewGridWithColumns(2, sourceRow, subtitleRow)
 	mediaArea := container.New(reservedSelectionLayout{}, c.media, s.MediaText)
+	// Audio choices appear only for media with several tracks.
+	audioSelect := ttwidget.NewSelect(nil, nil)
+	audioSelect.OnChanged = func(string) { s.chooseAudioTrack(audioSelect.SelectedIndex()) }
+	audioRow := container.New(selectionFieldLayout{labelWidth: labelWidth}, audioLabel, audioSelect)
+	audioRow.Hide()
+	s.audioPicker = audioPicker{selectWidget: &audioSelect.Select, objects: []fyne.CanvasObject{audioRow}, hint: audioSelect.SetToolTip}
 	// Lay out the tooltip wrapper so hover events reach it.
 	var internalSubs fyne.CanvasObject = s.SelectInternalSubs
 	if s.internalSubsToolTip != nil {
 		internalSubs = s.internalSubsToolTip
 	}
-	c.content = container.NewVBox(selectors, mediaArea, newTorrentControls(s), internalSubs, c.subs)
+	c.content = container.NewVBox(selectors, mediaArea, audioRow, newTorrentControls(s), internalSubs, c.subs)
 	c.bindSource(preview)
 	c.refresh()
 	return c
@@ -278,6 +285,7 @@ func (c *mediaSelectionCard) refresh() {
 	} else {
 		s.SubsBrowse.Disable()
 	}
+	s.refreshAudioPicker()
 	s.refreshPlaybackReadiness()
 	// No tracks means no probe result (e.g. ffmpeg missing); nothing to pick.
 	if c.subtitles.Disabled() || len(s.SelectInternalSubs.Options) == 0 {

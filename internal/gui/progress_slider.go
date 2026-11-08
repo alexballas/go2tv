@@ -42,6 +42,19 @@ func (t *tappedSlider) Enable() {
 	} else {
 		t.Slider.Disable()
 	}
+	t.syncSkip()
+}
+
+// Disable also disables the skip buttons, which share seek availability.
+func (t *tappedSlider) Disable() {
+	t.Slider.Disable()
+	t.syncSkip()
+}
+
+func (t *tappedSlider) syncSkip() {
+	if t.screen != nil {
+		t.screen.syncSkipButtons(!t.Slider.Disabled())
+	}
 }
 
 // Called on the UI thread with samples belonging to the current session.

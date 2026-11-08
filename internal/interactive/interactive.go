@@ -2,7 +2,9 @@ package interactive
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -11,7 +13,9 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/mattn/go-runewidth"
+	"go2tv.app/go2tv/v2/internal/playback"
 	"go2tv.app/go2tv/v2/soapcalls"
+	"go2tv.app/go2tv/v2/utils"
 )
 
 // NewScreen .
@@ -21,7 +25,11 @@ type NewScreen struct {
 	exitCTXfunc context.CancelFunc
 	mediaTitle  string
 	lastAction  string
-	mu          sync.RWMutex
+	// AudioLabel names a non-default audio track chosen with -a.
+	AudioLabel string
+	skips      *skipper
+	note       notice
+	mu         sync.RWMutex
 }
 
 func (p *NewScreen) emitStr(x, y int, style tcell.Style, str string) {
@@ -61,10 +69,17 @@ func (p *NewScreen) EmitMsg(inputtext string) {
 	s.Clear()
 
 	p.emitStr(w/2-titleLen/2, h/2-2, tcell.StyleDefault, "Title: "+mediaTitle)
+	if p.AudioLabel != "" {
+		audio := "Audio: " + p.AudioLabel
+		p.emitStr(w/2-runewidth.StringWidth(audio)/2, h/2-1, tcell.StyleDefault, audio)
+	}
 	if inputtext == "Waiting for status..." {
 		p.emitStr(w/2-len(inputtext)/2, h/2, blinkStyle, inputtext)
 	} else {
 		p.emitStr(w/2-len(inputtext)/2, h/2, boldStyle, inputtext)
+	}
+	if note := p.note.get(); note != "" {
+		p.emitStr(w/2-len(note)/2, h/2+1, tcell.StyleDefault, note)
 	}
 	p.emitStr(1, 1, tcell.StyleDefault, "Press ESC to stop and exit.")
 
@@ -83,6 +98,7 @@ func (p *NewScreen) EmitMsg(inputtext string) {
 	p.emitStr(w/2-len(`"p" (Play/Pause)`)/2, h/2+4, tcell.StyleDefault, `"p" (Play/Pause)`)
 	p.emitStr(w/2-len(`"m" (Mute/Unmute)`)/2, h/2+6, tcell.StyleDefault, `"m" (Mute/Unmute)`)
 	p.emitStr(w/2-len(`"Page Up" "Page Down" (Volume Up/Down)`)/2, h/2+8, tcell.StyleDefault, `"Page Up" "Page Down" (Volume Up/Down)`)
+	p.emitStr(w/2-runewidth.StringWidth(skipHelp)/2, h/2+10, tcell.StyleDefault, skipHelp)
 	s.Show()
 }
 
@@ -152,6 +168,11 @@ func (p *NewScreen) HandleKeyEvent(ev *tcell.EventKey) {
 	if ev.Key() == tcell.KeyEscape {
 		_ = tv.SendtoTV("Stop")
 		p.Fini()
+	}
+
+	if delta, ok := skipDelta(ev.Key()); ok {
+		p.queueSkip(delta)
+		return
 	}
 
 	if ev.Key() == tcell.KeyPgUp || ev.Key() == tcell.KeyPgDn {
@@ -256,4 +277,67 @@ func playPauseActionFromState(state string) string {
 	default:
 		return "Play"
 	}
+}
+
+func (p *NewScreen) queueSkip(delta int) {
+	p.mu.Lock()
+	if p.skips == nil {
+		p.skips = &skipper{seek: p.skip}
+	}
+	skips := p.skips
+	p.mu.Unlock()
+	skips.add(delta)
+	p.note.set(formatSkip(skips.pending()))
+	p.EmitMsg(p.getLastAction())
+}
+
+func (p *NewScreen) skip(delta int) {
+	target, err := dlnaSkip(p.TV, delta)
+	if err != nil {
+		p.note.set("Seek unavailable")
+	} else {
+		p.note.set("Seeked to " + utils.SecondsToClockTime(target))
+	}
+	p.EmitMsg(p.getLastAction())
+}
+
+// dlnaSkip seeks relative to the renderer position. Transcoded streams
+// restart FFmpeg at the target, since their timeline starts at the offset.
+func dlnaSkip(tv *soapcalls.TVPayload, delta int) (int, error) {
+	if tv == nil {
+		return 0, errors.New("dlnaSkip: no renderer")
+	}
+	position, err := tv.GetPositionInfo()
+	if err != nil {
+		return 0, fmt.Errorf("dlnaSkip: %w", err)
+	}
+	if len(position) < 2 {
+		return 0, errors.New("dlnaSkip: incomplete position")
+	}
+	current, err := utils.ClockTimeToSeconds(position[1])
+	if err != nil {
+		return 0, fmt.Errorf("dlnaSkip: %w", err)
+	}
+	if tv.Transcode {
+		total := int(math.Round(tv.MediaDuration))
+		if total <= 0 {
+			return 0, errors.New("dlnaSkip: transcoded duration unknown")
+		}
+		target := playback.SkipTarget(current+tv.FFmpegSeek, delta, total)
+		tv.SetTranscodeSeek(target, tv.FFmpegSubsPath, tv.FFmpegEmbeddedSubtitle)
+		_ = tv.SendtoTV("Stop")
+		if err := tv.SendtoTV("Play1"); err != nil {
+			return 0, fmt.Errorf("dlnaSkip: %w", err)
+		}
+		return target, nil
+	}
+	if !tv.Seekable {
+		return 0, errors.New("dlnaSkip: media not seekable")
+	}
+	total, _ := utils.ClockTimeToSeconds(position[0])
+	target := playback.SkipTarget(current, delta, total)
+	if err := tv.SeekSoapCall(utils.SecondsToClockTime(target)); err != nil {
+		return 0, fmt.Errorf("dlnaSkip: %w", err)
+	}
+	return target, nil
 }

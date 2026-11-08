@@ -38,6 +38,16 @@
         <rect class="icon-fill" x="6" y="4" width="4" height="16" rx="1" />
         <rect class="icon-fill" x="14" y="4" width="4" height="16" rx="1" />
       </symbol>
+      <symbol id="icon-skip-back" viewBox="0 0 24 24">
+        <path d="M3.5 12a8.5 8.5 0 1 0 2.5-6L3.5 8.5" />
+        <path d="M3.5 3.5v5h5" />
+        <text class="icon-text" x="12" y="15.2">10</text>
+      </symbol>
+      <symbol id="icon-skip-forward" viewBox="0 0 24 24">
+        <path d="M20.5 12a8.5 8.5 0 1 1-2.5-6l2.5 2.5" />
+        <path d="M20.5 3.5v5h-5" />
+        <text class="icon-text" x="12" y="15.2">30</text>
+      </symbol>
       <symbol id="icon-square" viewBox="0 0 24 24">
         <rect class="icon-fill" x="6" y="6" width="12" height="12" rx="1.5" />
       </symbol>
@@ -281,6 +291,18 @@
               <div class="transport-row">
                 <div class="controls">
                   <button
+                    id="skip-back"
+                    type="button"
+                    class="skip-control"
+                    aria-label="Back 10 seconds"
+                    title="Back 10 seconds (←)"
+                    aria-keyshortcuts="ArrowLeft"
+                    disabled
+                  >
+                    <svg class="action-icon" aria-hidden="true">
+                      <use href="#icon-skip-back"></use>
+                    </svg></button
+                  ><button
                     id="play-toggle"
                     type="button"
                     data-command="player.play"
@@ -290,6 +312,18 @@
                   >
                     <svg class="action-icon" aria-hidden="true">
                       <use href="#icon-play"></use>
+                    </svg></button
+                  ><button
+                    id="skip-forward"
+                    type="button"
+                    class="skip-control"
+                    aria-label="Forward 30 seconds"
+                    title="Forward 30 seconds (→)"
+                    aria-keyshortcuts="ArrowRight"
+                    disabled
+                  >
+                    <svg class="action-icon" aria-hidden="true">
+                      <use href="#icon-skip-forward"></use>
                     </svg></button
                   ><button
                     id="stop-button"
@@ -502,6 +536,10 @@
                       Clear
                     </button>
                   </div>
+                </div>
+                <div id="audio-selection" class="selection-details" hidden>
+                  <label class="status-label" for="audio-track">Audio</label>
+                  <select id="audio-track"></select>
                 </div>
               </details>
               <div class="browser-toolbar">

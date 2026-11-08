@@ -901,7 +901,9 @@ func playActionOnTargetContext(screen *FyneScreen, target playbackTarget, parent
 		var mediaType string
 		var isSeek bool
 		var directResumeSeek int
-		transcodeEnabled := screen.Transcode
+		// A chosen audio track is transcoded through FFmpeg.
+		audioMedia, _ := screen.audioTrackMedia()
+		audioTrack, transcodeEnabled := screen.audioCast(audioMedia, screen.Transcode)
 		existingSeek := 0
 		seekRestart := screen.dlnaSeekRestart
 		if seekRestart {
@@ -1070,6 +1072,7 @@ func playActionOnTargetContext(screen *FyneScreen, target playbackTarget, parent
 				FFmpegSubsPath:              screen.subsfile,
 				FFmpegEmbeddedSubtitle:      screen.embeddedSubtitle,
 				TorrentSource:               torrentSubtitleSource(screen.mediafile, transcodeEnabled && !screen.CustomSubsCheck.Checked),
+				FFmpegAudioTrack:            audioTrack,
 			}
 		}
 		if directURL := screen.radioDirectHLSURL(mediaPath, mediaType, transcodeEnabled); directURL != "" {
@@ -1465,7 +1468,8 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 	screen.clearResumeSession()
 
 	screen.captureChromecastSubtitleSettings()
-	transcode := screen.Transcode
+	audioMedia, _ := screen.audioTrackMedia()
+	_, transcode := screen.audioCast(audioMedia, screen.Transcode)
 	ffmpegSeek := screen.ffmpegSeek
 
 	if err := extractChromecastSubtitles(screen); err != nil {
@@ -2437,8 +2441,10 @@ func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target 
 			if !screen.isChromecastActionCurrent(actionID) {
 				return
 			}
-			// Determine if transcoding is enabled
+			// Determine if transcoding is enabled. Audio choices belong to the
+			// media they were made for, not the item skipped to.
 			screen.captureChromecastSubtitleSettings()
+			screen.clearCastAudio()
 			transcode := screen.Transcode
 			ffmpegSeek := 0
 			var serverStoppedCTX context.Context

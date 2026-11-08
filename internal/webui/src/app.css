@@ -170,6 +170,16 @@
     fill: currentColor;
     stroke: none;
   }
+  .action-icon .icon-text {
+    fill: currentColor;
+    stroke: none;
+    font:
+      700 8.5px/1 ui-sans-serif,
+      system-ui,
+      sans-serif;
+    letter-spacing: -0.04em;
+    text-anchor: middle;
+  }
   .action-icon.is-spinning {
     @apply animate-spin;
   }
@@ -459,6 +469,13 @@
   .controls button {
     @apply grid size-11 min-h-11 place-items-center rounded-full p-0;
   }
+  .controls .skip-control {
+    @apply border-transparent bg-transparent text-[#4a4560] shadow-none hover:bg-[#edeaf4] hover:text-brand-600 dark:text-[#c9c4d6] dark:hover:bg-[#1d1a26] dark:hover:text-brand-300;
+  }
+  .controls .skip-control .action-icon {
+    @apply size-6;
+    stroke-width: 1.8;
+  }
   .controls .primary-control {
     @apply min-w-11 border-brand-500 bg-brand-500 text-white shadow-lg shadow-brand-600/15 hover:border-brand-400 hover:bg-brand-400 dark:border-brand-500 dark:bg-brand-500 dark:hover:border-brand-400 dark:hover:bg-brand-400;
   }
@@ -691,7 +708,9 @@
   }
   @media (min-width: 640px) {
     .selection-status {
-      @apply grid grid-cols-2 gap-2;
+      @apply grid gap-2;
+      grid-auto-columns: minmax(0, 1fr);
+      grid-auto-flow: column;
     }
     .selection-status[data-has-details="false"] {
       grid-template-columns: minmax(0, 1fr);
@@ -728,6 +747,15 @@
   }
   .selection-value #subtitle-selected {
     @apply min-w-0 flex-1;
+  }
+  .selection-status label.status-label {
+    @apply block;
+  }
+  #audio-track {
+    @apply mt-0.5 min-h-8 w-full min-w-0 py-1 text-sm;
+  }
+  #audio-track:disabled {
+    @apply cursor-not-allowed opacity-60;
   }
   #subtitle-clear {
     @apply min-h-7 shrink-0 px-2 py-1 text-xs;

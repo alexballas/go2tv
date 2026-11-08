@@ -196,8 +196,13 @@ function fixture() {
     "radio-list",
     "radio-status",
     "radio-live-dot",
+    "skip-back",
+    "skip-forward",
+    "audio-selection",
+    "audio-track",
   ])
     ids[id] = new Node();
+  ids["audio-track"].tag = "select";
   ids["radio-country"].tag = "select";
   ids.roots.tag = "select";
   ids["torrent-files"].tag = "select";
@@ -2358,4 +2363,146 @@ test("radio directory failures explain the problem and retry", async () => {
   await settle();
   assert.equal(calls.length, 2);
   assert.equal(ids["radio-list"].children.length, 2);
+});
+
+function playingClient(position = 100, duration = 1000) {
+  const fixtureState = fixture();
+  const client = startClient(fixtureState.env);
+  return settle().then(() => {
+    FakeSocket.instances[0].emit("open");
+    client.handle({
+      protocol_version: 1,
+      type: "state.playback",
+      payload: {
+        revision: 4,
+        state: "PLAYING",
+        position,
+        duration,
+        has_session: true,
+      },
+    });
+    return { ...fixtureState, client, ws: FakeSocket.instances[0] };
+  });
+}
+
+test("skip buttons accumulate rapid presses into one seek", async () => {
+  const { ids, ws, timers } = await playingClient();
+  assert.equal(ids["skip-forward"].disabled, false);
+  const sent = ws.sent.length;
+  ids["skip-forward"].emit("click");
+  ids["skip-forward"].emit("click");
+  ids["skip-back"].emit("click");
+  assert.equal(ids.time.textContent, "2:30 / 16:40");
+  assert.equal(ws.sent.length, sent, "seek waits for presses to settle");
+  for (const run of timers.splice(0)) run();
+  const seeks = ws.sent.slice(sent).filter((m) => m.type === "player.seek");
+  assert.deepEqual(
+    seeks.map((m) => m.payload.seconds),
+    [150],
+  );
+});
+
+test("skips clamp to the media and follow arrow keys outside inputs", async () => {
+  const { ids, ws, timers, document } = await playingClient(985, 1000);
+  ids["skip-forward"].emit("click");
+  for (const run of timers.splice(0)) run();
+  assert.equal(ws.sent.at(-1).payload.seconds, 999);
+
+  const sent = ws.sent.length;
+  document.emit("keydown", { key: "ArrowLeft", target: { tagName: "INPUT" } });
+  for (const run of timers.splice(0)) run();
+  assert.equal(ws.sent.length, sent, "typing keeps arrow keys");
+
+  ws.message({
+    protocol_version: 1,
+    type: "ack",
+    id: ws.sent.at(-1).id,
+    payload: { revision: 6 },
+  });
+  let prevented = false;
+  document.emit("keydown", {
+    key: "ArrowLeft",
+    target: { tagName: "BODY" },
+    preventDefault: () => (prevented = true),
+  });
+  for (const run of timers.splice(0)) run();
+  assert.equal(prevented, true);
+  assert.equal(ws.sent.at(-1).type, "player.seek");
+  assert.equal(ws.sent.at(-1).payload.seconds, 975);
+});
+
+test("skip controls stay disabled without a seekable session", async () => {
+  const { ids, client } = await playingClient();
+  client.handle({
+    protocol_version: 1,
+    type: "state.playback",
+    payload: { revision: 5, state: "STOPPED", has_session: false },
+  });
+  assert.equal(ids["skip-back"].disabled, true);
+  assert.equal(ids["skip-forward"].disabled, true);
+});
+
+test("audio track picker lists tracks and locks during playback", async () => {
+  const { ids, ws, client } = await playingClient();
+  const selection = (payload) =>
+    client.handle({
+      protocol_version: 1,
+      type: "state.selection",
+      payload: {
+        revision: 7,
+        media: true,
+        media_name: "movie.mkv",
+        ...payload,
+      },
+    });
+  selection({ audio_tracks: [{ number: 1, label: "English · AAC Stereo" }] });
+  assert.equal(
+    ids["audio-selection"].hidden,
+    true,
+    "one track offers no choice",
+  );
+
+  selection({
+    audio_tracks: [
+      { number: 1, label: "Japanese · AC3 5.1", default: true },
+      { number: 2, label: "English · AAC Stereo" },
+    ],
+    audio_track: 0,
+  });
+  assert.equal(ids["audio-selection"].hidden, false);
+  assert.deepEqual(
+    ids["audio-track"].children.map((o) => o.textContent),
+    ["Japanese · AC3 5.1 (default)", "English · AAC Stereo"],
+  );
+  assert.equal(ids["audio-track"].value, "1");
+  assert.equal(ids["selection-status"].open, true);
+
+  ids["audio-track"].value = "2";
+  ids["audio-track"].emit("change");
+  assert.equal(ws.sent.at(-1).type, "library.select_audio");
+  assert.equal(ws.sent.at(-1).payload.track, 2);
+
+  client.handle({
+    protocol_version: 1,
+    type: "state.snapshot",
+    payload: {
+      revision: 8,
+      selected_media: true,
+      selected_media_name: "movie.mkv",
+      active_media_name: "movie.mkv",
+      has_session: true,
+      playback_state: "PLAYING",
+      audio_tracks: [
+        { number: 1, label: "Japanese · AC3 5.1", default: true },
+        { number: 2, label: "English · AAC Stereo" },
+      ],
+      audio_track: 2,
+    },
+  });
+  assert.equal(ids["audio-track"].value, "2");
+  assert.equal(
+    ids["audio-track"].disabled,
+    true,
+    "choice applies before casting",
+  );
 });

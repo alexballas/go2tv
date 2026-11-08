@@ -152,6 +152,7 @@ func desktopChromecastTranscodeOptions(screen *FyneScreen, seekSeconds int) *uti
 		LogOutput:        screen.Debug,
 		TorrentSource:    screen.chromecastTorrentBurnSource(true),
 		EmbeddedSubtitle: screen.embeddedSubtitle,
+		AudioTrack:       screen.castAudio(),
 	}
 }
 

@@ -120,9 +120,10 @@ func serveDLNATranscodedStream(ctx context.Context, w io.Writer, input any, ff *
 
 		args = append(args, "-i", in)
 		if burn.overlay != "" || burn.bitmap != nil {
-			args = append(args, burn.videoArgs(softwareTranscodeScaleFilter, plan.filterTail)...)
+			args = append(args, burn.videoArgs(softwareTranscodeScaleFilter, plan.filterTail, opts.AudioTrack)...)
 		} else {
 			args = append(args, "-vf", vf)
+			args = append(args, selectedStreamMaps(opts.AudioTrack)...)
 		}
 		args = append(args, plan.codecArgs...)
 		args = append(

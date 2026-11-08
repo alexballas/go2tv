@@ -222,8 +222,9 @@ func setMobileMediaURI(screen *FyneScreen, uri fyne.URI) {
 	if screen.mediafile != nil && screen.mediafile.String() != uri.String() {
 		clearsubsAction(screen)
 	}
-	screen.MediaText.SetText(uri.Name())
+	screen.tracks.clearExtracted(screen)
 	screen.mediafile = uri
+	screen.MediaText.SetText(uri.Name())
 	resolveSelectedMobileArtwork(screen, uri)
 	screen.refreshPlaybackReadiness()
 }
@@ -271,14 +272,22 @@ func subsAction(screen *FyneScreen) {
 			return
 		}
 
-		screen.subsfile = reader.URI()
-		screen.SubsText.SetText(reader.URI().Name())
+		setMobileSubtitleURI(screen, reader.URI())
 	}, w)
 
 	fd.SetFilter(storage.NewExtensionFileFilter(mediamodel.SubtitleExtensions()))
 
 	resumeHotkeys = suspendHotkeys(screen)
 	fd.Show()
+}
+
+// Called by the picker after a manual subtitle selection succeeds.
+func setMobileSubtitleURI(screen *FyneScreen, uri fyne.URI) {
+	screen.tracks.clearExtracted(screen)
+	screen.tracks.mode = mobileSubsExternal
+	screen.subsfile = uri
+	screen.SubsText.SetText(uri.Name())
+	screen.tracks.refresh(screen)
 }
 
 func playAction(screen *FyneScreen) {
@@ -418,6 +427,13 @@ func playMobileAction(screen *FyneScreen, replace bool) {
 		return
 	}
 	setPlayPauseView("", screen)
+	if err := prepareMobileSubtitles(screen, startupCtx, screen.selectedDeviceType == devices.DeviceTypeChromecast); err != nil {
+		if !errors.Is(err, context.Canceled) {
+			check(w, err)
+		}
+		startAfreshPlayButton(screen)
+		return
+	}
 	streamCtx, detachStream := playbackStreamContext(startupCtx)
 	defer detachStream()
 	if screen.selectedDeviceType == devices.DeviceTypeChromecast {
@@ -562,7 +578,9 @@ func playMobileAction(screen *FyneScreen, replace bool) {
 		}
 	}
 
-	transcodeEnabled := mediaTranscodeEnabled(screen, mediaType)
+	// A chosen audio track is transcoded through FFmpeg.
+	audioMedia, _ := screen.audioTrackMedia()
+	audioTrack, transcodeEnabled := screen.audioCast(audioMedia, mediaTranscodeEnabled(screen, mediaType))
 	storedResume := screen.prepareResumeSession(mediaType)
 	var directResumeSeek int
 	screen.ffmpegSeek, directResumeSeek = computeResumeStart(existingSeek, storedResume, transcodeEnabled)
@@ -628,6 +646,7 @@ func playMobileAction(screen *FyneScreen, replace bool) {
 		FFmpegSeek:                  screen.ffmpegSeek,
 		FFmpegSubsPath:              ffmpegSubsPath,
 		TorrentSource:               mobileTorrentSubtitleSource(screen),
+		FFmpegAudioTrack:            audioTrack,
 	}
 	if directURL := screen.radioDirectHLSURL(screen.MediaText.Text, mediaType, transcodeEnabled); directURL != "" {
 		screen.tvdata.MediaURL = directURL
@@ -690,16 +709,18 @@ func clearmediaAction(screen *FyneScreen) {
 	if torrentMediaSelected(screen) {
 		cancelTorrent(screen)
 	}
-	screen.MediaText.SetText("")
+	screen.tracks.clearExtracted(screen)
 	screen.mediafile = nil
+	screen.MediaText.SetText("")
 	clearsubsAction(screen)
 	screen.setCurrentArtwork(nil)
 }
 
 func clearsubsAction(screen *FyneScreen) {
-	screen.SubsText.SetText("")
 	screen.subsfile = nil
+	screen.SubsText.SetText("")
 	removeTempFile(&screen.tempSubsFile)
+	screen.tracks.refreshSummary(screen)
 }
 
 func isImageMediaType(mediaType string) bool {
@@ -796,6 +817,7 @@ func mobileTranscodeOptions(screen *FyneScreen) (*utils.TranscodeOptions, error)
 		SubsPath:     subsPath,
 		SubtitleSize: utils.SubtitleSizeMedium,
 		LogOutput:    screen.Debug,
+		AudioTrack:   screen.castAudio(),
 	}
 	if screen.castBurnSubtitles {
 		opts.TorrentSource = mobileTorrentSubtitleSource(screen)
@@ -1293,6 +1315,8 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx contex
 	var mediaURL string
 	var mediaType string
 	var transcode bool
+	// URL and live sources never carry an audio choice.
+	screen.clearCastAudio()
 	var playbackStart int
 	serverStoppedCTX := context.Background()
 	subtitleHost := ""
@@ -1415,7 +1439,8 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx contex
 			return
 		}
 
-		transcode = mediaTranscodeEnabled(screen, mediaType) && !isAudioMediaType(mediaType)
+		audioMedia, _ := screen.audioTrackMedia()
+		_, transcode = screen.audioCast(audioMedia, mediaTranscodeEnabled(screen, mediaType) && !isAudioMediaType(mediaType))
 		storedResume := screen.prepareResumeSession(mediaType)
 		resumeStart := computeChromecastResumeStart(0, storedResume)
 		if transcode {
