@@ -38,6 +38,8 @@ const (
 	imagePreviewMinHeight   = 120
 	imagePreviewStartWidth  = 800
 	imagePreviewStartHeight = 600
+	// screencastStopGrace bounds the wait for screencast ffmpeg to be reaped.
+	screencastStopGrace = 3 * time.Second
 )
 
 func armChromecastImageAutoSkipAfterReady(screen *FyneScreen, client *castprotocol.CastClient, actionID uint64, mediaType, mediaPath string) {
@@ -540,12 +542,23 @@ func showInternalSubsProbe(screen *FyneScreen, subs []string, err error) {
 // for the given media file. Should be called when media file changes
 // (e.g., via Next button or auto-play).
 func updateInternalSubsDropdown(screen *FyneScreen, mediaFile string) {
-	subs, err := utils.GetSubs(screen.ffmpegPath, mediaFile)
+	ctx, finish, ok := screen.beginWork()
+	if !ok {
+		return
+	}
+	defer finish()
+	subs, err := utils.GetSubsContext(ctx, screen.ffmpegPath, mediaFile)
+	if ctx.Err() != nil {
+		return
+	}
 	fyne.Do(func() { showInternalSubsProbe(screen, subs, err) })
 }
 
 func updateInternalSubsDropdownAsync(screen *FyneScreen, mediaFile string) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel, done, ok := screen.workers.begin(screen.torrent.ctx)
+	if !ok {
+		return
+	}
 	screen.mu.Lock()
 	if screen.subtitleProbeCancel != nil {
 		screen.subtitleProbeCancel()
@@ -554,6 +567,7 @@ func updateInternalSubsDropdownAsync(screen *FyneScreen, mediaFile string) {
 	ffmpeg := screen.ffmpegPath
 	screen.mu.Unlock()
 	go func() {
+		defer done()
 		subs, err := utils.GetSubsContext(ctx, ffmpeg, mediaFile)
 		fyne.Do(func() {
 			defer cancel()
@@ -1402,6 +1416,14 @@ func stopScreencastSession(screen *FyneScreen) {
 
 	if session != nil {
 		_ = session.Close()
+		// Close killed ffmpeg; a capture source that never delivered a frame
+		// can still pin its stdin copier, so never wait on it indefinitely.
+		if done := session.Done(); done != nil {
+			select {
+			case <-done:
+			case <-time.After(screencastStopGrace):
+			}
+		}
 	}
 }
 
@@ -1913,9 +1935,16 @@ func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
 	}
 	// Update seek position immediately (used by status watcher)
 	screen.ffmpegSeek = seekPos
+	// Shutdown joins the restart so it cannot publish a server afterwards.
+	workCtx, finishWork, ok := screen.beginWork()
+	if !ok {
+		releasePermit()
+		return
+	}
 	// Run entire seek operation in background to prevent UI freeze
 	go func() {
 		defer releasePermit()
+		defer finishWork()
 		// Stop HTTP server (kills FFmpeg) but keep Chromecast client connected
 		if screen.httpserver != nil {
 			screen.httpserver.StopServer()
@@ -1929,6 +1958,9 @@ func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
 		whereToListen, err := utils.URLtoListenIPandPort(sessionDevice.addr)
 		if err != nil {
 			check(screen, err)
+			return
+		}
+		if workCtx.Err() != nil {
 			return
 		}
 		// Create new HTTP server with new seek position
@@ -2079,10 +2111,11 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 						screen.cancelServerStop = nil
 					}
 					go func() {
+						// A request reading the live screencast returns only once it stops.
+						stopScreencastSession(screen)
 						if server != nil {
 							server.StopServer()
 						}
-						stopScreencastSession(screen)
 					}()
 					startAfreshPlayButton(screen)
 					return
@@ -2163,10 +2196,11 @@ func chromecastStatusWatcher(ctx context.Context, screen *FyneScreen, actionID u
 							screen.cancelServerStop = nil
 						}
 						go func() {
+							// A request reading the live screencast returns only once it stops.
+							stopScreencastSession(screen)
 							if server != nil {
 								server.StopServer()
 							}
-							stopScreencastSession(screen)
 						}()
 						startAfreshPlayButton(screen)
 						return
@@ -2433,10 +2467,16 @@ func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target 
 		}
 
 		actionID := screen.nextChromecastActionID()
+		// Shutdown joins the skip so it cannot publish a server afterwards.
+		workCtx, finishWork, ok := screen.beginWork()
+		if !ok {
+			return
+		}
 
 		permitHandedOff = true
 		go func() {
 			defer releasePermit()
+			defer finishWork()
 			artworkAsset := screen.resolveCurrentGUIArtwork(targetMediaPath, mediaType, true)
 			if !screen.isChromecastActionCurrent(actionID) {
 				return
@@ -2481,8 +2521,11 @@ func skipToMediaPathOnTargetAction(screen *FyneScreen, mediaPath string, target 
 				server.StopServer()
 
 				// Get actual media duration from ffprobe (Chromecast can't report it for transcoded streams)
-				if duration, err := utils.DurationForMediaSeconds(screen.ffmpegPath, targetMediaPath); err == nil {
+				if duration, err := utils.DurationForMediaSecondsContext(workCtx, screen.ffmpegPath, targetMediaPath); err == nil {
 					screen.mediaDuration = duration
+				}
+				if workCtx.Err() != nil {
+					return
 				}
 
 				tcOpts := desktopChromecastTranscodeOptions(screen, ffmpegSeek)
@@ -2718,10 +2761,11 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 				_ = chromecastClient.Stop()
 			}
 			_ = chromecastClient.Close(false)
+			// A request reading the live screencast returns only once it stops.
+			stopScreencastSession(screen)
 			if server != nil {
 				server.StopServer()
 			}
-			stopScreencastSession(screen)
 		}
 		if wait {
 			teardown()
@@ -2775,10 +2819,11 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 				_ = tvdata.SendtoTV("Stop")
 			}
 		}
+		// A request reading the live screencast returns only once it stops.
+		stopScreencastSession(screen)
 		if server != nil {
 			server.StopServer()
 		}
-		stopScreencastSession(screen)
 	}
 
 	if wait {
@@ -3146,11 +3191,24 @@ func startRTMPServer(screen *FyneScreen) {
 	}
 
 	screen.rtmpServerCheck.Disable()
+	ctx, cancel, done, ok := screen.workers.begin(screen.torrent.ctx)
+	if !ok {
+		return
+	}
 
 	permitHandedOff = true
 	go func() {
 		defer releasePermit()
+		defer done()
+		defer cancel()
 		screen.rtmpMu.Lock()
+		if screen.rtmpStopDone != nil {
+			<-screen.rtmpStopDone
+		}
+		if ctx.Err() != nil {
+			screen.rtmpMu.Unlock()
+			return
+		}
 		screen.rtmpServer = rtmp.NewServer()
 		streamKey := fyne.CurrentApp().Preferences().String("RTMPStreamKey")
 		port := fyne.CurrentApp().Preferences().StringWithFallback("RTMPPort", "1935")
@@ -3175,12 +3233,12 @@ func startRTMPServer(screen *FyneScreen) {
 		}
 
 		// Monitor process health in background
+		server := screen.rtmpServer
 		go func() {
-			err := screen.rtmpServer.Wait()
+			err := server.Wait()
 			// Only react if we didn't intentionally stop it
-			if screen.rtmpServer != nil {
+			if stopRTMPServerIfCurrent(screen, server) {
 				check(screen, formatRTMPServerWaitError(err))
-				stopRTMPServer(screen)
 				stopAction(screen)
 			}
 		}()
@@ -3259,26 +3317,42 @@ func formatRTMPServerWaitError(err error) error {
 }
 
 func stopRTMPServer(screen *FyneScreen) {
+	stopRTMPServerIfCurrent(screen, nil)
+}
+
+func stopRTMPServerIfCurrent(screen *FyneScreen, expected *rtmp.Server) bool {
 	screen.rtmpMu.Lock()
 	defer screen.rtmpMu.Unlock()
+	if expected != nil && screen.rtmpServer != expected {
+		return false
+	}
 
 	if screen.rtmpServer == nil {
 		fyne.Do(func() {
 			resetRTMPUI(screen)
 		})
-		return
+		return false
 	}
+	srv := screen.rtmpServer
+	screen.rtmpServer = nil
+	previous := screen.rtmpStopDone
+	done := make(chan struct{})
+	screen.rtmpStopDone = done
 
 	fyne.Do(func() {
 		screen.rtmpServerCheck.Disable()
 	})
 
 	go func() {
+		if previous != nil {
+			<-previous
+		}
+		srv.Stop()
+		close(done)
 		screen.rtmpMu.Lock()
-		srv := screen.rtmpServer
-		screen.rtmpServer = nil // Mark as stopped/stopping
-		if srv != nil {
-			srv.Stop()
+		defer screen.rtmpMu.Unlock()
+		if screen.rtmpServer != nil {
+			return
 		}
 
 		// Remove HLS handler if any
@@ -3289,8 +3363,8 @@ func stopRTMPServer(screen *FyneScreen) {
 		fyne.Do(func() {
 			resetRTMPUI(screen)
 		})
-		screen.rtmpMu.Unlock()
 	}()
+	return true
 }
 
 func resetRTMPUI(screen *FyneScreen) {

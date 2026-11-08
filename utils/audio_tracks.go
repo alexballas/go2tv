@@ -74,6 +74,10 @@ func AudioTracksReaderContext(ctx context.Context, ffmpeg string, media io.ReadS
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithTimeout(ctx, mediaProbeTimeout)
+	defer cancel()
+	stopClosing := context.AfterFunc(ctx, func() { _ = media.Close() })
+	defer stopClosing()
 	input := io.Reader(media)
 	inputURL := "pipe:0"
 	if url := progressiveReaderURL(media); url != "" {
@@ -103,7 +107,7 @@ func probeAudioTracks(ctx context.Context, ffmpeg, in string, stdin io.Reader) (
 	if err != nil {
 		return nil, fmt.Errorf("probeAudioTracks: %w: %w", ErrFFmpegUnavailable, err)
 	}
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, mediaProbeTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, ffprobe, "-v", "error", "-select_streams", "a",
 		"-show_entries", "stream=codec_name,channels:stream_disposition=default:stream_tags=language,title",

@@ -142,7 +142,7 @@ func convertSubtitleWithFFmpeg(ctx context.Context, source io.Reader, inputForma
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, mediaProbeTimeout)
 	defer cancel()
 	command := exec.CommandContext(ctx, path, "-nostdin", "-v", "error", "-f", inputFormat, "-i", "pipe:0", "-map", "0:s:0", "-f", outputFormat, "pipe:1")
 	command.WaitDelay = time.Second

@@ -76,7 +76,7 @@ func withSubtitleReader(ctx context.Context, ffmpeg string, media io.ReadSeekClo
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, mediaProbeTimeout)
 	defer cancel()
 	stopClosing := context.AfterFunc(ctx, func() { _ = media.Close() })
 	defer stopClosing()

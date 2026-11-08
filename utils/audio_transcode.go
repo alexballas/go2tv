@@ -64,9 +64,6 @@ func ServeAudioTranscodedStream(ctx context.Context, w io.Writer, input any, ff 
 			return err
 		}
 	}
-	if ff.Process != nil {
-		_ = ff.Process.Kill()
-	}
 	args := []string{opts.FFmpegPath, "-hide_banner", "-loglevel", "error"}
 	if hls {
 		hlsOptions, err := audioHLSDemuxerOptions(ctx, opts.FFmpegPath)
@@ -94,7 +91,9 @@ func ServeAudioTranscodedStream(ctx context.Context, w io.Writer, input any, ff 
 func audioHLSDemuxerOptions(ctx context.Context, ffmpegPath string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(ctx, audioHLSProbeTimeout)
 	defer cancel()
-	help, err := exec.CommandContext(ctx, ffmpegPath, "-hide_banner", "-h", "demuxer=hls").Output()
+	cmd := exec.CommandContext(ctx, ffmpegPath, "-hide_banner", "-h", "demuxer=hls")
+	setSysProcAttr(cmd)
+	help, err := cmd.Output()
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()

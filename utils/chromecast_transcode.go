@@ -33,7 +33,7 @@ func escapeFFmpegPath(path string) string {
 //   - ctx: Context for cancellation (pass r.Context() from HTTP handler)
 //   - w: HTTP response writer to stream transcoded output
 //   - input: Media source - either string (filepath) or io.Reader
-//   - ff: Pointer to exec.Cmd for FFmpeg process management (cleanup)
+//   - ff: fresh exec.Cmd per call; receives the running FFmpeg command
 //   - opts: TranscodeOptions containing FFmpeg path, subtitles, seek position, and logger
 func ServeChromecastTranscodedStream(
 	ctx context.Context,
@@ -72,13 +72,6 @@ func ServeChromecastTranscodedStream(
 		in = "pipe:0"
 	default:
 		return ErrInvalidInput
-	}
-
-	if ff != nil && ff.Process != nil {
-		if isRawInput && ff.ProcessState == nil {
-			return ErrTranscodeBusy
-		}
-		_ = ff.Process.Kill()
 	}
 
 	// Build video filter chain.

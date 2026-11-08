@@ -172,31 +172,45 @@ func (r *blockedProbeReader) Read(p []byte) (int, error) {
 
 func (*blockedProbeReader) Seek(int64, int) (int64, error) { return 0, errors.New("not seekable") }
 
-func TestDurationForMediaReaderSecondsCancelsBlockedInput(t *testing.T) {
-	ffmpeg, _, _ := writeDurationProbeTools(t)
-	pipe, writer := io.Pipe()
-	defer writer.Close()
-	media := &blockedProbeReader{PipeReader: pipe, started: make(chan struct{})}
-	defer media.Close()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	done := make(chan error, 1)
-	go func() {
-		_, err := DurationForMediaReaderSeconds(ctx, ffmpeg, media)
-		done <- err
-	}()
-	select {
-	case <-media.started:
-	case <-time.After(2 * time.Second):
-		t.Fatal("probe did not start reading")
+func TestMediaProbesCancelBlockedInput(t *testing.T) {
+	tt := []struct {
+		name  string
+		probe func(context.Context, string, io.ReadSeekCloser) error
+	}{
+		{name: "duration", probe: func(ctx context.Context, ffmpeg string, media io.ReadSeekCloser) error {
+			_, err := DurationForMediaReaderSeconds(ctx, ffmpeg, media)
+			return err
+		}},
+		{name: "audio tracks", probe: func(ctx context.Context, ffmpeg string, media io.ReadSeekCloser) error {
+			_, err := AudioTracksReaderContext(ctx, ffmpeg, media)
+			return err
+		}},
 	}
-	cancel()
-	select {
-	case err := <-done:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("probe cancellation = %v", err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("probe waited for blocked input after cancellation")
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			ffmpeg, _, _ := writeDurationProbeTools(t)
+			pipe, writer := io.Pipe()
+			defer writer.Close()
+			media := &blockedProbeReader{PipeReader: pipe, started: make(chan struct{})}
+			defer media.Close()
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			done := make(chan error, 1)
+			go func() { done <- tc.probe(ctx, ffmpeg, media) }()
+			select {
+			case <-media.started:
+			case <-time.After(2 * time.Second):
+				t.Fatal("probe did not start reading")
+			}
+			cancel()
+			select {
+			case err := <-done:
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("probe cancellation = %v", err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("probe waited for blocked input after cancellation")
+			}
+		})
 	}
 }

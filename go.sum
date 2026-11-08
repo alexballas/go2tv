@@ -496,8 +496,8 @@ go.opentelemetry.io/otel/trace v1.47.0 h1:JOjX/Oci8K94QHddo+bbfya/Ai/nf6/dt9ZfrF
 go.opentelemetry.io/otel/trace v1.47.0/go.mod h1:jNaSLa2PZEYFG6fRjJABAu+bw4FS08uDmPg28lTghu0=
 go.yaml.in/yaml/v3 v3.0.5 h1:N6y/pJk8buWs9NY5ERU2HSMfm+IuD/OtfdAnq6kESPw=
 go.yaml.in/yaml/v3 v3.0.5/go.mod h1:HVTZu1O7/Vkt2N+BFy8Zza+lnLsABggaTM2ZpNIGuKg=
-go2tv.app/screencast v0.0.0-20260807191623-4cba6136251a h1:gfpAKu/sFOOG2TEAtYOcv2kMkTHjTtANtVH9rkGtuu0=
-go2tv.app/screencast v0.0.0-20260807191623-4cba6136251a/go.mod h1:SuTkH1JeLAuYESPe0rmpmqmprr+Q2Z/Dfh2t4oHlCMM=
+go2tv.app/screencast v0.0.0-20261108202338-b4a1e7e1e926 h1:tqxllDFogbsPeYplS1XPiDQUqziNwe7wq127ys7chDY=
+go2tv.app/screencast v0.0.0-20261108202338-b4a1e7e1e926/go.mod h1:SuTkH1JeLAuYESPe0rmpmqmprr+Q2Z/Dfh2t4oHlCMM=
 golang.org/x/crypto v0.0.0-20180904163835-0709b304e793/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
 golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550/go.mod h1:yigFU9vqHzYiE8UmvKecakEJjdnWj3jj499lnFckfCI=

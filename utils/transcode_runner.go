@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"go2tv.app/go2tv/v2/internal/processutil"
 )
 
 type countingWriter struct {
@@ -77,9 +79,7 @@ func runFFmpegTranscode(
 
 	select {
 	case <-ctx.Done():
-		if ff.Process != nil {
-			_ = ff.Process.Kill()
-		}
+		_ = processutil.Kill(ff)
 		<-done
 		return cw.n, context.Cause(ctx)
 	case err := <-done:

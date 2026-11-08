@@ -29,6 +29,7 @@ func newMediaCardTestScreen(t *testing.T) (*FyneScreen, *mediaSelectionCard) {
 	// the same serialized UI updates as the real application's event loop.
 	fyne.SetCurrentApp(&queuedUIApp{App: app, driver: &serialUIDriver{Driver: app.Driver()}})
 	s := newQueueMediaSelectionTestScreen()
+	t.Cleanup(func() { s.workers.stop(); s.workers.wait() })
 	s.ExternalMediaURL = widget.NewCheck("", nil)
 	s.MediaBrowse = widget.NewButton("", nil)
 	s.SubsBrowse = widget.NewButton("", nil)

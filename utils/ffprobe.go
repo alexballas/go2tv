@@ -13,6 +13,10 @@ import (
 	"time"
 )
 
+// mediaProbeTimeout bounds FFmpeg/FFprobe metadata reads, including slow
+// torrent pieces, so a stalled source cannot pin a probe forever.
+const mediaProbeTimeout = 45 * time.Second
+
 type ffprobeInfo struct {
 	Format struct {
 		Duration   string `json:"duration"`
@@ -80,7 +84,7 @@ func DurationForMediaSecondsContext(ctx context.Context, ffmpeg string, f string
 		return 0, err
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, mediaProbeTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx,
 		ffprobePath,
@@ -122,6 +126,8 @@ func DurationForMediaReaderSeconds(ctx context.Context, ffmpeg string, media io.
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
+	ctx, cancel := context.WithTimeout(ctx, mediaProbeTimeout)
+	defer cancel()
 
 	stopClosing := context.AfterFunc(ctx, func() { _ = media.Close() })
 	defer stopClosing()
@@ -209,7 +215,7 @@ func GetMediaCodecInfoContext(ctx context.Context, ffmpeg string, f string) (*Me
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, mediaProbeTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx,
 		ffprobePath,

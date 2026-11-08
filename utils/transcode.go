@@ -12,10 +12,7 @@ import (
 	"go2tv.app/go2tv/v2/internal/mediasource"
 )
 
-var (
-	ErrInvalidInput  = errors.New("invalid ffmpeg input")
-	ErrTranscodeBusy = errors.New("transcode already running")
-)
+var ErrInvalidInput = errors.New("invalid ffmpeg input")
 
 // SubtitleSize represents the subtitle size option
 type SubtitleSize int
@@ -72,10 +69,6 @@ func serveDLNATranscodedStream(ctx context.Context, w io.Writer, input any, ff *
 		in = "pipe:0"
 	default:
 		return ErrInvalidInput
-	}
-
-	if ff != nil && ff.Process != nil {
-		_ = ff.Process.Kill()
 	}
 
 	burn, err := prepareSubtitleBurn(ctx, opts)

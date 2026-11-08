@@ -8,15 +8,23 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+
+	"go2tv.app/go2tv/v2/internal/processutil"
 )
 
 // Server manages the RTMP server process (ffmpeg)
 type Server struct {
-	cmd     *exec.Cmd
-	stderr  bytes.Buffer
+	run     *serverRun
 	tempDir string
 	mu      sync.Mutex
 	running bool
+}
+
+type serverRun struct {
+	cmd    *exec.Cmd
+	stderr bytes.Buffer
+	done   chan struct{}
+	err    error
 }
 
 // GenerateKey generates a random stream key
@@ -64,9 +72,9 @@ func (s *Server) Start(ffmpegPath, streamKey, port string) (string, error) {
 	args := BuildCLICommand(streamKey, port, tempDir)
 
 	cmd := exec.Command(ffmpegPath, args...)
-	setSysProcAttr(cmd)
-	s.stderr.Reset()
-	cmd.Stderr = &s.stderr
+	processutil.Configure(cmd)
+	run := &serverRun{cmd: cmd, done: make(chan struct{})}
+	cmd.Stderr = &run.stderr
 
 	// Start the command
 	if err := cmd.Start(); err != nil {
@@ -77,24 +85,31 @@ func (s *Server) Start(ffmpegPath, streamKey, port string) (string, error) {
 		return "", fmt.Errorf("failed to start ffmpeg: %w", err)
 	}
 
-	s.cmd = cmd
+	s.run = run
 	s.running = true
+	go func() {
+		run.err = cmd.Wait()
+		close(run.done)
+	}()
 
 	return tempDir, nil
 }
 
 // Wait blocks until the FFmpeg process exits and returns the error
 func (s *Server) Wait() error {
-	if s.cmd == nil {
+	s.mu.Lock()
+	run := s.run
+	s.mu.Unlock()
+	if run == nil {
 		return fmt.Errorf("server not started")
 	}
-	// Wait should not hold the lock for the entire duration as it blocks
-	err := s.cmd.Wait()
+	<-run.done
+	err := run.err
 	if err == nil {
 		return nil
 	}
 
-	if stderr := s.stderrTail(240); stderr != "" {
+	if stderr := run.stderrTail(240); stderr != "" {
 		return fmt.Errorf("%w: %s", err, stderr)
 	}
 
@@ -110,7 +125,12 @@ func (s *Server) Stop() {
 		return
 	}
 
-	killProcess(s.cmd)
+	select {
+	case <-s.run.done: // Exited on its own; its PID may name another process.
+	default:
+		_ = processutil.Kill(s.run.cmd)
+	}
+	<-s.run.done
 
 	s.running = false
 	s.internalCleanup()
@@ -129,7 +149,7 @@ func (s *Server) internalCleanup() {
 	}
 }
 
-func (s *Server) stderrTail(max int) string {
+func (s *serverRun) stderrTail(max int) string {
 	output := strings.TrimSpace(s.stderr.String())
 	if output == "" {
 		return ""

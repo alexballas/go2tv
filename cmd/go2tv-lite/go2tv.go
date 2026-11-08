@@ -260,7 +260,7 @@ func run(crash *crashlog.Session) error {
 		if ffmpegErr != nil {
 			return fmt.Errorf("resolve ffmpeg: %w", ffmpegErr)
 		}
-		if err := utils.CheckFFmpeg(ffmpegPath); err != nil {
+		if err := utils.CheckFFmpegContext(exitCTX, ffmpegPath); err != nil {
 			return fmt.Errorf("check ffmpeg: %w", err)
 		}
 	}
@@ -292,6 +292,7 @@ func run(crash *crashlog.Session) error {
 	}
 
 	s = httphandlers.NewServer(tvdata.ListenAddress())
+	defer s.StopServer()
 	tvdata.Metadata.Artwork = cliartwork.Prepare(s, absMediaFile, tvdata.ListenAddress(), localMedia)
 	serverStarted := make(chan error)
 
@@ -349,7 +350,7 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 		// Get actual media duration from ffprobe (Chromecast can't detect it for transcoded streams)
 		// Only works for file paths, not streams
 		if _, isStream := mediaFile.(io.ReadCloser); !isStream && !externalURL {
-			if duration, err := utils.DurationForMediaSeconds(ffmpegPath, mediaPath); err == nil {
+			if duration, err := utils.DurationForMediaSecondsContext(ctx, ffmpegPath, mediaPath); err == nil {
 				mediaDuration = duration
 			}
 		}

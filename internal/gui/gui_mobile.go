@@ -35,6 +35,11 @@ func (p *FyneScreen) notifyMPRISSeek(int) {}
 
 // FyneScreen .
 type FyneScreen struct {
+	workers                backgroundWork
+	shutdownOnce           sync.Once
+	shutdownDone           chan struct{}
+	shutdownWaitOnce       sync.Once
+	shutdownWaitCh         chan struct{}
 	radioSong              radioSongState
 	radio                  *radioView
 	radioArtworkCache      *radioArtworkCache
@@ -56,6 +61,7 @@ type FyneScreen struct {
 	playbackStarting       bool
 	playbackStartCtx       context.Context
 	playbackStartCancel    context.CancelFunc
+	playbackStartDone      func()
 	Stop                   *widget.Button
 	MuteUnmute             *widget.Button
 	CheckVersion           *widget.Button
@@ -155,6 +161,9 @@ func Start(ctx context.Context, s *FyneScreen) {
 			fyne.Do(refreshMobileSettings)
 		})
 		app.Lifecycle().SetOnStopped(func() {
+			// Android also stops here when only the activity is destroyed
+			// (Back, "Don't keep activities"); the process, its background
+			// cast and this screen live on. Full teardown is for process exit.
 			go s.shutdownTorrents()
 			if s.Crash != nil {
 				_ = s.Crash.CloseClean()
@@ -169,7 +178,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	go func() {
 		<-ctx.Done()
-		s.shutdownTorrents()
+		<-s.shutdownWait()
 		if s.Crash != nil {
 			_ = s.Crash.CloseClean()
 		}
@@ -180,6 +189,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 	showPendingCrashPopup(s)
 
 	w.ShowAndRun()
+	<-s.shutdownWait()
 }
 
 // EmitMsg Method to implement the screen interface

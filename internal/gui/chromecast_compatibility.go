@@ -48,13 +48,17 @@ func (s *FyneScreen) checkChromecastCompatibility() {
 		if parent == nil {
 			parent = context.Background()
 		}
-		ctx, cancel := context.WithCancel(parent)
+		ctx, cancel, done, ok := s.workers.begin(parent)
+		if !ok {
+			return
+		}
 		probe := &chromecastCompatibilityProbe{path: path, ffmpeg: ffmpeg, cancel: cancel}
 		s.chromecastProbe = probe
 		s.chromecastProbePending.Store(true)
 		transcode := s.Transcode
 		setPlayPauseView("", s)
 		go func() {
+			defer done()
 			// FFmpeg validation and reading missing torrent pieces both stay
 			// outside the event thread, including when there are no peers.
 			info, err := utils.GetMediaCodecInfoContext(ctx, ffmpeg, path)

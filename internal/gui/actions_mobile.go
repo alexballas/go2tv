@@ -1593,9 +1593,16 @@ func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
 		sessionDevice = screen.selectedDevice
 	}
 	screen.ffmpegSeek = seekPos
+	// Shutdown joins the restart so it cannot publish a server afterwards.
+	workCtx, finishWork, ok := screen.beginWork()
+	if !ok {
+		releasePermit()
+		return
+	}
 
 	go func() {
 		defer releasePermit()
+		defer finishWork()
 
 		if screen.httpserver != nil {
 			screen.httpserver.StopServer()
@@ -1613,6 +1620,9 @@ func chromecastTranscodedSeek(screen *FyneScreen, seekPos int) {
 			return
 		}
 		tcOpts.SeekSeconds = seekPos
+		if workCtx.Err() != nil {
+			return
+		}
 
 		artworkAsset := screen.getCurrentArtwork()
 		mediaURL, serverStoppedCTX, err := startChromecastMediaServer(

@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+
+	"go2tv.app/go2tv/v2/internal/processutil"
 )
 
 //go:embed fontconfig_android.conf
@@ -29,6 +31,7 @@ var androidFontconfigFile = sync.OnceValues(func() (string, error) {
 })
 
 func setSysProcAttr(cmd *exec.Cmd) {
+	processutil.Configure(cmd)
 	if os.Getenv("FONTCONFIG_FILE") != "" {
 		return
 	}

@@ -280,10 +280,14 @@ func (c *mobileTracks) probe(s *FyneScreen, available bool) {
 	if media == "" {
 		return
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel, done, ok := s.workers.begin(s.torrent.ctx)
+	if !ok {
+		return
+	}
 	c.cancel, c.probing = cancel, true
 	ffmpeg := s.ffmpegPath
 	go func() {
+		defer done()
 		reader, err := mobileSubtitleReader(ctx, uri)
 		var names []string
 		if err == nil {
@@ -291,6 +295,7 @@ func (c *mobileTracks) probe(s *FyneScreen, available bool) {
 			_ = reader.Close()
 		}
 		fyne.Do(func() {
+			defer cancel()
 			if ctx.Err() != nil || media != c.media {
 				return
 			}

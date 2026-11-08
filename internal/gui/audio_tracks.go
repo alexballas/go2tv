@@ -89,14 +89,21 @@ func (s *FyneScreen) refreshAudioPicker() {
 			s.audio.mu.Lock()
 		}
 		if media != "" && probe != nil {
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel, done, ok := s.workers.begin(s.torrent.ctx)
+			if !ok {
+				s.audio.mu.Unlock()
+				return
+			}
 			s.audio.cancel = cancel
 			go func() {
+				defer done()
 				tracks, err := probe(ctx)
 				if err != nil || len(tracks) <= 1 {
+					cancel()
 					return
 				}
 				fyne.Do(func() {
+					defer cancel()
 					s.audio.mu.Lock()
 					current := s.audio.media == media && ctx.Err() == nil
 					if current {
