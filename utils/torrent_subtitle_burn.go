@@ -21,6 +21,7 @@ import (
 
 	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/internal/mkvsubs"
+	"go2tv.app/go2tv/v2/internal/processutil"
 )
 
 const (
@@ -340,7 +341,7 @@ func renderTorrentCaptions(ctx context.Context, w io.Writer, opts *TranscodeOpti
 		command.Stdout = w
 		var stderr bytes.Buffer
 		command.Stderr = &stderr
-		if err := command.Run(); err != nil {
+		if err := processutil.Run(command); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}

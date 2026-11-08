@@ -36,3 +36,9 @@ func Kill(cmd *exec.Cmd) error {
 	}
 	return err
 }
+
+// Process groups need no per-command state.
+func contain(*exec.Cmd) {}
+
+// Release frees what Start attached to cmd; call it after Wait.
+func Release(*exec.Cmd) {}

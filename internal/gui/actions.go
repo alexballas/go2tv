@@ -1045,6 +1045,9 @@ func playActionOnTargetContext(screen *FyneScreen, target playbackTarget, parent
 		screen.mediaDuration = mediaDuration
 		screen.dlnaQueueMu.Lock()
 		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
+			// The playlist route is exact, so it shadows the /rtmp/ directory
+			// handler: serve the live on-disk playlist, not the display label.
+			mediaFile = filepath.Join(screen.rtmpHLSURL, "playlist.m3u8")
 			screen.tvdata = &soapcalls.TVPayload{
 				ControlURL:                  target.controlURL,
 				EventURL:                    target.eventURL,

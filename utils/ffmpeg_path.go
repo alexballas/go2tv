@@ -57,9 +57,10 @@ func ResolveFFprobePath(ffmpegPath string) (string, error) {
 	if ffmpegPath != "" {
 		resolvedFFmpeg, err := resolveCommandPath("ffmpeg", ffmpegPath)
 		if err == nil && filepath.Base(resolvedFFmpeg) != resolvedFFmpeg {
+			// LookPath adds Windows executable extensions (ffprobe.exe).
 			sibling := filepath.Join(filepath.Dir(resolvedFFmpeg), "ffprobe")
-			if isExistingFile(sibling) {
-				return sibling, nil
+			if path, err := exec.LookPath(sibling); err == nil {
+				return path, nil
 			}
 		}
 	}
@@ -169,8 +170,8 @@ func loginShellToolPath(name string) (string, error) {
 	}
 
 	lines := strings.Split(string(output), "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		line := strings.TrimSpace(lines[i])
+	for _, line := range slices.Backward(lines) {
+		line = strings.TrimSpace(line)
 		if !filepath.IsAbs(line) {
 			continue
 		}

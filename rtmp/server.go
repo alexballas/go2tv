@@ -8,9 +8,12 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"go2tv.app/go2tv/v2/internal/processutil"
 )
+
+const stopReapTimeout = 5 * time.Second
 
 // Server manages the RTMP server process (ffmpeg)
 type Server struct {
@@ -77,7 +80,7 @@ func (s *Server) Start(ffmpegPath, streamKey, port string) (string, error) {
 	cmd.Stderr = &run.stderr
 
 	// Start the command
-	if err := cmd.Start(); err != nil {
+	if err := processutil.Start(cmd); err != nil {
 		s.internalCleanup()
 		if cleanupErr != nil {
 			return "", fmt.Errorf("failed to start ffmpeg (cleanup err: %v): %w", cleanupErr, err)
@@ -89,6 +92,7 @@ func (s *Server) Start(ffmpegPath, streamKey, port string) (string, error) {
 	s.running = true
 	go func() {
 		run.err = cmd.Wait()
+		processutil.Release(cmd)
 		close(run.done)
 	}()
 
@@ -129,8 +133,13 @@ func (s *Server) Stop() {
 	case <-s.run.done: // Exited on its own; its PID may name another process.
 	default:
 		_ = processutil.Kill(s.run.cmd)
+		// Kill reaches the whole tree; the bound covers a tree it could not
+		// contain, whose descendant would otherwise pin Wait on its pipes.
+		select {
+		case <-s.run.done:
+		case <-time.After(stopReapTimeout):
+		}
 	}
-	<-s.run.done
 
 	s.running = false
 	s.internalCleanup()
