@@ -93,10 +93,13 @@ func (s *FyneScreen) refreshAudioPicker() {
 			s.audio.cancel = cancel
 			go func() {
 				tracks, err := probe(ctx)
+				if err != nil || len(tracks) <= 1 {
+					return
+				}
 				fyne.Do(func() {
 					s.audio.mu.Lock()
 					current := s.audio.media == media && ctx.Err() == nil
-					if current && err == nil && len(tracks) > 1 {
+					if current {
 						s.audio.tracks = tracks
 					}
 					s.audio.mu.Unlock()

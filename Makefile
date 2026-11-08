@@ -450,14 +450,19 @@ appimage: build
 		chmod +x $(APPIMAGETOOL); \
 	fi
 
+	# Download runtime separately so transient server errors are retried.
+	curl -fsSL --retry 5 --retry-all-errors --connect-timeout 20 \
+		"https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-$(ARCH)" \
+		-o $(BUILD_DIR)/appimage-runtime
+
 	# Build the AppImage
 	@set -e; \
 	if [ -n "$(APPIMAGE_UPDATE_INFO)" ]; then \
 		command -v zsyncmake >/dev/null || { echo "zsyncmake required for updateable AppImages"; exit 1; }; \
-		( cd $(BUILD_DIR) && ./appimagetool -u "$(APPIMAGE_UPDATE_INFO)" AppDir "$(abspath $(APPIMAGE_OUT))" ); \
+		( cd $(BUILD_DIR) && ./appimagetool --runtime-file appimage-runtime -u "$(APPIMAGE_UPDATE_INFO)" AppDir "$(abspath $(APPIMAGE_OUT))" ); \
 		test -s "$(APPIMAGE_OUT).zsync" || { echo "AppImage zsync file missing: $(APPIMAGE_OUT).zsync"; exit 1; }; \
 	else \
-		( cd $(BUILD_DIR) && ./appimagetool AppDir "$(abspath $(APPIMAGE_OUT))" ); \
+		( cd $(BUILD_DIR) && ./appimagetool --runtime-file appimage-runtime AppDir "$(abspath $(APPIMAGE_OUT))" ); \
 	fi; \
 	echo "AppImage created at $(APPIMAGE_OUT)"
 
@@ -568,14 +573,19 @@ appimage-ffmpeg: build
 	if [ ! -x $(APPIMAGETOOL) ]; then echo "appimagetool missing: $(APPIMAGETOOL)"; exit 1; fi; \
 	if [ "$$(wc -c < $(APPIMAGETOOL))" -lt 1000000 ]; then echo "appimagetool download invalid: $(APPIMAGETOOL)"; exit 1; fi
 
+	# Download runtime separately so transient server errors are retried.
+	curl -fsSL --retry 5 --retry-all-errors --connect-timeout 20 \
+		"https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-$(ARCH)" \
+		-o $(BUILD_DIR)/appimage-runtime
+
 	# Build the AppImage
 	@set -e; \
 	if [ -n "$(APPIMAGE_UPDATE_INFO)" ]; then \
 		command -v zsyncmake >/dev/null || { echo "zsyncmake required for updateable AppImages"; exit 1; }; \
-		( cd $(BUILD_DIR) && ./appimagetool -u "$(APPIMAGE_UPDATE_INFO)" AppDir "$(abspath $(APPIMAGE_OUT))" ); \
+		( cd $(BUILD_DIR) && ./appimagetool --runtime-file appimage-runtime -u "$(APPIMAGE_UPDATE_INFO)" AppDir "$(abspath $(APPIMAGE_OUT))" ); \
 		test -s "$(APPIMAGE_OUT).zsync" || { echo "AppImage zsync file missing: $(APPIMAGE_OUT).zsync"; exit 1; }; \
 	else \
-		( cd $(BUILD_DIR) && ./appimagetool AppDir "$(abspath $(APPIMAGE_OUT))" ); \
+		( cd $(BUILD_DIR) && ./appimagetool --runtime-file appimage-runtime AppDir "$(abspath $(APPIMAGE_OUT))" ); \
 	fi; \
 	echo "AppImage created at $(APPIMAGE_OUT)"
 
