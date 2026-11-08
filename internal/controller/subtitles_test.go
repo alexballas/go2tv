@@ -150,7 +150,11 @@ func TestSubtitlesFollowSelectedMedia(t *testing.T) {
 					result = c.SetPolicy(ctx, PolicyRequest{Policy: Policy{AutoPlayNext: true}})
 					before, _ := c.Snapshot(ctx)
 					c.HandleMonitorEvent(ctx, playback.MonitorEvent{Generation: before.Generation, Terminal: playback.TerminalFinished})
-					awaitAutoplaySnapshot(t, c, func(s Snapshot) bool { return s.HasSession && s.Generation > before.Generation })
+					// The old session stays active while autoplay's Play is still
+					// loading; only Playing means the next mutation is accepted.
+					awaitAutoplaySnapshot(t, c, func(s Snapshot) bool {
+						return s.HasSession && s.Generation > before.Generation && s.PlaybackState == PlaybackStatePlaying
+					})
 				case "same media":
 					result = c.SelectMedia(ctx, Mutation{}, first)
 				}
