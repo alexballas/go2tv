@@ -162,6 +162,16 @@ var pillTheme = playerTheme{liveTheme{
 	sizes:  map[fyne.ThemeSizeName]float32{theme.SizeNameInputRadius: pillRadius},
 }}
 
+// seekTheme is pillTheme with larger icons for the seek buttons flanking the
+// timeline; their height stays within the reserved two-line radio row.
+var seekTheme = playerTheme{liveTheme{
+	colors: pillTheme.colors,
+	sizes: map[fyne.ThemeSizeName]float32{
+		theme.SizeNameInputRadius: pillRadius,
+		theme.SizeNameInlineIcon:  28,
+	},
+}}
+
 type playerTheme struct{ liveTheme }
 
 const disabledContentAlpha = 0x66

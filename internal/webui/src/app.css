@@ -166,11 +166,12 @@
     stroke-linecap: round;
     stroke-linejoin: round;
   }
-  .action-icon .icon-fill {
+  /* Bare selectors: <use> clones match against the sprite, not .action-icon. */
+  .icon-fill {
     fill: currentColor;
     stroke: none;
   }
-  .action-icon .icon-text {
+  .icon-text {
     fill: currentColor;
     stroke: none;
     font:
@@ -473,8 +474,8 @@
     @apply border-transparent bg-transparent text-[#4a4560] shadow-none hover:bg-[#edeaf4] hover:text-brand-600 dark:text-[#c9c4d6] dark:hover:bg-[#1d1a26] dark:hover:text-brand-300;
   }
   .controls .skip-control .action-icon {
-    @apply size-6;
-    stroke-width: 1.8;
+    @apply size-8;
+    stroke-width: 1.6;
   }
   .controls .primary-control {
     @apply min-w-11 border-brand-500 bg-brand-500 text-white shadow-lg shadow-brand-600/15 hover:border-brand-400 hover:bg-brand-400 dark:border-brand-500 dark:bg-brand-500 dark:hover:border-brand-400 dark:hover:bg-brand-400;

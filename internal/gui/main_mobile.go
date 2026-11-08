@@ -190,11 +190,13 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	endPos := binding.NewString()
 
 	externalmedia := widget.NewCheck(lang.L("Media from URL"), func(b bool) {})
-	medialoop := widget.NewCheck(lang.L("Loop"), func(b bool) {})
-	transcode := widget.NewCheck(lang.L("Transcode"), func(b bool) {
+	loopToggle := newPlaybackToggle(lang.L("Loop"), playbackLoopIcon())
+	transcodeToggle := newPlaybackToggle(lang.L("Transcode"), playbackTranscodeIcon())
+	medialoop, transcode := &loopToggle.Check, &transcodeToggle.Check
+	transcode.OnChanged = func(b bool) {
 		s.Transcode = b
 		s.audioTranscodeToggled(b)
-	})
+	}
 
 	// Relative seeks flank the timeline, keeping the button row unchanged.
 	seekBack := widget.NewButtonWithIcon("", skipBackIcon(), func() { skipAction(s, -playback.SkipBackSeconds) })
@@ -223,7 +225,8 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	curPos.Set("00:00:00")
 	endPos.Set("00:00:00")
 	timeline := container.NewBorder(nil, nil, widget.NewLabelWithData(curPos), widget.NewLabelWithData(endPos), sliderBar)
-	sliderArea := container.NewBorder(nil, nil, seekBack, seekForward, timeline)
+	sliderArea := container.NewBorder(nil, nil,
+		container.NewThemeOverride(seekBack, seekTheme), container.NewThemeOverride(seekForward, seekTheme), timeline)
 	playbackStatus := widget.NewLabel("")
 	playbackStatus.Alignment = fyne.TextAlignCenter
 	playbackStatus.Truncation = fyne.TextTruncateEllipsis
@@ -253,9 +256,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.volumeControls = []fyne.Disableable{volumedown, muteunmute, volumeup}
 	actionbuttons := container.New(&playerButtonsLayout{}, playpause, stop, volumedown, muteunmute, volumeup)
 
-	checklistItems := []fyne.CanvasObject{medialoop}
+	checklistItems := []fyne.CanvasObject{loopToggle}
 	if err := utils.CheckFFmpeg(s.ffmpegPath); err == nil {
-		checklistItems = append(checklistItems, transcode)
+		checklistItems = append(checklistItems, transcodeToggle)
 	}
 	// Options spread across one row and wrap only when the screen is too narrow.
 	checklists := container.New(newSpreadRowLayout(), checklistItems...)

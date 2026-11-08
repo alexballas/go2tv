@@ -1,0 +1,110 @@
+<div id="go2tv-mobile-draft" class="viz-carousel viz-dotted-background" aria-label="Go2TV mobile layout proposals">
+  <section data-variant="Inline tracks" aria-label="Inline tracks mobile proposal"><div class="g-stage"><div class="g-app" data-layout="inline"></div></div></section>
+  <section data-variant="Track sheet" aria-label="Track sheet mobile proposal" hidden><div class="g-stage"><div class="g-app" data-layout="sheet"></div></div></section>
+</div>
+<style>
+#go2tv-mobile-draft { color-scheme:light dark; }
+#go2tv-mobile-draft .g-stage { min-height:990px; padding:24px 8px; display:flex; justify-content:center; align-items:flex-start; }
+#go2tv-mobile-draft .g-app { --g-bg:light-dark(#f3f3f3,#303030); --g-panel:light-dark(#fff,#222); --g-control:light-dark(#e6e6e6,#414141); --g-text:light-dark(#202020,#f2f2f2); --g-muted:light-dark(#626262,#bdbdbd); --g-line:light-dark(#d9d9d9,#494949); --g-blue:light-dark(#1558d6,#3379ff); --g-active:light-dark(#dfebff,#233f65); --g-onblue:#fff; position:relative; width:390px; max-width:100%; min-height:800px; display:flex; flex-direction:column; background:var(--g-bg); color:var(--g-text); font:400 15px/1.4 system-ui,sans-serif; border:1px solid var(--g-line); border-radius:18px; overflow:hidden; box-sizing:border-box; }
+#go2tv-mobile-draft .g-app * { box-sizing:border-box; }
+#go2tv-mobile-draft .g-app button,#go2tv-mobile-draft .g-app select,#go2tv-mobile-draft .g-app input { font:inherit; color:inherit; }
+#go2tv-mobile-draft .g-app button { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:10px 12px; border:0; border-radius:8px; background:var(--g-control); cursor:pointer; }
+#go2tv-mobile-draft .g-app button:disabled { opacity:.38; cursor:default; }
+#go2tv-mobile-draft .g-app button:focus-visible,#go2tv-mobile-draft .g-app select:focus-visible { outline:2px solid var(--g-blue); outline-offset:2px; }
+#go2tv-mobile-draft .g-app svg { width:20px; height:20px; flex-shrink:0; }
+#go2tv-mobile-draft .g-status { display:flex; justify-content:space-between; padding:12px 20px 8px; font-size:12px; font-weight:500; }
+#go2tv-mobile-draft .g-nav { display:flex; border-bottom:1px solid var(--g-line); padding:0 8px; }
+#go2tv-mobile-draft .g-nav span { flex:1; text-align:center; padding:15px 0; font-weight:500; }
+#go2tv-mobile-draft .g-nav .g-current { color:var(--g-blue); border-bottom:3px solid var(--g-blue); }
+#go2tv-mobile-draft .g-main { padding:18px 16px 10px; }
+#go2tv-mobile-draft .g-label { font-size:12px; color:var(--g-muted); display:block; margin-bottom:6px; }
+#go2tv-mobile-draft .g-source { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:end; }
+#go2tv-mobile-draft .g-app select,#go2tv-mobile-draft .g-app input[type=text] { display:block; width:100%; min-width:0; min-height:46px; padding:10px 12px; background:var(--g-panel); border:1px solid var(--g-line); border-radius:8px; }
+#go2tv-mobile-draft .g-file { display:flex; gap:8px; margin:10px 0 16px; }
+#go2tv-mobile-draft .g-file .g-filename { flex:1; min-width:0; text-align:left; justify-content:flex-start; background:var(--g-panel); }
+#go2tv-mobile-draft .g-title { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#go2tv-mobile-draft .g-icon { width:44px; flex-shrink:0; }
+#go2tv-mobile-draft .g-fields { display:grid; gap:12px; }
+#go2tv-mobile-draft .g-secondary { display:block; margin-top:8px; }
+#go2tv-mobile-draft .g-hint { color:var(--g-muted); font-size:12px; margin-top:7px; }
+#go2tv-mobile-draft .g-app .g-track-button { width:100%; background:var(--g-panel); justify-content:space-between; text-align:left; padding:12px; }
+#go2tv-mobile-draft .g-track-button small { display:block; color:var(--g-muted); font-size:12px; margin-top:3px; }
+#go2tv-mobile-draft .g-modes { display:flex; flex-wrap:wrap; gap:12px 22px; padding:16px 0 8px; }
+#go2tv-mobile-draft .g-modes label { display:flex; align-items:center; gap:7px; min-height:32px; }
+#go2tv-mobile-draft .g-modes input { accent-color:var(--g-blue); width:18px; height:18px; }
+#go2tv-mobile-draft .g-devices { padding:0 16px 18px; }
+#go2tv-mobile-draft .g-heading { display:flex; align-items:center; justify-content:space-between; padding:5px 0 8px; }
+#go2tv-mobile-draft .g-heading small { color:var(--g-muted); font-size:12px; margin-left:8px; }
+#go2tv-mobile-draft .g-heading button { background:transparent; }
+#go2tv-mobile-draft .g-app .g-device { width:100%; min-height:57px; justify-content:flex-start; background:transparent; border-radius:8px; margin-bottom:3px; padding:10px; }
+#go2tv-mobile-draft .g-device .g-name { flex:1; text-align:left; overflow-wrap:anywhere; }
+#go2tv-mobile-draft .g-device small { font-size:11px; color:var(--g-muted); }
+#go2tv-mobile-draft .g-app .g-device[aria-pressed=true] { background:var(--g-active); }
+#go2tv-mobile-draft .g-player { margin:auto 10px 10px; padding:14px 10px 12px; border-radius:16px; background:var(--g-panel); }
+#go2tv-mobile-draft .g-ready { font-size:13px; text-align:center; margin-bottom:12px; overflow-wrap:anywhere; }
+#go2tv-mobile-draft .g-transport { display:flex; gap:6px; }
+#go2tv-mobile-draft .g-transport button { padding:10px; flex:1; min-width:0; min-height:52px; }
+#go2tv-mobile-draft .g-app .g-play { background:var(--g-blue); color:var(--g-onblue); flex:1.8; font-weight:500; }
+#go2tv-mobile-draft .g-backdrop { position:absolute; inset:0; background:#0008; display:flex; align-items:flex-end; z-index:2; }
+#go2tv-mobile-draft .g-sheet { width:100%; background:var(--g-bg); padding:8px 20px 24px; border-radius:20px 20px 0 0; box-shadow:0 -8px 30px #0002; }
+#go2tv-mobile-draft .g-handle { width:32px; height:4px; border-radius:4px; background:var(--g-muted); margin:3px auto 12px; }
+#go2tv-mobile-draft .g-sheet header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; font-size:18px; font-weight:500; }
+#go2tv-mobile-draft .g-app .g-done { width:100%; background:var(--g-blue); color:var(--g-onblue); margin-top:22px; }
+#go2tv-mobile-draft [hidden] { display:none !important; }
+@media(max-width:360px) { #go2tv-mobile-draft .g-stage { padding:12px 0; min-height:990px; } #go2tv-mobile-draft .g-main,#go2tv-mobile-draft .g-devices { padding-left:12px; padding-right:12px; } }
+</style>
+<script>
+(() => {
+ const root = document.getElementById('go2tv-mobile-draft');
+ const saved = window.openai?.widgetState?.modelContent || {};
+ const icon = name => `<i data-lucide="${name}" aria-hidden="true"></i>`;
+ root.querySelectorAll('.g-app').forEach(app => {
+  const sheet = app.dataset.layout === 'sheet';
+  const state = { audio:saved.audio || 'Japanese · AAC Stereo (default)', subtitles:saved.subtitles || 'Automatic', embedded:'English · SRT', source:'Local file', device:'gmediarender', filename:'Mobile Suit Gundam - The Origin.mkv', multipleTracks:true, playing:false };
+  const fields = `<div class="g-fields"><label class="g-audio"><span class="g-label">Audio</span><select class="g-audio-select" aria-label="Audio track"><option>Japanese · AAC Stereo (default)</option><option>English · AAC Stereo</option><option>Japanese · AC3 5.1</option></select></label><div><label><span class="g-label">Subtitles</span><select class="g-sub-select" aria-label="Subtitle mode"><option>Automatic</option><option>Embedded track</option><option>External file</option><option>None</option></select></label><label class="g-embedded g-secondary" hidden><span class="g-label">Embedded track</span><select class="g-embedded-select" aria-label="Embedded subtitle track"><option>English · SRT</option><option>Greek · SRT</option><option>English · Forced</option></select></label><div class="g-external g-secondary" hidden><button class="g-sub-browse" type="button">${icon('folder-open')} Choose subtitle file…</button><div class="g-sub-file g-hint"></div></div><div class="g-auto g-hint">Use matching subtitles when available.</div></div></div>`;
+  app.innerHTML = `<div class="g-status"><span>10:09</span><span>Wi-Fi · 100%</span></div><div class="g-nav" aria-label="App navigation"><span class="g-current">Go2TV</span><span>Settings</span><span>About</span></div><div class="g-main"><div class="g-source"><label><span class="g-label">Source</span><select class="g-source-select" aria-label="Media source"><option>Local file</option><option>URL</option><option>Torrent</option><option>Radio</option></select></label><button class="g-browse" type="button">${icon('folder-open')} Browse</button></div><div class="g-file"><button class="g-filename" type="button" data-tooltip="Mobile Suit Gundam - The Origin.mkv">${icon('file-video')}<span class="g-title">Mobile Suit Gundam - The Origin.mkv</span></button><input class="g-url" type="text" aria-label="Media URL" placeholder="Enter media URL…" hidden><button class="g-clear g-icon" aria-label="Clear media" type="button">${icon('x')}</button></div>${sheet ? `<button class="g-track-button" type="button" aria-haspopup="dialog"> <span>Audio & subtitles<small class="g-track-summary">Japanese · Automatic subtitles</small></span>${icon('chevron-right')}</button>` : fields}<div class="g-modes"><label><input type="checkbox" class="g-loop">Loop</label><label><input type="checkbox" class="g-transcode" checked>Transcode</label></div></div><div class="g-devices"><div class="g-heading"><span>Devices<small>3 found</small></span><button type="button" class="g-refresh g-icon" aria-label="Refresh devices">${icon('refresh-cw')}</button></div>${[['Living Room TV','Chromecast'],['[TV] UE50JU6400','DLNA'],['gmediarender','DLNA']].map(([name,type])=>`<button class="g-device" type="button" data-device="${name}" aria-pressed="${name === state.device}">${icon(name === state.device ? 'check':'cast')}<span class="g-name">${name}</span><small>${type}</small></button>`).join('')}</div><div class="g-player"><div class="g-ready" aria-live="polite">Ready to cast · gmediarender</div><div class="g-transport"><button type="button" class="g-play">${icon('play')}<span>Play</span></button><button type="button" class="g-stop" aria-label="Stop playback" disabled>${icon('square')}</button><button type="button" class="g-down" aria-label="Volume down">${icon('minus')}</button><button type="button" class="g-mute" aria-label="Mute" aria-pressed="false">${icon('volume-2')}</button><button type="button" class="g-up" aria-label="Volume up">${icon('plus')}</button></div></div>${sheet ? `<div class="g-backdrop" hidden><section class="g-sheet" role="dialog" aria-modal="true" aria-label="Audio and subtitles"><div class="g-handle"></div><header>Audio & subtitles<button type="button" class="g-close g-icon" aria-label="Close track settings">${icon('x')}</button></header>${fields}<div class="g-hint">Selections apply when casting starts.</div><button type="button" class="g-done">Done</button></section></div>` : ''}<input type="file" class="g-media-input" accept="video/*,audio/*,image/*,.mkv" hidden><input type="file" class="g-sub-input" accept=".srt,.vtt,.ass,.ssa" hidden>`;
+  const q = selector => app.querySelector(selector);
+  const persist = () => window.openai?.setWidgetState?.({modelContent:{audio:state.audio,subtitles:state.subtitles,layout:app.dataset.layout},privateContent:null})?.catch(()=>{});
+  function render() {
+   q('.g-audio-select').value=state.audio;
+   q('.g-sub-select').value=state.subtitles;
+   q('.g-audio').hidden=!state.multipleTracks;
+   q('.g-embedded').hidden=state.subtitles!=='Embedded track';
+   q('.g-external').hidden=state.subtitles!=='External file';
+   q('.g-auto').hidden=state.subtitles!=='Automatic';
+   if(sheet) q('.g-track-summary').textContent=`${state.audio.split(' · ')[0]} · ${state.subtitles === 'None' ? 'Subtitles off' : state.subtitles === 'Embedded track' ? state.embedded : state.subtitles+' subtitles'}`;
+   q('.g-title').textContent=state.filename || 'Choose media…';
+   q('.g-filename').setAttribute('data-tooltip',state.filename || 'Choose media…');
+   q('.g-play').disabled=!(state.filename || (state.source==='URL' && q('.g-url').value));
+   q('.g-play span').textContent=state.playing?'Pause':'Play';
+   q('.g-stop').disabled=!state.playing;
+   q('.g-ready').textContent=(state.playing?'Playing':'Ready to cast')+' · '+state.device;
+   q('.g-audio-select').disabled=state.playing;
+  }
+  q('.g-audio-select').onchange=e=>{state.audio=e.target.value; if(!state.audio.includes('(default)'))q('.g-transcode').checked=true;render();persist();};
+  q('.g-sub-select').onchange=e=>{state.subtitles=e.target.value;render();persist();};
+  q('.g-embedded-select').onchange=e=>{state.embedded=e.target.value;render();};
+  function openMedia(){q('.g-media-input').click();}
+  q('.g-browse').onclick=openMedia;
+  q('.g-filename').onclick=openMedia;
+  q('.g-media-input').onchange=e=>{if(e.target.files[0])state.filename=e.target.files[0].name;render();};
+  q('.g-clear').onclick=()=>{state.filename='';q('.g-url').value='';state.playing=false;render();};
+  q('.g-sub-browse').onclick=()=>q('.g-sub-input').click();
+  q('.g-sub-input').onchange=e=>{q('.g-sub-file').textContent=e.target.files[0]?.name||'';};
+  q('.g-source-select').onchange=e=>{state.source=e.target.value;const url=state.source==='URL';q('.g-url').hidden=!url;q('.g-filename').hidden=url;q('.g-browse').hidden=url;state.filename=url?'':state.source==='Radio'?'BBC World Service':state.source==='Torrent'?'Selected torrent video.mkv':'Mobile Suit Gundam - The Origin.mkv';q('.g-browse').disabled=['Radio','Torrent'].includes(state.source);q('.g-filename').disabled=['Radio','Torrent'].includes(state.source);q('.g-fields').hidden=state.source==='Radio';if(sheet)q('.g-track-button').hidden=state.source==='Radio';render();};
+  q('.g-url').oninput=render;
+  app.querySelectorAll('.g-device').forEach(button=>button.onclick=()=>{state.device=button.dataset.device;app.querySelectorAll('.g-device').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));render();});
+  q('.g-play').onclick=()=>{state.playing=!state.playing;render();};
+  q('.g-stop').onclick=()=>{state.playing=false;render();};
+  q('.g-mute').onclick=()=>{const muted=q('.g-mute').getAttribute('aria-pressed')!=='true';q('.g-mute').setAttribute('aria-pressed',String(muted));q('.g-mute').setAttribute('aria-label',muted?'Unmute':'Mute');q('.g-ready').textContent=muted?'Muted · '+state.device:'Ready to cast · '+state.device;};
+  let volume=50;
+  q('.g-down').onclick=()=>{volume=Math.max(0,volume-5);q('.g-ready').textContent='Volume '+volume+'% · '+state.device;};
+  q('.g-up').onclick=()=>{volume=Math.min(100,volume+5);q('.g-ready').textContent='Volume '+volume+'% · '+state.device;};
+  q('.g-refresh').onclick=()=>{q('.g-heading small').textContent='Searching…';setTimeout(()=>{q('.g-heading small').textContent='3 found';},700);};
+  if(sheet){const close=()=>{q('.g-backdrop').hidden=true;q('.g-track-button').focus();persist();};q('.g-track-button').onclick=()=>{q('.g-backdrop').hidden=false;q('.g-close').focus();};q('.g-close').onclick=close;q('.g-done').onclick=close;q('.g-backdrop').onclick=e=>{if(e.target===q('.g-backdrop'))close();};q('.g-sheet').onkeydown=e=>{if(e.key==='Escape')close();if(e.key==='Tab'){const els=[...q('.g-sheet').querySelectorAll('button,select')].filter(el=>!el.disabled&&el.getClientRects().length);const first=els[0],last=els[els.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}};}
+  window.addEventListener('openai:set_globals',event=>{const restored=event.detail?.globals?.widgetState?.modelContent;if(!restored)return;if(restored.audio)state.audio=restored.audio;if(restored.subtitles)state.subtitles=restored.subtitles;render();});
+  render();
+  if(globalThis.Tweak){const tweaks=new Tweak({container:app,onChange:render});tweaks.addToggle(state,'multipleTracks',{label:'Multiple audio tracks'});}
+ });
+})();
+</script>

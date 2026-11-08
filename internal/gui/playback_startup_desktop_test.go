@@ -489,10 +489,7 @@ func TestStopDuringMediaPreparation(t *testing.T) {
 					fyne.CurrentApp().Preferences().SetBool(chromecastBurnSubtitlesPref, true)
 				}
 				if tc.source == "extraction" || tc.source == "conversion" || tc.source == "validation" {
-					script := `#!/bin/sh
-: > "$GO2TV_TEST_PROBE_ENTERED"
-while [ ! -e "$GO2TV_TEST_PROBE_RELEASE" ]; do sleep 0.01; done
-`
+					script := "#!/bin/sh\n" + torrentTestProbeGate
 					if tc.source != "validation" {
 						script = strings.Replace(script, "#!/bin/sh\n", "#!/bin/sh\nif [ \"$1\" = \"-h\" ]; then exit 0; fi\n", 1)
 					}
