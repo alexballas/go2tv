@@ -113,6 +113,10 @@ type Application struct {
 	// we will keep the other one around in-case we need it at some point.
 	volumeMedia    *cast.Volume
 	volumeReceiver *cast.Volume
+	// unresponsiveTransport is the last transport whose media namespace a
+	// probe gave up on, e.g. a receiver still tearing down after STOP.
+	// Probes skip it so one dying session costs a single request timeout.
+	unresponsiveTransport string
 
 	httpServer *http.ServeMux
 	serverPort int
@@ -407,7 +411,7 @@ func (a *Application) StartContext(ctx context.Context, addr string, port int) e
 	if err := a.sendDefaultConn(&cast.ConnectHeader); err != nil {
 		return errors.Wrap(err, "unable to connect to chromecast")
 	}
-	return errors.Wrap(a.UpdateContext(ctx), "unable to update application")
+	return errors.Wrap(a.update(ctx, a.connectionRetries, true), "unable to update application")
 }
 
 func (a *Application) loadPlayedItems() error {
@@ -436,17 +440,25 @@ func (a *Application) Update() error {
 }
 
 func (a *Application) UpdateContext(ctx context.Context) error {
-	return a.update(ctx, a.connectionRetries)
+	return a.update(ctx, a.connectionRetries, false)
+}
+
+// ProbeContext refreshes the receiver status like UpdateContext, but treats an
+// application whose media namespace does not answer as absent rather than
+// failing. Session setup uses it: right after STOP the receiver can still list
+// the old session while it tears down, and the caller launches a fresh one.
+func (a *Application) ProbeContext(ctx context.Context) error {
+	return a.update(ctx, a.connectionRetries, true)
 }
 
 // UpdateOnce refreshes the status with a single attempt and no retry
 // sleeps. Meant for frequent status polls where the caller has its own
 // failure policy and a slow failure is worse than a fast one.
 func (a *Application) UpdateOnce() error {
-	return a.update(context.Background(), 1)
+	return a.update(context.Background(), 1, false)
 }
 
-func (a *Application) update(ctx context.Context, attempts int) error {
+func (a *Application) update(ctx context.Context, attempts int, probe bool) error {
 	var recvStatus *cast.ReceiverStatusResponse
 	var err error
 	// Simple retry. We need this for when the device isn't currently
@@ -491,6 +503,13 @@ func (a *Application) update(ctx context.Context, attempts int) error {
 		return nil
 	}
 
+	transportID := a.application.TransportId
+	if probe && transportID == a.unresponsiveTransport {
+		a.application = nil
+		a.media = nil
+		return nil
+	}
+
 	// Report a media-session failure rather than leaving the previous snapshot
 	// in place and letting callers read it as fresh. Deliberately not clearing
 	// a.media here: callers translate a nil snapshot to IDLE, and the playback
@@ -498,7 +517,17 @@ func (a *Application) update(ctx context.Context, attempts int) error {
 	// playback on one dropped response. An error instead goes through the
 	// monitor's lost-poll tolerance.
 	if err := a.updateMediaStatusContext(ctx); err != nil {
-		return errors.Wrap(err, "unable to update media status")
+		if !probe || ctx.Err() != nil {
+			return errors.Wrap(err, "unable to update media status")
+		}
+		a.log("media transport %s unresponsive, treating application as absent: %v", transportID, err)
+		a.unresponsiveTransport = transportID
+		a.application = nil
+		a.media = nil
+		return nil
+	}
+	if transportID == a.unresponsiveTransport {
+		a.unresponsiveTransport = ""
 	}
 
 	return nil

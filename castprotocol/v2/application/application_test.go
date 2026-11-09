@@ -1,6 +1,7 @@
 package application_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -216,6 +217,54 @@ func TestApplicationStartPropagatesConnectionFailure(t *testing.T) {
 	}
 	if frames := h.frames(); len(frames) != 0 {
 		t.Fatalf("Start() sent %d frames over a failed connection: %+v", len(frames), frames)
+	}
+}
+
+// Right after STOP the receiver can still list the old session while its media
+// namespace no longer answers. Reconnecting must not fail on it (W290-01): the
+// caller launches a fresh receiver. Later probes skip the dead transport so the
+// launch path pays its timeout once, while strict updates keep reporting it.
+func TestApplicationStartTreatsUnresponsiveMediaTransportAsAbsent(t *testing.T) {
+	h := newStartHarness(t, nil)
+	h.status.Status.Applications = []cast.Application{
+		{AppId: "CC1AD845", DisplayName: "Default Media Receiver", TransportId: "transport-dying"},
+	}
+	h.mediaUnreadable = true
+
+	app := h.app()
+	if err := app.Start(mockAddr, mockPort); err != nil {
+		t.Fatalf("Start() error = %v, want reconnect to tolerate a tearing-down session", err)
+	}
+	if got := app.App(); got != nil {
+		t.Fatalf("App() = %+v, want nil so callers launch a fresh receiver", got)
+	}
+	if media := app.Media(); media != nil {
+		t.Fatalf("Media() = %+v, want nil", media)
+	}
+
+	previousFrames := len(h.frames())
+	if err := app.ProbeContext(context.Background()); err != nil {
+		t.Fatalf("ProbeContext() error = %v", err)
+	}
+	for _, frame := range h.frames()[previousFrames:] {
+		if frame.namespace == namespaceMedia {
+			t.Fatalf("ProbeContext() re-queried the unresponsive transport: %+v", frame)
+		}
+	}
+	if err := app.Update(); err == nil {
+		t.Fatal("Update() = nil, want strict updates to keep reporting the unreadable session")
+	}
+
+	h.status.Status.Applications = []cast.Application{
+		{AppId: "CC1AD845", DisplayName: "Default Media Receiver", TransportId: "transport-new"},
+	}
+	h.mediaUnreadable = false
+	h.media.Status = []cast.Media{{MediaSessionId: 9, PlayerState: "IDLE"}}
+	if err := app.ProbeContext(context.Background()); err != nil {
+		t.Fatalf("ProbeContext() error = %v", err)
+	}
+	if got := app.App(); got == nil || got.TransportId != "transport-new" {
+		t.Fatalf("App() = %+v, want the relaunched receiver", got)
 	}
 }
 

@@ -190,7 +190,7 @@ func (c *CastClient) ensureDefaultReceiverReadyContext(ctx context.Context) erro
 		return nil
 	}
 
-	if err := c.app.UpdateContext(ctx); err == nil && c.defaultReceiverReady() {
+	if err := c.app.ProbeContext(ctx); err == nil && c.defaultReceiverReady() {
 		return nil
 	}
 

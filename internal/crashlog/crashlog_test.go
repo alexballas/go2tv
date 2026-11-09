@@ -8,58 +8,87 @@ import (
 	"time"
 )
 
-func TestRotatePendingReportMovesNonEmptyFile(t *testing.T) {
-	dir := t.TempDir()
-	pendingPath := filepath.Join(dir, pendingFilename)
-	if err := os.WriteFile(pendingPath, []byte("panic"), 0o600); err != nil {
-		t.Fatalf("WriteFile: %v", err)
+func TestRotatePendingReportsRecoversExitedProcesses(t *testing.T) {
+	tt := []struct {
+		name      string
+		file      string
+		contents  string
+		wantCrash bool
+	}{
+		{name: "crash output becomes report", file: pendingName(4242), contents: "panic", wantCrash: true},
+		{name: "clean leftover is dropped", file: pendingName(4242)},
+		{name: "pre-2.9 shared file still recovered", file: "active.pending", contents: "panic", wantCrash: true},
 	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			pendingPath := filepath.Join(dir, tc.file)
+			if err := os.WriteFile(pendingPath, []byte(tc.contents), 0o600); err != nil {
+				t.Fatalf("WriteFile: %v", err)
+			}
 
-	got, err := rotatePendingReport(dir)
-	if err != nil {
-		t.Fatalf("rotatePendingReport: %v", err)
-	}
-
-	if got == "" {
-		t.Fatal("expected rotated crash path")
-	}
-
-	if _, err := os.Stat(got); err != nil {
-		t.Fatalf("Stat rotated file: %v", err)
-	}
-
-	if _, err := os.Stat(pendingPath); !os.IsNotExist(err) {
-		t.Fatalf("pending file still exists: %v", err)
-	}
-
-	b, err := os.ReadFile(got)
-	if err != nil {
-		t.Fatalf("ReadFile rotated file: %v", err)
-	}
-
-	if string(b) != "panic" {
-		t.Fatalf("rotated contents = %q", string(b))
+			got, err := rotatePendingReports(dir)
+			if err != nil {
+				t.Fatalf("rotatePendingReports: %v", err)
+			}
+			if _, err := os.Stat(pendingPath); !os.IsNotExist(err) {
+				t.Fatalf("pending file still exists: %v", err)
+			}
+			if !tc.wantCrash {
+				if got != "" {
+					t.Fatalf("previous crash = %q, want none", got)
+				}
+				return
+			}
+			b, err := os.ReadFile(got)
+			if err != nil {
+				t.Fatalf("ReadFile rotated file %q: %v", got, err)
+			}
+			if string(b) != tc.contents {
+				t.Fatalf("rotated contents = %q, want %q", b, tc.contents)
+			}
+		})
 	}
 }
 
-func TestRotatePendingReportDeletesEmptyFile(t *testing.T) {
+// A second instance (managed server child, CLI) starting while another runs
+// must leave the live owner's crash output alone, then recover it once the
+// owner has exited (W290-03).
+func TestRotatePendingReportsSkipsLiveOwner(t *testing.T) {
 	dir := t.TempDir()
-	pendingPath := filepath.Join(dir, pendingFilename)
-	if err := os.WriteFile(pendingPath, nil, 0o600); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-
-	got, err := rotatePendingReport(dir)
+	livePath := filepath.Join(dir, pendingName(4242))
+	owner, err := os.OpenFile(livePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
-		t.Fatalf("rotatePendingReport: %v", err)
+		t.Fatalf("OpenFile: %v", err)
+	}
+	defer owner.Close()
+	if err := lockPending(owner); err != nil {
+		t.Fatalf("lockPending: %v", err)
+	}
+	if _, err := owner.WriteString("panic"); err != nil {
+		t.Fatalf("WriteString: %v", err)
 	}
 
+	got, err := rotatePendingReports(dir)
+	if err != nil {
+		t.Fatalf("rotatePendingReports with live owner: %v", err)
+	}
 	if got != "" {
-		t.Fatalf("expected no rotated crash, got %q", got)
+		t.Fatalf("previous crash = %q, want live owner skipped", got)
+	}
+	if _, err := os.Stat(livePath); err != nil {
+		t.Fatalf("live pending file disturbed: %v", err)
 	}
 
-	if _, err := os.Stat(pendingPath); !os.IsNotExist(err) {
-		t.Fatalf("pending file still exists: %v", err)
+	if err := owner.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	got, err = rotatePendingReports(dir)
+	if err != nil {
+		t.Fatalf("rotatePendingReports after owner exit: %v", err)
+	}
+	if b, err := os.ReadFile(got); err != nil || string(b) != "panic" {
+		t.Fatalf("rotated report %q = %q, %v; want owner's crash output", got, b, err)
 	}
 }
 
@@ -117,7 +146,7 @@ func TestTrimReportsNoopWhenBelowKeep(t *testing.T) {
 
 func TestCloseCleanIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
-	pendingPath := filepath.Join(dir, pendingFilename)
+	pendingPath := filepath.Join(dir, pendingName(4242))
 	if err := os.WriteFile(pendingPath, nil, 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
