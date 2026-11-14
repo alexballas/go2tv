@@ -463,8 +463,6 @@ func TestStopDuringMediaPreparation(t *testing.T) {
 				s.ffmpegPath, probeEntered, _ = torrentTestBlockedProbe(t)
 				switch tc.source {
 				case "embedded", "extraction", "native":
-					s.SelectInternalSubs.Options = []string{"English"}
-					s.SelectInternalSubs.SetSelected("English")
 					if tc.source == "embedded" {
 						fyne.CurrentApp().Preferences().SetBool(chromecastBurnSubtitlesPref, true)
 					} else {
@@ -496,6 +494,12 @@ func TestStopDuringMediaPreparation(t *testing.T) {
 					if err := os.WriteFile(s.ffmpegPath, []byte(script), 0o700); err != nil {
 						t.Fatal(err)
 					}
+				}
+				if tc.source == "embedded" || tc.source == "extraction" || tc.source == "native" {
+					// Selection starts background audio probing; finish configuring
+					// the media and executable before either can be read or executed.
+					s.SelectInternalSubs.Options = []string{"English"}
+					s.SelectInternalSubs.SetSelected("English")
 				}
 				playAction(s)
 				waitForTorrentTestProbe(t, probeEntered)
