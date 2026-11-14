@@ -51,6 +51,30 @@
   </branding>
 
   <releases>
+      <release version="2.9.0" date="2026-11-14" type="stable">
+        <description>
+          <ul>
+            <li>Added audio track selection for local video files, with FFmpeg transcoding for non-default tracks.</li>
+            <li>Added controls to skip back 10 seconds or forward 30 seconds during playback.</li>
+            <li>Fixed playback freezing when seeking with image-based subtitles.</li>
+            <li>Fixed subtitles from the previous video carrying over when changing media.</li>
+            <li>Fixed casts stopping prematurely on LG webOS TVs that take longer to start large videos.</li>
+            <li>Fixed FFmpeg remaining active after stopping playback, cancelling a cast or closing the app.</li>
+            <li>Fixed Chromecast playback sometimes failing to restart after pressing Stop.</li>
+            <li>Fixed missing crash reports when running multiple Go2TV instances at the same time.</li>
+            <li>Desktop App: Fixed RTMP streams failing to play on DLNA devices.</li>
+            <li>Desktop App: Fixed restarting the RTMP server sometimes stopping the new stream.</li>
+            <li>Android: Added controls for choosing embedded or external subtitles, or turning subtitles off.</li>
+            <li>Android: Added text subtitle burn-in with support for styled captions and fonts.</li>
+            <li>Android: Simplified switching between local files, URLs, torrents and radio with a source picker.</li>
+            <li>Android: Fixed video conversion failing on some devices when hardware encoding is unavailable.</li>
+            <li>Android: Fixed a crash when starting FFmpeg on older Android versions.</li>
+            <li>Windows: Fixed subtitle detection and playback duration when using a custom FFmpeg location outside PATH.</li>
+            <li>Windows: Fixed misleading Remote Web Session errors when the chosen port is in use or the network address is unavailable.</li>
+          </ul>
+        </description>
+        <url type="details">https://github.com/alexballas/go2tv/releases/tag/v2.9.0</url>
+      </release>
       <release version="2.8.0" date="2026-10-21" type="stable">
         <description>
           <ul>

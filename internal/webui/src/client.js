@@ -71,7 +71,14 @@ export function startClient(env) {
     stream_title: "",
     selected_station: "",
     active_station: "",
+    audio_tracks: [],
+    audio_track: 0,
   };
+  // Seek steps for the skip buttons and ←/→ keys. Rapid presses accumulate
+  // into one seek, so transcoded streams restart only once.
+  const skipBackSeconds = 10,
+    skipForwardSeconds = 30,
+    skipSettleMs = 450;
   let ws,
     serial = 0,
     reconnectTimer,
@@ -88,6 +95,8 @@ export function startClient(env) {
     queueFocus = null,
     queueDrag = null,
     seekPreview = null,
+    skipTarget = null,
+    skipTimer,
     assetsHash = "",
     instanceID = "",
     transcodeAvailable = false,
@@ -106,6 +115,7 @@ export function startClient(env) {
     playbackPendingTypes = new Set([
       ...queuePendingTypes,
       "library.clear_subtitle",
+      "library.select_audio",
       "player.seek",
       "player.volume",
       "player.mute",
@@ -689,13 +699,84 @@ export function startClient(env) {
     text("time", `${format(elapsedPosition)} / ${format(state.duration)}`);
     seek.max = String(Math.max(0, state.duration || 0));
     seek.value = String(sliderPosition);
-    seek.disabled =
+    seek.disabled = !canSeek();
+    // Live streams never seek; keep the controls out of the way.
+    for (const id of ["skip-back", "skip-forward"]) {
+      byID(id).disabled = seek.disabled;
+      byID(id).hidden = live;
+    }
+  }
+  function canSeek() {
+    return (
+      connected &&
+      state.has_session &&
+      !!state.duration &&
+      playbackState() !== "LOADING" &&
+      playbackState() !== "STOPPING" &&
+      !hasPending("player.seek")
+    );
+  }
+  function skip(delta) {
+    if (!canSeek() || shownLive()) return;
+    const base = skipTarget ?? seekPreview ?? state.position ?? 0,
+      // Stay short of the end so a forward skip never finishes the media.
+      last = Math.max(0, (state.duration || 0) - 1);
+    skipTarget = Math.min(Math.max(0, base + delta), last);
+    seekPreview = skipTarget;
+    renderProgress();
+    clearTimeout(skipTimer);
+    skipTimer = setTimeout(commitSkip, skipSettleMs);
+  }
+  function commitSkip() {
+    if (skipTarget === null) return;
+    const seconds = skipTarget;
+    skipTarget = null;
+    seekPreview = null;
+    if (!canSeek() || !send("player.seek", { seconds })) renderProgress();
+  }
+  function renderAudioTracks() {
+    const tracks = state.audio_tracks || [],
+      section = byID("audio-selection"),
+      select = byID("audio-track"),
+      available =
+        tracks.length > 1 && !!state.selected_media && !state.selected_live;
+    section.hidden = !available;
+    if (!available) return false;
+    const defaultTrack = (tracks.find((track) => track.default) || tracks[0])
+        .number,
+      key = tracks
+        .map((track) => `${track.number}:${track.default}:${track.label}`)
+        .join("|");
+    if (select.dataset.tracks !== key) {
+      select.replaceChildren(
+        ...tracks.map((track) =>
+          option(
+            String(track.number),
+            track.number === defaultTrack
+              ? `${track.label} (default)`
+              : track.label,
+          ),
+        ),
+      );
+      select.dataset.tracks = key;
+    }
+    select.value = String(state.audio_track || defaultTrack);
+    // The choice applies when casting starts; it cannot switch a live session.
+    const locked =
+      state.has_session &&
+      playbackState() !== "STOPPED" &&
+      state.active_media_name === state.selected_media_name;
+    select.disabled =
       !connected ||
-      !state.has_session ||
-      !state.duration ||
-      playbackState() === "LOADING" ||
-      playbackState() === "STOPPING" ||
-      hasPending("player.seek");
+      shuttingDown ||
+      locked ||
+      hasPending("library.select_audio");
+    select.title = locked
+      ? "Stop playback to change the audio track"
+      : !transcodeAvailable
+        ? "FFmpeg unavailable"
+        : "Other tracks are transcoded with FFmpeg";
+    return true;
   }
   function renderPlayback() {
     const current = playbackState(),
@@ -740,8 +821,9 @@ export function startClient(env) {
     clearSubtitle.hidden = !state.selected_subtitle;
     clearSubtitle.disabled = !connected || hasPending("library.clear_subtitle");
     subtitleSelection.hidden = !hasSubtitle;
-    selectionStatus.dataset.hasDetails = String(hasSubtitle);
-    selectionStatus.open = hasSubtitle;
+    const hasDetails = renderAudioTracks() || hasSubtitle;
+    selectionStatus.dataset.hasDetails = String(hasDetails);
+    selectionStatus.open = hasDetails;
     const play = byID("play-toggle"),
       stop = byID("stop-button");
     let command = "player.play",
@@ -971,6 +1053,8 @@ export function startClient(env) {
           artwork_id: p.artwork_id ?? state.artwork_id,
           selected_live: p.live ?? state.selected_live,
           selected_station: p.station ?? state.selected_station,
+          audio_tracks: p.audio_tracks ?? state.audio_tracks,
+          audio_track: p.audio_track ?? state.audio_track,
         });
         renderDevices();
         renderPlayback();
@@ -1460,7 +1544,30 @@ export function startClient(env) {
       renderDevices();
       deviceTrigger.focus();
     }
+    const tag = String(event.target?.tagName || "").toUpperCase(),
+      typing =
+        ["INPUT", "SELECT", "TEXTAREA"].includes(tag) ||
+        !!event.target?.isContentEditable;
+    if (
+      typing ||
+      deviceMenuOpen ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      !["ArrowLeft", "ArrowRight"].includes(event.key) ||
+      !canSeek()
+    )
+      return;
+    event.preventDefault?.();
+    skip(event.key === "ArrowLeft" ? -skipBackSeconds : skipForwardSeconds);
   });
+  byID("skip-back").addEventListener("click", () => skip(-skipBackSeconds));
+  byID("skip-forward").addEventListener("click", () =>
+    skip(skipForwardSeconds),
+  );
+  byID("audio-track").addEventListener("change", (event) =>
+    send("library.select_audio", { track: Number(event.target.value) || 0 }),
+  );
   for (const node of document.querySelectorAll("[data-command]"))
     node.addEventListener("click", () => send(node.dataset.command));
   byID("seek").addEventListener("input", (event) => {

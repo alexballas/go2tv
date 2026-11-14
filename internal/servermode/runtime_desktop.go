@@ -69,7 +69,18 @@ func newRuntime(cfg Config, log *serverLogger, discovery playback.Discovery) (*r
 			return utils.DurationForMediaReaderSeconds(ctx, ffmpeg, media)
 		}
 	}
-	control := controller.New(controller.NewRuntimeConfig(controller.RuntimeConfig{MediaServer: media, Callbacks: callbacks, LogOutput: log.protocolOutput(), Logger: log, Artwork: artwork, DurationProbe: durationProbe, Discovery: discovery}))
+	var audioTracksProbe func(context.Context, playback.SourceOpener) ([]utils.AudioTrack, error)
+	if ffmpeg != "" {
+		audioTracksProbe = func(ctx context.Context, open playback.SourceOpener) ([]utils.AudioTrack, error) {
+			media, _, err := open(ctx)
+			if err != nil {
+				return nil, err
+			}
+			defer media.Close()
+			return utils.AudioTracksReaderContext(ctx, ffmpeg, media)
+		}
+	}
+	control := controller.New(controller.NewRuntimeConfig(controller.RuntimeConfig{MediaServer: media, Callbacks: callbacks, LogOutput: log.protocolOutput(), Logger: log, Artwork: artwork, DurationProbe: durationProbe, AudioTracksProbe: audioTracksProbe, Discovery: discovery}))
 	web, err := webui.New(webui.Config{Version: cfg.Version, Controller: control, Library: lib, Artwork: artwork, FFmpegPath: ffmpeg, TranscodeAvailable: ffmpeg != "", Logger: log, ManagedByGUI: cfg.ManagedChild, RadioStorePath: radioStorePath()})
 	if err != nil {
 		control.Close()
@@ -228,6 +239,7 @@ func transcode(ctx context.Context, w http.ResponseWriter, input io.ReadCloser, 
 		FFmpegPath: ffmpeg, SubsPath: subtitlePath,
 		SubtitleFontsDir: fontsDir,
 		SeekSeconds:      request.SeekOffset, SubtitleSize: utils.SubtitleSizeMedium,
+		AudioTrack: request.AudioTrack,
 	}
 	if request.BurnSubtitle && request.Subtitle == nil {
 		opts.TorrentSource = request.TorrentSource

@@ -41,12 +41,16 @@ func TestMobileTorrentCaptionsSelectionAndSeek(t *testing.T) {
 	s.mediafile = storage.NewFileURI(path)
 	tt := []struct {
 		name             string
+		mode             mobileSubtitleMode
 		external, remote bool
 		burn, transcode  bool
 		offset           int
 		text             string
 	}{
 		{name: "automatic", text: "First caption"},
+		{name: "None suppresses automatic receiver captions", mode: mobileSubsNone},
+		{name: "None suppresses automatic burn-in", mode: mobileSubsNone, burn: true, transcode: true},
+		{name: "empty manual selection never falls back", mode: mobileSubsExternal},
 		{name: "transcoded seek", offset: 30, text: "Second caption"},
 		{name: "burning removes receiver captions", burn: true, transcode: true},
 		{name: "direct playback ignores burn", burn: true, text: "First caption"},
@@ -57,6 +61,7 @@ func TestMobileTorrentCaptionsSelectionAndSeek(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			s.subsfile = nil
+			s.tracks.mode = tc.mode
 			if tc.external {
 				s.subsfile = storage.NewFileURI("/external.srt")
 			}

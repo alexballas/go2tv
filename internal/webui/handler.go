@@ -325,6 +325,10 @@ func (h *Handler) loadArtwork(ctx context.Context, id string) ([]byte, error) {
 
 func safeSnapshot(s controller.Snapshot) snapshotDTO {
 	result := snapshotDTO{Revision: s.Revision, SelectedDeviceID: s.SelectedDeviceID, ActiveDeviceID: s.ActiveDeviceID, SelectedMedia: s.SelectedMedia != "", SelectedMediaName: s.SelectedMedia, ActiveMediaName: s.ActiveMediaName, SelectedSubtitle: s.SelectedSubtitle != "", SelectedSubtitleName: s.SelectedSubtitle, Transcode: s.Transcode, HasSession: s.HasSession, PlaybackState: s.PlaybackState, Position: s.Position, Duration: s.Duration, Volume: s.Volume, Muted: s.Muted, MediaType: string(s.MediaType), ArtworkID: s.ArtworkID, Policy: s.Policy, SelectedLive: s.SelectedLive, ActiveLive: s.ActiveLive, StreamTitle: s.StreamTitle}
+	result.AudioTracks, result.AudioTrack = make([]audioTrackDTO, 0, len(s.AudioTracks)), s.SelectedAudioTrack
+	for _, track := range s.AudioTracks {
+		result.AudioTracks = append(result.AudioTracks, audioTrackDTO{Number: track.Number, Label: track.Label, Default: track.Default})
+	}
 	if s.SelectedMediaID.RootID == radioRootID {
 		result.SelectedStation = s.SelectedMediaID.ID
 	}
@@ -502,6 +506,15 @@ func (h *Handler) executeCommand(ctx context.Context, message envelope) controll
 			return invalid(message.ID)
 		}
 		return h.cfg.Controller.SelectSubtitle(ctx, expectedMutation(message.ID, p.ExpectedRevision), ref)
+	case "library.select_audio":
+		var p struct {
+			Track            *int    `json:"track"`
+			ExpectedRevision *uint64 `json:"expected_revision"`
+		}
+		if readStrict(message.Payload, &p) != nil || p.Track == nil {
+			return invalid(message.ID)
+		}
+		return h.cfg.Controller.SelectAudioTrack(ctx, expectedMutation(message.ID, p.ExpectedRevision), *p.Track)
 	case "library.clear_subtitle":
 		var p struct {
 			ExpectedRevision *uint64 `json:"expected_revision"`
@@ -644,7 +657,7 @@ func (h *Handler) executeCommand(ctx context.Context, message envelope) controll
 
 func knownAction(kind string) bool {
 	switch kind {
-	case "devices.refresh", "devices.select", "library.play", "library.select_media", "library.select_subtitle", "library.clear_subtitle",
+	case "devices.refresh", "devices.select", "library.play", "library.select_media", "library.select_subtitle", "library.clear_subtitle", "library.select_audio",
 		"torrent.select", "torrent.cancel", "radio.play", "radio.favorite",
 		"queue.add", "queue.add_many", "queue.select", "queue.remove", "queue.move", "queue.clear", "player.play", "player.resume",
 		"player.pause", "player.stop", "player.volume", "player.mute", "player.transcode", "playback.policy", "player.seek":
@@ -690,6 +703,8 @@ func (h *Handler) logAction(kind string, before, snapshot controller.Snapshot) {
 		message = "Subtitles selected: " + snapshot.SelectedSubtitle
 	case "library.clear_subtitle":
 		message = "Subtitles cleared"
+	case "library.select_audio":
+		message = "Audio track selected: " + audioTrackName(snapshot)
 	case "queue.add":
 		for _, item := range snapshot.Queue {
 			if !slices.ContainsFunc(before.Queue, func(previous controller.QueueItem) bool { return previous.ID == item.ID }) {
@@ -950,4 +965,14 @@ func (h *Handler) rememberArtwork(id string, loader controller.ArtworkLoader) {
 		delete(h.artworkRefs, h.artworkOrder[0])
 		h.artworkOrder = h.artworkOrder[1:]
 	}
+}
+
+// audioTrackName names the chosen track for the action log.
+func audioTrackName(s controller.Snapshot) string {
+	for _, track := range s.AudioTracks {
+		if track.Number == s.SelectedAudioTrack || s.SelectedAudioTrack == 0 && track.Default {
+			return track.Label
+		}
+	}
+	return "Default"
 }

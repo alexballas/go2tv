@@ -147,6 +147,8 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		s.ffmpegPath, _ = utils.ResolveFFmpegPath("")
 		s.markFFmpegPathChanged()
 		s.updateChromecastSubtitleAvailability(s.ffmpegStatus())
+		// Drop tracks found with the previous binary and re-probe.
+		s.refreshAudioPicker()
 	})
 
 	ffmpegFolderSelect := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
@@ -204,6 +206,8 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		fyne.CurrentApp().Preferences().SetString("ffmpeg", update)
 		s.markFFmpegPathChanged()
 		s.updateChromecastSubtitleAvailability(s.ffmpegStatus())
+		// Drop tracks found with the previous binary and re-probe.
+		s.refreshAudioPicker()
 	}
 
 	debugExport := widget.NewButton(lang.L("Export Diagnostics"), func() {

@@ -12,10 +12,7 @@ import (
 	"go2tv.app/go2tv/v2/internal/mediasource"
 )
 
-var (
-	ErrInvalidInput  = errors.New("invalid ffmpeg input")
-	ErrTranscodeBusy = errors.New("transcode already running")
-)
+var ErrInvalidInput = errors.New("invalid ffmpeg input")
 
 // SubtitleSize represents the subtitle size option
 type SubtitleSize int
@@ -74,10 +71,6 @@ func serveDLNATranscodedStream(ctx context.Context, w io.Writer, input any, ff *
 		return ErrInvalidInput
 	}
 
-	if ff != nil && ff.Process != nil {
-		_ = ff.Process.Kill()
-	}
-
 	burn, err := prepareSubtitleBurn(ctx, opts)
 	defer burn.cleanup()
 	if err != nil {
@@ -89,7 +82,10 @@ func serveDLNATranscodedStream(ctx context.Context, w io.Writer, input any, ff *
 		}
 	}
 
-	encoderPlan := selectTranscodeVideoEncoder(ffmpegPath, videoEncoderProfileDLNA)
+	encoderPlan, err := selectTranscodeVideoEncoder(ffmpegPath, videoEncoderProfileDLNA)
+	if err != nil {
+		return err
+	}
 	buildArgs := func(plan videoEncoderPlan, hw string) []string {
 		copyTS := (in != "pipe:0" && seekSeconds > 0) || burn.overlay != ""
 		var vf string
@@ -117,9 +113,10 @@ func serveDLNATranscodedStream(ctx context.Context, w io.Writer, input any, ff *
 
 		args = append(args, "-i", in)
 		if burn.overlay != "" || burn.bitmap != nil {
-			args = append(args, burn.videoArgs(softwareTranscodeScaleFilter, plan.filterTail)...)
+			args = append(args, burn.videoArgs(softwareTranscodeScaleFilter, plan.filterTail, opts.AudioTrack)...)
 		} else {
 			args = append(args, "-vf", vf)
+			args = append(args, selectedStreamMaps(opts.AudioTrack)...)
 		}
 		args = append(args, plan.codecArgs...)
 		args = append(
@@ -132,7 +129,7 @@ func serveDLNATranscodedStream(ctx context.Context, w io.Writer, input any, ff *
 			"-max_delay", "0",
 		)
 		args = append(args, "-f", "mpegts", "pipe:1")
-		return args
+		return append(args, burn.outputArgs()...)
 	}
 
 	hw := selectTranscodeVideoDecoder(ffmpegPath, encoderPlan, burn.enabled(), in, false)

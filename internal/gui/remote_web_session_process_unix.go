@@ -5,6 +5,8 @@ package gui
 import (
 	"os/exec"
 	"syscall"
+
+	"go2tv.app/go2tv/v2/internal/processutil"
 )
 
 // configureManagedSysProcAttr places the managed child in its own process
@@ -32,7 +34,7 @@ func (c *managedContainment) KillTree() error {
 	if c == nil || c.pgid <= 0 {
 		return nil
 	}
-	return syscall.Kill(-c.pgid, syscall.SIGKILL)
+	return processutil.KillGroupTree(c.pgid)
 }
 
 func (c *managedContainment) Close() error { return nil }

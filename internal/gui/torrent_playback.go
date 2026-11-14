@@ -31,7 +31,10 @@ func (s *FyneScreen) beginPlaybackStartupContext(parentCtx context.Context, path
 	if s.torrent.cancelDone != nil || s.torrent.startup != nil {
 		return nil, nil, false
 	}
-	ctx, cancel := context.WithCancel(parentCtx)
+	ctx, cancel, done, ok := s.workers.begin(parentCtx)
+	if !ok {
+		return nil, nil, false
+	}
 	startup := &playbackStartup{ctx: ctx, cancel: cancel, done: make(chan struct{})}
 	if path == s.torrent.path {
 		startup.session = s.torrent.session
@@ -42,6 +45,8 @@ func (s *FyneScreen) beginPlaybackStartupContext(parentCtx context.Context, path
 		cancel()
 		s.torrent.startup = nil
 		s.torrent.mu.Unlock()
+		// The startup work is over; shutdown must not wait on the UI queue.
+		done()
 		refreshPlaybackControls("", s)
 		fyne.DoAndWait(func() {})
 		close(startup.done)

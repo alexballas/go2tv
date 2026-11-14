@@ -22,7 +22,8 @@ func TestChromecastFileTranscodeBuildsStartupBuffer(t *testing.T) {
 	argsPath := filepath.Join(dir, "args")
 	script := `#!/bin/sh
 if [ "$1" = "-hide_banner" ] && [ "$2" = "-encoders" ]; then
-  exit 1
+  echo " V..... libx264 fake"
+  exit 0
 fi
 printf '%s\n' "$@" > "$GO2TV_CHROMECAST_ARGS"
 `

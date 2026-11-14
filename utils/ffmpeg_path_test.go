@@ -3,6 +3,7 @@ package utils
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -67,8 +68,12 @@ func TestResolveFFmpegPathPreferredBypassesPlatformHook(t *testing.T) {
 
 func TestResolveFFprobePathUsesFFmpegSibling(t *testing.T) {
 	dir := t.TempDir()
-	ffmpegPath := filepath.Join(dir, "ffmpeg")
-	ffprobePath := filepath.Join(dir, "ffprobe")
+	exe := ""
+	if runtime.GOOS == "windows" {
+		exe = ".exe" // A portable FFmpeg folder outside PATH.
+	}
+	ffmpegPath := filepath.Join(dir, "ffmpeg"+exe)
+	ffprobePath := filepath.Join(dir, "ffprobe"+exe)
 	writeExecutableFile(t, ffmpegPath)
 	writeExecutableFile(t, ffprobePath)
 

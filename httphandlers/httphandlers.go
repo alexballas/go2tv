@@ -27,9 +27,14 @@ import (
 type HTTPserver struct {
 	http *http.Server
 	Mux  *http.ServeMux
-	// Chromecast runs one ffmpeg command at a time per server. DLNA commands
-	// are request-owned so a renderer reconnect cannot corrupt another command.
-	ffmpeg      *exec.Cmd
+	// Requests own their encoders; shutdown cancels and joins them all.
+	active      map[*http.Request]context.CancelFunc
+	requests    sync.WaitGroup
+	stopping    bool
+	rawInput    sync.Mutex
+	videoMu     sync.Mutex
+	videoCancel context.CancelFunc
+	videoDone   <-chan struct{}
 	handlers    map[string]handler
 	dirHandlers map[string]string // Handlers for serving entire directories (e.g. HLS)
 	transcodes  map[string]*transcodeState
@@ -242,6 +247,47 @@ func (s *HTTPserver) StartServer(serverStarted chan<- error, media, subtitles an
 // ServeMediaHandler is a helper method used to properly handle media and subtitle streaming.
 func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithCancel(r.Context())
+		r = r.WithContext(ctx)
+		request := r
+		s.mu.Lock()
+		if s.stopping {
+			s.mu.Unlock()
+			cancel()
+			http.NotFound(w, r)
+			return
+		}
+		if s.active == nil {
+			s.active = make(map[*http.Request]context.CancelFunc)
+		}
+		s.active[request] = cancel
+		s.requests.Add(1)
+		s.mu.Unlock()
+		defer func() {
+			cancel()
+			s.mu.Lock()
+			delete(s.active, request)
+			s.mu.Unlock()
+			s.requests.Done()
+		}()
+		// A receiver that stops reading (Wi-Fi drop, power cycle) leaves a
+		// half-open socket; cancellation must still fail its pending writes,
+		// or the encoder copying into it can never be reaped.
+		var writeMu sync.Mutex
+		responded := false
+		stopDeadline := context.AfterFunc(ctx, func() {
+			writeMu.Lock()
+			defer writeMu.Unlock()
+			if !responded {
+				_ = http.NewResponseController(w).SetWriteDeadline(time.Now())
+			}
+		})
+		defer func() {
+			stopDeadline()
+			writeMu.Lock()
+			responded = true
+			writeMu.Unlock()
+		}()
 		requestPathLower := strings.ToLower(r.URL.Path)
 
 		// Add CORS headers for subtitle files (needed for Chromecast)
@@ -383,7 +429,38 @@ func (s *HTTPserver) ServeMediaHandler() http.HandlerFunc {
 			}
 		}
 
-		serveContentWithDLNAOptions(w, r, out.payload, out.transcode, out.media, s.ffmpeg, dlnaOpts)
+		if out.transcode != nil && out.transcode.RawInput != nil && r.Method == http.MethodGet {
+			if !s.rawInput.TryLock() {
+				http.Error(w, "busy", http.StatusServiceUnavailable)
+				return
+			}
+			defer s.rawInput.Unlock()
+		}
+		if out.transcode != nil && !out.transcode.AudioOnly && out.transcode.RawInput == nil && r.Method == http.MethodGet {
+			// A replacing Chromecast GET must reap the preceding encoder before
+			// starting another, without sharing its mutable exec.Cmd.
+			s.videoMu.Lock()
+			if s.videoCancel != nil {
+				s.videoCancel()
+				<-s.videoDone
+			}
+			if ctx.Err() != nil {
+				s.videoMu.Unlock()
+				return
+			}
+			done := make(chan struct{})
+			s.videoCancel, s.videoDone = cancel, done
+			s.videoMu.Unlock()
+			defer func() {
+				close(done)
+				s.videoMu.Lock()
+				if s.videoDone == done {
+					s.videoCancel, s.videoDone = nil, nil
+				}
+				s.videoMu.Unlock()
+			}()
+		}
+		serveContentWithDLNAOptions(w, r, out.payload, out.transcode, out.media, dlnaOpts)
 	}
 }
 
@@ -508,13 +585,28 @@ func (s *HTTPserver) AddHLSHandler(urlPrefix, dir string) {
 	s.Mux.Handle(urlPrefix, http.StripPrefix(urlPrefix, handler))
 }
 
-// StopServer forcefully closes the HTTP server.
-func (s *HTTPserver) StopServer() {
-	if s.ffmpeg != nil && s.ffmpeg.Process != nil {
-		_ = s.ffmpeg.Process.Kill()
-	}
+const stopServerJoinTimeout = 5 * time.Second
 
-	s.http.Close()
+// StopServer forcefully closes the HTTP server, canceling and joining requests.
+func (s *HTTPserver) StopServer() {
+	s.mu.Lock()
+	s.stopping = true
+	for _, cancel := range s.active {
+		cancel()
+	}
+	s.mu.Unlock()
+	_ = s.http.Close()
+	// Encoders die on cancel; only a read that ignores cancellation (e.g. a
+	// stalled stdin producer) can outlive it, and must not block shutdown.
+	joined := make(chan struct{})
+	go func() {
+		s.requests.Wait()
+		close(joined)
+	}()
+	select {
+	case <-joined:
+	case <-time.After(stopServerJoinTimeout):
+	}
 }
 
 // NewServer constractor generates a new HTTPserver type.
@@ -523,7 +615,6 @@ func NewServer(a string) *HTTPserver {
 	srv := HTTPserver{
 		http:        &http.Server{Addr: a, Handler: mux},
 		Mux:         mux,
-		ffmpeg:      new(exec.Cmd),
 		handlers:    make(map[string]handler),
 		dirHandlers: make(map[string]string),
 		transcodes:  make(map[string]*transcodeState),
@@ -532,15 +623,15 @@ func NewServer(a string) *HTTPserver {
 	return &srv
 }
 
-func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mf any, ff *exec.Cmd) {
+func serveContent(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mf any) {
 	var dlnaOpts *utils.TranscodeOptions
 	if tv != nil {
 		dlnaOpts = tv.TranscodeOptionsSnapshot()
 	}
-	serveContentWithDLNAOptions(w, r, tv, tcOpts, mf, ff, dlnaOpts)
+	serveContentWithDLNAOptions(w, r, tv, tcOpts, mf, dlnaOpts)
 }
 
-func serveContentWithDLNAOptions(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mf any, ff *exec.Cmd, dlnaOpts *utils.TranscodeOptions) {
+func serveContentWithDLNAOptions(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mf any, dlnaOpts *utils.TranscodeOptions) {
 	var (
 		isMedia   bool
 		transcode bool
@@ -581,7 +672,7 @@ func serveContentWithDLNAOptions(w http.ResponseWriter, r *http.Request, tv *soa
 		w, f.OnTitle = radiometadata.Relay(w, r, f.OnTitle)
 		if !transcode {
 			if r.Method != http.MethodGet {
-				serveContentReadClose(w, r, tv, tcOpts, mediaType, false, http.NoBody, ff, dlnaOpts)
+				serveContentReadClose(w, r, tv, tcOpts, mediaType, false, http.NoBody, dlnaOpts)
 				return
 			}
 			rc, err := utils.StreamURLWithTitles(r.Context(), f.URL, f.OnTitle)
@@ -592,12 +683,12 @@ func serveContentWithDLNAOptions(w http.ResponseWriter, r *http.Request, tv *soa
 				http.Error(w, "remote media unavailable", http.StatusBadGateway)
 				return
 			}
-			serveContentReadClose(w, r, tv, tcOpts, mediaType, false, rc, ff, dlnaOpts)
+			serveContentReadClose(w, r, tv, tcOpts, mediaType, false, rc, dlnaOpts)
 			return
 		}
-		serveContentCustomType(w, r, tv, tcOpts, mediaType, transcode, false, osFileType{path: f.URL, onTitle: f.OnTitle}, ff, dlnaOpts)
+		serveContentCustomType(w, r, tv, tcOpts, mediaType, transcode, false, osFileType{path: f.URL, onTitle: f.OnTitle}, dlnaOpts)
 	case osFileType:
-		serveContentCustomType(w, r, tv, tcOpts, mediaType, transcode, seek, f, ff, dlnaOpts)
+		serveContentCustomType(w, r, tv, tcOpts, mediaType, transcode, seek, f, dlnaOpts)
 	case MediaReaderSeeker:
 		rsc, err := f()
 		if err != nil {
@@ -605,7 +696,7 @@ func serveContentWithDLNAOptions(w http.ResponseWriter, r *http.Request, tv *soa
 			return
 		}
 		if transcode {
-			serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, rsc, ff, dlnaOpts)
+			serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, rsc, dlnaOpts)
 			return
 		}
 		serveContentSeekCloser(w, r, mediaType, seek, rsc)
@@ -615,7 +706,7 @@ func serveContentWithDLNAOptions(w http.ResponseWriter, r *http.Request, tv *soa
 		// A probe must not take the reader, or the GET that follows it finds
 		// the stream busy and the renderer never starts playing.
 		if r.Method != http.MethodGet {
-			serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, http.NoBody, ff, dlnaOpts)
+			serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, http.NoBody, dlnaOpts)
 			return
 		}
 
@@ -624,9 +715,9 @@ func serveContentWithDLNAOptions(w http.ResponseWriter, r *http.Request, tv *soa
 			http.Error(w, "stream busy", http.StatusServiceUnavailable)
 			return
 		}
-		serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, borrowedLiveReader{rc}, ff, dlnaOpts)
+		serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, borrowedLiveReader{rc}, dlnaOpts)
 	case io.ReadCloser:
-		serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, f, ff, dlnaOpts)
+		serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, f, dlnaOpts)
 	default:
 		http.NotFound(w, r)
 		return
@@ -649,7 +740,7 @@ func serveContentBytes(w http.ResponseWriter, r *http.Request, mediaType string,
 	http.ServeContent(w, r, name, time.Now(), bReader)
 }
 
-func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode bool, f io.ReadCloser, ff *exec.Cmd, dlnaOpts *utils.TranscodeOptions) {
+func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode bool, f io.ReadCloser, dlnaOpts *utils.TranscodeOptions) {
 	var closeOnce sync.Once
 	closeReader := func() { closeOnce.Do(func() { _ = f.Close() }) }
 	defer closeReader()
@@ -677,11 +768,10 @@ func serveContentReadClose(w http.ResponseWriter, r *http.Request, tv *soapcalls
 			// Chromecast transcoding (fragmented MP4)
 			w.Header().Set("Content-Type", "video/mp4")
 			w.Header().Set("Access-Control-Allow-Origin", "*")
-			serveVideoTranscode(w, r, f, ff, tcOpts, true)
+			serveVideoTranscode(w, r, f, tcOpts, true)
 		case tv != nil:
 			// DLNA transcoding (MPEGTS)
-			var command exec.Cmd
-			serveVideoTranscode(w, r, f, &command, dlnaOpts, false)
+			serveVideoTranscode(w, r, f, dlnaOpts, false)
 		}
 		return
 	}
@@ -736,7 +826,7 @@ func serveContentSeekCloser(w http.ResponseWriter, r *http.Request, mediaType st
 	http.ServeContent(w, r, name, time.Now(), f)
 }
 
-func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode, seek bool, f osFileType, ff *exec.Cmd, dlnaOpts *utils.TranscodeOptions) {
+func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcalls.TVPayload, tcOpts *utils.TranscodeOptions, mediaType string, transcode, seek bool, f osFileType, dlnaOpts *utils.TranscodeOptions) {
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {
 		w.Header()["contentFeatures.dlna.org"] = []string{utils.BuildDLNAContentFeatures(utils.DLNAContentFeaturesOptions{
 			ByteSeek:  seek && !transcode,
@@ -773,11 +863,10 @@ func serveContentCustomType(w http.ResponseWriter, r *http.Request, tv *soapcall
 			// Chromecast transcoding (fragmented MP4)
 			w.Header().Set("Content-Type", "video/mp4")
 			w.Header().Set("Access-Control-Allow-Origin", "*")
-			serveVideoTranscode(w, r, input, ff, tcOpts, true)
+			serveVideoTranscode(w, r, input, tcOpts, true)
 		case tv != nil:
 			// DLNA transcoding (MPEGTS)
-			var command exec.Cmd
-			serveVideoTranscode(w, r, input, &command, dlnaOpts, false)
+			serveVideoTranscode(w, r, input, dlnaOpts, false)
 		}
 		return
 	}

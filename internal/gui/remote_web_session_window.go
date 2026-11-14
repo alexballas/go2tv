@@ -44,6 +44,10 @@ const (
 // before RTMP/screencast teardown completes.
 func (s *FyneScreen) beginGUIShutdown() <-chan struct{} {
 	s.shutdownOnce.Do(func() {
+		if s.shutdownDone == nil {
+			s.shutdownDone = make(chan struct{})
+		}
+		s.workers.stop()
 		s.cancelPendingTorrentPlayback()
 		if s.remoteSessionUpdatesDone != nil {
 			s.remoteSessionUpdatesDone()
@@ -52,14 +56,21 @@ func (s *FyneScreen) beginGUIShutdown() <-chan struct{} {
 			defer close(s.shutdownDone)
 			defer s.shutdownTorrents()
 			ctx, cancel := context.WithTimeout(context.Background(), remoteShutdownGrace)
-			_ = s.remoteSession.Shutdown(ctx)
-			cancel()
-			s.rtmpMu.Lock()
-			if s.rtmpServer != nil {
-				s.rtmpServer.Stop()
+			if s.remoteSession != nil {
+				_ = s.remoteSession.Shutdown(ctx)
 			}
+			cancel()
+			s.stopPlaybackForShutdown()
+			s.rtmpMu.Lock()
+			if server := s.rtmpServer; server != nil {
+				s.rtmpServer = nil
+				server.Stop()
+			}
+			rtmpStopped := s.rtmpStopDone
 			s.rtmpMu.Unlock()
-			stopScreencastSession(s)
+			if rtmpStopped != nil {
+				<-rtmpStopped
+			}
 		}()
 	})
 	return s.shutdownDone

@@ -149,15 +149,17 @@ type LoadRequest struct {
 }
 
 type ServerRequest struct {
-	Media         SourceOpener
-	MediaExt      string
-	MediaType     string
-	Subtitle      SourceOpener
-	SubtitleExt   string
-	Transcode     bool
-	SeekOffset    int
-	Duration      float64
-	BurnSubtitle  bool
+	Media        SourceOpener
+	MediaExt     string
+	MediaType    string
+	Subtitle     SourceOpener
+	SubtitleExt  string
+	Transcode    bool
+	SeekOffset   int
+	Duration     float64
+	BurnSubtitle bool
+	// AudioTrack is a one-based source audio stream; zero keeps the default.
+	AudioTrack    int
 	Target        Device
 	TorrentSource mediasource.Source
 	// Live relays an endless network stream in place of Media.

@@ -79,3 +79,23 @@ func TestChromecastExternalURLPolicy(t *testing.T) {
 		})
 	}
 }
+
+func TestSkipTarget(t *testing.T) {
+	tt := []struct {
+		name                     string
+		current, delta, duration int
+		want                     int
+	}{
+		{"forward", 100, SkipForwardSeconds, 1000, 130},
+		{"back past start", 4, -SkipBackSeconds, 1000, 0},
+		{"forward stops short of end", 990, SkipForwardSeconds, 1000, 999},
+		{"unknown duration", 100, SkipForwardSeconds, 0, 130},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := SkipTarget(tc.current, tc.delta, tc.duration); got != tc.want {
+				t.Fatalf("SkipTarget(%d, %d, %d) = %d, want %d", tc.current, tc.delta, tc.duration, got, tc.want)
+			}
+		})
+	}
+}

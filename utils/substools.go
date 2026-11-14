@@ -73,7 +73,7 @@ func probeSubtitleTrackContext(ctx context.Context, ffmpeg, path string, index i
 	if err != nil {
 		return info, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, mediaProbeTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, ffprobe, "-v", "error", "-select_streams", "s:"+strconv.Itoa(index),
 		"-show_entries", "stream=codec_name:format=format_name,start_time", "-of", "json", path)
@@ -121,7 +121,7 @@ func GetSubsContext(ctx context.Context, ffmpeg string, f string) ([]string, err
 		return nil, fmt.Errorf("GetSubsContext: %w: %w", ErrFFmpegUnavailable, err)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, mediaProbeTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx,
 		ffprobePath,
@@ -305,7 +305,7 @@ func extractNativeSub(ctx context.Context, index int, path string, out io.Writer
 	if !info.Mode().IsRegular() {
 		return mkvsubs.ErrNoSubtitles
 	}
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, mediaProbeTimeout)
 	defer cancel()
 	// FFmpeg normalizes subtitles to the media start time. Also confirm the
 	// selected codec using the same stream selector as the fallback command.

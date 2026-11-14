@@ -29,6 +29,7 @@ func newMediaCardTestScreen(t *testing.T) (*FyneScreen, *mediaSelectionCard) {
 	// the same serialized UI updates as the real application's event loop.
 	fyne.SetCurrentApp(&queuedUIApp{App: app, driver: &serialUIDriver{Driver: app.Driver()}})
 	s := newQueueMediaSelectionTestScreen()
+	t.Cleanup(func() { s.workers.stop(); s.workers.wait() })
 	s.ExternalMediaURL = widget.NewCheck("", nil)
 	s.MediaBrowse = widget.NewButton("", nil)
 	s.SubsBrowse = widget.NewButton("", nil)
@@ -296,6 +297,104 @@ func TestMediaCardSubtitleModes(t *testing.T) {
 	selectSubsFile(s, storage.NewFileURI(sidecar))
 	if c.subtitles.Selected != lang.L(subtitleExternal) || s.subsfile != sidecar {
 		t.Fatal("dropping subtitles must switch to External File and retain selection")
+	}
+}
+
+func TestMediaChangeSubtitleSelection(t *testing.T) {
+	tt := []struct {
+		name, mode                    string
+		sameMedia, noMedia, clear     bool
+		nextSidecar, wantPreviousSubs bool
+	}{
+		{name: "automatic selects next sidecar", mode: subtitleAutomatic, nextSidecar: true},
+		{name: "automatic clears missing sidecar", mode: subtitleAutomatic},
+		{name: "external clears on next show", mode: subtitleExternal},
+		{name: "external does not enable automatic", mode: subtitleExternal, nextSidecar: true},
+		{name: "embedded extraction clears on next show", mode: subtitleEmbedded},
+		{name: "external survives same show selection", mode: subtitleExternal, sameMedia: true, wantPreviousSubs: true},
+		{name: "external selected before media", mode: subtitleExternal, noMedia: true, wantPreviousSubs: true},
+		{name: "clear media clears external", mode: subtitleExternal, clear: true},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			s, c := newMediaCardTestScreen(t)
+			dir := t.TempDir()
+			s.ffmpegPath = filepath.Join(dir, "missing-ffmpeg")
+			current, next := filepath.Join(dir, "first.mp4"), filepath.Join(dir, "second.mp4")
+			previousSubs, nextSubs := filepath.Join(dir, "first.srt"), filepath.Join(dir, "second.srt")
+			for _, path := range []string{previousSubs, nextSubs} {
+				if err := os.WriteFile(path, []byte("1\n00:00:00,000 --> 00:00:01,000\n"+filepath.Base(path)+"\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !tc.nextSidecar {
+				if err := os.Remove(nextSubs); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !tc.noMedia {
+				if err := setCurrentMediaPath(s, current); err != nil {
+					t.Fatal(err)
+				}
+			}
+			c.subtitles.SetSelected(lang.L(tc.mode))
+			if tc.mode == subtitleExternal {
+				selectSubsFile(s, storage.NewFileURI(previousSubs))
+			}
+			if tc.mode == subtitleEmbedded {
+				s.SelectInternalSubs.SetOptions([]string{"English"})
+				s.SelectInternalSubs.SetSelected("English")
+				s.subsfile = previousSubs
+				s.tempFiles = append(s.tempFiles, previousSubs)
+			}
+			if tc.sameMedia {
+				next = current
+			}
+			if tc.clear {
+				clearCurrentMediaSelection(s)
+			} else if err := setCurrentMediaPath(s, next); err != nil {
+				t.Fatal(err)
+			}
+			want := ""
+			switch {
+			case tc.wantPreviousSubs:
+				want = previousSubs
+			case tc.mode == subtitleAutomatic && tc.nextSidecar:
+				want = nextSubs
+			}
+			if s.subsfile != want || c.subtitles.Selected != lang.L(tc.mode) {
+				t.Fatalf("subtitles = %q, mode = %q; want %q, %q", s.subsfile, c.subtitles.Selected, want, lang.L(tc.mode))
+			}
+		})
+	}
+}
+
+func TestSupersededSkipRestoresSubtitles(t *testing.T) {
+	for _, mode := range []string{subtitleExternal, subtitleEmbedded} {
+		t.Run(mode, func(t *testing.T) {
+			s, c := newMediaCardTestScreen(t)
+			dir := t.TempDir()
+			s.ffmpegPath = filepath.Join(dir, "missing-ffmpeg")
+			current, next, subs := filepath.Join(dir, "first.mp4"), filepath.Join(dir, "second.mp4"), filepath.Join(dir, "first.srt")
+			if err := setCurrentMediaPath(s, current); err != nil {
+				t.Fatal(err)
+			}
+			c.subtitles.SetSelected(lang.L(mode))
+			s.subsfile = subs
+			origin := captureSkipOrigin(s)
+			if err := setCurrentMediaPath(s, next); err != nil {
+				t.Fatal(err)
+			}
+			if s.subsfile != "" {
+				t.Fatalf("skip target inherited %q", s.subsfile)
+			}
+			if err := origin.restore(s); err != nil {
+				t.Fatal(err)
+			}
+			if s.mediafile != current || s.subsfile != subs || c.subtitles.Selected != lang.L(mode) {
+				t.Fatalf("media = %q, subtitles = %q, mode = %q; want %q, %q, %q", s.mediafile, s.subsfile, c.subtitles.Selected, current, subs, lang.L(mode))
+			}
+		})
 	}
 }
 

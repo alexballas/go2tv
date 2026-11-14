@@ -9,7 +9,12 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
+
+	"go2tv.app/go2tv/v2/internal/processutil"
 )
+
+const transcodeReapTimeout = 5 * time.Second
 
 type countingWriter struct {
 	w       io.Writer
@@ -66,21 +71,26 @@ func runFFmpegTranscode(
 	ff.Stdout = cw
 	ff.Stderr = &stderr
 
-	if err := ff.Start(); err != nil {
+	if err := processutil.Start(ff); err != nil {
 		return 0, fmt.Errorf("%w: %s", err, tailFFmpegStderr(strings.TrimSpace(stderr.String()), 240))
 	}
 
 	done := make(chan error, 1)
 	go func() {
-		done <- ff.Wait()
+		err := ff.Wait()
+		processutil.Release(ff)
+		done <- err
 	}()
 
 	select {
 	case <-ctx.Done():
-		if ff.Process != nil {
-			_ = ff.Process.Kill()
+		_ = processutil.Kill(ff)
+		// Kill reaches the whole tree; the bound covers a tree it could not
+		// contain, so a request never outlives its cancellation for long.
+		select {
+		case <-done:
+		case <-time.After(transcodeReapTimeout):
 		}
-		<-done
 		return cw.n, context.Cause(ctx)
 	case err := <-done:
 		if ctx.Err() != nil {
@@ -128,7 +138,15 @@ func runTranscodeWithFallback(
 			hw = ""
 			nextAction = "software_decode"
 		case plan.hardware:
-			plan = transcodeSoftwareEncoderPlan(profile)
+			available, checkErr := ffmpegVideoEncoderSet(args[0])
+			if checkErr != nil {
+				return fmt.Errorf("software encoder fallback: %w", checkErr)
+			}
+			software, checkErr := transcodeSoftwareEncoderIfAvailable(profile, available)
+			if checkErr != nil {
+				return fmt.Errorf("software encoder fallback after %v: %w", err, checkErr)
+			}
+			plan = software
 			nextAction = "software_encode"
 		default:
 			return err

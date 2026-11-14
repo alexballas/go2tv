@@ -50,21 +50,23 @@ type TVPayload struct {
 	FFmpegSubsPath              string
 	FFmpegEmbeddedSubtitle      *utils.EmbeddedSubtitle
 	TorrentSource               mediasource.Source
-	EventURL                    string
-	ControlURL                  string
-	MediaURL                    string
-	MediaType                   string
-	MediaPath                   string
-	SubtitlesURL                string
-	CallbackURL                 string
-	ConnectionManagerURL        string
-	RenderingControlURL         string
-	PinnedIP                    string
-	Metadata                    metadata.Media
-	mu                          sync.RWMutex
-	initLogOnce                 sync.Once
-	Transcode                   bool
-	Seekable                    bool
+	// FFmpegAudioTrack mirrors utils.TranscodeOptions.AudioTrack.
+	FFmpegAudioTrack     int
+	EventURL             string
+	ControlURL           string
+	MediaURL             string
+	MediaType            string
+	MediaPath            string
+	SubtitlesURL         string
+	CallbackURL          string
+	ConnectionManagerURL string
+	RenderingControlURL  string
+	PinnedIP             string
+	Metadata             metadata.Media
+	mu                   sync.RWMutex
+	initLogOnce          sync.Once
+	Transcode            bool
+	Seekable             bool
 }
 
 type getMuteRespBody struct {
@@ -561,8 +563,11 @@ func (p *TVPayload) PlayPauseStopSoapCallContext(ctx context.Context, action str
 
 	client := p.httpClient(parsedURLtransport)
 
-	if retry {
+	switch {
+	case retry:
 		client = p.retryableHTTPClient(parsedURLtransport, 3)
+	case action == "Play":
+		client = withResponseTimeout(client, playResponseTimeout)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", parsedURLtransport.String(), bytes.NewReader(xmlData))
@@ -587,6 +592,10 @@ func (p *TVPayload) PlayPauseStopSoapCallContext(ctx context.Context, action str
 
 	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlData, "AVTransportActionSoapCall")
 	if err != nil {
+		if action == "Play" && isTimeout(err) && p.rendererStarted(ctx) {
+			p.Log().Debug("Play reply timed out but renderer started", "Method", "AVTransportActionSoapCall", "Action", "Play Timeout Recovered", "error", err)
+			return nil
+		}
 		p.Log().Error("", "Method", "AVTransportActionSoapCall", "Action", "Do POST", "error", err)
 		return fmt.Errorf("AVTransportActionSoapCall Do POST error: %w", err)
 	}
@@ -607,6 +616,25 @@ func (p *TVPayload) PlayPauseStopSoapCallContext(ctx context.Context, action str
 	p.Log().Debug(string(resBytes), "Method", "AVTransportActionSoapCall", "Action", action+" Response", "Status Code", strconv.Itoa(res.StatusCode), "Headers", json.RawMessage(headerBytesRes))
 
 	return nil
+}
+
+func isTimeout(err error) bool {
+	var ne interface{ Timeout() bool }
+	return errors.As(err, &ne) && ne.Timeout()
+}
+
+// rendererStarted reports whether the renderer is playing or about to play,
+// for renderers that act on Play but never answer it in time.
+func (p *TVPayload) rendererStarted(ctx context.Context) bool {
+	info, err := p.GetTransportInfoContext(ctx)
+	if err != nil || len(info) == 0 {
+		return false
+	}
+	switch info[0] {
+	case "PLAYING", "TRANSITIONING":
+		return true
+	}
+	return false
 }
 
 // SeekSoapCall builds and sends the AVTransport actions for Seek.

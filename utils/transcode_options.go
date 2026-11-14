@@ -56,6 +56,9 @@ type TranscodeOptions struct {
 	// TorrentSource burns the first supported embedded text track when SubsPath
 	// is empty. Callers select this only for automatic torrent captions.
 	TorrentSource mediasource.Source
+	// AudioTrack selects a one-based source audio stream (FFmpeg 0:a:N-1).
+	// Zero keeps FFmpeg's default selection.
+	AudioTrack int
 
 	initLogOnce sync.Once
 	logger      *slog.Logger

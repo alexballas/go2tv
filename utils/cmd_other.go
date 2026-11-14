@@ -1,7 +1,11 @@
-//go:build !windows
+//go:build !android
 
 package utils
 
-import "os/exec"
+import (
+	"os/exec"
 
-func setSysProcAttr(_ *exec.Cmd) {}
+	"go2tv.app/go2tv/v2/internal/processutil"
+)
+
+func setSysProcAttr(cmd *exec.Cmd) { processutil.Configure(cmd) }

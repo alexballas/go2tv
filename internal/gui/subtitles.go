@@ -56,14 +56,14 @@ func prepareDesktopSubtitles(screen *FyneScreen, mediaPath string, burn, automat
 			automatic = true
 		}
 		if len(tracks) > 0 {
+			// Discard a previous extraction before retrying or switching to burn-in.
+			screen.subsfile = ""
 			screen.PlayPause.SetText(lang.L("Extracting Subtitles") + "   ")
 		}
 	})
 	if len(tracks) == 0 {
 		return nil
 	}
-	// Discard a previous extraction before retrying or switching to direct burn-in.
-	screen.subsfile = ""
 	path, original, err := prepareEmbeddedSubtitles(ctx, screen.ffmpegPath, mediaPath, tracks, burn, automatic)
 	fyne.Do(func() { screen.PlayPause.SetText(lang.L("Play") + "   ") })
 	if err != nil {
@@ -72,11 +72,13 @@ func prepareDesktopSubtitles(screen *FyneScreen, mediaPath string, burn, automat
 		}
 		return err
 	}
-	if path != "" {
-		screen.tempFiles = append(screen.tempFiles, path)
-	}
-	screen.subsfile = path
-	screen.embeddedSubtitle = original
+	fyne.DoAndWait(func() {
+		if path != "" {
+			screen.tempFiles = append(screen.tempFiles, path)
+		}
+		screen.subsfile = path
+		screen.embeddedSubtitle = original
+	})
 	return nil
 }
 
@@ -152,6 +154,7 @@ func desktopChromecastTranscodeOptions(screen *FyneScreen, seekSeconds int) *uti
 		LogOutput:        screen.Debug,
 		TorrentSource:    screen.chromecastTorrentBurnSource(true),
 		EmbeddedSubtitle: screen.embeddedSubtitle,
+		AudioTrack:       screen.castAudio(),
 	}
 }
 

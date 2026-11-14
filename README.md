@@ -30,7 +30,8 @@ No need to copy files to a USB drive or set up a media server. Just select your 
 - **Auto-discovery** - Automatically finds Smart TVs and Chromecast devices on your network
 - **Transcoding** - Converts incompatible video formats on-the-fly (requires FFmpeg)
 - **Subtitles** - Supports external SRT/VTT/ASS/SSA files and embedded MKV subtitles
-- **Seek support** - Jump to any position in the video
+- **Seek support** - Jump to any position, or skip back 10s / forward 30s
+- **Audio track selection** - Pick another language or commentary track (transcodes with FFmpeg)
 - **Torrent playback** - Paste a magnet link or open a .torrent, choose a media file, and cast while downloading. Missing ranges download on demand, including FFmpeg input seeks.
 - **Playlist playback** - Single-file and multi-file playlists with add/remove/reorder/select support
 - **Loop and auto-play** - Loop the current file or auto-play through the playlist
@@ -102,7 +103,7 @@ When transcoding is enabled, Go2TV probes available GPU H.264 encoders first and
 - **macOS**: `brew install ffmpeg`
 - **Windows**: `winget install Gyan.FFmpeg`, or download from [ffmpeg.org](https://ffmpeg.org/download.html) and add it to `PATH`
 - **Flatpak**: FFmpeg is bundled automatically
-- **Android**: FFmpeg is bundled in the default APK. It is arm64-only and requires Android 9.0+.
+- **Android**: FFmpeg is bundled in the default APK. It is arm64-only; source builds target Android API 21 and include MediaCodec, `libx264`, zlib/PNG, and libass for text subtitle burn-in.
 
 If Go2TV can't find FFmpeg, point it at the binary in **Settings → Advanced → ffmpeg Path**
 (GUI) or pass `-ffmpeg /path/to/ffmpeg` (CLI).
@@ -180,7 +181,14 @@ yt-dlp -o - "https://youtu.be/..." | go2tv -t http://192.168.1.50:8009
 
 # Transcode with a custom FFmpeg binary
 go2tv -tc -ffmpeg /path/to/ffmpeg -v movie.mkv -t http://192.168.1.50:8009
+
+# List a video's audio tracks, then cast with track 2
+go2tv -la -v movie.mkv
+go2tv -v movie.mkv -a 2 -t http://192.168.1.100:8060/
 ```
+
+Non-default audio tracks are transcoded with FFmpeg, as with `-tc`. In the
+interactive screen, `←`/`→` skip back 10 seconds and forward 30 seconds.
 
 Omit `-torrent-file` for torrents containing one media file. For multiple media
 files, omitting it lists their indexes. Torrents work in desktop GUI, mobile,
@@ -339,6 +347,9 @@ Go2TV uses a custom Chromecast receiver hosted at https://cast-receiver.go2tv.ap
 
 ## Building from Source
 
+Android builds compile pinned FFmpeg/x264 sources, shared with CI; see
+[Android build instructions](BUILDING.md#android-builds).
+
 **Requirements**:
 
 - Go 1.26.9 or later
@@ -366,4 +377,8 @@ Alexandros Ballas <alex@ballas.org>
 
 MIT
 
-Artifacts that bundle FFmpeg inherit the bundled FFmpeg build's license obligations. Source-built Android APKs and default bundled AppImages use GPL FFmpeg builds. The legacy Android binary-download target uses an LGPL FFmpeg build.
+Artifacts that bundle FFmpeg inherit the bundled FFmpeg build's license obligations. Source-built Android APKs and default bundled AppImages use GPL FFmpeg builds. Local Android builds and CI use the same pinned FFmpeg/x264 sources.
+
+Android subtitle rendering is based in part on the work of the FreeType Team.
+Portions of this software are copyright © 2026 The FreeType Project
+(https://freetype.org). All rights reserved.

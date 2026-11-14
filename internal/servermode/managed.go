@@ -9,7 +9,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"syscall"
 	"time"
 
 	"go2tv.app/go2tv/v2/internal/managedsession"
@@ -105,11 +104,11 @@ func runManaged(ctx context.Context, validated Config, output io.Writer, control
 
 func managedListenErrorCode(err error) string {
 	switch {
-	case errors.Is(err, syscall.EADDRINUSE):
+	case errors.Is(err, errListenAddrInUse):
 		return managedsession.StartupErrorAddressInUse
-	case errors.Is(err, syscall.EADDRNOTAVAIL):
+	case errors.Is(err, errListenAddrNotAvail):
 		return managedsession.StartupErrorAddressUnavailable
-	case errors.Is(err, syscall.EACCES):
+	case errors.Is(err, errListenAccess):
 		return managedsession.StartupErrorPermissionDenied
 	default:
 		return managedsession.StartupErrorListenFailed

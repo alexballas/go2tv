@@ -66,6 +66,7 @@ func (p *FyneScreen) refreshMPRISProgress() {
 
 // FyneScreen .
 type FyneScreen struct {
+	workers                  backgroundWork
 	radioSong                radioSongState
 	radio                    *radioView
 	radioArtworkCache        *radioArtworkCache
@@ -163,6 +164,9 @@ type FyneScreen struct {
 	ffmpegCheckDirty         bool
 	Medialoop                bool
 	sliderActive             bool
+	audio                    audioTrackState
+	audioPicker              audioPicker
+	skips                    skipState
 	dlnaSeekRestart          bool
 	imageAutoSkipTimeout     int
 	Transcode                bool
@@ -222,6 +226,7 @@ type FyneScreen struct {
 	imageAutoSkipMediaPath   string
 	imageAutoSkipCancel      context.CancelFunc
 	rtmpMu                   sync.Mutex
+	rtmpStopDone             <-chan struct{}
 	resumeSession            resumePlaybackSession
 	Crash                    *crashlog.Session
 	PendingCrashPath         string
@@ -232,6 +237,8 @@ type FyneScreen struct {
 	remoteDialog             dialog.Dialog
 	shutdownOnce             sync.Once
 	shutdownDone             chan struct{}
+	shutdownWaitOnce         sync.Once
+	shutdownWaitCh           chan struct{}
 }
 
 type droppedMediaMode uint8
@@ -439,7 +446,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	go func() {
 		<-ctx.Done()
-		<-s.beginGUIShutdown()
+		<-s.shutdownWait()
 		if s.Crash != nil {
 			_ = s.Crash.CloseClean()
 		}
@@ -450,7 +457,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 	// immediately; the window closes once the managed child is reaped and
 	// RTMP/screencast teardown finished.
 	w.SetCloseIntercept(func() {
-		done := s.beginGUIShutdown()
+		done := s.shutdownWait()
 		go func() {
 			<-done
 			fyne.Do(func() {
@@ -464,6 +471,13 @@ func Start(ctx context.Context, s *FyneScreen) {
 	showPendingCrashPopup(s)
 
 	w.ShowAndRun()
+	<-s.shutdownWait()
+}
+
+func (s *FyneScreen) currentHTTPServer() *httphandlers.HTTPserver {
+	s.dlnaQueueMu.Lock()
+	defer s.dlnaQueueMu.Unlock()
+	return s.httpserver
 }
 
 // EmitMsg Method to implement the screen interface
@@ -772,6 +786,7 @@ func (p *FyneScreen) updateScreenState(a string) {
 		if p.DeviceList != nil {
 			p.DeviceList.Refresh()
 		}
+		p.refreshAudioPicker()
 		p.updateActiveDeviceView()
 		p.refreshPlaybackReadiness()
 		p.refreshQueueStateUI()

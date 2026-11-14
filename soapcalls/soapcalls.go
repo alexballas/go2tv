@@ -24,11 +24,13 @@ type Options struct {
 	FFmpegPath             string
 	FFmpegSubsPath         string
 	FFmpegEmbeddedSubtitle *utils.EmbeddedSubtitle
-	Transcode              bool
-	Seek                   bool
-	FFmpegSeek             int
-	Metadata               metadata.Media
-	TorrentSource          mediasource.Source
+	// FFmpegAudioTrack is a one-based source audio stream; zero keeps the default.
+	FFmpegAudioTrack int
+	Transcode        bool
+	Seek             bool
+	FFmpegSeek       int
+	Metadata         metadata.Media
+	TorrentSource    mediasource.Source
 }
 
 // NewTVPayload creates a new TVPayload based on the provided options.
@@ -76,6 +78,7 @@ func NewTVPayload(o *Options) (*TVPayload, error) {
 		FFmpegSubsPath:              o.FFmpegSubsPath,
 		FFmpegEmbeddedSubtitle:      copyEmbeddedSubtitle(o.FFmpegEmbeddedSubtitle),
 		TorrentSource:               o.TorrentSource,
+		FFmpegAudioTrack:            o.FFmpegAudioTrack,
 		FFmpegSeek:                  o.FFmpegSeek,
 		Seekable:                    o.Seek,
 		LogOutput:                   o.LogOutput,
@@ -148,6 +151,7 @@ func (p *TVPayload) TranscodeOptionsSnapshot() *utils.TranscodeOptions {
 		SeekSeconds: p.FFmpegSeek, SubtitleSize: utils.SubtitleSizeMedium,
 		TorrentSource: p.TorrentSource, LogOutput: p.LogOutput,
 		EmbeddedSubtitle: copyEmbeddedSubtitle(p.FFmpegEmbeddedSubtitle),
+		AudioTrack:       p.FFmpegAudioTrack,
 	}
 }
 

@@ -3,6 +3,7 @@ package utils
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,8 @@ import (
 )
 
 const transcodeEncoderProbeTimeout = 5 * time.Second
+
+var ErrNoVideoEncoder = errors.New("no usable H.264 encoder: hardware encoding unavailable and FFmpeg lacks libx264")
 
 // Transcoding policy reference (target/max/buffer values are Mbps):
 //
@@ -46,50 +49,56 @@ type videoEncoderPlan struct {
 
 var transcodeVideoEncoderCache sync.Map
 
-func selectTranscodeVideoEncoder(ffmpegPath string, profile videoEncoderProfile) videoEncoderPlan {
+func selectTranscodeVideoEncoder(ffmpegPath string, profile videoEncoderProfile) (videoEncoderPlan, error) {
 	key := transcodeEncoderCacheKey(ffmpegPath, profile)
 	if cached, ok := transcodeVideoEncoderCache.Load(key); ok {
-		return cached.(videoEncoderPlan)
+		return cached.(videoEncoderPlan), nil
 	}
 
-	plan := selectTranscodeEncoderNoCache(ffmpegPath, profile)
+	plan, err := selectTranscodeEncoderNoCache(ffmpegPath, profile)
+	if err != nil {
+		return videoEncoderPlan{}, err
+	}
 	transcodeVideoEncoderCache.Store(key, plan)
 
-	return plan
+	return plan, nil
 }
 
 func transcodeEncoderCacheKey(ffmpegPath string, profile videoEncoderProfile) string {
 	return ffmpegPath + "|" + string(profile)
 }
 
-func selectTranscodeEncoderNoCache(ffmpegPath string, profile videoEncoderProfile) videoEncoderPlan {
-	software := transcodeSoftwareEncoderPlan(profile)
-	candidates := transcodeHardwareEncoderCandidates(profile)
-	if len(candidates) == 0 {
-		return software
-	}
+func selectTranscodeEncoderNoCache(ffmpegPath string, profile videoEncoderProfile) (videoEncoderPlan, error) {
+	return selectTranscodeEncoderCandidates(ffmpegPath, profile, transcodeHardwareEncoderCandidates(profile))
+}
 
+func selectTranscodeEncoderCandidates(ffmpegPath string, profile videoEncoderProfile, candidates []videoEncoderPlan) (videoEncoderPlan, error) {
 	if _, err := exec.LookPath(ffmpegPath); err != nil {
-		return software
+		return videoEncoderPlan{}, fmt.Errorf("selectTranscodeVideoEncoder: %w", err)
 	}
 
 	available, err := ffmpegVideoEncoderSet(ffmpegPath)
 	if err != nil {
-		available = nil
+		return videoEncoderPlan{}, fmt.Errorf("selectTranscodeVideoEncoder: %w", err)
 	}
 
 	for _, candidate := range candidates {
-		if len(available) > 0 {
-			if _, ok := available[candidate.codec]; !ok {
-				continue
-			}
+		if _, ok := available[candidate.codec]; !ok {
+			continue
 		}
 		if err := probeTranscodeVideoEncoder(ffmpegPath, candidate); err == nil {
-			return candidate
+			return candidate, nil
 		}
 	}
 
-	return software
+	return transcodeSoftwareEncoderIfAvailable(profile, available)
+}
+
+func transcodeSoftwareEncoderIfAvailable(profile videoEncoderProfile, available map[string]struct{}) (videoEncoderPlan, error) {
+	if _, ok := available["libx264"]; !ok {
+		return videoEncoderPlan{}, ErrNoVideoEncoder
+	}
+	return transcodeSoftwareEncoderPlan(profile), nil
 }
 
 func transcodeSoftwareEncoderPlan(profile videoEncoderProfile) videoEncoderPlan {
@@ -104,10 +113,9 @@ func transcodeSoftwareEncoderPlan(profile videoEncoderProfile) videoEncoderPlan 
 func transcodeHardwareEncoderCandidates(profile videoEncoderProfile) []videoEncoderPlan {
 	switch runtime.GOOS {
 	case "android":
-		return []videoEncoderPlan{
-			transcodeHardwareEncoderPlan(profile, "h264_mediacodec", nil),
+		return append(transcodeMediaCodecCandidates(profile),
 			transcodeHardwareEncoderPlan(profile, "h264_v4l2m2m", nil),
-		}
+		)
 	case "darwin":
 		return []videoEncoderPlan{
 			transcodeHardwareEncoderPlan(profile, "h264_videotoolbox", nil),
@@ -140,6 +148,15 @@ func transcodeHardwareEncoderCandidates(profile videoEncoderProfile) []videoEnco
 	}
 }
 
+func transcodeMediaCodecCandidates(profile videoEncoderProfile) []videoEncoderPlan {
+	// Qualcomm encoders commonly require NV12. Retain planar input for devices
+	// whose MediaCodec implementation does not accept it; cache the probed plan.
+	nv12 := transcodeHardwareEncoderPlan(profile, "h264_mediacodec", nil)
+	planar := transcodeHardwareEncoderPlan(profile, "h264_mediacodec", nil)
+	planar.filterTail = "format=yuv420p"
+	return []videoEncoderPlan{nv12, planar}
+}
+
 func transcodeHardwareEncoderPlan(profile videoEncoderProfile, codec string, globalArgs []string) videoEncoderPlan {
 	return videoEncoderPlan{
 		codec:      codec,
@@ -154,7 +171,7 @@ func transcodeHardwareFilterTail(codec string) string {
 	switch codec {
 	case "h264_vaapi":
 		return "format=nv12,hwupload"
-	case "h264_qsv":
+	case "h264_qsv", "h264_mediacodec":
 		return "format=nv12"
 	default:
 		return "format=yuv420p"

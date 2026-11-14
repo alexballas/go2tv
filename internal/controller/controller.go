@@ -152,10 +152,17 @@ type actorState struct {
 	artworkID    string
 	// streamTitle is the current track of the live stream started by generation.
 	streamTitle string
-	lastError   string
-	terminal    playback.TerminalReason
-	deferred    *playback.MonitorEvent
-	cleanup     bool
+	// audioTracks belong to media; audioTrack is the chosen Number (0 = default).
+	audioTracks []utils.AudioTrack
+	audioTrack  int
+	audioProbe  uint64
+	// audioTranscode records that choosing a track turned Transcode on, so
+	// returning to the default track or other media turns it back off.
+	audioTranscode bool
+	lastError      string
+	terminal       playback.TerminalReason
+	deferred       *playback.MonitorEvent
+	cleanup        bool
 	// gaplessUnsupported remembers renderers that reported they cannot stage a
 	// next URI, so later tracks fall back to ordinary autoplay instead of
 	// re-attempting gapless queueing on every session.
@@ -422,6 +429,10 @@ func (s *actorState) snapshot() Snapshot {
 		LastError: s.lastError, TerminalReason: s.terminal,
 	}
 	result.SelectedMediaID, result.SelectedLive = MediaID{RootID: s.media.RootID, ID: s.media.ID}, s.media.Live != nil
+	result.SelectedAudioTrack = s.audioTrack
+	for _, track := range s.audioTracks {
+		result.AudioTracks = append(result.AudioTracks, AudioTrack{Number: track.Number, Label: track.Label(), Default: track.Default})
+	}
 	if s.active != nil {
 		result.HasSession, result.ActiveDeviceID, result.ActiveMediaName, result.MediaType = true, s.active.target.ID, s.active.media.Name, s.active.kind
 		result.ActiveMediaID, result.ActiveLive = MediaID{RootID: s.active.media.RootID, ID: s.active.media.ID}, s.active.media.Live != nil
@@ -532,10 +543,82 @@ func (c *Controller) SelectMedia(ctx context.Context, mutation Mutation, media M
 		if !media.valid() {
 			return fail(mutation.RequestID, s.revision, ErrInvalidOperation)
 		}
-		s.media = cloneMediaRef(media)
+		s.setSelectedMedia(cloneMediaRef(media))
 		s.mediaQueueID = ""
 		s.artworkID = ""
 		s.commit()
+		return Result{RequestID: mutation.RequestID, Revision: s.revision}
+	})
+}
+
+// setSelectedMedia keeps explicit captions scoped to their selected media.
+// A subtitle picked before the first media selection attaches to that media.
+func (s *actorState) setSelectedMedia(media MediaRef) {
+	changed := !sameMediaPath(s.media, media)
+	if s.media.valid() && changed {
+		s.subtitle = SubtitleRef{}
+	}
+	s.media = media
+	if changed {
+		s.probeAudioTracks()
+	}
+}
+
+// probeAudioTracks replaces the audio choices with the selected video's
+// streams. A later selection supersedes an unfinished probe.
+func (s *actorState) probeAudioTracks() {
+	s.audioTracks, s.audioTrack = nil, 0
+	if s.audioTranscode {
+		s.transcode, s.audioTranscode = false, false
+	}
+	s.audioProbe++
+	c, media, probe := s.controller, s.media, s.audioProbe
+	if c == nil || c.cfg.AudioTracksProbe == nil || media.Live != nil || media.OpenDirect == nil || media.Kind != mediamodel.MediaKindVideo {
+		return
+	}
+	c.goOwned(func() {
+		ctx, cancel := context.WithTimeout(c.ctx, time.Minute)
+		defer cancel()
+		tracks, err := c.cfg.AudioTracksProbe(ctx, media.OpenDirect)
+		// A single stream offers no choice.
+		if err != nil || len(tracks) < 2 {
+			return
+		}
+		_ = c.enqueueInternal(message{fn: func(s *actorState) {
+			if s.audioProbe != probe {
+				return
+			}
+			s.audioTracks = tracks
+			s.commit()
+		}})
+	})
+}
+
+// audioOverride is the track to re-stream, or zero for the source default.
+func (s *actorState) audioOverride() int {
+	return utils.AudioTrackOverride(s.audioTracks, s.audioTrack)
+}
+
+// SelectAudioTrack chooses a one-based audio Number of the selected media for
+// its next load. Zero restores the source default. Another track needs
+// FFmpeg, so it turns Transcode on; returning to the default undoes that.
+func (c *Controller) SelectAudioTrack(ctx context.Context, mutation Mutation, track int) Result {
+	return c.mutate(ctx, mutation, func(s *actorState) Result {
+		if result := s.check(mutation); !result.OK() {
+			return result
+		}
+		if track < 0 || track > len(s.audioTracks) {
+			return fail(mutation.RequestID, s.revision, ErrInvalidAudioTrack)
+		}
+		s.audioTrack = track
+		switch override := s.audioOverride() > 0; {
+		case override && !s.transcode:
+			s.transcode, s.audioTranscode = true, true
+		case !override && s.audioTranscode:
+			s.transcode, s.audioTranscode = false, false
+		}
+		s.commit()
+		s.reconcileGapless()
 		return Result{RequestID: mutation.RequestID, Revision: s.revision}
 	})
 }
@@ -566,13 +649,17 @@ func (c *Controller) SelectSubtitle(ctx context.Context, mutation Mutation, subt
 	})
 }
 
-// SetTranscode controls transcoding for subsequent loads.
+// SetTranscode controls transcoding for subsequent loads. Turning it off
+// returns to the source's default audio track.
 func (c *Controller) SetTranscode(ctx context.Context, mutation Mutation, enabled bool) Result {
 	return c.mutate(ctx, mutation, func(s *actorState) Result {
 		if result := s.check(mutation); !result.OK() {
 			return result
 		}
-		s.transcode = enabled
+		s.transcode, s.audioTranscode = enabled, false
+		if !enabled {
+			s.audioTrack = 0
+		}
 		s.commit()
 		s.reconcileGapless()
 		return Result{RequestID: mutation.RequestID, Revision: s.revision}
@@ -694,7 +781,7 @@ func (s *actorState) selectQueueMedia(item mediamodel.QueueItem, media MediaRef)
 	}
 	media = cloneMediaRef(media)
 	s.queueRefs[item.ID()] = media
-	s.media = media
+	s.setSelectedMedia(media)
 	s.mediaQueueID = item.ID()
 	s.artworkID = ""
 }
@@ -715,7 +802,7 @@ func (s *actorState) appendQueueItem(item mediamodel.QueueItem, media MediaRef, 
 	}
 	s.queueRefs[item.ID()] = media
 	if selectItem {
-		s.media = media
+		s.setSelectedMedia(media)
 		s.mediaQueueID = item.ID()
 		s.artworkID = ""
 	}
@@ -733,6 +820,10 @@ func (c *Controller) ClearQueue(ctx context.Context, mutation Mutation) Result {
 				item, _ := s.queue.Item(index)
 				s.queue = mediamodel.NewQueue([]mediamodel.QueueItem{item}, 0)
 				s.queueRefs = map[string]MediaRef{item.ID(): s.active.media}
+				if !sameMediaPath(s.media, s.active.media) {
+					// Selection returns to the playing item and its captions.
+					s.subtitle = s.active.subtitle
+				}
 				s.media = s.active.media
 				s.mediaQueueID = item.ID()
 				s.artworkID = mediaArtworkID(s.active.media)
@@ -744,7 +835,8 @@ func (c *Controller) ClearQueue(ctx context.Context, mutation Mutation) Result {
 		s.queue = nil
 		s.queueRefs = nil
 		if s.mediaQueueID != "" {
-			s.media, s.mediaQueueID = MediaRef{}, ""
+			s.setSelectedMedia(MediaRef{})
+			s.mediaQueueID = ""
 			s.artworkID = ""
 		}
 		s.position, s.duration = 0, 0
@@ -766,7 +858,7 @@ func (c *Controller) SelectQueueItem(ctx context.Context, mutation Mutation, id 
 			return fail(mutation.RequestID, s.revision, ErrNotFound)
 		}
 		s.queue.SetCurrentIndex(index)
-		s.media = media
+		s.setSelectedMedia(media)
 		s.mediaQueueID = id
 		s.artworkID = ""
 		s.commit()
@@ -795,7 +887,8 @@ func (c *Controller) RemoveQueueItem(ctx context.Context, mutation Mutation, id 
 		s.queue.Remove(index)
 		delete(s.queueRefs, id)
 		if selectedItem || s.mediaQueueID == id {
-			s.media, s.mediaQueueID = MediaRef{}, ""
+			s.setSelectedMedia(MediaRef{})
+			s.mediaQueueID = ""
 			s.artworkID = ""
 			s.position, s.duration = 0, 0
 		}
@@ -886,7 +979,11 @@ func (s *actorState) desiredGapless(itemID string, target playback.Device) *gapl
 	if !ok {
 		return nil
 	}
-	return &gaplessCandidate{item: item, media: media, subtitle: s.subtitle, transcode: s.transcode}
+	subtitle := s.subtitle
+	if !sameMediaPath(s.media, media) {
+		subtitle = SubtitleRef{}
+	}
+	return &gaplessCandidate{item: item, media: media, subtitle: subtitle, transcode: s.transcode}
 }
 
 func gaplessMatches(candidate *gaplessCandidate, queued *gaplessSession) bool {
@@ -975,7 +1072,7 @@ func (c *Controller) rememberPreparedMedia(itemID string, media MediaRef) {
 			s.queueRefs[itemID] = cloneMediaRef(media)
 		}
 		if s.mediaQueueID == itemID || s.mediaQueueID == "" && s.media.valid() && sameMediaPath(s.media, media) {
-			s.media = cloneMediaRef(media)
+			s.setSelectedMedia(cloneMediaRef(media))
 		}
 	}})
 }
@@ -1136,7 +1233,7 @@ func (s *actorState) beginPlay(request PlayRequest, response chan<- Result) {
 	} else {
 		s.mediaQueueID = ""
 	}
-	s.media = media
+	s.setSelectedMedia(media)
 	s.artworkID = ""
 	s.streamTitle = ""
 	s.commit()
@@ -1146,8 +1243,14 @@ func (s *actorState) beginPlay(request PlayRequest, response chan<- Result) {
 	gapless := s.desiredGapless(item.ID(), target)
 	automaticTorrentSubtitles := !s.policy.DisableTorrentSubtitles
 	burnChromecastSubtitles := s.policy.BurnChromecastSubtitles
+	transcode, subtitle := s.transcode, s.subtitle
+	// A non-default audio track is transcoded through FFmpeg.
+	audioTrack := s.audioOverride()
+	if audioTrack > 0 {
+		transcode = true
+	}
 	s.controller.goOwned(func() {
-		s.controller.playIO(opCtx, operation, target, item, media, old, request, response, s.transcode, s.subtitle, gapless, automaticTorrentSubtitles, burnChromecastSubtitles)
+		s.controller.playIO(opCtx, operation, target, item, media, old, request, response, transcode, subtitle, audioTrack, gapless, automaticTorrentSubtitles, burnChromecastSubtitles)
 	})
 }
 
@@ -1176,7 +1279,7 @@ type callbackStopSuppressor interface {
 	SuppressCallbackStops(uint64, bool) error
 }
 
-func (c *Controller) playIO(ctx context.Context, operation *playOperation, target playback.Device, item mediamodel.QueueItem, media MediaRef, old *activeSession, request PlayRequest, response chan<- Result, transcode bool, subtitle SubtitleRef, gapless *gaplessCandidate, automaticTorrentSubtitles, burnChromecastSubtitles bool) {
+func (c *Controller) playIO(ctx context.Context, operation *playOperation, target playback.Device, item mediamodel.QueueItem, media MediaRef, old *activeSession, request PlayRequest, response chan<- Result, transcode bool, subtitle SubtitleRef, audioTrack int, gapless *gaplessCandidate, automaticTorrentSubtitles, burnChromecastSubtitles bool) {
 	generation := operation.generation
 	ioCtx, timeoutCancel := operationContext(ctx, request.ctx, c.cfg.OperationTimeout)
 	defer timeoutCancel()
@@ -1244,7 +1347,7 @@ func (c *Controller) playIO(ctx context.Context, operation *playOperation, targe
 			return
 		}
 	}
-	serverRequest := playback.ServerRequest{Media: opener, MediaExt: media.extension(), MediaType: mediaMIME(media, item.MediaKind()), Transcode: transcode, Target: target}
+	serverRequest := playback.ServerRequest{Media: opener, MediaExt: media.extension(), MediaType: mediaMIME(media, item.MediaKind()), Transcode: transcode, Target: target, AudioTrack: audioTrack}
 	if transcode && target.Protocol == "Chromecast" {
 		serverRequest.MediaExt = ".mp4"
 		serverRequest.MediaType = "video/mp4"
@@ -1789,7 +1892,7 @@ func (c *Controller) completePlay(completion playCompletion) {
 		s.mutation = false
 		s.active, s.state, s.position, s.duration, s.lastError, s.terminal = completion.session, PlaybackStatePlaying, 0, 0, "", ""
 		if s.mediaQueueID == completion.session.itemID || s.mediaQueueID == "" && sameMediaPath(s.media, completion.session.media) {
-			s.media = cloneMediaRef(completion.session.media)
+			s.setSelectedMedia(cloneMediaRef(completion.session.media))
 		}
 		s.artworkID = mediaArtworkID(completion.session.media)
 		s.syncImageTimer()
@@ -2400,7 +2503,7 @@ func (s *actorState) promoteGapless() bool {
 		s.queue.SetCurrentIndex(index)
 		s.mediaQueueID = queued.itemID
 	}
-	s.media = queued.media
+	s.setSelectedMedia(queued.media)
 	s.artworkID = mediaArtworkID(queued.media)
 	s.position, s.duration = 0, 0
 	s.state, s.terminal = PlaybackStatePlaying, ""

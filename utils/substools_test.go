@@ -1,7 +1,11 @@
 package utils
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -139,6 +143,53 @@ func TestExtractSubRoundTrip(t *testing.T) {
 			}
 		})
 	}
+	t.Run("mobile content reader preserves track choice and timestamps", func(t *testing.T) {
+		data, err := os.ReadFile(media)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tt := []struct {
+			name string
+			open func() (io.ReadSeekCloser, error)
+		}{
+			{"file descriptor", func() (io.ReadSeekCloser, error) { return os.Open(media) }},
+			{"provider reader", func() (io.ReadSeekCloser, error) { return &memoryReadSeekCloser{bytes.NewReader(data)}, nil }},
+		}
+		for _, tc := range tt {
+			t.Run(tc.name, func(t *testing.T) {
+				reader, err := tc.open()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer reader.Close()
+				if _, err := reader.Seek(7, io.SeekStart); err != nil {
+					t.Fatal(err)
+				}
+				names, err := GetSubsReaderContext(t.Context(), ffmpeg, reader)
+				if err != nil || len(names) != 2 {
+					t.Fatalf("tracks = %v, error = %v", names, err)
+				}
+				for track, want := range inputs {
+					var out bytes.Buffer
+					if err := ExtractSubReaderContext(t.Context(), ffmpeg, track, reader, &out); err != nil {
+						t.Fatal(err)
+					}
+					if !strings.Contains(out.String(), want) || !strings.Contains(out.String(), "00:00:01,000 --> 00:00:02,000") {
+						t.Fatalf("wrong track or timing: %s", out.String())
+					}
+					if offset, err := reader.Seek(0, io.SeekCurrent); err != nil || offset != 7 {
+						t.Fatalf("reader offset = %d, error = %v", offset, err)
+					}
+				}
+				ctx, cancel := context.WithCancel(t.Context())
+				cancel()
+				var out bytes.Buffer
+				if err := ExtractSubReaderContext(ctx, ffmpeg, 0, reader, &out); !errors.Is(err, context.Canceled) || out.Len() != 0 {
+					t.Fatalf("canceled extraction: %v, %q", err, out.String())
+				}
+			})
+		}
+	})
 	t.Run("invalid track reports FFmpeg error and cleans up", func(t *testing.T) {
 		tempDir := t.TempDir()
 		t.Setenv("TMPDIR", tempDir)

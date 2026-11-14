@@ -26,6 +26,17 @@ func init() {
 	if os.Getenv("GO2TV_TEST_FFMPEG_HELPER") != "1" {
 		return
 	}
+	if slices.Contains(os.Args, "-encoders") {
+		encoders, ok := os.LookupEnv("GO2TV_TEST_FFMPEG_ENCODERS")
+		if !ok {
+			encoders = "libx264 h264_nvenc h264_amf h264_qsv h264_vaapi h264_videotoolbox h264_mediacodec"
+		}
+		fmt.Println("Encoders:")
+		for encoder := range strings.FieldsSeq(encoders) {
+			fmt.Printf(" V..... %s fake\n", encoder)
+		}
+		os.Exit(0)
+	}
 	if slices.Contains(os.Args, "-hwaccels") {
 		fmt.Println("Hardware acceleration methods:\nvideotoolbox\nd3d11va\ncuda\nvaapi")
 		os.Exit(0)
@@ -43,6 +54,11 @@ func init() {
 	hw := slices.Contains(os.Args, "-hwaccel")
 	software := slices.Contains(os.Args, "libx264")
 	switch os.Getenv("GO2TV_TEST_FFMPEG_MODE") {
+	case "format":
+		if !slices.Contains(os.Args, "scale=640:360,format="+os.Getenv("GO2TV_TEST_FFMPEG_FORMAT")) {
+			fmt.Fprintln(os.Stderr, "unsupported color format")
+			os.Exit(1)
+		}
 	case "decoder_failure":
 		if hw {
 			fmt.Fprintln(os.Stderr, "decoder unavailable")

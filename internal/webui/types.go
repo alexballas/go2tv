@@ -101,4 +101,13 @@ type snapshotDTO struct {
 	StreamTitle          string            `json:"stream_title,omitempty"`
 	SelectedStation      string            `json:"selected_station,omitempty"`
 	ActiveStation        string            `json:"active_station,omitempty"`
+	AudioTracks          []audioTrackDTO   `json:"audio_tracks"`
+	AudioTrack           int               `json:"audio_track"`
+}
+
+// audioTrackDTO is one selectable audio stream of the selected video.
+type audioTrackDTO struct {
+	Number  int    `json:"number"`
+	Label   string `json:"label"`
+	Default bool   `json:"default,omitempty"`
 }

@@ -33,7 +33,7 @@ func escapeFFmpegPath(path string) string {
 //   - ctx: Context for cancellation (pass r.Context() from HTTP handler)
 //   - w: HTTP response writer to stream transcoded output
 //   - input: Media source - either string (filepath) or io.Reader
-//   - ff: Pointer to exec.Cmd for FFmpeg process management (cleanup)
+//   - ff: fresh exec.Cmd per call; receives the running FFmpeg command
 //   - opts: TranscodeOptions containing FFmpeg path, subtitles, seek position, and logger
 func ServeChromecastTranscodedStream(
 	ctx context.Context,
@@ -74,13 +74,6 @@ func ServeChromecastTranscodedStream(
 		return ErrInvalidInput
 	}
 
-	if ff != nil && ff.Process != nil {
-		if isRawInput && ff.ProcessState == nil {
-			return ErrTranscodeBusy
-		}
-		_ = ff.Process.Kill()
-	}
-
 	// Build video filter chain.
 	// Raw screencast input doesn't carry subtitle tracks.
 	burn := &subtitleBurn{cleanup: func() {}}
@@ -101,7 +94,10 @@ func ServeChromecastTranscodedStream(
 	if isRawInput {
 		profile = videoEncoderProfileChromecastRaw
 	}
-	encoderPlan := selectTranscodeVideoEncoder(opts.FFmpegPath, profile)
+	encoderPlan, err := selectTranscodeVideoEncoder(opts.FFmpegPath, profile)
+	if err != nil {
+		return err
+	}
 	buildArgs := func(plan videoEncoderPlan, hw string) []string {
 		copyTS := (in != "pipe:0" && opts.SeekSeconds > 0) || burn.overlay != ""
 		var vf string
@@ -147,9 +143,10 @@ func ServeChromecastTranscodedStream(
 
 		args = append(args, "-i", in)
 		if burn.overlay != "" || burn.bitmap != nil {
-			args = append(args, burn.videoArgs(softwareTranscodeScaleFilter, plan.filterTail)...)
+			args = append(args, burn.videoArgs(softwareTranscodeScaleFilter, plan.filterTail, opts.AudioTrack)...)
 		} else {
 			args = append(args, "-vf", vf)
+			args = append(args, selectedStreamMaps(opts.AudioTrack)...)
 		}
 		args = append(args, plan.codecArgs...)
 
@@ -179,7 +176,7 @@ func ServeChromecastTranscodedStream(
 			"-f", "mp4",
 			"pipe:1",
 		)
-		return args
+		return append(args, burn.outputArgs()...)
 	}
 
 	if isRawInput && (opts.RawInput.Width == 0 || opts.RawInput.Height == 0) {

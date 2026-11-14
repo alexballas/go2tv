@@ -1,7 +1,6 @@
 package httphandlers
 
 import (
-	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -98,7 +97,7 @@ func (w *videoHTTPWriter) Write(data []byte) (int, error) {
 	return n, err
 }
 
-func serveVideoTranscode(w http.ResponseWriter, r *http.Request, input any, command *exec.Cmd, opts *utils.TranscodeOptions, chromecast bool) {
+func serveVideoTranscode(w http.ResponseWriter, r *http.Request, input any, opts *utils.TranscodeOptions, chromecast bool) {
 	server, _ := r.Context().Value(transcodeServerKey{}).(*HTTPserver)
 	// Raw input rejects concurrent requests as busy rather than replacing
 	// its encoder, so those probes belong to the existing request batch.
@@ -109,12 +108,8 @@ func serveVideoTranscode(w http.ResponseWriter, r *http.Request, input any, comm
 	if chromecast {
 		serve = utils.ServeChromecastTranscodedStream
 	}
-	err := serve(r.Context(), writer, input, command, opts)
-	if errors.Is(err, utils.ErrTranscodeBusy) {
-		finish(nil)
-		http.Error(w, "busy", http.StatusServiceUnavailable)
-		return
-	}
+	var command exec.Cmd
+	err := serve(r.Context(), writer, input, &command, opts)
 	if r.Context().Err() != nil || writer.err != nil {
 		// A renderer can close a probe or reconnect while FFmpeg is running.
 		finish(nil)

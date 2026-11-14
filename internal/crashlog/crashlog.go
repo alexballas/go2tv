@@ -13,10 +13,17 @@ import (
 )
 
 const (
-	pendingFilename = "active.pending"
+	pendingPrefix   = "active"
+	pendingExt      = ".pending"
 	maxCrashReports = 5
 	crashExt        = ".crash"
 )
+
+// pendingName is per process so concurrent instances (GUI plus managed server
+// child, CLI) never rotate or delete each other's live crash output.
+func pendingName(pid int) string {
+	return fmt.Sprintf("%s-%d%s", pendingPrefix, pid, pendingExt)
+}
 
 type Session struct {
 	dir           string
@@ -85,15 +92,24 @@ func initInDir(dir string) (*Session, error) {
 		return nil, fmt.Errorf("create crash dir: %w", err)
 	}
 
-	previousCrash, err := rotatePendingReport(dir)
+	previousCrash, err := rotatePendingReports(dir)
 	if err != nil {
 		return nil, err
 	}
 
-	pendingPath := filepath.Join(dir, pendingFilename)
+	pendingPath := filepath.Join(dir, pendingName(os.Getpid()))
 	f, err := os.OpenFile(pendingPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("open pending crash file: %w", err)
+	}
+
+	// The runtime keeps a duplicate of f for crash output; the lock (or, on
+	// Windows, the open handle itself) marks the file live for as long as it
+	// does, so other instances leave it alone.
+	if err := lockPending(f); err != nil {
+		_ = f.Close()
+		_ = os.Remove(pendingPath)
+		return nil, fmt.Errorf("lock pending crash file: %w", err)
 	}
 
 	if err := debug.SetCrashOutput(f, debug.CrashOptions{}); err != nil {
@@ -121,10 +137,40 @@ func initInDir(dir string) (*Session, error) {
 	}, nil
 }
 
-func rotatePendingReport(dir string) (string, error) {
-	pendingPath := filepath.Join(dir, pendingFilename)
+// rotatePendingReports turns pending files left by exited processes into
+// crash reports (or drops them when empty) and returns the newest report.
+// Files still owned by a running instance are skipped.
+func rotatePendingReports(dir string) (string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", fmt.Errorf("read crash dir: %w", err)
+	}
+
+	var newest string
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), pendingPrefix) || !strings.HasSuffix(entry.Name(), pendingExt) {
+			continue
+		}
+		pendingPath := filepath.Join(dir, entry.Name())
+		if pendingInUse(pendingPath) {
+			continue
+		}
+		reportPath, err := rotatePendingReport(dir, pendingPath)
+		if err != nil {
+			return "", err
+		}
+		if reportPath > newest {
+			newest = reportPath
+		}
+	}
+
+	return newest, nil
+}
+
+func rotatePendingReport(dir, pendingPath string) (string, error) {
 	info, err := os.Stat(pendingPath)
 	if err != nil {
+		// Another starting instance may have rotated it first.
 		if errors.Is(err, os.ErrNotExist) {
 			return "", nil
 		}
@@ -146,6 +192,9 @@ func rotatePendingReport(dir string) (string, error) {
 	}
 
 	if err := os.Rename(pendingPath, reportPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", nil
+		}
 		return "", fmt.Errorf("rotate pending crash file: %w", err)
 	}
 

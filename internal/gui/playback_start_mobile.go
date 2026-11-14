@@ -15,8 +15,13 @@ func claimMobilePlayback(s *FyneScreen) bool {
 		s.mu.Unlock()
 		return false
 	}
+	ctx, cancel, done, ok := s.workers.begin(s.torrent.ctx)
+	if !ok {
+		s.mu.Unlock()
+		return false
+	}
 	s.playbackStarting = true
-	s.playbackStartCtx, s.playbackStartCancel = context.WithCancel(context.Background())
+	s.playbackStartCtx, s.playbackStartCancel, s.playbackStartDone = ctx, cancel, done
 	s.mu.Unlock()
 	s.PlayPause.Disable()
 	s.refreshPlaybackStatus()
@@ -53,6 +58,14 @@ func (s *FyneScreen) cancelMobilePlayback() {
 }
 
 func finishMobilePlayback(s *FyneScreen) {
+	// The startup work is over; shutdown must not wait on the UI queue.
+	s.mu.Lock()
+	done := s.playbackStartDone
+	s.playbackStartDone = nil
+	s.mu.Unlock()
+	if done != nil {
+		done()
+	}
 	fyne.DoAndWait(func() {
 		s.mu.Lock()
 		if s.playbackStartCancel != nil {

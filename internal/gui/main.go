@@ -21,6 +21,7 @@ import (
 	"github.com/alexballas/refyne/v2/theme"
 	"github.com/alexballas/refyne/v2/widget"
 	"go2tv.app/go2tv/v2/devices"
+	"go2tv.app/go2tv/v2/internal/playback"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
 	"golang.org/x/time/rate"
@@ -137,6 +138,13 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 		if k.Name == "B" && s.SkipPreviousButton != nil {
 			s.SkipPreviousButton.Tapped(fynePE)
 		}
+
+		switch k.Name {
+		case fyne.KeyLeft:
+			skipAction(s, -playback.SkipBackSeconds)
+		case fyne.KeyRight:
+			skipAction(s, playback.SkipForwardSeconds)
+		}
 	})
 
 	// Avoid parallel execution of getDevices.
@@ -241,6 +249,21 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	})
 	skipNext.Importance = widget.LowImportance
 	skipNext.Alignment = widget.ButtonAlignCenter
+
+	seekBack := ttwidget.NewButtonWithIcon("", skipBackIcon(), func() {
+		skipAction(s, -playback.SkipBackSeconds)
+	})
+	seekBack.SetToolTip(lang.L("Back 10 seconds") + " (←)")
+	seekForward := ttwidget.NewButtonWithIcon("", skipForwardIcon(), func() {
+		skipAction(s, playback.SkipForwardSeconds)
+	})
+	seekForward.SetToolTip(lang.L("Forward 30 seconds") + " (→)")
+	for _, b := range []*ttwidget.Button{seekBack, seekForward} {
+		b.Importance = widget.LowImportance
+		b.Alignment = widget.ButtonAlignCenter
+		b.Disable()
+	}
+	s.skips.buttons = []fyne.Disableable{seekBack, seekForward}
 
 	queueButton := widget.NewButtonWithIcon(lang.L("Playlist"), theme.ListIcon(), func() {
 		s.openQueueWindow()
@@ -378,7 +401,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	muteSize = muteSize.Max(muteunmute.MinSize())
 	muteControl := container.NewGridWrap(muteSize, muteunmute)
 	volumeRow := container.NewHBox(widget.NewLabel(lang.L("Volume")), volumedown, volumeup, muteControl)
-	transportRow := container.NewHBox(playControl, stop, skipPrevious, skipNext)
+	transportRow := container.NewHBox(playControl, stop, seekBack, seekForward, skipPrevious, skipNext)
 	actionButtons := container.New(layout.NewCustomPaddedLayout(0, 0, theme.InnerPadding(), 0), container.NewBorder(nil, nil, transportRow, volumeRow))
 	s.playbackStatus = newPlaybackStatusLabel(lang.L("Select a device"))
 	s.playbackStatus.Importance = widget.MediumImportance
@@ -484,6 +507,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	transcode.OnChanged = func(b bool) {
 		s.Transcode = b
+		s.audioTranscodeToggled(b)
 	}
 
 	screencast.OnChanged = func(b bool) {

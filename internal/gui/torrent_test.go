@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/png"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -58,6 +59,17 @@ func torrentTestReplacementImage(t *testing.T) string {
 	return path
 }
 
+// Resolve markers from the executable, not the test's mutable environment.
+// Cleanup can remove the release marker before a background probe sees it.
+const torrentTestProbeGate = `probe_dir=${0%/*}
+[ -d "$probe_dir" ] || exit 0
+: > "$probe_dir/entered" || exit 0
+while [ ! -e "$probe_dir/release" ]; do
+    [ -d "$probe_dir" ] || exit 0
+    sleep 0.01 || exit 1
+done
+`
+
 // A probe waiting for missing pieces must be interruptible without ever
 // creating a renderer session after Cancel download completes.
 func torrentTestBlockedProbe(t *testing.T) (ffmpeg, entered string, release func()) {
@@ -67,27 +79,79 @@ func torrentTestBlockedProbe(t *testing.T) (ffmpeg, entered string, release func
 	}
 	dir := t.TempDir()
 	entered, released := filepath.Join(dir, "entered"), filepath.Join(dir, "release")
-	t.Setenv("GO2TV_TEST_PROBE_ENTERED", entered)
-	t.Setenv("GO2TV_TEST_PROBE_RELEASE", released)
 	ffmpeg = filepath.Join(dir, "ffmpeg")
 	if err := os.WriteFile(ffmpeg, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	script := `#!/bin/sh
-: > "$GO2TV_TEST_PROBE_ENTERED"
-while [ ! -e "$GO2TV_TEST_PROBE_RELEASE" ]; do sleep 0.01; done
-printf '%s' '{"format":{"duration":"60"}}'
-`
+	script := "#!/bin/sh\n" + torrentTestProbeGate + `printf '%s' '{"format":{"duration":"60"}}'` + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "ffprobe"), []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	release = sync.OnceFunc(func() {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			return
+		}
 		if err := os.WriteFile(released, nil, 0o600); err != nil {
 			t.Error(err)
 		}
 	})
 	t.Cleanup(release)
 	return ffmpeg, entered, release
+}
+
+func TestBlockedProbeExitsAfterFixtureCleanup(t *testing.T) {
+	tt := []struct {
+		name, binary string
+		remove       bool
+	}{
+		{name: "ffprobe released", binary: "ffprobe"},
+		{name: "ffprobe directory removed", binary: "ffprobe", remove: true},
+		{name: "ffmpeg released", binary: "ffmpeg"},
+		{name: "ffmpeg directory removed", binary: "ffmpeg", remove: true},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			ffmpeg, entered, release := torrentTestBlockedProbe(t)
+			dir := filepath.Dir(ffmpeg)
+			if tc.binary == "ffmpeg" {
+				if err := os.WriteFile(ffmpeg, []byte("#!/bin/sh\n"+torrentTestProbeGate), 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			cmd := exec.CommandContext(ctx, filepath.Join(dir, tc.binary))
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan struct{})
+			var waitErr error
+			go func() {
+				waitErr = cmd.Wait()
+				close(done)
+			}()
+			defer func() {
+				cancel()
+				<-done
+			}()
+			waitForTorrentTestProbe(t, entered)
+			if tc.remove {
+				if err := os.RemoveAll(dir); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				release()
+			}
+			select {
+			case <-done:
+				if waitErr != nil {
+					t.Fatalf("probe exit: %v", waitErr)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("probe survived fixture cleanup")
+			}
+		})
+	}
 }
 
 func waitForTorrentTestProbe(t *testing.T, entered string) {

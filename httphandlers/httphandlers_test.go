@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -69,7 +68,7 @@ func TestServeContent(t *testing.T) {
 
 			r.Header.Add("getcontentFeatures.dlna.org", "1")
 
-			serveContent(w, r, tc.tvdata, nil, tc.input, new(exec.Cmd))
+			serveContent(w, r, tc.tvdata, nil, tc.input)
 
 			if w.Result().StatusCode != http.StatusOK {
 				t.Fatalf("%s: got: %s.", tc.name, w.Result().Status)
@@ -159,7 +158,7 @@ func TestTranscodedDLNAHEADKeepsPlayableResourceContract(t *testing.T) {
 
 	serveContent(response, request, tv, nil, osFileType{
 		time: time.Unix(1, 0), file: bytes.NewReader(media), path: "movie.mp4",
-	}, new(exec.Cmd))
+	})
 
 	result := response.Result()
 	if result.StatusCode != http.StatusOK {
@@ -189,7 +188,7 @@ func TestDLNAImageUsesInteractiveTransferMode(t *testing.T) {
 	request.Header.Set("getcontentFeatures.dlna.org", "1")
 	response := httptest.NewRecorder()
 
-	serveContent(response, request, tv, nil, []byte("jpeg"), new(exec.Cmd))
+	serveContent(response, request, tv, nil, []byte("jpeg"))
 	if got := response.Header().Get("Content-Type"); got != "image/jpeg" {
 		t.Fatalf("content type = %q", got)
 	}

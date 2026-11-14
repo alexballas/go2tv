@@ -19,6 +19,7 @@ import (
 	"github.com/alexballas/refyne/v2/theme"
 	"github.com/alexballas/refyne/v2/widget"
 	"go2tv.app/go2tv/v2/devices"
+	"go2tv.app/go2tv/v2/internal/playback"
 	"go2tv.app/go2tv/v2/soapcalls"
 	"go2tv.app/go2tv/v2/utils"
 )
@@ -133,15 +134,10 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	subsField := newValueField(func() { subsAction(s) })
 	subsControls := &mobileSubtitleControls{field: subsField, placeholder: lang.L("No subtitle selected")}
 	subsField.Set("", subsControls.placeholder)
-	sfiletext.OnChanged = func(text string) { subsField.Set(text, subsControls.placeholder) }
-
-	mfile := widget.NewButton(lang.L("Select Media File"), func() {
-		mediaAction(s)
-	})
-
-	sfile := widget.NewButton(lang.L("Select Subtitles File"), func() {
-		subsAction(s)
-	})
+	sfiletext.OnChanged = func(text string) {
+		subsField.Set(text, subsControls.placeholder)
+		s.tracks.refreshSummary(s)
+	}
 
 	playpause := widget.NewButtonWithIcon(lang.L("Play"), theme.MediaPlayIcon(), func() {
 		hasMedia := s.mediafile != nil || (s.MediaText != nil && s.MediaText.Text != "")
@@ -194,13 +190,22 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	endPos := binding.NewString()
 
 	externalmedia := widget.NewCheck(lang.L("Media from URL"), func(b bool) {})
-	medialoop := widget.NewCheck(lang.L("Loop"), func(b bool) {})
-	transcode := widget.NewCheck(lang.L("Transcode"), func(b bool) {
+	loopToggle := newPlaybackToggle(lang.L("Loop"), playbackLoopIcon())
+	transcodeToggle := newPlaybackToggle(lang.L("Transcode"), playbackTranscodeIcon())
+	medialoop, transcode := &loopToggle.Check, &transcodeToggle.Check
+	transcode.OnChanged = func(b bool) {
 		s.Transcode = b
-	})
+		s.audioTranscodeToggled(b)
+	}
 
-	mediafilelabel := widget.NewLabel(lang.L("Media File") + ":")
-	subsfilelabel := widget.NewLabel(lang.L("Subtitles") + ":")
+	// Relative seeks flank the timeline, keeping the button row unchanged.
+	seekBack := widget.NewButtonWithIcon("", skipBackIcon(), func() { skipAction(s, -playback.SkipBackSeconds) })
+	seekForward := widget.NewButtonWithIcon("", skipForwardIcon(), func() { skipAction(s, playback.SkipForwardSeconds) })
+	for _, b := range []*widget.Button{seekBack, seekForward} {
+		b.Importance = widget.LowImportance
+		b.Disable()
+	}
+	s.skips.buttons = []fyne.Disableable{seekBack, seekForward}
 	devicelabel := widget.NewLabel(lang.L("Select Device") + ":")
 	deviceHeader := container.NewBorder(nil, nil, devicelabel, container.NewHBox(discoveryStatus, refreshDevices))
 
@@ -219,7 +224,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	curPos.Set("00:00:00")
 	endPos.Set("00:00:00")
-	sliderArea := container.NewBorder(nil, nil, widget.NewLabelWithData(curPos), widget.NewLabelWithData(endPos), sliderBar)
+	timeline := container.NewBorder(nil, nil, widget.NewLabelWithData(curPos), widget.NewLabelWithData(endPos), sliderBar)
+	sliderArea := container.NewBorder(nil, nil,
+		container.NewThemeOverride(seekBack, seekTheme), container.NewThemeOverride(seekForward, seekTheme), timeline)
 	playbackStatus := widget.NewLabel("")
 	playbackStatus.Alignment = fyne.TextAlignCenter
 	playbackStatus.Truncation = fyne.TextTruncateEllipsis
@@ -249,22 +256,52 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	s.volumeControls = []fyne.Disableable{volumedown, muteunmute, volumeup}
 	actionbuttons := container.New(&playerButtonsLayout{}, playpause, stop, volumedown, muteunmute, volumeup)
 
-	checklistItems := []fyne.CanvasObject{externalmedia, medialoop}
+	checklistItems := []fyne.CanvasObject{loopToggle}
 	if err := utils.CheckFFmpeg(s.ffmpegPath); err == nil {
-		checklistItems = append(checklistItems, transcode)
+		checklistItems = append(checklistItems, transcodeToggle)
 	}
 	// Options spread across one row and wrap only when the screen is too narrow.
 	checklists := container.New(newSpreadRowLayout(), checklistItems...)
-	mediasubsbuttons := container.New(layout.NewGridLayout(2), mfile, sfile)
-	radio := newRadioButton(s)
-	radio.SetIcon(theme.MediaMusicIcon())
-	sfiletextArea := container.NewBorder(nil, nil, nil, clearsubs, subsField)
+	var source *widget.Select
+	browse := widget.NewButtonWithIcon(lang.L("Browse"), theme.FolderOpenIcon(), func() {
+		switch source.Selected {
+		case lang.L("Torrent"):
+			showTorrentDialog(s)
+		case lang.L("Radio"):
+			showRadioDialog(s)
+		default:
+			mediaAction(s)
+		}
+	})
+	tracks := newMobileTracks(s, browse, clearsubs, subsControls)
+	source = widget.NewSelect([]string{lang.L("Local File"), lang.L("URL"), lang.L("Torrent"), lang.L("Radio")}, func(value string) {
+		if tracks.syncing {
+			return
+		}
+		switch value {
+		case lang.L("Torrent"):
+			showTorrentDialog(s)
+		case lang.L("Radio"):
+			showRadioDialog(s)
+		default:
+			if torrentMediaSelected(s) {
+				clearmediaAction(s)
+			}
+			externalmedia.SetChecked(value == lang.L("URL"))
+		}
+		tracks.refresh(s)
+	})
+	tracks.source = source
+	tracks.syncing = true
+	source.SetSelectedIndex(0)
+	tracks.syncing = false
+	sourceRow := container.NewBorder(nil, nil, widget.NewLabel(lang.L("Source")), browse, source)
 	mfiletextArea := container.NewBorder(nil, nil, nil, clearmedia, container.NewStack(mfiletext, mediaField))
-	viewfilescont := container.New(layout.NewFormLayout(), mediafilelabel, mfiletextArea, subsfilelabel, sfiletextArea)
-	sourceScroll := container.NewVScroll(container.NewVBox(mediasubsbuttons, container.NewGridWithColumns(2, newTorrentButton(s), radio), newTorrentControls(s), viewfilescont, checklists))
+	sourceScroll := container.NewVScroll(container.NewVBox(sourceRow, mfiletextArea, newTorrentControls(s), tracks.summary, checklists))
 	deviceArea := container.NewBorder(container.NewPadded(deviceHeader), nil, nil, nil, container.NewStack(list, container.NewPadded(noDevicesHint)))
 	player := newPlayerBar(container.NewVBox(container.NewStack(rowHeight, centered(sliderArea), centered(playbackStatus), radioRow), actionbuttons))
 	content := container.New(&mobileMainLayout{source: sourceScroll}, newContentSized(sourceScroll), deviceArea, player)
+	tracks.relayout = content.Refresh
 
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
@@ -332,16 +369,15 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	var mediafileOld fyne.URI
 	var mediafileOldText string
 
-	subsControls.browse, subsControls.clear = sfile, clearsubs
+	subsControls.clear = clearsubs
 
 	// updateMediaField shows a radio station by name, a typed URL in the
 	// entry, or the selected file. Live radio cannot loop.
 	updateMediaField := func() {
-		defer subsControls.refresh(s, mfiletext.Text)
+		defer tracks.refresh(s)
 		station, radio := s.radioStationForURL(mfiletext.Text)
 		switch {
 		case radio:
-			mediafilelabel.SetText(lang.L("Station") + ":")
 			mediaField.Set(station.Name, "")
 			mediaField.OnTapped = func() { showRadioDialog(s) }
 			mfiletext.Hide()
@@ -350,11 +386,9 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 			medialoop.Disable()
 			return
 		case externalmedia.Checked:
-			mediafilelabel.SetText(lang.L("URL") + ":")
 			mediaField.Hide()
 			mfiletext.Show()
 		default:
-			mediafilelabel.SetText(lang.L("Media File") + ":")
 			mediaField.Set(mfiletext.Text, lang.L("No media selected"))
 			mediaField.OnTapped = func() { mediaAction(s) }
 			mfiletext.Hide()
