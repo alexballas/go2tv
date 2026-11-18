@@ -160,6 +160,9 @@ Common commands:
 # List available devices
 go2tv -l
 
+# Scan once (about 5 s) and print devices as JSON, for scripts
+go2tv -l -json
+
 # Play a local file
 go2tv -v movie.mp4 -t http://192.168.1.100:8060/
 

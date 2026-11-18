@@ -30,6 +30,7 @@ import (
 	"go2tv.app/go2tv/v2/internal/cliartwork"
 	"go2tv.app/go2tv/v2/internal/crashlog"
 	"go2tv.app/go2tv/v2/internal/devicecolors"
+	"go2tv.app/go2tv/v2/internal/devicelist"
 	"go2tv.app/go2tv/v2/internal/gui"
 	"go2tv.app/go2tv/v2/internal/interactive"
 	"go2tv.app/go2tv/v2/internal/playback"
@@ -51,13 +52,15 @@ var (
 	burnSubtitlesPtr      = flag.Bool("burn-subtitles", false, "Burn Chromecast subtitles when transcoding (compatibility fallback).")
 	noTorrentSubtitlesPtr = flag.Bool("no-torrent-subtitles", false, "Disable automatic embedded torrent subtitles.")
 	listPtr               = flag.Bool("l", false, "List available devices (Smart TVs and Chromecasts).")
+	jsonPtr               = flag.Bool("json", false, "With -l: scan once, print devices as JSON and exit.")
 	audioTrackPtr         = flag.Int("a", 0, "Audio track number to cast (from -la output). Non-default tracks stream through ffmpeg.")
 	listAudioPtr          = flag.Bool("la", false, "List the audio tracks of the -v media file.")
 
 	versionPtr    = flag.Bool("version", false, "Print version.")
 	serverOptions = servermode.RegisterCLIFlags(flag.CommandLine)
 
-	errNoCombi = errors.New("can't combine -l with other flags")
+	errNoCombi       = errors.New("can't combine -l with other flags")
+	errJSONNeedsList = errors.New("-json requires -l")
 )
 
 type flagResults struct {
@@ -612,7 +615,7 @@ func (m listDevicesModel) View() string {
 func listFlagFunction() error {
 	flagsEnabled := 0
 	flag.Visit(func(f *flag.Flag) {
-		if f.Name != "relaxed-discovery" {
+		if f.Name != "relaxed-discovery" && f.Name != "json" {
 			flagsEnabled++
 		}
 	})
@@ -621,13 +624,17 @@ func listFlagFunction() error {
 		return errNoCombi
 	}
 
+	if *jsonPtr {
+		err := devicelist.WriteJSON(context.Background(), os.Stdout)
+		devicelist.WriteHiddenNotice(os.Stderr)
+		return err
+	}
+
 	p := tea.NewProgram(listDevicesModel{})
 	_, err := p.Run()
 
 	// Printed after the full-screen list exits so it cannot garble it.
-	if n := devices.HiddenSSDPLocations(); n > 0 && !devices.RelaxedDiscovery() {
-		fmt.Fprintf(os.Stderr, "%d DLNA replies ignored (description address differs from sender); see -relaxed-discovery.\n", n)
-	}
+	devicelist.WriteHiddenNotice(os.Stderr)
 
 	return err
 }
@@ -637,6 +644,10 @@ func processflags() (*flagResults, error) {
 	if checkVerflag() {
 		res.exit = true
 		return res, nil
+	}
+
+	if *jsonPtr && !*listPtr {
+		return nil, fmt.Errorf("checkflags error: %w", errJSONNeedsList)
 	}
 
 	if checkGUI() {
