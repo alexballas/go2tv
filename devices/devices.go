@@ -42,17 +42,17 @@ type deviceEntry struct {
 var ErrNoDeviceAvailable = errors.New("loadSSDPservices: No available Media Renderers")
 
 var (
-	ssdpSearch              = ssdp.Search
-	loadDevicesFromLocation = soapcalls.LoadDevicesFromLocation
-	interfaceAddrs          = net.Interfaces
-	ifaceAddrLookup         = func(iface net.Interface) ([]net.Addr, error) { return iface.Addrs() }
-	listenUDP               = net.ListenUDP
-	discoveryLogOutput      io.Writer
-	discoveryLogMu          sync.Mutex
-	discoverySummaryState   = make(map[string]summaryState)
-	dlnaDevices             []Device
-	dlnaMu                  sync.RWMutex
-	discoveryStartOnce      sync.Once
+	ssdpSearch            = ssdp.Search
+	loadDiscoveredDevices = soapcalls.LoadDevicesFromPinnedLocation
+	interfaceAddrs        = net.Interfaces
+	ifaceAddrLookup       = func(iface net.Interface) ([]net.Addr, error) { return iface.Addrs() }
+	listenUDP             = net.ListenUDP
+	discoveryLogOutput    io.Writer
+	discoveryLogMu        sync.Mutex
+	discoverySummaryState = make(map[string]summaryState)
+	dlnaDevices           []Device
+	dlnaMu                sync.RWMutex
+	discoveryStartOnce    sync.Once
 )
 
 type summaryState struct {
@@ -161,10 +161,6 @@ func LoadSSDPservicesContext(ctx context.Context, delay int) ([]Device, error) {
 	if ctx == nil {
 		return nil, errors.New("LoadSSDPservicesContext: context required")
 	}
-	// Collect unique locations (a single location may have multiple embedded devices).
-	// We intentionally do not filter by ST value here because some vendors reply with
-	// non-AVTransport ST values while still exposing AVTransport in LOCATION XML.
-	locations := make(map[string]struct{})
 	var loadErrors, filteredDevices, unnamedDevices, dupNameCount int
 	loadErrorHosts := make([]string, 0)
 
@@ -219,11 +215,11 @@ func LoadSSDPservicesContext(ctx context.Context, delay int) ([]Device, error) {
 		return nil, fmt.Errorf("LoadSSDPservices search error: %w", err)
 	}
 
-	for _, srv := range list {
-		if srv.Location != "" {
-			locations[srv.Location] = struct{}{}
-		}
-	}
+	// Collect unique locations that pass the discovery policy (a single location
+	// may have multiple embedded devices). ST values only order candidates:
+	// some vendors reply with non-AVTransport ST values while still exposing
+	// AVTransport in LOCATION XML.
+	sel := selectLocations(list)
 
 	var (
 		allDevices []deviceEntry
@@ -232,13 +228,14 @@ func LoadSSDPservicesContext(ctx context.Context, delay int) ([]Device, error) {
 		sem        = make(chan struct{}, 10)
 	)
 
-	for loc := range locations {
+	for _, d := range sel.selected {
+		loc := d.location
 		sem <- struct{}{}
 		wg.Go(func() {
 			defer func() { <-sem }()
 
 			locCtx, cancel := context.WithTimeout(ctx, dlnaLocationTimeout)
-			devices, err := loadDevicesFromLocation(locCtx, loc)
+			devices, err := loadDiscoveredDevices(locCtx, loc, d.addr)
 			cancel()
 
 			resultsMu.Lock()
@@ -256,9 +253,8 @@ func LoadSSDPservicesContext(ctx context.Context, delay int) ([]Device, error) {
 					continue
 				}
 
-				name := dev.FriendlyName
-				if name == "" {
-					name = "Unknown Device"
+				name := sanitizeDeviceName(dev.FriendlyName)
+				if strings.TrimSpace(dev.FriendlyName) == "" {
 					unnamedDevices++
 				}
 				allDevices = append(allDevices, deviceEntry{name: name, addr: loc})
@@ -294,10 +290,13 @@ func LoadSSDPservicesContext(ctx context.Context, delay int) ([]Device, error) {
 	if len(deviceList) == 0 {
 		discoverySummaryf(
 			"LoadSSDPservices summary",
-			"LoadSSDPservices summary listen_addr=%q ssdp_results=%d unique_locations=%d load_errors=%d error_hosts=%q filtered=%d duplicate_names=%d unnamed=%d returned=0 devices=%q",
+			"LoadSSDPservices summary listen_addr=%q ssdp_results=%d unique_locations=%d rejected_invalid=%d rejected_source_mismatch=%d capped=%d load_errors=%d error_hosts=%q filtered=%d duplicate_names=%d unnamed=%d returned=0 devices=%q",
 			addrString,
 			len(list),
-			len(locations),
+			sel.seen,
+			sel.rejectedInvalid,
+			sel.rejectedMismatch,
+			sel.capped,
 			loadErrors,
 			formatSummaryList(loadErrorHosts, 3),
 			filteredDevices,
@@ -319,10 +318,13 @@ func LoadSSDPservicesContext(ctx context.Context, delay int) ([]Device, error) {
 	}
 	discoverySummaryf(
 		"LoadSSDPservices summary",
-		"LoadSSDPservices summary listen_addr=%q ssdp_results=%d unique_locations=%d load_errors=%d error_hosts=%q filtered=%d duplicate_names=%d unnamed=%d returned=%d devices=%q",
+		"LoadSSDPservices summary listen_addr=%q ssdp_results=%d unique_locations=%d rejected_invalid=%d rejected_source_mismatch=%d capped=%d load_errors=%d error_hosts=%q filtered=%d duplicate_names=%d unnamed=%d returned=%d devices=%q",
 		addrString,
 		len(list),
-		len(locations),
+		sel.seen,
+		sel.rejectedInvalid,
+		sel.rejectedMismatch,
+		sel.capped,
 		loadErrors,
 		formatSummaryList(loadErrorHosts, 3),
 		filteredDevices,

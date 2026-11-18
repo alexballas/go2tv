@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -108,5 +109,54 @@ func TestRendererClientClosesConnWhenServerIgnoresClose(t *testing.T) {
 	}
 	if err := <-closed; !errors.Is(err, io.EOF) {
 		t.Fatalf("client left conn open: got %v, want EOF", err)
+	}
+}
+
+// Discovery loads unsolicited LOCATIONs through LoadDevicesFromPinnedLocation:
+// it must never dial anything but the pin and never resolve a name, while still
+// accepting the description shapes real renderers use.
+func TestLoadDevicesFromPinnedLocation(t *testing.T) {
+	const avtService = `<service><serviceId>urn:upnp-org:serviceId:AVTransport</serviceId>` +
+		`<controlURL>%s</controlURL><eventSubURL>/event</eventSubURL></service>`
+	description := func(urlBase, controlURL string) string {
+		return `<root><URLBase>` + urlBase + `</URLBase><device><serviceList>` +
+			fmt.Sprintf(avtService, controlURL) + `</serviceList></device></root>`
+	}
+
+	tt := []struct {
+		name     string
+		location func(srvURL string) string
+		pin      string
+		body     string
+		wantErr  bool
+		wantHits int
+	}{
+		{"relative endpoints", func(u string) string { return u + "/desc.xml" }, "127.0.0.1", description("", "/control"), false, 1},
+		{"literal URLBase on another port", func(u string) string { return u + "/desc.xml" }, "127.0.0.1", description("http://127.0.0.1:1/", "/control"), false, 1},
+		{"hostname control URL", func(u string) string { return u + "/desc.xml" }, "127.0.0.1", description("", "http://localhost:1/control"), true, 1},
+		{"location host differs from pin", func(u string) string { return u + "/desc.xml" }, "192.0.2.1", description("", "/control"), true, 0},
+		{"hostname location", func(u string) string { return strings.Replace(u, "127.0.0.1", "localhost", 1) + "/desc.xml" }, "127.0.0.1", description("", "/control"), true, 0},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			hits := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits++
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+
+			devices, err := LoadDevicesFromPinnedLocation(context.Background(), tc.location(srv.URL), netip.MustParseAddr(tc.pin))
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)
+			}
+			if hits != tc.wantHits {
+				t.Fatalf("server hits = %d, want %d", hits, tc.wantHits)
+			}
+			if !tc.wantErr && (len(devices) != 1 || devices[0].PinnedIP != tc.pin) {
+				t.Fatalf("devices = %+v, want one device pinned to %s", devices, tc.pin)
+			}
+		})
 	}
 }

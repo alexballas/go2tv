@@ -6,6 +6,7 @@ import (
 	"errors"
 	"maps"
 	"net"
+	"net/netip"
 	"strings"
 	"sync"
 	"testing"
@@ -16,31 +17,32 @@ import (
 
 func TestLoadSSDPServicesDetectsNonAVTransportST(t *testing.T) {
 	origSearch := ssdpSearch
-	origLoad := loadDevicesFromLocation
+	origLoad := loadDiscoveredDevices
 	t.Cleanup(func() {
 		ssdpSearch = origSearch
-		loadDevicesFromLocation = origLoad
+		loadDiscoveredDevices = origLoad
 	})
 
 	ssdpSearch = func(searchType string, waitSec int, localAddr string) ([]ssdp.Service, error) {
 		return []ssdp.Service{
 			{
 				Type:     ssdp.RootDevice,
-				Location: "http://sonos.local:1400/xml/device_description.xml",
+				Location: "http://192.168.1.40:1400/xml/device_description.xml",
+				From:     &net.UDPAddr{IP: net.IPv4(192, 168, 1, 40), Port: 1900},
 			},
 		}, nil
 	}
 
-	loadDevicesFromLocation = func(ctx context.Context, dmrurl string) ([]*soapcalls.DMRextracted, error) {
-		if dmrurl != "http://sonos.local:1400/xml/device_description.xml" {
-			t.Fatalf("unexpected location: %s", dmrurl)
+	loadDiscoveredDevices = func(ctx context.Context, dmrurl string, pinned netip.Addr) ([]*soapcalls.DMRextracted, error) {
+		if dmrurl != "http://192.168.1.40:1400/xml/device_description.xml" || pinned != netip.MustParseAddr("192.168.1.40") {
+			t.Fatalf("unexpected location: %s pinned %v", dmrurl, pinned)
 		}
 
 		return []*soapcalls.DMRextracted{
 			{
 				FriendlyName:          "Sonos One",
-				AvtransportControlURL: "http://sonos.local:1400/MediaRenderer/AVTransport/Control",
-				ConnectionManagerURL:  "http://sonos.local:1400/MediaRenderer/ConnectionManager/Control",
+				AvtransportControlURL: "http://192.168.1.40:1400/MediaRenderer/AVTransport/Control",
+				ConnectionManagerURL:  "http://192.168.1.40:1400/MediaRenderer/ConnectionManager/Control",
 			},
 		}, nil
 	}
@@ -58,33 +60,34 @@ func TestLoadSSDPServicesDetectsNonAVTransportST(t *testing.T) {
 		t.Fatalf("LoadSSDPservices() name = %q, want %q", devs[0].Name, "Sonos One")
 	}
 
-	if devs[0].Addr != "http://sonos.local:1400/xml/device_description.xml" {
+	if devs[0].Addr != "http://192.168.1.40:1400/xml/device_description.xml" {
 		t.Fatalf("LoadSSDPservices() addr = %q, want location URL", devs[0].Addr)
 	}
 }
 
 func TestLoadSSDPServicesAllowsMissingConnectionManager(t *testing.T) {
 	origSearch := ssdpSearch
-	origLoad := loadDevicesFromLocation
+	origLoad := loadDiscoveredDevices
 	t.Cleanup(func() {
 		ssdpSearch = origSearch
-		loadDevicesFromLocation = origLoad
+		loadDiscoveredDevices = origLoad
 	})
 
 	ssdpSearch = func(searchType string, waitSec int, localAddr string) ([]ssdp.Service, error) {
 		return []ssdp.Service{
 			{
 				Type:     ssdp.RootDevice,
-				Location: "http://speaker.local:1400/xml/device_description.xml",
+				Location: "http://192.168.1.41:1400/xml/device_description.xml",
+				From:     &net.UDPAddr{IP: net.IPv4(192, 168, 1, 41), Port: 1900},
 			},
 		}, nil
 	}
 
-	loadDevicesFromLocation = func(ctx context.Context, dmrurl string) ([]*soapcalls.DMRextracted, error) {
+	loadDiscoveredDevices = func(ctx context.Context, dmrurl string, pinned netip.Addr) ([]*soapcalls.DMRextracted, error) {
 		return []*soapcalls.DMRextracted{
 			{
 				FriendlyName:          "Legacy Renderer",
-				AvtransportControlURL: "http://speaker.local:1400/MediaRenderer/AVTransport/Control",
+				AvtransportControlURL: "http://192.168.1.41:1400/MediaRenderer/AVTransport/Control",
 			},
 		}, nil
 	}

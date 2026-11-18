@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -75,7 +76,11 @@ func rendererHTTPClient(location *url.URL, pinned net.IP) *http.Client {
 	}
 }
 
-func validateServiceEndpoints(ctx context.Context, pinned net.IP, extracted *DMRextracted) error {
+// validateServiceEndpoints requires every service endpoint to sit on pinned.
+// With literalOnly, endpoint hosts must be IP literals and are never resolved,
+// so an unsolicited description cannot trigger DNS lookups. The port is free:
+// many renderers serve control on a different port than the description.
+func validateServiceEndpoints(ctx context.Context, pinned net.IP, extracted *DMRextracted, literalOnly bool) error {
 	values := []string{extracted.AvtransportControlURL, extracted.AvtransportEventSubURL, extracted.RenderingControlURL, extracted.ConnectionManagerURL}
 	for _, raw := range values {
 		if raw == "" {
@@ -85,18 +90,21 @@ func validateServiceEndpoints(ctx context.Context, pinned net.IP, extracted *DMR
 		if err != nil || u.Host == "" || u.User != nil || u.Scheme != "http" && u.Scheme != "https" {
 			return errors.New("service endpoint invalid")
 		}
-		ips, err := net.DefaultResolver.LookupIP(ctx, "ip", u.Hostname())
-		if err != nil {
-			return fmt.Errorf("resolve service endpoint: %w", err)
-		}
-		matched := false
-		for _, ip := range ips {
-			if ip.Equal(pinned) {
-				matched = true
-				break
+		var ips []net.IP
+		switch {
+		case literalOnly:
+			ip := net.ParseIP(u.Hostname())
+			if ip == nil {
+				return errors.New("service endpoint host not an IP literal")
+			}
+			ips = []net.IP{ip}
+		default:
+			ips, err = net.DefaultResolver.LookupIP(ctx, "ip", u.Hostname())
+			if err != nil {
+				return fmt.Errorf("resolve service endpoint: %w", err)
 			}
 		}
-		if !matched {
+		if !slices.ContainsFunc(ips, pinned.Equal) {
 			return errors.New("service endpoint host differs from discovery host")
 		}
 		if port := u.Port(); port != "" {

@@ -24,8 +24,8 @@ github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf/go.mod h1:ybxpYRF
 github.com/alecthomas/units v0.0.0-20190717042225-c3de453c63f4/go.mod h1:ybxpYRFXyAe+OPACYpWeL0wqObRcbAqCMya13uyzqw0=
 github.com/alexballas/fyne-tooltip v0.0.0-20260907194307-bfdbb9024bac h1:S5wamz3ec+heid/oeeyLCQ0Gz8AHqL8+aKsuc4Rwkdw=
 github.com/alexballas/fyne-tooltip v0.0.0-20260907194307-bfdbb9024bac/go.mod h1:ahMS3ktoYdWFIzqbQFJ4TyqdFQpMRSAepNwjKc0Y4/o=
-github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab h1:IicL/N9O22AchM2bp5mwCtvzVpRqCzvPiy9g1FbFLS8=
-github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab/go.mod h1:bvfmHkfGgEntZVIbSzazSp6zSxD68BJGsLVASpcEHxI=
+github.com/alexballas/go-ssdp v0.0.4 h1:PV7xVone+Y6/tDIduQnQtabwDvPZJy4Xe0FZXul6Sx0=
+github.com/alexballas/go-ssdp v0.0.4/go.mod h1:bvfmHkfGgEntZVIbSzazSp6zSxD68BJGsLVASpcEHxI=
 github.com/alexballas/portal v0.5.1-0.20260919195621-cd0a66028e66 h1:4//lMfzkqL9h10j+2vFfd4SBGT8zU5lfGpfcLo184Hk=
 github.com/alexballas/portal v0.5.1-0.20260919195621-cd0a66028e66/go.mod h1:dR5jsSfTTvnMf3WVYVprxGAAN9ge+9S5tG6hl4xEpGQ=
 github.com/alexballas/refyne/v2 v2.8.114 h1:iZ262kJcA9eCNHz3cETeGn+8uy7UY6R+fTmxC9P+sEU=

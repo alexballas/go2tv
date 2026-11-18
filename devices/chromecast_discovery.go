@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,6 +48,12 @@ func upsertChromecastFromMDNSEntry(entry *mdns.ServiceEntry) {
 	if !strings.Contains(entry.Name, "_googlecast") {
 		return
 	}
+	// mDNS answers are unsolicited input like SSDP replies; never cache (and so
+	// never liveness-dial) an address discovery must not contact.
+	if ip, ok := netip.AddrFromSlice(entry.AddrV4); !ok || blockedDiscoveryAddr(ip) {
+		discoveryDebugf("Chromecast discovery rejected addr=%v reason=%q", entry.AddrV4, "address denied")
+		return
+	}
 
 	address := fmt.Sprintf("%s:%d", entry.AddrV4, entry.Port)
 	friendlyName := entry.Name
@@ -61,6 +68,7 @@ func upsertChromecastFromMDNSEntry(entry *mdns.ServiceEntry) {
 	if idx := strings.Index(friendlyName, "._googlecast"); idx > 0 {
 		friendlyName = friendlyName[:idx]
 	}
+	friendlyName = sanitizeDeviceName(friendlyName)
 
 	isAudioOnly := false
 	for _, txt := range entry.InfoFields {
