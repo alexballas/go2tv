@@ -20,6 +20,9 @@ type Config struct {
 	// ManagedByGUI marks a GUI-managed remote session so the browser can
 	// disclose that device availability comes from the desktop app.
 	ManagedByGUI bool
+	// RelaxedDiscovery shows a read-only notice that the SSDP source check is
+	// off; it is set at startup and cannot be changed from the browser.
+	RelaxedDiscovery bool
 	// Radio overrides the Radio Browser directory, mainly for tests.
 	Radio RadioDirectory
 	// RadioStorePath persists radio favorites and recent stations. Empty

@@ -1,6 +1,7 @@
 package devices
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/alexballas/go-ssdp"
 	"github.com/hashicorp/mdns"
@@ -76,7 +78,7 @@ func TestSelectLocationsPolicy(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			sel := selectLocations([]ssdp.Service{{Type: ssdp.RootDevice, Location: tc.location, From: tc.from}})
+			sel := selectLocations([]ssdp.Service{{Type: ssdp.RootDevice, Location: tc.location, From: tc.from}}, false)
 			if got := len(sel.selected) == 1; got != tc.want {
 				t.Fatalf("selected = %v, want %v (location %q)", got, tc.want, tc.location)
 			}
@@ -95,7 +97,7 @@ func TestSelectLocationsMatchesAnyReply(t *testing.T) {
 		{Location: loc, From: udpFrom("192.168.1.66")},
 		{Location: loc, From: udpFrom("192.168.1.20")},
 		{Location: loc, From: udpFrom("192.168.1.20")},
-	})
+	}, false)
 	if got := selectedLocations(sel); !slices.Equal(got, []string{loc}) {
 		t.Fatalf("selected = %q, want [%q]", got, loc)
 	}
@@ -134,7 +136,7 @@ func TestSelectLocationsCaps(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			sel := selectLocations(tc.replies)
+			sel := selectLocations(tc.replies, false)
 			got := selectedLocations(sel)
 			if len(got) != tc.wantSelected {
 				t.Fatalf("selected %d locations, want %d", len(got), tc.wantSelected)
@@ -268,5 +270,133 @@ func TestChromecastDiscoveryPolicy(t *testing.T) {
 				t.Fatalf("cached=%v name=%q, want cached=%v name=%q", cached, dev.Name, tc.wantName != "", tc.wantName)
 			}
 		})
+	}
+}
+
+// Relaxed discovery may only lift the source check: everything else that keeps
+// go2tv away from loopback, metadata and DNS must hold in both modes.
+func TestSelectLocationsRelaxed(t *testing.T) {
+	tt := []struct {
+		name     string
+		location string
+		from     net.Addr
+		want     bool
+	}{
+		{"multi-homed renderer", "http://192.168.1.50:49152/description.xml", udpFrom("192.168.1.51"), true},
+		{"proxying vlan relay", "http://192.168.20.15:9197/dmr", udpFrom("192.168.10.1"), true},
+		{"nil source", "http://192.168.1.31:8080/desc.xml", nil, true},
+		{"loopback", "http://127.0.0.1:8080/desc.xml", udpFrom("192.168.1.66"), false},
+		{"octal loopback", "http://0177.0.0.1:8080/desc.xml", udpFrom("192.168.1.66"), false},
+		{"hostname", "http://localhost:8080/desc.xml", udpFrom("192.168.1.66"), false},
+		{"metadata", "http://169.254.169.254/latest/meta-data/", udpFrom("192.168.1.66"), false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			replies := []ssdp.Service{{Type: ssdp.RootDevice, Location: tc.location, From: tc.from}}
+			if strict := selectLocations(replies, false); len(strict.selected) != 0 {
+				t.Fatalf("strict mode selected %q", tc.location)
+			}
+			sel := selectLocations(replies, true)
+			if got := len(sel.selected) == 1; got != tc.want {
+				t.Fatalf("relaxed selected = %v, want %v", got, tc.want)
+			}
+			if tc.want && sel.selected[0].addr != netip.MustParseAddr(strings.Split(strings.TrimPrefix(tc.location, "http://"), ":")[0]) {
+				t.Fatalf("relaxed pin = %v, want the LOCATION address", sel.selected[0].addr)
+			}
+		})
+	}
+}
+
+// Relaxed mode reopens a request primitive for any LAN host, so mismatched
+// locations stay bounded per scan and never push out source-matched devices.
+func TestSelectLocationsRelaxedCaps(t *testing.T) {
+	realTV := ssdp.Service{Location: "http://192.168.1.20:9197/dmr", From: udpFrom("192.168.1.20")}
+	replies := make([]ssdp.Service, 0, 301)
+	for i := range 300 {
+		ip := fmt.Sprintf("10.1.%d.%d", i/250, i%250+1)
+		replies = append(replies, ssdp.Service{Type: "urn:schemas-upnp-org:device:MediaRenderer:1", Location: "http://" + ip + ":8080/x", From: udpFrom("192.168.1.66")})
+	}
+	replies = append(replies, realTV)
+
+	sel := selectLocations(replies, true)
+	got := selectedLocations(sel)
+	if len(got) != maxMismatchedPerScan+1 || !slices.Contains(got, realTV.Location) {
+		t.Fatalf("selected %d locations (real TV %v), want %d including the real TV", len(got), slices.Contains(got, realTV.Location), maxMismatchedPerScan+1)
+	}
+}
+
+// The setting is read per scan: flipping it changes what the next scan fetches,
+// and a strict scan reports how many locations it hid (shown by -l and the GUI).
+func TestRelaxedDiscoveryAppliesToNextScan(t *testing.T) {
+	origSearch := ssdpSearch
+	origLoad := loadDiscoveredDevices
+	t.Cleanup(func() {
+		ssdpSearch = origSearch
+		loadDiscoveredDevices = origLoad
+		SetRelaxedDiscovery(false)
+	})
+
+	const relayed = "http://192.168.20.15:9197/dmr"
+	ssdpSearch = func(string, int, string) ([]ssdp.Service, error) {
+		return []ssdp.Service{{Location: relayed, From: udpFrom("192.168.10.1")}}, nil
+	}
+	loadDiscoveredDevices = func(_ context.Context, loc string, _ netip.Addr) ([]*soapcalls.DMRextracted, error) {
+		return []*soapcalls.DMRextracted{{FriendlyName: "VLAN TV", AvtransportControlURL: "http://192.168.20.15:9197/control"}}, nil
+	}
+
+	tt := []struct {
+		relaxed    bool
+		wantDevice bool
+		wantHidden int
+	}{
+		{false, false, 1},
+		{true, true, 0},
+		{false, false, 1},
+	}
+	for _, tc := range tt {
+		SetRelaxedDiscovery(tc.relaxed)
+		devs, _ := LoadSSDPservices(1)
+		if got := len(devs) == 1; got != tc.wantDevice {
+			t.Fatalf("relaxed=%v: device listed = %v, want %v", tc.relaxed, got, tc.wantDevice)
+		}
+		if got := HiddenSSDPLocations(); got != tc.wantHidden {
+			t.Fatalf("relaxed=%v: hidden = %d, want %d", tc.relaxed, got, tc.wantHidden)
+		}
+	}
+}
+
+// Mismatch and rejection lines carry attacker-chosen text, so they must not
+// repeat every scan nor change faster than once per interval.
+func TestDiscoveryLimitedSummaryfBoundsChanges(t *testing.T) {
+	var buf bytes.Buffer
+	SetDiscoveryLogOutput(&buf)
+	now := time.Unix(0, 0)
+	origNow := discoveryNow
+	discoveryNow = func() time.Time { return now }
+	t.Cleanup(func() {
+		SetDiscoveryLogOutput(nil)
+		discoveryNow = origNow
+	})
+
+	discoveryLimitedSummaryf("k", "line %d", 1)
+	discoveryLimitedSummaryf("k", "line %d", 1)
+	for i := 2; i <= 50; i++ {
+		now = now.Add(3 * time.Second)
+		discoveryLimitedSummaryf("k", "line %d", i)
+	}
+	now = now.Add(discoveryLimitedInterval)
+	discoveryLimitedSummaryf("k", "line %d", 99)
+
+	got := strings.TrimSpace(buf.String())
+	want := strings.Join([]string{
+		"discovery: line 1",
+		"discovery: k repeated=1",
+		"discovery: line 21 skipped_changes=19",
+		"discovery: line 41 skipped_changes=19",
+		"discovery: line 99 skipped_changes=9",
+	}, "\n")
+	if got != want {
+		t.Fatalf("log =\n%s\nwant\n%s", got, want)
 	}
 }

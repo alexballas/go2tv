@@ -156,7 +156,7 @@ func (h *Handler) bootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	roots := h.cfg.Library.Roots()
-	result := bootstrapDTO{ServerVersion: h.cfg.Version, ProtocolVersion: ProtocolVersion, AssetsHash: assetsHash, InstanceID: h.instanceID, ManagedByGUI: h.cfg.ManagedByGUI, Snapshot: safeSnapshot(snapshot), Limits: map[string]int{"ws_message_bytes": maxMessageBytes, "ws_clients": maxClients, "ws_clients_per_ip": maxClientsPerIP, "queue_items": controller.MaxQueueItems, "library_page": library.MaxLimit, "torrent_bytes": maxTorrentBytes}, Features: map[string]bool{"websocket": true, "artwork": true, "transcode": h.cfg.TranscodeAvailable, "gapless": true, "torrent": true, "radio": true}, Torrent: h.torrentSnapshot(), Radio: h.radio.library()}
+	result := bootstrapDTO{ServerVersion: h.cfg.Version, ProtocolVersion: ProtocolVersion, AssetsHash: assetsHash, InstanceID: h.instanceID, ManagedByGUI: h.cfg.ManagedByGUI, Snapshot: safeSnapshot(snapshot), Limits: map[string]int{"ws_message_bytes": maxMessageBytes, "ws_clients": maxClients, "ws_clients_per_ip": maxClientsPerIP, "queue_items": controller.MaxQueueItems, "library_page": library.MaxLimit, "torrent_bytes": maxTorrentBytes}, Features: map[string]bool{"websocket": true, "artwork": true, "transcode": h.cfg.TranscodeAvailable, "gapless": true, "torrent": true, "radio": true, "relaxed_discovery": h.cfg.RelaxedDiscovery}, Torrent: h.torrentSnapshot(), Radio: h.radio.library()}
 	for _, root := range roots {
 		result.Roots = append(result.Roots, rootDTO{ID: root.ID, Name: root.Name})
 	}

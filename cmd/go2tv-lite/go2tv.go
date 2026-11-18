@@ -113,6 +113,7 @@ func run(crash *crashlog.Session) error {
 	if err := serverOptions.Validate(flag.CommandLine); err != nil {
 		return err
 	}
+	devices.SetRelaxedDiscovery(serverOptions.RelaxedDiscovery)
 	if serverOptions.Server {
 		return servermode.Run(exitCTX, serverOptions.Config(version), os.Stdout)
 	}
@@ -612,8 +613,10 @@ func (m listDevicesModel) View() string {
 
 func listFlagFunction() error {
 	flagsEnabled := 0
-	flag.Visit(func(*flag.Flag) {
-		flagsEnabled++
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name != "relaxed-discovery" {
+			flagsEnabled++
+		}
 	})
 
 	if flagsEnabled > 1 {
@@ -622,6 +625,11 @@ func listFlagFunction() error {
 
 	p := tea.NewProgram(listDevicesModel{})
 	_, err := p.Run()
+
+	// Printed after the full-screen list exits so it cannot garble it.
+	if n := devices.HiddenSSDPLocations(); n > 0 && !devices.RelaxedDiscovery() {
+		fmt.Fprintf(os.Stderr, "%d DLNA replies ignored (description address differs from sender); see -relaxed-discovery.\n", n)
+	}
 
 	return err
 }

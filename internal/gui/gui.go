@@ -66,6 +66,9 @@ func (p *FyneScreen) refreshMPRISProgress() {
 
 // FyneScreen .
 type FyneScreen struct {
+	// refreshDiscoverySetting updates the relaxed-discovery hint when the
+	// Settings tab is shown.
+	refreshDiscoverySetting  func()
 	workers                  backgroundWork
 	radioSong                radioSongState
 	radio                    *radioView
@@ -353,6 +356,9 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	s.Hotkeys = true
 	tabs.OnSelected = func(t *container.TabItem) {
+		if t.Text == lang.L("Settings") && s.refreshDiscoverySetting != nil {
+			s.refreshDiscoverySetting()
+		}
 		if t.Text == "Go2TV" {
 			if s.renderGate.remoteLeaseHeld() {
 				// Remote session owns the renderer; availability is recomputed
@@ -432,6 +438,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 	w.CenterOnScreen()
 	w.SetMaster()
 
+	applyRelaxedDiscoveryPref()
 	devices.StartDiscovery(ctx)
 
 	if app := fyne.CurrentApp(); app != nil {

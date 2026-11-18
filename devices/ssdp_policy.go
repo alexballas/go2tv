@@ -2,12 +2,14 @@ package devices
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"net/url"
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"unicode"
 	"unicode/utf8"
 
@@ -24,16 +26,24 @@ import (
 // that address. URLs the user supplies (-t) and post-selection paths do not go
 // through this policy.
 //
+// Mismatched locations are hidden and only logged. Relaxed discovery
+// (SetRelaxedDiscovery, opt-in) fetches up to maxMismatchedPerScan of them too.
+//
 // Residual risk: a LAN host able to forge UDP source addresses can still cause
 // up to maxLocationsPerScan blind GETs per scan, repeated every scan, to any
 // routable address that is not denylisted. Kernels drop forged packets that
 // claim a local source, which keeps loopback and our own addresses out of
-// reach (Linux, by documentation only).
+// reach (Linux, by documentation only). With relaxed discovery no forging is
+// needed: any LAN host gets up to maxMismatchedPerScan such GETs per scan,
+// including to our own LAN addresses.
 
 const (
 	maxLocationsPerScan   = 128
 	maxLocationsPerSource = 16
+	maxMismatchedPerScan  = 16
 	maxDeviceNameRunes    = 128
+	maxLoggedItems        = 8
+	maxLoggedSources      = 4
 	unknownDeviceName     = "Unknown Device"
 )
 
@@ -43,6 +53,9 @@ var (
 	errLocationPort       = errors.New("location port invalid")
 	errLocationAddrDenied = errors.New("location address denied")
 
+	relaxedDiscovery atomic.Bool
+	hiddenLocations  atomic.Int64
+
 	broadcastAddr = netip.AddrFrom4([4]byte{255, 255, 255, 255})
 	metadataAddrs = []netip.Addr{
 		netip.AddrFrom4([4]byte{169, 254, 169, 254}), // AWS, GCP, Azure, OpenStack
@@ -50,6 +63,19 @@ var (
 		netip.AddrFrom4([4]byte{100, 100, 100, 200}), // Alibaba Cloud
 	}
 )
+
+// SetRelaxedDiscovery turns off the SSDP source check for later scans: a
+// LOCATION is then fetched even when no reply carrying it came from its host.
+// This restores devices behind proxying relays or with several addresses, but
+// lets any LAN host make go2tv contact other addresses. Every other rule stays.
+func SetRelaxedDiscovery(enabled bool) { relaxedDiscovery.Store(enabled) }
+
+// RelaxedDiscovery reports whether the SSDP source check is off.
+func RelaxedDiscovery() bool { return relaxedDiscovery.Load() }
+
+// HiddenSSDPLocations returns how many SSDP LOCATIONs the last scan left
+// unfetched because no reply carrying them came from their host.
+func HiddenSSDPLocations() int { return int(hiddenLocations.Load()) }
 
 // blockedDiscoveryAddr reports whether discovery must never contact ip.
 func blockedDiscoveryAddr(ip netip.Addr) bool {
@@ -117,24 +143,40 @@ type discoveredLocation struct {
 	addr     netip.Addr
 }
 
+type rejectedLocation struct {
+	location string
+	reason   error
+}
+
+type mismatchedLocation struct {
+	location string
+	addr     netip.Addr
+	sources  []netip.Addr
+	renderer bool
+}
+
 type locationSelection struct {
-	selected         []discoveredLocation
-	seen             int
-	rejectedInvalid  int
-	rejectedMismatch int
-	capped           int
+	selected   []discoveredLocation
+	seen       int
+	rejected   []rejectedLocation
+	mismatched []mismatchedLocation
+	// hidden counts mismatched locations left unfetched by the source check.
+	hidden int
+	capped int
 }
 
 // selectLocations applies the discovery policy to SSDP replies and returns the
-// locations to fetch: deduplicated, renderer evidence first, then arrival
-// order, within the per-source and per-scan caps. A location passes if any
-// reply that carried it came from its host.
-func selectLocations(list []ssdp.Service) locationSelection {
+// locations to fetch: deduplicated, source-matched first, then renderer
+// evidence, then arrival order, within the caps. A location matches if any
+// reply that carried it came from its host. With relaxed, mismatched locations
+// are fetched too, at most maxMismatchedPerScan of them.
+func selectLocations(list []ssdp.Service, relaxed bool) locationSelection {
 	type candidate struct {
 		discoveredLocation
 		err      error
 		matched  bool
 		renderer bool
+		sources  []netip.Addr
 	}
 	var (
 		order []*candidate
@@ -151,8 +193,12 @@ func selectLocations(list []ssdp.Service) locationSelection {
 			byLoc[srv.Location] = c
 			order = append(order, c)
 		}
-		if c.err == nil && replySource(srv.From) == c.addr {
+		src := replySource(srv.From)
+		if c.err == nil && src == c.addr {
 			c.matched = true
+		}
+		if src.IsValid() && len(c.sources) < maxLoggedSources && !slices.Contains(c.sources, src) {
+			c.sources = append(c.sources, src)
 		}
 		if hasRendererEvidence(srv) {
 			c.renderer = true
@@ -164,36 +210,86 @@ func selectLocations(list []ssdp.Service) locationSelection {
 	for _, c := range order {
 		switch {
 		case c.err != nil:
-			sel.rejectedInvalid++
-			discoveryDebugf("SSDP location rejected location=%q reason=%q", c.location, c.err)
+			sel.rejected = append(sel.rejected, rejectedLocation{location: c.location, reason: c.err})
 		case !c.matched:
-			sel.rejectedMismatch++
-			discoveryDebugf("SSDP location rejected location=%q reason=%q", c.location, "reply source differs from location host")
+			sel.mismatched = append(sel.mismatched, mismatchedLocation{location: c.location, addr: c.addr, sources: c.sources, renderer: c.renderer})
+			if !relaxed {
+				sel.hidden++
+				continue
+			}
+			passed = append(passed, c)
 		default:
 			passed = append(passed, c)
 		}
 	}
 	slices.SortStableFunc(passed, func(a, b *candidate) int {
-		switch {
-		case a.renderer == b.renderer:
-			return 0
-		case a.renderer:
-			return -1
-		default:
+		if a.matched != b.matched {
+			if a.matched {
+				return -1
+			}
 			return 1
 		}
+		if a.renderer != b.renderer {
+			if a.renderer {
+				return -1
+			}
+			return 1
+		}
+		return 0
 	})
 
 	perSource := make(map[netip.Addr]int)
+	mismatchedFetched := 0
 	for _, c := range passed {
-		if len(sel.selected) >= maxLocationsPerScan || perSource[c.addr] >= maxLocationsPerSource {
+		if len(sel.selected) >= maxLocationsPerScan || perSource[c.addr] >= maxLocationsPerSource ||
+			!c.matched && mismatchedFetched >= maxMismatchedPerScan {
 			sel.capped++
 			continue
+		}
+		if !c.matched {
+			mismatchedFetched++
 		}
 		perSource[c.addr]++
 		sel.selected = append(sel.selected, c.discoveredLocation)
 	}
 	return sel
+}
+
+// logSelection reports policy rejections and source mismatches once per scan.
+// Entries are sorted and capped so a stable network logs a stable line, which
+// the summary logger then de-duplicates; changes from remote hosts are
+// rate-limited so an attacker cannot flood the log.
+func logSelection(sel locationSelection, relaxed bool) {
+	if len(sel.rejected) > 0 {
+		items := make([]string, 0, len(sel.rejected))
+		for _, r := range sel.rejected {
+			items = append(items, fmt.Sprintf("%q reason=%q", r.location, r.reason))
+		}
+		discoveryLimitedSummaryf("SSDP locations rejected", "SSDP locations rejected count=%d items=%s", len(items), formatLogItems(items))
+	}
+	if len(sel.mismatched) > 0 {
+		action := "hidden"
+		if relaxed {
+			action = "fetched"
+		}
+		items := make([]string, 0, len(sel.mismatched))
+		for _, m := range sel.mismatched {
+			sources := make([]string, 0, len(m.sources))
+			for _, src := range m.sources {
+				sources = append(sources, src.String())
+			}
+			items = append(items, fmt.Sprintf("%q ip=%s from=%s renderer=%t", m.location, m.addr, strings.Join(sources, ","), m.renderer))
+		}
+		discoveryLimitedSummaryf("SSDP source mismatch", "SSDP source mismatch relaxed=%t action=%s count=%d items=%s", relaxed, action, len(items), formatLogItems(items))
+	}
+}
+
+func formatLogItems(items []string) string {
+	slices.Sort(items)
+	if len(items) > maxLoggedItems {
+		return strings.Join(items[:maxLoggedItems], "; ") + fmt.Sprintf("; +%d more", len(items)-maxLoggedItems)
+	}
+	return strings.Join(items, "; ")
 }
 
 // sanitizeDeviceName makes a device-supplied name safe to show on one line:
@@ -222,7 +318,7 @@ func sanitizeDeviceName(name string) string {
 
 func unsafeNameRune(r rune) bool {
 	switch r {
-	case '‌', '‍':
+	case '\u200c', '\u200d':
 		return false
 	case utf8.RuneError:
 		return true

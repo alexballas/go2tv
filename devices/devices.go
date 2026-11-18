@@ -58,7 +58,15 @@ var (
 type summaryState struct {
 	lastLine string
 	repeats  int
+	lastAt   time.Time
+	skipped  int
 }
+
+// discoveryLimitedInterval bounds how often a changed line whose content remote
+// hosts control is logged.
+const discoveryLimitedInterval = time.Minute
+
+var discoveryNow = time.Now
 
 // SetDiscoveryLogOutput enables lightweight discovery debug logs.
 func SetDiscoveryLogOutput(w io.Writer) {
@@ -100,6 +108,44 @@ func discoverySummaryf(key string, format string, args ...any) {
 	}
 
 	discoverySummaryState[key] = summaryState{lastLine: line}
+	_, _ = fmt.Fprintf(discoveryLogOutput, "discovery: %s\n", line)
+}
+
+// discoveryLimitedSummaryf is discoverySummaryf for lines whose content remote
+// hosts control: identical lines are de-duplicated, and a changed line is
+// logged at most once per discoveryLimitedInterval, counting the changes
+// skipped in between.
+func discoveryLimitedSummaryf(key string, format string, args ...any) {
+	discoveryLogMu.Lock()
+	defer discoveryLogMu.Unlock()
+
+	if discoveryLogOutput == nil {
+		return
+	}
+
+	line := fmt.Sprintf(format, args...)
+	state := discoverySummaryState[key]
+	if state.lastLine == line {
+		state.repeats++
+		discoverySummaryState[key] = state
+		return
+	}
+
+	now := discoveryNow()
+	if !state.lastAt.IsZero() && now.Sub(state.lastAt) < discoveryLimitedInterval {
+		state.skipped++
+		discoverySummaryState[key] = state
+		return
+	}
+
+	if state.repeats > 0 {
+		_, _ = fmt.Fprintf(discoveryLogOutput, "discovery: %s repeated=%d\n", key, state.repeats)
+	}
+	if state.skipped > 0 {
+		line += fmt.Sprintf(" skipped_changes=%d", state.skipped)
+	}
+
+	discoverySummaryState[key] = summaryState{lastLine: line, lastAt: now}
 	_, _ = fmt.Fprintf(discoveryLogOutput, "discovery: %s\n", line)
 }
 
@@ -219,7 +265,10 @@ func LoadSSDPservicesContext(ctx context.Context, delay int) ([]Device, error) {
 	// may have multiple embedded devices). ST values only order candidates:
 	// some vendors reply with non-AVTransport ST values while still exposing
 	// AVTransport in LOCATION XML.
-	sel := selectLocations(list)
+	relaxed := RelaxedDiscovery()
+	sel := selectLocations(list, relaxed)
+	logSelection(sel, relaxed)
+	hiddenLocations.Store(int64(sel.hidden))
 
 	var (
 		allDevices []deviceEntry
@@ -290,12 +339,14 @@ func LoadSSDPservicesContext(ctx context.Context, delay int) ([]Device, error) {
 	if len(deviceList) == 0 {
 		discoverySummaryf(
 			"LoadSSDPservices summary",
-			"LoadSSDPservices summary listen_addr=%q ssdp_results=%d unique_locations=%d rejected_invalid=%d rejected_source_mismatch=%d capped=%d load_errors=%d error_hosts=%q filtered=%d duplicate_names=%d unnamed=%d returned=0 devices=%q",
+			"LoadSSDPservices summary listen_addr=%q ssdp_results=%d unique_locations=%d relaxed=%t rejected_invalid=%d source_mismatch=%d hidden=%d capped=%d load_errors=%d error_hosts=%q filtered=%d duplicate_names=%d unnamed=%d returned=0 devices=%q",
 			addrString,
 			len(list),
 			sel.seen,
-			sel.rejectedInvalid,
-			sel.rejectedMismatch,
+			relaxed,
+			len(sel.rejected),
+			len(sel.mismatched),
+			sel.hidden,
 			sel.capped,
 			loadErrors,
 			formatSummaryList(loadErrorHosts, 3),
@@ -318,12 +369,14 @@ func LoadSSDPservicesContext(ctx context.Context, delay int) ([]Device, error) {
 	}
 	discoverySummaryf(
 		"LoadSSDPservices summary",
-		"LoadSSDPservices summary listen_addr=%q ssdp_results=%d unique_locations=%d rejected_invalid=%d rejected_source_mismatch=%d capped=%d load_errors=%d error_hosts=%q filtered=%d duplicate_names=%d unnamed=%d returned=%d devices=%q",
+		"LoadSSDPservices summary listen_addr=%q ssdp_results=%d unique_locations=%d relaxed=%t rejected_invalid=%d source_mismatch=%d hidden=%d capped=%d load_errors=%d error_hosts=%q filtered=%d duplicate_names=%d unnamed=%d returned=%d devices=%q",
 		addrString,
 		len(list),
 		sel.seen,
-		sel.rejectedInvalid,
-		sel.rejectedMismatch,
+		relaxed,
+		len(sel.rejected),
+		len(sel.mismatched),
+		sel.hidden,
 		sel.capped,
 		loadErrors,
 		formatSummaryList(loadErrorHosts, 3),
@@ -355,6 +408,9 @@ func startDLNADiscoveryLoop(ctx context.Context) {
 		pollTimer := time.NewTimer(dlnaDiscoveryPause)
 		defer pollTimer.Stop()
 
+		if ctx.Err() != nil {
+			return
+		}
 		// Initial immediate discovery before the first timer tick
 		refreshDLNADevices(1)
 

@@ -176,7 +176,9 @@ func TestTranscodeUnavailableRejected(t *testing.T) {
 	}
 }
 
-func TestBootstrapManagedByGUIFollowsConfig(t *testing.T) {
+// The browser learns the GUI-managed state and the read-only relaxed-discovery
+// notice from bootstrap; both come from startup config, never from the client.
+func TestBootstrapStartupFlagsFollowConfig(t *testing.T) {
 	for _, managed := range []bool{false, true} {
 		root := t.TempDir()
 		lib, err := library.Open(library.Config{Roots: []string{root}})
@@ -184,20 +186,24 @@ func TestBootstrapManagedByGUIFollowsConfig(t *testing.T) {
 			t.Fatal(err)
 		}
 		control := controller.New(controller.Config{})
-		h, err := New(Config{Version: "test", Controller: control, Library: lib, ManagedByGUI: managed})
+		h, err := New(Config{Version: "test", Controller: control, Library: lib, ManagedByGUI: managed, RelaxedDiscovery: managed})
 		if err != nil {
 			t.Fatal(err)
 		}
 		response := httptest.NewRecorder()
 		h.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/bootstrap", nil))
 		var payload struct {
-			ManagedByGUI bool `json:"managed_by_gui"`
+			ManagedByGUI bool            `json:"managed_by_gui"`
+			Features     map[string]bool `json:"features"`
 		}
 		if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 			t.Fatal(err)
 		}
 		if payload.ManagedByGUI != managed {
 			t.Fatalf("managed_by_gui = %v, want %v", payload.ManagedByGUI, managed)
+		}
+		if payload.Features["relaxed_discovery"] != managed {
+			t.Fatalf("relaxed_discovery = %v, want %v", payload.Features["relaxed_discovery"], managed)
 		}
 		h.Close()
 		control.Close()

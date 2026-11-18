@@ -139,6 +139,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 	// Install the Android multicast hooks before the discovery goroutines run
 	// their immediate first scans.
 	prepareBackgroundSession(s)
+	applyRelaxedDiscoveryPref()
 	devices.StartDiscovery(ctx)
 
 	settingsContent, refreshMobileSettings := mobileSettingsWindow(s)

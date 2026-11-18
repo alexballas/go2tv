@@ -121,6 +121,7 @@ function fixture() {
     "queue",
     "toast",
     "pending",
+    "relaxed-discovery",
     "playback-state",
     "now-playing-title",
     "time",
@@ -364,6 +365,29 @@ test("disables transcoding when FFmpeg is unavailable", async () => {
   assert.equal(ids["burn-subtitles"].disabled, true);
   assert.equal(ids["burn-subtitles"].checked, false);
   assert.equal(ids["burn-subtitles"].title, "FFmpeg unavailable");
+});
+
+test("shows the relaxed discovery notice only when the server enabled it", async () => {
+  for (const enabled of [false, true]) {
+    const { ids, env } = fixture(),
+      bootstrapFetch = env.fetch;
+    env.fetch = async (url) => {
+      const response = await bootstrapFetch(url),
+        body = await response.json();
+      return url === "/api/bootstrap"
+        ? {
+            ok: true,
+            json: async () => ({
+              ...body,
+              features: { ...body.features, relaxed_discovery: enabled },
+            }),
+          }
+        : response;
+    };
+    startClient(env);
+    await settle();
+    assert.equal(ids["relaxed-discovery"].hidden, !enabled);
+  }
 });
 
 test("renders safe labels and sends playlist/play payloads", async () => {

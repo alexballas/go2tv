@@ -322,6 +322,10 @@ URLs, and stop playback. For direct control, use the Go2TV GUI or CLI.
   (the name varies by brand).
 - Allow Go2TV through your firewall (see below).
 - `go2tv -l` keeps scanning; give slow devices a few seconds to appear.
+- Behind an SSDP relay/proxy, or a renderer with several network addresses? Go2TV
+  ignores DLNA replies whose description address differs from the sender (`go2tv -l`
+  reports how many on exit). Enable **Relaxed Device Discovery** in Settings, or pass `-relaxed-discovery` (`-l` and `-server`). Any device on your network can
+  then make Go2TV contact other addresses, so leave it off unless a device is missing.
 
 ### Device listed but playback fails
 

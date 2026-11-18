@@ -1182,6 +1182,7 @@ export function startClient(env) {
         return;
       }
       transcodeAvailable = !!bootstrap.features?.transcode;
+      byID("relaxed-discovery").hidden = !bootstrap.features?.relaxed_discovery;
       torrents.configure(
         bootstrap.features,
         bootstrap.torrent,
@@ -1476,6 +1477,7 @@ export function startClient(env) {
     assetsHash = bootstrap.assets_hash || "";
     instanceID = bootstrap.instance_id || "";
     transcodeAvailable = !!bootstrap.features?.transcode;
+    byID("relaxed-discovery").hidden = !bootstrap.features?.relaxed_discovery;
     torrents.configure(
       bootstrap.features,
       bootstrap.torrent,

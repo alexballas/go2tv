@@ -361,8 +361,12 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		newSettingsField(lang.L("RTMP Stream Key"), rtmpKeyContainer),
 	)
 
+	relaxedDiscovery, refreshRelaxedDiscovery := newRelaxedDiscoverySetting()
+	s.refreshDiscoverySetting = refreshRelaxedDiscovery
+
 	advancedSettings := container.NewVBox(
 		newSettingsField("ffmpeg "+lang.L("Path"), ffmpegPathControls),
+		relaxedDiscovery,
 		newSettingsField(lang.L("Diagnostics"), container.NewHBox(debugExport)),
 	)
 
