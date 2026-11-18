@@ -23,6 +23,18 @@ export function startClient(env) {
     clearTimeout,
   } = env;
   const byID = (id) => document.querySelector(`#${id}`);
+  // Discovery policy is read-only here: a standalone server shows its startup
+  // relaxed mode; a GUI-managed session defers to the desktop app, whose
+  // setting can change while this page is open.
+  const showDiscoveryNotice = (bootstrap) => {
+    const notice = byID("relaxed-discovery");
+    notice.textContent = bootstrap.managed_by_gui
+      ? "Discovery policy is set in the desktop app."
+      : "Relaxed DLNA discovery is on (set at startup).";
+    notice.hidden = !(
+      bootstrap.managed_by_gui || bootstrap.features?.relaxed_discovery
+    );
+  };
   const status = byID("status"),
     connectionDot = byID("connection-dot"),
     devicePicker = byID("device-picker"),
@@ -1182,7 +1194,7 @@ export function startClient(env) {
         return;
       }
       transcodeAvailable = !!bootstrap.features?.transcode;
-      byID("relaxed-discovery").hidden = !bootstrap.features?.relaxed_discovery;
+      showDiscoveryNotice(bootstrap);
       torrents.configure(
         bootstrap.features,
         bootstrap.torrent,
@@ -1477,7 +1489,7 @@ export function startClient(env) {
     assetsHash = bootstrap.assets_hash || "";
     instanceID = bootstrap.instance_id || "";
     transcodeAvailable = !!bootstrap.features?.transcode;
-    byID("relaxed-discovery").hidden = !bootstrap.features?.relaxed_discovery;
+    showDiscoveryNotice(bootstrap);
     torrents.configure(
       bootstrap.features,
       bootstrap.torrent,

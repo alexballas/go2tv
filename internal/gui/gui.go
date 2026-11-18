@@ -347,6 +347,9 @@ func Start(ctx context.Context, s *FyneScreen) {
 	w.SetOnDropped(onDropFiles(s))
 
 	mainContent := container.NewScroll(container.NewPadded(mainWindow(s)))
+	// Before Settings is built, so the relaxed-discovery checkbox shows the
+	// session's real mode.
+	applyRelaxedDiscoveryPref()
 	settingsContent := container.NewScroll(container.NewPadded(settingsWindow(s)))
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Go2TV", mainContent),
@@ -438,7 +441,6 @@ func Start(ctx context.Context, s *FyneScreen) {
 	w.CenterOnScreen()
 	w.SetMaster()
 
-	applyRelaxedDiscoveryPref()
 	devices.StartDiscovery(ctx)
 
 	if app := fyne.CurrentApp(); app != nil {

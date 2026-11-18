@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -29,61 +30,94 @@ func selectedLocations(sel locationSelection) []string {
 	return out
 }
 
+type policyOutcome int
+
+const (
+	fetched policyOutcome = iota
+	hiddenStrict
+	rejected
+)
+
 // The discovery policy decides which unsolicited SSDP LOCATIONs go2tv fetches
 // before the user selects anything. Real renderer shapes must pass; anything
-// that could make go2tv contact a host other than the replying one must not.
+// that could make go2tv contact a host other than the replying one, or a public
+// address, must not in strict mode. Relaxed mode may only fetch what strict
+// mode hides; everything rejected stays rejected.
 func TestSelectLocationsPolicy(t *testing.T) {
+	longPath := func(n int) string {
+		base := "http://192.168.1.42:8080/"
+		return base + strings.Repeat("a", n-len(base))
+	}
 	tt := []struct {
 		name     string
 		location string
 		from     net.Addr
-		want     bool
+		want     policyOutcome // strict; relaxed fetches what strict hides
 	}{
-		{"samsung", "http://192.168.1.20:9197/dmr", udpFrom("192.168.1.20"), true},
-		{"sonos", "http://192.168.1.21:1400/xml/device_description.xml", udpFrom("192.168.1.21"), true},
-		{"sony", "http://192.168.1.22:52323/dmr.xml", udpFrom("192.168.1.22"), true},
-		{"xbox query", "http://192.168.1.23:2869/upnphost/udhisapi.dll?content=uuid:4ec1f2c5-8a3f-4d3e-9a1b-0b8d1c2e3f40", udpFrom("192.168.1.23"), true},
-		{"implicit port", "http://192.168.1.24/desc.xml", udpFrom("192.168.1.24"), true},
-		{"https", "https://192.168.1.25:8443/desc.xml", udpFrom("192.168.1.25"), true},
-		{"percent-encoded path", "http://192.168.1.26:8080/dev/%E5%AE%A2%E5%8E%85.xml", udpFrom("192.168.1.26"), true},
-		{"routed public address", "http://192.0.2.1:8080/desc.xml", udpFrom("192.0.2.1"), true},
-		{"autoip link-local", "http://169.254.10.5:8080/desc.xml", udpFrom("169.254.10.5"), true},
-		{"cgnat", "http://100.64.0.5:8080/desc.xml", udpFrom("100.64.0.5"), true},
+		{"samsung", "http://192.168.1.20:9197/dmr", udpFrom("192.168.1.20"), fetched},
+		{"sonos", "http://192.168.1.21:1400/xml/device_description.xml", udpFrom("192.168.1.21"), fetched},
+		{"sony", "http://192.168.1.22:52323/dmr.xml", udpFrom("192.168.1.22"), fetched},
+		{"xbox query", "http://192.168.1.23:2869/upnphost/udhisapi.dll?content=uuid:4ec1f2c5-8a3f-4d3e-9a1b-0b8d1c2e3f40", udpFrom("192.168.1.23"), fetched},
+		{"implicit port", "http://192.168.1.24/desc.xml", udpFrom("192.168.1.24"), fetched},
+		{"https", "https://192.168.1.25:8443/desc.xml", udpFrom("192.168.1.25"), fetched},
+		{"percent-encoded path", "http://192.168.1.26:8080/dev/%E5%AE%A2%E5%8E%85.xml", udpFrom("192.168.1.26"), fetched},
+		{"autoip link-local", "http://169.254.10.5:8080/desc.xml", udpFrom("169.254.10.5"), fetched},
+		{"cgnat", "http://100.64.0.5:8080/desc.xml", udpFrom("100.64.0.5"), fetched},
+		{"longest allowed location", longPath(maxLocationBytes), udpFrom("192.168.1.42"), fetched},
 
-		{"source mismatch", "http://192.168.1.30:8080/desc.xml", udpFrom("192.168.1.99"), false},
-		{"internet target from lan host", "http://8.8.8.8/x", udpFrom("192.168.1.99"), false},
-		{"nil source", "http://192.168.1.31:8080/desc.xml", nil, false},
-		{"hostname", "http://tv.example/desc.xml", udpFrom("192.168.1.32"), false},
-		{"localhost", "http://localhost:8080/desc.xml", udpFrom("127.0.0.1"), false},
-		{"octal loopback", "http://0177.0.0.1:8080/desc.xml", udpFrom("127.0.0.1"), false},
-		{"octal private", "http://010.0.0.1/x", udpFrom("8.0.0.1"), false},
-		{"hex loopback", "http://0x7f.1/x", udpFrom("127.0.0.1"), false},
-		{"decimal loopback", "http://2130706433/x", udpFrom("127.0.0.1"), false},
-		{"zero-padded", "http://192.168.001.005/x", udpFrom("192.168.1.5"), false},
-		{"loopback with matching source", "http://127.0.0.1:8080/desc.xml", udpFrom("127.0.0.1"), false},
-		{"metadata with matching source", "http://169.254.169.254/latest/meta-data/", udpFrom("169.254.169.254"), false},
-		{"multicast", "http://239.255.255.250:1900/x", udpFrom("239.255.255.250"), false},
-		{"broadcast", "http://255.255.255.255/x", udpFrom("255.255.255.255"), false},
-		{"unspecified", "http://0.0.0.0:8080/x", udpFrom("0.0.0.0"), false},
-		{"ipv6 literal", "http://[fe80::1]:8080/x", udpFrom("192.168.1.33"), false},
-		{"userinfo", "http://user:pass@192.168.1.34/x", udpFrom("192.168.1.34"), false},
-		{"ftp", "ftp://192.168.1.35/x", udpFrom("192.168.1.35"), false},
-		{"zero-padded port", "http://192.168.1.36:08009/x", udpFrom("192.168.1.36"), false},
-		{"port zero", "http://192.168.1.37:0/x", udpFrom("192.168.1.37"), false},
-		{"port out of range", "http://192.168.1.38:65536/x", udpFrom("192.168.1.38"), false},
-		{"empty port", "http://192.168.1.39:/x", udpFrom("192.168.1.39"), false},
-		{"line feed", "http://192.168.1.40/x\n• Evil [http://10.0.0.1/]", udpFrom("192.168.1.40"), false},
-		{"space", "http://192.168.1.41/a b", udpFrom("192.168.1.41"), false},
+		{"public-IP LAN renderer", "http://192.0.2.1:8080/desc.xml", udpFrom("192.0.2.1"), hiddenStrict},
+		{"multi-homed renderer", "http://192.168.1.50:49152/description.xml", udpFrom("192.168.1.51"), hiddenStrict},
+		{"proxying vlan relay", "http://192.168.20.15:9197/dmr", udpFrom("192.168.10.1"), hiddenStrict},
+		{"nil source", "http://192.168.1.31:8080/desc.xml", nil, hiddenStrict},
+
+		{"public target from another host", "http://8.8.8.8/x", udpFrom("192.168.1.99"), rejected},
+		{"location too long", longPath(maxLocationBytes + 1), udpFrom("192.168.1.42"), rejected},
+		{"hostname", "http://tv.example/desc.xml", udpFrom("192.168.1.32"), rejected},
+		{"localhost", "http://localhost:8080/desc.xml", udpFrom("127.0.0.1"), rejected},
+		{"octal loopback", "http://0177.0.0.1:8080/desc.xml", udpFrom("127.0.0.1"), rejected},
+		{"octal private", "http://010.0.0.1/x", udpFrom("8.0.0.1"), rejected},
+		{"hex loopback", "http://0x7f.1/x", udpFrom("127.0.0.1"), rejected},
+		{"decimal loopback", "http://2130706433/x", udpFrom("127.0.0.1"), rejected},
+		{"zero-padded", "http://192.168.001.005/x", udpFrom("192.168.1.5"), rejected},
+		{"loopback with matching source", "http://127.0.0.1:8080/desc.xml", udpFrom("127.0.0.1"), rejected},
+		{"metadata with matching source", "http://169.254.169.254/latest/meta-data/", udpFrom("169.254.169.254"), rejected},
+		{"azure wireserver", "http://168.63.129.16/machine", udpFrom("168.63.129.16"), rejected},
+		{"multicast", "http://239.255.255.250:1900/x", udpFrom("239.255.255.250"), rejected},
+		{"broadcast", "http://255.255.255.255/x", udpFrom("255.255.255.255"), rejected},
+		{"unspecified", "http://0.0.0.0:8080/x", udpFrom("0.0.0.0"), rejected},
+		{"ipv6 literal", "http://[fe80::1]:8080/x", udpFrom("192.168.1.33"), rejected},
+		{"userinfo", "http://user:pass@192.168.1.34/x", udpFrom("192.168.1.34"), rejected},
+		{"ftp", "ftp://192.168.1.35/x", udpFrom("192.168.1.35"), rejected},
+		{"zero-padded port", "http://192.168.1.36:08009/x", udpFrom("192.168.1.36"), rejected},
+		{"port zero", "http://192.168.1.37:0/x", udpFrom("192.168.1.37"), rejected},
+		{"port out of range", "http://192.168.1.38:65536/x", udpFrom("192.168.1.38"), rejected},
+		{"empty port", "http://192.168.1.39:/x", udpFrom("192.168.1.39"), rejected},
+		{"line feed", "http://192.168.1.40/x\n• Evil [http://10.0.0.1/]", udpFrom("192.168.1.40"), rejected},
+		{"space", "http://192.168.1.41/a b", udpFrom("192.168.1.41"), rejected},
 	}
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			sel := selectLocations([]ssdp.Service{{Type: ssdp.RootDevice, Location: tc.location, From: tc.from}}, false)
-			if got := len(sel.selected) == 1; got != tc.want {
-				t.Fatalf("selected = %v, want %v (location %q)", got, tc.want, tc.location)
-			}
-			if tc.want && sel.selected[0].addr != replySource(tc.from) {
-				t.Fatalf("pinned = %v, want reply source %v", sel.selected[0].addr, tc.from)
+			replies := []ssdp.Service{{Type: ssdp.RootDevice, Location: tc.location, From: tc.from}}
+			for _, relaxed := range []bool{false, true} {
+				sel := selectLocations(replies, relaxed)
+				want := tc.want
+				if relaxed && want == hiddenStrict {
+					want = fetched
+				}
+				got := rejected
+				switch {
+				case len(sel.selected) == 1:
+					got = fetched
+				case slices.Equal(sel.hidden, []string{tc.location}):
+					got = hiddenStrict
+				}
+				if got != want || (want == rejected && len(sel.rejected) != 1) {
+					t.Fatalf("relaxed=%v: outcome = %d, want %d (location %q)", relaxed, got, want, tc.location)
+				}
+				if u, _ := url.Parse(tc.location); got == fetched && sel.selected[0].addr.String() != u.Hostname() {
+					t.Fatalf("pinned %v, want the LOCATION address %s", sel.selected[0].addr, u.Hostname())
+				}
 			}
 		})
 	}
@@ -273,43 +307,9 @@ func TestChromecastDiscoveryPolicy(t *testing.T) {
 	}
 }
 
-// Relaxed discovery may only lift the source check: everything else that keeps
-// go2tv away from loopback, metadata and DNS must hold in both modes.
-func TestSelectLocationsRelaxed(t *testing.T) {
-	tt := []struct {
-		name     string
-		location string
-		from     net.Addr
-		want     bool
-	}{
-		{"multi-homed renderer", "http://192.168.1.50:49152/description.xml", udpFrom("192.168.1.51"), true},
-		{"proxying vlan relay", "http://192.168.20.15:9197/dmr", udpFrom("192.168.10.1"), true},
-		{"nil source", "http://192.168.1.31:8080/desc.xml", nil, true},
-		{"loopback", "http://127.0.0.1:8080/desc.xml", udpFrom("192.168.1.66"), false},
-		{"octal loopback", "http://0177.0.0.1:8080/desc.xml", udpFrom("192.168.1.66"), false},
-		{"hostname", "http://localhost:8080/desc.xml", udpFrom("192.168.1.66"), false},
-		{"metadata", "http://169.254.169.254/latest/meta-data/", udpFrom("192.168.1.66"), false},
-	}
-
-	for _, tc := range tt {
-		t.Run(tc.name, func(t *testing.T) {
-			replies := []ssdp.Service{{Type: ssdp.RootDevice, Location: tc.location, From: tc.from}}
-			if strict := selectLocations(replies, false); len(strict.selected) != 0 {
-				t.Fatalf("strict mode selected %q", tc.location)
-			}
-			sel := selectLocations(replies, true)
-			if got := len(sel.selected) == 1; got != tc.want {
-				t.Fatalf("relaxed selected = %v, want %v", got, tc.want)
-			}
-			if tc.want && sel.selected[0].addr != netip.MustParseAddr(strings.Split(strings.TrimPrefix(tc.location, "http://"), ":")[0]) {
-				t.Fatalf("relaxed pin = %v, want the LOCATION address", sel.selected[0].addr)
-			}
-		})
-	}
-}
-
-// Relaxed mode reopens a request primitive for any LAN host, so mismatched
-// locations stay bounded per scan and never push out source-matched devices.
+// Relaxed mode reopens a request primitive for any LAN host, so what strict
+// mode hides stays bounded per scan and never pushes out strict-eligible
+// devices.
 func TestSelectLocationsRelaxedCaps(t *testing.T) {
 	realTV := ssdp.Service{Location: "http://192.168.1.20:9197/dmr", From: udpFrom("192.168.1.20")}
 	replies := make([]ssdp.Service, 0, 301)
@@ -321,8 +321,8 @@ func TestSelectLocationsRelaxedCaps(t *testing.T) {
 
 	sel := selectLocations(replies, true)
 	got := selectedLocations(sel)
-	if len(got) != maxMismatchedPerScan+1 || !slices.Contains(got, realTV.Location) {
-		t.Fatalf("selected %d locations (real TV %v), want %d including the real TV", len(got), slices.Contains(got, realTV.Location), maxMismatchedPerScan+1)
+	if len(got) != maxRelaxedPerScan+1 || !slices.Contains(got, realTV.Location) {
+		t.Fatalf("selected %d locations (real TV %v), want %d including the real TV", len(got), slices.Contains(got, realTV.Location), maxRelaxedPerScan+1)
 	}
 }
 
@@ -360,7 +360,7 @@ func TestRelaxedDiscoveryAppliesToNextScan(t *testing.T) {
 		if got := len(devs) == 1; got != tc.wantDevice {
 			t.Fatalf("relaxed=%v: device listed = %v, want %v", tc.relaxed, got, tc.wantDevice)
 		}
-		if got := HiddenSSDPLocations(); got != tc.wantHidden {
+		if got := len(HiddenSSDPLocations()); got != tc.wantHidden {
 			t.Fatalf("relaxed=%v: hidden = %d, want %d", tc.relaxed, got, tc.wantHidden)
 		}
 	}
@@ -387,6 +387,10 @@ func TestDiscoveryLimitedSummaryfBoundsChanges(t *testing.T) {
 	}
 	now = now.Add(discoveryLimitedInterval)
 	discoveryLimitedSummaryf("k", "line %d", 99)
+	// An unchanged line after a skipped change must still de-duplicate.
+	discoveryLimitedSummaryf("k", "line %d", 99)
+	now = now.Add(discoveryLimitedInterval)
+	discoveryLimitedSummaryf("k", "line %d", 100)
 
 	got := strings.TrimSpace(buf.String())
 	want := strings.Join([]string{
@@ -395,8 +399,105 @@ func TestDiscoveryLimitedSummaryfBoundsChanges(t *testing.T) {
 		"discovery: line 21 skipped_changes=19",
 		"discovery: line 41 skipped_changes=19",
 		"discovery: line 99 skipped_changes=9",
+		"discovery: k repeated=1",
+		"discovery: line 100",
 	}, "\n")
 	if got != want {
 		t.Fatalf("log =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// Server mode logs the hidden count at normal level; it must not repeat every
+// scan, nor change faster than once per interval, since replies are remote.
+func TestNoticeHiddenFiresOnChangeOnly(t *testing.T) {
+	now := time.Unix(0, 0)
+	origNow := discoveryNow
+	discoveryNow = func() time.Time { return now }
+	var got []int
+	SetHiddenNoticeFunc(func(n int) { got = append(got, n) })
+	t.Cleanup(func() {
+		SetHiddenNoticeFunc(nil)
+		discoveryNow = origNow
+	})
+
+	for _, step := range []struct {
+		n       int
+		advance time.Duration
+	}{
+		{0, 0},                    // nothing hidden: silent
+		{2, 3 * time.Second},      // first hidden count: logged
+		{2, 3 * time.Second},      // unchanged: silent
+		{5, 3 * time.Second},      // changed within the interval: deferred
+		{5, hiddenNoticeInterval}, // still 5 after the interval: logged
+		{0, 3 * time.Second},      // cleared: silent
+		{2, hiddenNoticeInterval}, // hidden again: logged
+	} {
+		now = now.Add(step.advance)
+		noticeHidden(step.n)
+	}
+	if want := []int{2, 5, 2}; !slices.Equal(got, want) {
+		t.Fatalf("notices = %v, want %v", got, want)
+	}
+}
+
+// mDNS answers are unsolicited: one host must not fill the Chromecast cache and
+// keep real devices out, cached devices must keep updating, and entries whose
+// advertiser went quiet must eventually expire.
+func TestChromecastCacheBounds(t *testing.T) {
+	ccMu.Lock()
+	origDevices, origRound := chromeCastDevices, ccRound
+	chromeCastDevices, ccRound = make(map[string]castDevice), 0
+	ccMu.Unlock()
+	t.Cleanup(func() {
+		ccMu.Lock()
+		chromeCastDevices, ccRound = origDevices, origRound
+		ccMu.Unlock()
+	})
+	advertise := func(ip net.IP, port int, name string) {
+		upsertChromecastFromMDNSEntry(&mdns.ServiceEntry{Name: name + "._googlecast._tcp.local.", AddrV4: ip, Port: port, InfoFields: []string{"fn=" + name}})
+	}
+	cached := func(address string) (castDevice, bool) {
+		ccMu.Lock()
+		defer ccMu.Unlock()
+		d, ok := chromeCastDevices[address]
+		return d, ok
+	}
+
+	flooder := net.IPv4(192, 168, 1, 66)
+	for port := range maxChromecastsPerIP + 4 {
+		advertise(flooder, 9000+port, "flood")
+	}
+	if _, ok := cached(fmt.Sprintf("192.168.1.66:%d", 9000+maxChromecastsPerIP)); ok {
+		t.Fatal("per-IP cap not enforced")
+	}
+	advertise(net.IPv4(192, 168, 1, 30), 8009, "Living Room")
+	if _, ok := cached("192.168.1.30:8009"); !ok {
+		t.Fatal("real Chromecast kept out by a flooding host")
+	}
+	advertise(net.IPv4(192, 168, 1, 30), 8009, "Renamed")
+	if d, _ := cached("192.168.1.30:8009"); d.Name != "Renamed" {
+		t.Fatalf("update of cached entry refused: name = %q", d.Name)
+	}
+
+	for i := range maxChromecasts {
+		advertise(net.IPv4(10, 2, byte(i>>8), byte(i)), 8009, "many")
+	}
+	ccMu.Lock()
+	total := len(chromeCastDevices)
+	ccMu.Unlock()
+	if total != maxChromecasts {
+		t.Fatalf("cache size = %d, want cap %d", total, maxChromecasts)
+	}
+
+	// The real device keeps answering; everything else goes quiet.
+	for range chromecastExpiryRounds + 1 {
+		advertise(net.IPv4(192, 168, 1, 30), 8009, "Renamed")
+		finishChromecastRound()
+	}
+	if _, ok := cached("192.168.1.30:8009"); !ok {
+		t.Fatal("answering Chromecast expired")
+	}
+	if _, ok := cached("192.168.1.66:9000"); ok {
+		t.Fatal("silent entry did not expire")
 	}
 }

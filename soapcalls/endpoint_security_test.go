@@ -133,7 +133,10 @@ func TestLoadDevicesFromPinnedLocation(t *testing.T) {
 	}{
 		{"relative endpoints", func(u string) string { return u + "/desc.xml" }, "127.0.0.1", description("", "/control"), false, 1},
 		{"literal URLBase on another port", func(u string) string { return u + "/desc.xml" }, "127.0.0.1", description("http://127.0.0.1:1/", "/control"), false, 1},
-		{"hostname control URL", func(u string) string { return u + "/desc.xml" }, "127.0.0.1", description("", "http://localhost:1/control"), true, 1},
+		// Discovery never contacts endpoints, so a hostname one is listed
+		// unresolved (.invalid would fail any lookup); selection re-checks it.
+		{"hostname control URL", func(u string) string { return u + "/desc.xml" }, "127.0.0.1", description("", "http://renderer.invalid:1/control"), false, 1},
+		{"literal control URL off the pin", func(u string) string { return u + "/desc.xml" }, "127.0.0.1", description("", "http://192.0.2.1:1/control"), true, 1},
 		{"location host differs from pin", func(u string) string { return u + "/desc.xml" }, "192.0.2.1", description("", "/control"), true, 0},
 		{"hostname location", func(u string) string { return strings.Replace(u, "127.0.0.1", "localhost", 1) + "/desc.xml" }, "127.0.0.1", description("", "/control"), true, 0},
 	}
@@ -158,5 +161,24 @@ func TestLoadDevicesFromPinnedLocation(t *testing.T) {
 				t.Fatalf("devices = %+v, want one device pinned to %s", devices, tc.pin)
 			}
 		})
+	}
+}
+
+// A custom CheckRedirect drops Go's default hop limit; a renderer must not be
+// able to keep one discovery fetch looping until the deadline.
+func TestRendererRedirectLoopIsBounded(t *testing.T) {
+	hits := 0
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		http.Redirect(w, r, srv.URL+"/again", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	if _, err := LoadDevicesFromPinnedLocation(context.Background(), srv.URL+"/desc.xml", netip.MustParseAddr("127.0.0.1")); err == nil {
+		t.Fatal("redirect loop produced devices")
+	}
+	if hits > maxRendererRedirects {
+		t.Fatalf("server hits = %d, want at most %d", hits, maxRendererRedirects)
 	}
 }

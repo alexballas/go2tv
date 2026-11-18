@@ -60,7 +60,7 @@ var (
 	serverOptions = servermode.RegisterCLIFlags(flag.CommandLine)
 
 	errNoCombi       = errors.New("can't combine -l with other flags")
-	errJSONNeedsList = errors.New("-json requires -l")
+	errJSONNeedsList = errors.New("-json requires -l and no other list flag")
 )
 
 type flagResults struct {
@@ -104,11 +104,15 @@ func run(crash *crashlog.Session) error {
 	if err := serverOptions.Validate(flag.CommandLine); err != nil {
 		return err
 	}
-	devices.SetRelaxedDiscovery(serverOptions.RelaxedDiscovery)
+	relaxedSet := false
+	flag.Visit(func(f *flag.Flag) { relaxedSet = relaxedSet || f.Name == "relaxed-discovery" })
+	if relaxedSet {
+		devices.SetRelaxedDiscovery(serverOptions.RelaxedDiscovery)
+	}
 	if serverOptions.Server {
 		return servermode.Run(exitCTX, serverOptions.Config(version), os.Stdout)
 	}
-	flagRes, err := processflags()
+	flagRes, err := processflags(exitCTX)
 	if err != nil {
 		return err
 	}
@@ -208,6 +212,9 @@ func run(crash *crashlog.Session) error {
 	}
 
 	if flagRes.gui {
+		if relaxedSet {
+			gui.SetRelaxedDiscoveryOverride(serverOptions.RelaxedDiscovery)
+		}
 		scr := gui.NewFyneScreen(version, crash)
 		gui.Start(exitCTX, scr)
 		return nil
@@ -612,7 +619,7 @@ func (m listDevicesModel) View() string {
 	return s.String()
 }
 
-func listFlagFunction() error {
+func listFlagFunction(ctx context.Context) error {
 	flagsEnabled := 0
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name != "relaxed-discovery" && f.Name != "json" {
@@ -625,8 +632,8 @@ func listFlagFunction() error {
 	}
 
 	if *jsonPtr {
-		err := devicelist.WriteJSON(context.Background(), os.Stdout)
-		devicelist.WriteHiddenNotice(os.Stderr)
+		hidden, err := devicelist.WriteJSON(ctx, os.Stdout)
+		devicelist.WriteHiddenNotice(os.Stderr, hidden)
 		return err
 	}
 
@@ -634,19 +641,19 @@ func listFlagFunction() error {
 	_, err := p.Run()
 
 	// Printed after the full-screen list exits so it cannot garble it.
-	devicelist.WriteHiddenNotice(os.Stderr)
+	devicelist.WriteHiddenNotice(os.Stderr, devices.HiddenSSDPLocations())
 
 	return err
 }
 
-func processflags() (*flagResults, error) {
+func processflags(ctx context.Context) (*flagResults, error) {
 	res := &flagResults{}
 	if checkVerflag() {
 		res.exit = true
 		return res, nil
 	}
 
-	if *jsonPtr && !*listPtr {
+	if *jsonPtr && (!*listPtr || *listAudioPtr) {
 		return nil, fmt.Errorf("checkflags error: %w", errJSONNeedsList)
 	}
 
@@ -668,7 +675,7 @@ func processflags() (*flagResults, error) {
 		return nil, fmt.Errorf("checkflags error: %w", err)
 	}
 
-	list, err := checkLflag()
+	list, err := checkLflag(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("checkflags error: %w", err)
 	}
@@ -752,9 +759,9 @@ func checkTflag(res *flagResults) error {
 	return nil
 }
 
-func checkLflag() (bool, error) {
+func checkLflag(ctx context.Context) (bool, error) {
 	if *listPtr {
-		if err := listFlagFunction(); err != nil {
+		if err := listFlagFunction(ctx); err != nil {
 			return false, fmt.Errorf("checkLflag error: %w", err)
 		}
 		return true, nil

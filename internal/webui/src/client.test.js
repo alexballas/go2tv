@@ -367,8 +367,12 @@ test("disables transcoding when FFmpeg is unavailable", async () => {
   assert.equal(ids["burn-subtitles"].title, "FFmpeg unavailable");
 });
 
-test("shows the relaxed discovery notice only when the server enabled it", async () => {
-  for (const enabled of [false, true]) {
+test("shows the discovery notice from startup state only", async () => {
+  for (const [managed, relaxed, want] of [
+    [false, false, ""],
+    [false, true, "Relaxed DLNA discovery is on (set at startup)."],
+    [true, false, "Discovery policy is set in the desktop app."],
+  ]) {
     const { ids, env } = fixture(),
       bootstrapFetch = env.fetch;
     env.fetch = async (url) => {
@@ -379,14 +383,16 @@ test("shows the relaxed discovery notice only when the server enabled it", async
             ok: true,
             json: async () => ({
               ...body,
-              features: { ...body.features, relaxed_discovery: enabled },
+              managed_by_gui: managed,
+              features: { ...body.features, relaxed_discovery: relaxed },
             }),
           }
         : response;
     };
     startClient(env);
     await settle();
-    assert.equal(ids["relaxed-discovery"].hidden, !enabled);
+    assert.equal(ids["relaxed-discovery"].hidden, want === "");
+    if (want) assert.equal(ids["relaxed-discovery"].textContent, want);
   }
 });
 

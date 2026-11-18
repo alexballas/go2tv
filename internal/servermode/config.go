@@ -70,7 +70,7 @@ func RegisterCLIFlags(flags *flag.FlagSet) *CLIOptions {
 	flags.StringVar(&options.FFmpegPath, "ffmpeg", "", "ffmpeg command or path for transcoding.")
 	flags.Var(&options.MediaRoots, "media-root", "Allowed media directory (repeatable; required with -server).")
 	flags.Var(&options.AllowedOrigins, "allowed-origin", "Allowed Web origin, including scheme/host/port (repeatable).")
-	flags.BoolVar(&options.RelaxedDiscovery, "relaxed-discovery", false, "Also list DLNA devices whose reply comes from another address (relays, multi-homed devices). Lets any LAN device make go2tv send requests to other addresses.")
+	flags.BoolVar(&options.RelaxedDiscovery, "relaxed-discovery", false, "Also list DLNA devices behind relays, with several addresses or on public-IP networks. Lets any LAN device make go2tv send requests to other addresses.")
 	return options
 }
 

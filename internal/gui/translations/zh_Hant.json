@@ -349,6 +349,7 @@
     "Choose subtitle file…": "選擇字幕檔案…",
     "Off": "關閉",
     "Relaxed Device Discovery": "寬鬆裝置探索",
-    "Finds devices behind relays or with several addresses. Any device on your network can then make Go2TV contact other addresses. Leave off unless a device is missing.": "可探索位於中繼之後或具有多個位址的裝置。啟用後，網路中的任何裝置都能讓 Go2TV 連線其他位址。除非有裝置遺漏，否則請保持關閉。",
-    "Hidden in last scan": "上次掃描中隱藏"
+    "Hidden in last scan": "上次掃描中隱藏",
+    "Finds devices behind relays, with several addresses or on public-IP networks. Any device on your network can then make Go2TV contact other addresses. Leave off unless a device is missing.": "可探索位於中繼之後、具有多個位址或位於公網 IP 網路中的裝置。啟用後，網路中的任何裝置都能讓 Go2TV 連線其他位址。除非有裝置遺漏，否則請保持關閉。",
+    "Set by -relaxed-discovery for this session": "本次工作階段由 -relaxed-discovery 設定"
 }

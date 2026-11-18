@@ -21,7 +21,6 @@ import (
 	"github.com/alexballas/refyne/v2/widget"
 	xfilepicker "github.com/alexballas/xfilepicker/dialog"
 
-	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/internal/mediamodel"
 )
 
@@ -185,8 +184,6 @@ func (s *FyneScreen) remoteConfigFromPrefs() (remoteSessionConfig, error) {
 		FFmpegPath: s.ffmpegPath,
 		Debug:      prefs.Bool(remoteDebugPref),
 		Version:    s.version,
-
-		RelaxedDiscovery: devices.RelaxedDiscovery(),
 	}
 	if prefs.StringWithFallback(remoteExposurePref, remoteExposureLocal) == remoteExposureLAN {
 		address := prefs.String(remoteAddressPref)

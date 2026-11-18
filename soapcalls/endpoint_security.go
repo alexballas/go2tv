@@ -14,6 +14,7 @@ import (
 )
 
 const (
+	maxRendererRedirects       = 10
 	maxRendererDescriptionBody = 2 << 20
 	maxSOAPResponseBody        = 1 << 20
 )
@@ -68,7 +69,8 @@ func rendererHTTPClient(location *url.URL, pinned net.IP) *http.Client {
 		Timeout:   soapHTTPClientTimeout,
 		Transport: base,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) == 0 || !strings.EqualFold(req.URL.Hostname(), via[0].URL.Hostname()) {
+			// A custom CheckRedirect drops Go's default hop limit, so restore it.
+			if len(via) == 0 || len(via) >= maxRendererRedirects || !strings.EqualFold(req.URL.Hostname(), via[0].URL.Hostname()) {
 				return http.ErrUseLastResponse
 			}
 			return nil
@@ -77,9 +79,13 @@ func rendererHTTPClient(location *url.URL, pinned net.IP) *http.Client {
 }
 
 // validateServiceEndpoints requires every service endpoint to sit on pinned.
-// With literalOnly, endpoint hosts must be IP literals and are never resolved,
-// so an unsolicited description cannot trigger DNS lookups. The port is free:
-// many renderers serve control on a different port than the description.
+// With literalOnly (discovery, before the user selects anything), hostnames are
+// never resolved, so an unsolicited description cannot trigger DNS lookups: an
+// IP-literal endpoint must equal pinned, and a hostname endpoint is accepted
+// unchecked because discovery never contacts endpoints. Selection re-runs
+// DMRextractor, which resolves and checks every endpoint before any SOAP call.
+// The port is free: many renderers serve control on a different port than the
+// description.
 func validateServiceEndpoints(ctx context.Context, pinned net.IP, extracted *DMRextracted, literalOnly bool) error {
 	values := []string{extracted.AvtransportControlURL, extracted.AvtransportEventSubURL, extracted.RenderingControlURL, extracted.ConnectionManagerURL}
 	for _, raw := range values {
@@ -95,7 +101,7 @@ func validateServiceEndpoints(ctx context.Context, pinned net.IP, extracted *DMR
 		case literalOnly:
 			ip := net.ParseIP(u.Hostname())
 			if ip == nil {
-				return errors.New("service endpoint host not an IP literal")
+				continue
 			}
 			ips = []net.IP{ip}
 		default:

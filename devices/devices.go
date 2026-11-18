@@ -141,12 +141,14 @@ func discoveryLimitedSummaryf(key string, format string, args ...any) {
 	if state.repeats > 0 {
 		_, _ = fmt.Fprintf(discoveryLogOutput, "discovery: %s repeated=%d\n", key, state.repeats)
 	}
+	printed := line
 	if state.skipped > 0 {
-		line += fmt.Sprintf(" skipped_changes=%d", state.skipped)
+		printed += fmt.Sprintf(" skipped_changes=%d", state.skipped)
 	}
 
+	// Keep the unsuffixed line so an unchanged line still de-duplicates.
 	discoverySummaryState[key] = summaryState{lastLine: line, lastAt: now}
-	_, _ = fmt.Fprintf(discoveryLogOutput, "discovery: %s\n", line)
+	_, _ = fmt.Fprintf(discoveryLogOutput, "discovery: %s\n", printed)
 }
 
 func formatSummaryList(values []string, maxItems int) string {
@@ -268,7 +270,8 @@ func LoadSSDPservicesContext(ctx context.Context, delay int) ([]Device, error) {
 	relaxed := RelaxedDiscovery()
 	sel := selectLocations(list, relaxed)
 	logSelection(sel, relaxed)
-	hiddenLocations.Store(int64(sel.hidden))
+	setHiddenSSDPLocations(sel.hidden)
+	noticeHidden(len(sel.hidden))
 
 	var (
 		allDevices []deviceEntry
@@ -339,14 +342,15 @@ func LoadSSDPservicesContext(ctx context.Context, delay int) ([]Device, error) {
 	if len(deviceList) == 0 {
 		discoverySummaryf(
 			"LoadSSDPservices summary",
-			"LoadSSDPservices summary listen_addr=%q ssdp_results=%d unique_locations=%d relaxed=%t rejected_invalid=%d source_mismatch=%d hidden=%d capped=%d load_errors=%d error_hosts=%q filtered=%d duplicate_names=%d unnamed=%d returned=0 devices=%q",
+			"LoadSSDPservices summary listen_addr=%q ssdp_results=%d unique_locations=%d relaxed=%t rejected=%d restricted=%d hidden=%d relaxed_fetched=%d capped=%d load_errors=%d error_hosts=%q filtered=%d duplicate_names=%d unnamed=%d returned=0 devices=%q",
 			addrString,
 			len(list),
 			sel.seen,
 			relaxed,
 			len(sel.rejected),
-			len(sel.mismatched),
-			sel.hidden,
+			len(sel.restricted),
+			len(sel.hidden),
+			sel.relaxedFetched,
 			sel.capped,
 			loadErrors,
 			formatSummaryList(loadErrorHosts, 3),
@@ -369,14 +373,15 @@ func LoadSSDPservicesContext(ctx context.Context, delay int) ([]Device, error) {
 	}
 	discoverySummaryf(
 		"LoadSSDPservices summary",
-		"LoadSSDPservices summary listen_addr=%q ssdp_results=%d unique_locations=%d relaxed=%t rejected_invalid=%d source_mismatch=%d hidden=%d capped=%d load_errors=%d error_hosts=%q filtered=%d duplicate_names=%d unnamed=%d returned=%d devices=%q",
+		"LoadSSDPservices summary listen_addr=%q ssdp_results=%d unique_locations=%d relaxed=%t rejected=%d restricted=%d hidden=%d relaxed_fetched=%d capped=%d load_errors=%d error_hosts=%q filtered=%d duplicate_names=%d unnamed=%d returned=%d devices=%q",
 		addrString,
 		len(list),
 		sel.seen,
 		relaxed,
 		len(sel.rejected),
-		len(sel.mismatched),
-		sel.hidden,
+		len(sel.restricted),
+		len(sel.hidden),
+		sel.relaxedFetched,
 		sel.capped,
 		loadErrors,
 		formatSummaryList(loadErrorHosts, 3),

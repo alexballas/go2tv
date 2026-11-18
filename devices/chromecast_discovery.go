@@ -26,6 +26,15 @@ const (
 	chromecastPollIntervalSlow = 4 * time.Second
 	// Interface refresh cadence for add/remove changes
 	chromecastIfaceRefreshInterval = 20 * time.Second
+	// mDNS answers are unsolicited, so the cache is bounded: a host advertising
+	// many entries cannot crowd out real devices, which share one IP per device
+	// plus its cast groups on other ports.
+	maxChromecastsPerIP = 8
+	maxChromecasts      = 256
+	// Entries unseen for this many completed mDNS query rounds expire. Counting
+	// rounds, not wall time, keeps a suspended Android app from emptying the
+	// list on resume.
+	chromecastExpiryRounds = 150
 )
 
 var (
@@ -33,12 +42,15 @@ var (
 	// map key: "host:port" address, value: castDevice struct
 	chromeCastDevices = make(map[string]castDevice)
 	ccMu              sync.Mutex
-	ccWarmupOnce      sync.Once
+	// ccRound counts completed mDNS query rounds; guarded by ccMu.
+	ccRound      uint64
+	ccWarmupOnce sync.Once
 )
 
 type castDevice struct {
 	Name        string
 	IsAudioOnly bool
+	lastRound   uint64
 }
 
 func upsertChromecastFromMDNSEntry(entry *mdns.ServiceEntry) {
@@ -50,8 +62,9 @@ func upsertChromecastFromMDNSEntry(entry *mdns.ServiceEntry) {
 	}
 	// mDNS answers are unsolicited input like SSDP replies; never cache (and so
 	// never liveness-dial) an address discovery must not contact.
-	if ip, ok := netip.AddrFromSlice(entry.AddrV4); !ok || blockedDiscoveryAddr(ip) {
-		discoveryDebugf("Chromecast discovery rejected addr=%v reason=%q", entry.AddrV4, "address denied")
+	ip, ok := netip.AddrFromSlice(entry.AddrV4)
+	if !ok || blockedDiscoveryAddr(ip) {
+		discoveryLimitedSummaryf("Chromecast discovery rejected", "Chromecast discovery rejected addr=%v reason=%q", entry.AddrV4, "address denied")
 		return
 	}
 
@@ -80,9 +93,15 @@ func upsertChromecastFromMDNSEntry(entry *mdns.ServiceEntry) {
 
 	ccMu.Lock()
 	prev, existed := chromeCastDevices[address]
+	if !existed && chromecastCacheFull(ip.Unmap().String()) {
+		ccMu.Unlock()
+		discoveryLimitedSummaryf("Chromecast discovery rejected", "Chromecast discovery rejected addr=%q reason=%q", address, "cache limit")
+		return
+	}
 	chromeCastDevices[address] = castDevice{
 		Name:        friendlyName,
 		IsAudioOnly: isAudioOnly,
+		lastRound:   ccRound,
 	}
 	ccMu.Unlock()
 	feed.publish()
@@ -94,6 +113,41 @@ func upsertChromecastFromMDNSEntry(entry *mdns.ServiceEntry) {
 
 	if prev.Name != friendlyName || prev.IsAudioOnly != isAudioOnly {
 		discoveryDebugf("Chromecast discovery updated name=%q addr=%q audio_only=%t", friendlyName, address, isAudioOnly)
+	}
+}
+
+// chromecastCacheFull reports whether a new entry for host would exceed the
+// cache bounds. Updates to cached entries are always allowed. Caller holds ccMu.
+func chromecastCacheFull(host string) bool {
+	if len(chromeCastDevices) >= maxChromecasts {
+		return true
+	}
+	perIP := 0
+	for address := range chromeCastDevices {
+		if h, _, err := net.SplitHostPort(address); err == nil && h == host {
+			perIP++
+		}
+	}
+	return perIP >= maxChromecastsPerIP
+}
+
+// finishChromecastRound records a completed mDNS query round and expires
+// entries unseen for chromecastExpiryRounds rounds. It only clears entries once
+// their advertiser has gone quiet; it does not stop one that keeps advertising.
+func finishChromecastRound() {
+	ccMu.Lock()
+	ccRound++
+	var expired []string
+	for address, device := range chromeCastDevices {
+		if ccRound-device.lastRound > chromecastExpiryRounds {
+			delete(chromeCastDevices, address)
+			expired = append(expired, address)
+		}
+	}
+	ccMu.Unlock()
+	if len(expired) > 0 {
+		discoveryDebugf("Chromecast discovery expired addrs=%q", expired)
+		feed.publish()
 	}
 }
 
@@ -144,6 +198,7 @@ func warmupChromecastCacheContext(ctx context.Context, timeout time.Duration) {
 
 	close(entriesCh)
 	<-doneCh
+	finishChromecastRound()
 	feed.notifyChromecastScan()
 
 	ccMu.Lock()
@@ -216,6 +271,7 @@ func discoverChromecastDevices(ctx context.Context) {
 				withMulticastGuard(func() {
 					_ = mdns.Query(params)
 				})
+				finishChromecastRound()
 				feed.notifyChromecastScan()
 
 				pollTimer.Reset(currentChromecastPollInterval())

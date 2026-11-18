@@ -283,18 +283,15 @@ func TestManagedChildArgs(t *testing.T) {
 		AllowedOrigins: []string{"http://192.168.1.10:9666"},
 		FFmpegPath:     "/tools/ffmpeg",
 		Debug:          true,
-
-		RelaxedDiscovery: true,
 	}
 	got := managedChildArgs(cfg)
-	want := []string{"-server", "-managed-child", "-listen", "192.168.1.10:9666", "-media-root", "/media/a", "-media-root", "/media/b", "-allowed-origin", "http://192.168.1.10:9666", "-ffmpeg", "/tools/ffmpeg", "-relaxed-discovery", "-debug"}
+	want := []string{"-server", "-managed-child", "-listen", "192.168.1.10:9666", "-media-root", "/media/a", "-media-root", "/media/b", "-allowed-origin", "http://192.168.1.10:9666", "-ffmpeg", "/tools/ffmpeg", "-debug"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("args = %q, want %q", got, want)
 	}
 	cfg.Debug = false
-	cfg.RelaxedDiscovery = false
-	if got := managedChildArgs(cfg); slices.Contains(got, "-debug") || slices.Contains(got, "-relaxed-discovery") {
-		t.Fatalf("args include disabled flags: %q", got)
+	if got := managedChildArgs(cfg); slices.Contains(got, "-debug") {
+		t.Fatalf("args include -debug when disabled: %q", got)
 	}
 }
 

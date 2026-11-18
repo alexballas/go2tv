@@ -73,10 +73,7 @@ type remoteSessionConfig struct {
 	AllowedOrigins []string
 	FFmpegPath     string
 	Debug          bool
-	// RelaxedDiscovery only drives the child's read-only Web UI notice; the
-	// child never scans, the GUI process does.
-	RelaxedDiscovery bool
-	Version          string
+	Version        string
 }
 
 type remoteSessionSnapshot struct {
@@ -280,9 +277,6 @@ func managedChildArgs(cfg remoteSessionConfig) []string {
 	}
 	if cfg.FFmpegPath != "" {
 		args = append(args, "-ffmpeg", cfg.FFmpegPath)
-	}
-	if cfg.RelaxedDiscovery {
-		args = append(args, "-relaxed-discovery")
 	}
 	if cfg.Debug {
 		args = append(args, "-debug")

@@ -21,14 +21,17 @@ func TestWriteJSON(t *testing.T) {
 	errNetwork := errors.New("network down")
 
 	type round struct {
-		found []devices.Device
-		err   error
+		found  []devices.Device
+		err    error
+		hidden []string
 	}
 	tt := []struct {
-		name    string
-		rounds  []round
-		want    []Entry
-		wantErr bool
+		name       string
+		rounds     []round
+		cancelled  bool
+		want       []Entry
+		wantErr    bool
+		wantHidden []string
 	}{
 		{
 			name:   "second round fills a lost reply",
@@ -53,23 +56,53 @@ func TestWriteJSON(t *testing.T) {
 			rounds:  []round{{err: errNetwork}, {err: errNetwork}},
 			wantErr: true,
 		},
+		{
+			name:   "clean empty round beats a failed one",
+			rounds: []round{{err: errNetwork}, {err: devices.ErrNoDeviceAvailable}},
+			want:   []Entry{},
+		},
+		{
+			name:      "cancelled with nothing found",
+			rounds:    []round{{err: devices.ErrNoDeviceAvailable}, {err: devices.ErrNoDeviceAvailable}},
+			cancelled: true,
+			wantErr:   true,
+		},
+		{
+			// The stderr notice must not lose a relay seen only in round one.
+			name: "hidden URLs are the union across rounds",
+			rounds: []round{
+				{found: []devices.Device{tv}, hidden: []string{"http://192.168.1.50:49152/d.xml"}},
+				{found: []devices.Device{tv}, hidden: []string{"http://192.168.1.60:1400/d.xml"}},
+			},
+			want:       []Entry{{Name: tv.Name, URL: tv.Addr, Type: devices.DeviceTypeDLNA}},
+			wantHidden: []string{"http://192.168.1.50:49152/d.xml", "http://192.168.1.60:1400/d.xml"},
+		},
 	}
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			orig := scan
-			t.Cleanup(func() { scan = orig })
+			origScan, origHidden := scan, hidden
+			t.Cleanup(func() { scan, hidden = origScan, origHidden })
 			calls := 0
 			scan = func(context.Context, int) ([]devices.Device, error) {
 				r := tc.rounds[calls]
 				calls++
 				return r.found, r.err
 			}
+			hidden = func() []string { return tc.rounds[calls-1].hidden }
 
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if tc.cancelled {
+				cancel()
+			}
 			var out bytes.Buffer
-			err := WriteJSON(context.Background(), &out)
-			if calls != scanRounds {
+			gotHidden, err := WriteJSON(ctx, &out)
+			if !tc.cancelled && calls != scanRounds {
 				t.Fatalf("scan rounds = %d, want %d", calls, scanRounds)
+			}
+			if !slices.Equal(gotHidden, tc.wantHidden) {
+				t.Fatalf("hidden = %q, want %q", gotHidden, tc.wantHidden)
 			}
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)
