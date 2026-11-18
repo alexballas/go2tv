@@ -24,10 +24,10 @@ import (
 // LOCATION URLs that any LAN host can put in an SSDP reply. Every LOCATION must
 // be a canonical IPv4 literal (no DNS, no IPv6: the search is IPv4-only, so an
 // IPv6 LOCATION can never match its sender) of at most maxLocationBytes
-// printable ASCII bytes, and its address must not be loopback, unspecified,
-// multicast, broadcast or a cloud metadata address. The fetch dials only that
-// address. URLs the user supplies (-t) and post-selection paths do not go
-// through this policy.
+// printable ASCII bytes with no spaces or brackets, and its address must not be
+// loopback, unspecified, multicast, broadcast or a cloud metadata address. The
+// fetch dials only that address. URLs the user supplies (-t) and
+// post-selection paths do not go through this policy.
 //
 // Strict mode (default) fetches a LOCATION only if its address is private
 // (RFC 1918, link-local or CGNAT) and equals the UDP source of a reply that
@@ -250,9 +250,10 @@ type locationSelection struct {
 	// hidden lists restricted locations left unfetched because the scan was
 	// strict; relaxed discovery would fetch them.
 	hidden []string
-	// relaxedFetched counts restricted locations selected in relaxed mode.
-	relaxedFetched int
-	capped         int
+	// relaxedSelected counts restricted locations selected for fetching in
+	// relaxed mode; whether each fetch then succeeds is a load result.
+	relaxedSelected int
+	capped          int
 }
 
 // selectLocations applies the discovery policy to SSDP replies and returns the
@@ -344,12 +345,12 @@ func selectLocations(list []ssdp.Service, relaxed bool) locationSelection {
 	perSource := make(map[netip.Addr]int)
 	for _, c := range passed {
 		if len(sel.selected) >= maxLocationsPerScan || perSource[c.addr] >= maxLocationsPerSource ||
-			c.restricted && sel.relaxedFetched >= maxRelaxedPerScan {
+			c.restricted && sel.relaxedSelected >= maxRelaxedPerScan {
 			sel.capped++
 			continue
 		}
 		if c.restricted {
-			sel.relaxedFetched++
+			sel.relaxedSelected++
 		}
 		perSource[c.addr]++
 		sel.selected = append(sel.selected, c.discoveredLocation)
@@ -383,7 +384,7 @@ func logSelection(sel locationSelection, relaxed bool) {
 			}
 			items = append(items, fmt.Sprintf("%q ip=%s from=%s renderer=%t reason=%q", r.location, r.addr, strings.Join(sources, ","), r.renderer, r.reason))
 		}
-		discoveryLimitedSummaryf("SSDP strict restriction", "SSDP strict restriction relaxed=%t action=%s count=%d fetched=%d items=%s", relaxed, action, len(items), sel.relaxedFetched, formatLogItems(items))
+		discoveryLimitedSummaryf("SSDP strict restriction", "SSDP strict restriction relaxed=%t action=%s count=%d selected=%d items=%s", relaxed, action, len(items), sel.relaxedSelected, formatLogItems(items))
 	}
 }
 

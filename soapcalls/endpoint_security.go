@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"slices"
 	"strconv"
@@ -99,11 +100,13 @@ func validateServiceEndpoints(ctx context.Context, pinned net.IP, extracted *DMR
 		var ips []net.IP
 		switch {
 		case literalOnly:
-			ip := net.ParseIP(u.Hostname())
-			if ip == nil {
+			// netip parses zoned IPv6 literals (fe80::1%eth0) that net.ParseIP
+			// rejects; they are literals, not hostnames, so they must match too.
+			addr, err := netip.ParseAddr(u.Hostname())
+			if err != nil {
 				continue
 			}
-			ips = []net.IP{ip}
+			ips = []net.IP{net.IP(addr.WithZone("").Unmap().AsSlice())}
 		default:
 			ips, err = net.DefaultResolver.LookupIP(ctx, "ip", u.Hostname())
 			if err != nil {

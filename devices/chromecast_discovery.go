@@ -268,10 +268,15 @@ func discoverChromecastDevices(ctx context.Context) {
 				if iface != nil {
 					params.Interface = iface
 				}
+				var queryErr error
 				withMulticastGuard(func() {
-					_ = mdns.Query(params)
+					queryErr = mdns.Query(params)
 				})
-				finishChromecastRound()
+				// A failing interface must not age the cache: only completed
+				// queries count towards expiry.
+				if queryErr == nil {
+					finishChromecastRound()
+				}
 				feed.notifyChromecastScan()
 
 				pollTimer.Reset(currentChromecastPollInterval())

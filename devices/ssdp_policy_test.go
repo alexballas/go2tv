@@ -63,7 +63,7 @@ func TestSelectLocationsPolicy(t *testing.T) {
 		{"percent-encoded path", "http://192.168.1.26:8080/dev/%E5%AE%A2%E5%8E%85.xml", udpFrom("192.168.1.26"), fetched},
 		{"autoip link-local", "http://169.254.10.5:8080/desc.xml", udpFrom("169.254.10.5"), fetched},
 		{"cgnat", "http://100.64.0.5:8080/desc.xml", udpFrom("100.64.0.5"), fetched},
-		{"longest allowed location", longPath(maxLocationBytes), udpFrom("192.168.1.42"), fetched},
+		{"longest allowed location", longPath(1024), udpFrom("192.168.1.42"), fetched},
 
 		{"public-IP LAN renderer", "http://192.0.2.1:8080/desc.xml", udpFrom("192.0.2.1"), hiddenStrict},
 		{"multi-homed renderer", "http://192.168.1.50:49152/description.xml", udpFrom("192.168.1.51"), hiddenStrict},
@@ -71,7 +71,7 @@ func TestSelectLocationsPolicy(t *testing.T) {
 		{"nil source", "http://192.168.1.31:8080/desc.xml", nil, hiddenStrict},
 
 		{"public target from another host", "http://8.8.8.8/x", udpFrom("192.168.1.99"), rejected},
-		{"location too long", longPath(maxLocationBytes + 1), udpFrom("192.168.1.42"), rejected},
+		{"location too long", longPath(1025), udpFrom("192.168.1.42"), rejected},
 		{"hostname", "http://tv.example/desc.xml", udpFrom("192.168.1.32"), rejected},
 		{"localhost", "http://localhost:8080/desc.xml", udpFrom("127.0.0.1"), rejected},
 		{"octal loopback", "http://0177.0.0.1:8080/desc.xml", udpFrom("127.0.0.1"), rejected},
