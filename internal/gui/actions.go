@@ -3242,7 +3242,9 @@ func startRTMPServer(screen *FyneScreen) {
 			err := server.Wait()
 			// Only react if we didn't intentionally stop it
 			if stopRTMPServerIfCurrent(screen, server) {
-				check(screen, formatRTMPServerWaitError(err))
+				if err != nil {
+					check(screen, formatRTMPServerWaitError(err))
+				}
 				stopAction(screen)
 			}
 		}()
@@ -3301,10 +3303,6 @@ func clearRTMPCheck(screen *FyneScreen) {
 }
 
 func formatRTMPServerWaitError(err error) error {
-	if err == nil {
-		return errors.New(lang.L("RTMP server stopped unexpectedly"))
-	}
-
 	if rtmp.IsListenTimeoutError(err) {
 		timeoutMinutes := rtmp.ListenTimeoutSeconds / 60
 		return errors.New(fmt.Sprintf(

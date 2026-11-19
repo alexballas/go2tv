@@ -6,7 +6,9 @@ import (
 	"testing"
 
 	ttwidget "github.com/alexballas/fyne-tooltip/widget"
+	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/lang"
+	"github.com/alexballas/refyne/v2/test"
 	"github.com/alexballas/refyne/v2/widget"
 
 	"go2tv.app/go2tv/v2/soapcalls"
@@ -69,6 +71,10 @@ func TestCastButtonTooltipExplainsMissingRequirement(t *testing.T) {
 func TestPlaybackReadinessKeepsLayoutAndDisablesIdleActions(t *testing.T) {
 	s, _ := newMediaCardTestScreen(t)
 	s.playbackStatus = newPlaybackStatusLabel("")
+	renderer := test.WidgetRenderer(s.playbackStatus)
+	renderer.Layout(fyne.NewSize(400, 30))
+	s.playbackStatus.MinSize()
+	caption := renderer.Objects()[0].(*widget.RichText)
 	s.Stop = widget.NewButton("Stop", nil)
 	s.SlideBar = newTappableSlider(s)
 	s.tvdata = &soapcalls.TVPayload{ControlURL: "http://renderer/control", Seekable: true}
@@ -87,8 +93,8 @@ func TestPlaybackReadinessKeepsLayoutAndDisablesIdleActions(t *testing.T) {
 			s.selectedDevice = devType{addr: "device", name: "Living Room"}
 			s.State, s.mediafile = tc.state, tc.media
 			s.refreshPlaybackReadiness()
-			if s.playbackStatus.Text != tc.status+" · Living Room" {
-				t.Fatalf("status=%q", s.playbackStatus.Text)
+			if got := caption.Segments[0].Textual(); got != tc.status+" · Living Room" {
+				t.Fatalf("rendered status=%q, want %q", got, tc.status+" · Living Room")
 			}
 			if s.Stop.Disabled() == tc.active || s.SlideBar.Disabled() == tc.active {
 				t.Fatal("idle/active actions incorrect")
