@@ -24,6 +24,8 @@ const (
 	dlnaDiscoveryDelay   = 2
 	dlnaDiscoveryPause   = time.Second
 	dlnaLocationTimeout  = 1500 * time.Millisecond
+	ssdpFirstPort        = 3339
+	ssdpPortCount        = 100
 )
 
 type Device struct {
@@ -32,11 +34,8 @@ type Device struct {
 	Addr        string
 	Type        string
 	IsAudioOnly bool
-}
-
-type deviceEntry struct {
-	name string
-	addr string
+	// RequiresRelaxedDiscovery marks a renderer discovered from a restricted SSDP location.
+	RequiresRelaxedDiscovery bool
 }
 
 var ErrNoDeviceAvailable = errors.New("loadSSDPservices: No available Media Renderers")
@@ -44,9 +43,6 @@ var ErrNoDeviceAvailable = errors.New("loadSSDPservices: No available Media Rend
 var (
 	ssdpSearch            = ssdp.Search
 	loadDiscoveredDevices = soapcalls.LoadDevicesFromPinnedLocation
-	interfaceAddrs        = net.Interfaces
-	ifaceAddrLookup       = func(iface net.Interface) ([]net.Addr, error) { return iface.Addrs() }
-	listenUDP             = net.ListenUDP
 	discoveryLogOutput    io.Writer
 	discoveryLogMu        sync.Mutex
 	discoverySummaryState = make(map[string]summaryState)
@@ -212,56 +208,27 @@ func LoadSSDPservicesContext(ctx context.Context, delay int) ([]Device, error) {
 	var loadErrors, filteredDevices, unnamedDevices, dupNameCount int
 	loadErrorHosts := make([]string, 0)
 
-	port := 3339
-
-	var (
-		address *net.UDPAddr
-		tries   int
-	)
-
-	for address == nil && tries < 100 {
-		addr := net.UDPAddr{
-			Port: port,
-			IP:   net.ParseIP("0.0.0.0"),
-		}
-
-		if err := checkInterfacesForPort(port); err != nil {
-			port++
-			tries++
-			continue
-		}
-
-		address = &addr
-	}
-
-	var addrString string
-	if address != nil {
-		addrString = address.String()
-	}
-
 	type searchResult struct {
 		list []ssdp.Service
+		addr string
 		err  error
 	}
 	search := make(chan searchResult, 1)
 	go func() {
-		list, err := ssdpSearch(ssdp.All, delay, addrString)
-		search <- searchResult{list: list, err: err}
+		list, addr, err := searchSSDP(ctx, delay)
+		search <- searchResult{list: list, addr: addr, err: err}
 	}()
-	var (
-		list []ssdp.Service
-		err  error
-	)
+	var scan searchResult
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case result := <-search:
-		list, err = result.list, result.err
+	case scan = <-search:
 	}
-	if err != nil {
-		discoveryDebugf("LoadSSDPservices search error: %v", err)
-		return nil, fmt.Errorf("LoadSSDPservices search error: %w", err)
+	if scan.err != nil {
+		discoveryDebugf("LoadSSDPservices search error: %v", scan.err)
+		return nil, fmt.Errorf("LoadSSDPservices search error: %w", scan.err)
 	}
+	list, addrString := scan.list, scan.addr
 
 	// Collect unique locations that pass the discovery policy (a single location
 	// may have multiple embedded devices). ST values only order candidates:
@@ -274,7 +241,7 @@ func LoadSSDPservicesContext(ctx context.Context, delay int) ([]Device, error) {
 	noticeHidden(len(sel.hidden))
 
 	var (
-		allDevices []deviceEntry
+		allDevices []Device
 		resultsMu  sync.Mutex
 		wg         sync.WaitGroup
 		sem        = make(chan struct{}, 10)
@@ -309,33 +276,38 @@ func LoadSSDPservicesContext(ctx context.Context, delay int) ([]Device, error) {
 				if strings.TrimSpace(dev.FriendlyName) == "" {
 					unnamedDevices++
 				}
-				allDevices = append(allDevices, deviceEntry{name: name, addr: loc})
+				allDevices = append(allDevices, Device{
+					Name:                     name,
+					Addr:                     loc,
+					Type:                     DeviceTypeDLNA,
+					RequiresRelaxedDiscovery: d.restricted,
+				})
 			}
 		})
 	}
 	wg.Wait()
 
 	// Handle duplicate names
-	deviceList := make(map[string]string)
+	deviceList := make(map[string]Device)
 	dupNames := make(map[string]int)
 	for _, dev := range allDevices {
-		fn := dev.name
+		fn := dev.Name
 		_, exists := dupNames[fn]
 		dupNames[fn]++
 		if exists {
-			fn = fn + " (" + dev.addr + ")"
+			fn = fn + " (" + dev.Addr + ")"
 		}
 
-		deviceList[fn] = dev.addr
+		deviceList[fn] = dev
 	}
 
 	for fn, c := range dupNames {
 		if c > 1 {
 			dupNameCount++
-			loc := deviceList[fn]
+			dev := deviceList[fn]
 			delete(deviceList, fn)
-			fn = fn + " (" + loc + ")"
-			deviceList[fn] = loc
+			fn = fn + " (" + dev.Addr + ")"
+			deviceList[fn] = dev
 		}
 	}
 
@@ -364,12 +336,9 @@ func LoadSSDPservicesContext(ctx context.Context, delay int) ([]Device, error) {
 
 	// Convert map to Device slice with proper type
 	result := make([]Device, 0, len(deviceList))
-	for name, addr := range deviceList {
-		result = append(result, Device{
-			Name: name,
-			Addr: addr,
-			Type: DeviceTypeDLNA,
-		})
+	for name, dev := range deviceList {
+		dev.Name = name
+		result = append(result, dev)
 	}
 	discoverySummaryf(
 		"LoadSSDPservices summary",
@@ -464,9 +433,14 @@ func setDLNADevices(devices []Device) {
 
 func getDLNADevices() []Device {
 	dlnaMu.RLock()
-	defer dlnaMu.RUnlock()
-
-	return slices.Clone(dlnaDevices)
+	result := slices.Clone(dlnaDevices)
+	dlnaMu.RUnlock()
+	if !RelaxedDiscovery() {
+		result = slices.DeleteFunc(result, func(d Device) bool {
+			return d.RequiresRelaxedDiscovery
+		})
+	}
+	return result
 }
 
 func isDLNADeviceCastable(dev *soapcalls.DMRextracted) bool {
@@ -557,48 +531,24 @@ func sortDevices(devices []Device) {
 	})
 }
 
-func checkInterfacesForPort(port int) error {
-	interfaces, err := interfaceAddrs()
-	if err != nil {
-		return err
-	}
-
-	var lastErr error
-
-	for _, iface := range interfaces {
-		addrs, err := ifaceAddrLookup(iface)
-		if err != nil {
-			lastErr = err
-			continue
+// Try each port with the discovery socket itself. An interface-specific
+// probe can succeed even when the wildcard address is already in use.
+func searchSSDP(ctx context.Context, delay int) ([]ssdp.Service, string, error) {
+	for offset := range ssdpPortCount {
+		if err := ctx.Err(); err != nil {
+			return nil, "", err
 		}
-
-		for _, addr := range addrs {
-			ip, _, _ := net.ParseCIDR(addr.String())
-
-			if ip.IsLoopback() || ip.To4() == nil {
-				continue
-			}
-
-			udpAddr := net.UDPAddr{
-				Port: port,
-				IP:   ip,
-			}
-
-			udpConn, err := listenUDP("udp4", &udpAddr)
-			if err != nil {
-				lastErr = err
-				continue
-			}
-
-			udpConn.Close()
-			return nil
-
+		addr := fmt.Sprintf("0.0.0.0:%d", ssdpFirstPort+offset)
+		list, err := ssdpSearch(ssdp.All, delay, addr)
+		var listenErr *net.OpError
+		if !stderrors.As(err, &listenErr) || listenErr.Op != "listen" {
+			return list, addr, err
 		}
 	}
-
-	if lastErr != nil {
-		return lastErr
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
 	}
-
-	return nil
+	const ephemeral = "0.0.0.0:0"
+	list, err := ssdpSearch(ssdp.All, delay, ephemeral)
+	return list, ephemeral, err
 }

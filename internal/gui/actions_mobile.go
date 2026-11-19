@@ -1028,25 +1028,6 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 	go teardown()
 }
 
-func getDevices() ([]devType, error) {
-	deviceList, err := devices.LoadAllDevices()
-	if err != nil {
-		return nil, fmt.Errorf("getDevices error: %w", err)
-	}
-
-	var guiDeviceList []devType
-	for _, dev := range deviceList {
-		guiDeviceList = append(guiDeviceList, devType{
-			name:        dev.Name,
-			addr:        dev.Addr,
-			deviceType:  dev.Type,
-			isAudioOnly: dev.IsAudioOnly,
-		})
-	}
-
-	return guiDeviceList, nil
-}
-
 func volumeAction(screen *FyneScreen, up bool) {
 	w := screen.Current
 	selectedDevice := screen.selectedDevice

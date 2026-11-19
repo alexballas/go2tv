@@ -330,9 +330,13 @@ func TestSelectLocationsRelaxedCaps(t *testing.T) {
 func TestRelaxedDiscoveryAppliesToNextScan(t *testing.T) {
 	origSearch := ssdpSearch
 	origLoad := loadDiscoveredDevices
+	dlnaMu.RLock()
+	origDLNA := dlnaDevices
+	dlnaMu.RUnlock()
 	t.Cleanup(func() {
 		ssdpSearch = origSearch
 		loadDiscoveredDevices = origLoad
+		setDLNADevices(origDLNA)
 		SetRelaxedDiscovery(false)
 	})
 
@@ -355,6 +359,9 @@ func TestRelaxedDiscoveryAppliesToNextScan(t *testing.T) {
 	}
 	for _, tc := range tt {
 		SetRelaxedDiscovery(tc.relaxed)
+		if !tc.relaxed && slices.ContainsFunc(SnapshotAllDevices(), func(d Device) bool { return d.Addr == relayed }) {
+			t.Fatal("cached relayed device remains visible after switching to strict mode")
+		}
 		devs, _ := LoadSSDPservices(1)
 		if got := len(devs) == 1; got != tc.wantDevice {
 			t.Fatalf("relaxed=%v: device listed = %v, want %v", tc.relaxed, got, tc.wantDevice)
@@ -362,6 +369,7 @@ func TestRelaxedDiscoveryAppliesToNextScan(t *testing.T) {
 		if got := len(HiddenSSDPLocations()); got != tc.wantHidden {
 			t.Fatalf("relaxed=%v: hidden = %d, want %d", tc.relaxed, got, tc.wantHidden)
 		}
+		setDLNADevices(devs)
 	}
 }
 

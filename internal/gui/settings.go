@@ -361,7 +361,7 @@ func settingsWindow(s *FyneScreen) fyne.CanvasObject {
 		newSettingsField(lang.L("RTMP Stream Key"), rtmpKeyContainer),
 	)
 
-	relaxedDiscovery, refreshRelaxedDiscovery := newRelaxedDiscoverySetting()
+	relaxedDiscovery, refreshRelaxedDiscovery := newRelaxedDiscoverySetting(s)
 	s.refreshDiscoverySetting = refreshRelaxedDiscovery
 
 	advancedSettings := container.NewVBox(

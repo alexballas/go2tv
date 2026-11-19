@@ -66,8 +66,7 @@ func (p *FyneScreen) refreshMPRISProgress() {
 
 // FyneScreen .
 type FyneScreen struct {
-	// refreshDiscoverySetting updates the relaxed-discovery hint when the
-	// Settings tab is shown.
+	// refreshDiscoverySetting updates the hint as discovery results change.
 	refreshDiscoverySetting  func()
 	workers                  backgroundWork
 	radioSong                radioSongState
@@ -250,13 +249,6 @@ const (
 	droppedMediaModeReplace droppedMediaMode = iota
 	droppedMediaModeAppend
 )
-
-type devType struct {
-	name        string
-	addr        string
-	deviceType  string
-	isAudioOnly bool
-}
 
 func (s *FyneScreen) updateFFmpegDependentCheckTooltips() {
 	if s == nil {
@@ -797,6 +789,7 @@ func (p *FyneScreen) updateScreenState(a string) {
 		}
 		p.refreshAudioPicker()
 		p.updateActiveDeviceView()
+		p.clearHiddenDeviceSelection()
 		p.refreshPlaybackReadiness()
 		p.refreshQueueStateUI()
 	})

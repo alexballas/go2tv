@@ -94,7 +94,11 @@ var (
 // public addresses. This restores devices behind proxying relays, with several
 // addresses or on public-IP LANs, but lets any LAN host make go2tv contact
 // other addresses. Every other rule stays.
-func SetRelaxedDiscovery(enabled bool) { relaxedDiscovery.Store(enabled) }
+func SetRelaxedDiscovery(enabled bool) {
+	if relaxedDiscovery.Swap(enabled) != enabled {
+		feed.publish()
+	}
+}
 
 // RelaxedDiscovery reports whether relaxed discovery is on.
 func RelaxedDiscovery() bool { return relaxedDiscovery.Load() }
@@ -223,8 +227,9 @@ func hasRendererEvidence(srv ssdp.Service) bool {
 }
 
 type discoveredLocation struct {
-	location string
-	addr     netip.Addr
+	location   string
+	addr       netip.Addr
+	restricted bool
 }
 
 type rejectedLocation struct {
@@ -264,11 +269,10 @@ type locationSelection struct {
 func selectLocations(list []ssdp.Service, relaxed bool) locationSelection {
 	type candidate struct {
 		discoveredLocation
-		err        error
-		matched    bool
-		renderer   bool
-		sources    []netip.Addr
-		restricted bool
+		err      error
+		matched  bool
+		renderer bool
+		sources  []netip.Addr
 	}
 	var (
 		order []*candidate

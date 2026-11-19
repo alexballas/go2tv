@@ -54,7 +54,7 @@ func applyRelaxedDiscoveryPref() {
 // description URLs the last scan hid. The count is only shown where the user
 // looks for it: a pop-up would let any LAN device nudge users into turning the
 // protection off.
-func newRelaxedDiscoverySetting() (fyne.CanvasObject, func()) {
+func newRelaxedDiscoverySetting(s *FyneScreen) (fyne.CanvasObject, func()) {
 	hint := widget.NewLabel("")
 	hint.Wrapping = fyne.TextWrapWord
 	hint.SizeName = theme.SizeNameCaptionText
@@ -73,7 +73,9 @@ func newRelaxedDiscoverySetting() (fyne.CanvasObject, func()) {
 		if n := len(devices.HiddenSSDPLocations()); n > 0 && !devices.RelaxedDiscovery() {
 			text += "\n" + lang.L("Hidden in last scan") + ": " + strconv.Itoa(n)
 		}
-		hint.SetText(text)
+		if hint.Text != text {
+			hint.SetText(text)
+		}
 	}
 	check.OnChanged = func(enabled bool) {
 		if syncing {
@@ -85,6 +87,7 @@ func newRelaxedDiscoverySetting() (fyne.CanvasObject, func()) {
 		relaxedOverrideMu.Unlock()
 		fyne.CurrentApp().Preferences().SetBool(relaxedDiscoveryPref, enabled)
 		devices.SetRelaxedDiscovery(enabled)
+		s.clearHiddenDeviceSelection()
 		refresh()
 	}
 	refresh()

@@ -119,13 +119,8 @@ type FyneScreen struct {
 	hotkeysSuspendCount    int32
 	Crash                  *crashlog.Session
 	PendingCrashPath       string
-}
 
-type devType struct {
-	name        string
-	addr        string
-	deviceType  string
-	isAudioOnly bool
+	refreshDiscoverySetting func()
 }
 
 // Start .
@@ -254,6 +249,7 @@ func (p *FyneScreen) updateScreenState(a string) {
 		if p.SlideBar != nil {
 			p.SlideBar.Enable()
 		}
+		p.clearHiddenDeviceSelection()
 		p.refreshPlaybackStatus()
 		p.refreshAudioPicker()
 		p.tracks.refresh(p)
