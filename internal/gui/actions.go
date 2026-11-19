@@ -1589,7 +1589,8 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 	if screen.ExternalMediaURL.Checked {
 		artworkAsset = screen.resolveCurrentRadioArtwork(startupCtx, screen.MediaText.Text)
 		mediaURL = screen.MediaText.Text
-		screen.mediafile = mediaURL
+		// Runs off the UI goroutine; the UI reads mediafile (canTraverse).
+		fyne.DoAndWait(func() { screen.mediafile = mediaURL })
 
 		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
 			mediaType = "application/vnd.apple.mpegurl"
