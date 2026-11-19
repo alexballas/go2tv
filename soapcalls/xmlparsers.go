@@ -124,10 +124,10 @@ func LoadDevicesFromLocation(ctx context.Context, dmrurl string) ([]*DMRextracte
 }
 
 // LoadDevicesFromPinnedLocation is LoadDevicesFromLocation without DNS: the
-// location host must be an IP literal equal to pinned, and service endpoints
-// in the description must be IP literals equal to pinned too. The caller is
-// responsible for choosing pinned (discovery uses the SSDP reply source); this
-// function does not judge whether the address itself is acceptable.
+// location host must be an IP literal equal to pinned, and IP-literal service
+// endpoints must equal pinned too; hostname endpoints are left unresolved (see
+// validateServiceEndpoints). The caller chooses pinned; this function does not
+// judge whether the address itself is acceptable.
 func LoadDevicesFromPinnedLocation(ctx context.Context, location string, pinned netip.Addr) ([]*DMRextracted, error) {
 	u, err := url.Parse(location)
 	if err != nil || u.Host == "" || u.User != nil || u.Scheme != "http" && u.Scheme != "https" {
@@ -145,7 +145,8 @@ func LoadDevicesFromPinnedLocation(ctx context.Context, location string, pinned 
 }
 
 // fetchDevices GETs a description through a client that only dials pinned and
-// returns its AVTransport devices whose service endpoints stay on pinned.
+// returns its AVTransport devices whose service endpoints pass
+// validateServiceEndpoints.
 func fetchDevices(ctx context.Context, raw string, location *url.URL, pinned net.IP, literalOnly bool) ([]*DMRextracted, error) {
 	client := rendererHTTPClient(location, pinned)
 	req, err := http.NewRequestWithContext(ctx, "GET", raw, nil)

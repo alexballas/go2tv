@@ -40,8 +40,9 @@ type Config struct {
 	FFmpegPath     string
 	Version        string
 	Debug          bool
-	// RelaxedDiscovery is shown read-only in the Web UI; the discovery setting
-	// itself is process-wide (devices.SetRelaxedDiscovery).
+	// RelaxedDiscovery drives the startup warning, the hidden-count notice and
+	// the read-only Web UI notice; the discovery setting itself is process-wide
+	// (devices.SetRelaxedDiscovery).
 	RelaxedDiscovery bool
 	// ManagedChild marks a GUI-managed child run: discovery arrives over the
 	// parent stdin pipe and managed event frames are emitted on stdout.
@@ -55,7 +56,7 @@ type CLIOptions struct {
 	FFmpegPath     string
 	MediaRoots     Strings
 	AllowedOrigins Strings
-	// RelaxedDiscovery is shared by -l and -server.
+	// RelaxedDiscovery is shared by -l, -server and the desktop GUI.
 	RelaxedDiscovery bool
 	// ManagedChild is bound to the hidden -managed-child flag, which only the
 	// desktop go2tv binary registers.

@@ -92,7 +92,7 @@ func logStartup(log *serverLogger, cfg Config, actualListen string) {
 }
 
 // discoveryLogWriter routes device discovery logs, including SSDP policy
-// rejections and source mismatches, to the server debug log.
+// rejections and strict-mode restrictions, to the server debug log.
 type discoveryLogWriter struct{ log *serverLogger }
 
 func (w discoveryLogWriter) Write(p []byte) (int, error) {

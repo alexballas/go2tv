@@ -123,6 +123,8 @@ func TestLoadDevicesFromPinnedLocation(t *testing.T) {
 			fmt.Sprintf(avtService, controlURL) + `</serviceList></device></root>`
 	}
 
+	atServer := func(u string) string { return u + "/desc.xml" }
+
 	tt := []struct {
 		name     string
 		location func(srvURL string) string
@@ -131,15 +133,15 @@ func TestLoadDevicesFromPinnedLocation(t *testing.T) {
 		wantErr  bool
 		wantHits int
 	}{
-		{"relative endpoints", func(u string) string { return u + "/desc.xml" }, "127.0.0.1", description("", "/control"), false, 1},
-		{"literal URLBase on another port", func(u string) string { return u + "/desc.xml" }, "127.0.0.1", description("http://127.0.0.1:1/", "/control"), false, 1},
+		{"relative endpoints", atServer, "127.0.0.1", description("", "/control"), false, 1},
+		{"literal URLBase on another port", atServer, "127.0.0.1", description("http://127.0.0.1:1/", "/control"), false, 1},
 		// Discovery never contacts endpoints, so a hostname one is listed
 		// unresolved (.invalid would fail any lookup); selection re-checks it.
-		{"hostname control URL", func(u string) string { return u + "/desc.xml" }, "127.0.0.1", description("", "http://renderer.invalid:1/control"), false, 1},
-		{"literal control URL off the pin", func(u string) string { return u + "/desc.xml" }, "127.0.0.1", description("", "http://192.0.2.1:1/control"), true, 1},
+		{"hostname control URL", atServer, "127.0.0.1", description("", "http://renderer.invalid:1/control"), false, 1},
+		{"literal control URL off the pin", atServer, "127.0.0.1", description("", "http://192.0.2.1:1/control"), true, 1},
 		// A zoned IPv6 literal is a literal, not a hostname; it is off the pin.
-		{"scoped ipv6 control URL", func(u string) string { return u + "/desc.xml" }, "127.0.0.1", description("", "http://[fe80::1%25eth0]:1/control"), true, 1},
-		{"location host differs from pin", func(u string) string { return u + "/desc.xml" }, "192.0.2.1", description("", "/control"), true, 0},
+		{"scoped ipv6 control URL", atServer, "127.0.0.1", description("", "http://[fe80::1%25eth0]:1/control"), true, 1},
+		{"location host differs from pin", atServer, "192.0.2.1", description("", "/control"), true, 0},
 		{"hostname location", func(u string) string { return strings.Replace(u, "127.0.0.1", "localhost", 1) + "/desc.xml" }, "127.0.0.1", description("", "/control"), true, 0},
 	}
 

@@ -161,11 +161,10 @@ func TestSelectLocationsCaps(t *testing.T) {
 		name         string
 		replies      []ssdp.Service
 		wantSelected int
-		wantTV       bool
 	}{
-		{"per-source cap", append(floodOneSource(100, ssdp.RootDevice), realTV), maxLocationsPerSource + 1, true},
-		{"per-scan cap keeps earlier renderer", append([]ssdp.Service{realTV}, floodManySources(300, renderer)...), maxLocationsPerScan, true},
-		{"renderer evidence beats earlier noise", append(floodManySources(300, ssdp.RootDevice), realTV), maxLocationsPerScan, true},
+		{"per-source cap", append(floodOneSource(100, ssdp.RootDevice), realTV), maxLocationsPerSource + 1},
+		{"per-scan cap keeps earlier renderer", append([]ssdp.Service{realTV}, floodManySources(300, renderer)...), maxLocationsPerScan},
+		{"renderer evidence beats earlier noise", append(floodManySources(300, ssdp.RootDevice), realTV), maxLocationsPerScan},
 	}
 
 	for _, tc := range tt {
@@ -175,8 +174,8 @@ func TestSelectLocationsCaps(t *testing.T) {
 			if len(got) != tc.wantSelected {
 				t.Fatalf("selected %d locations, want %d", len(got), tc.wantSelected)
 			}
-			if slices.Contains(got, realTV.Location) != tc.wantTV {
-				t.Fatalf("real TV selected = %v, want %v", !tc.wantTV, tc.wantTV)
+			if !slices.Contains(got, realTV.Location) {
+				t.Fatal("real TV not selected")
 			}
 			if sel.capped != sel.seen-len(got) {
 				t.Fatalf("capped = %d, want %d", sel.capped, sel.seen-len(got))
@@ -366,7 +365,7 @@ func TestRelaxedDiscoveryAppliesToNextScan(t *testing.T) {
 	}
 }
 
-// Mismatch and rejection lines carry attacker-chosen text, so they must not
+// Restriction and rejection lines carry attacker-chosen text, so they must not
 // repeat every scan nor change faster than once per interval.
 func TestDiscoveryLimitedSummaryfBoundsChanges(t *testing.T) {
 	var buf bytes.Buffer

@@ -58,6 +58,9 @@ const (
 	maxLoggedItems        = 8
 	maxLoggedSources      = 4
 	unknownDeviceName     = "Unknown Device"
+
+	reasonSourceMismatch = "reply source differs from location host"
+	reasonPublicAddress  = "public address"
 )
 
 var (
@@ -67,9 +70,6 @@ var (
 	errLocationAddrDenied = errors.New("location address denied")
 	errLocationTooLong    = errors.New("location too long")
 	errPublicMismatch     = errors.New("public address and reply source differs")
-
-	reasonSourceMismatch = "reply source differs from location host"
-	reasonPublicAddress  = "public address"
 
 	relaxedDiscovery atomic.Bool
 	hiddenMu         sync.Mutex
