@@ -179,3 +179,32 @@ func TestActiveDeviceViewHiddenDuringRemoteSession(t *testing.T) {
 		t.Fatal("expected notice hidden after remote session stops")
 	}
 }
+
+func TestHiddenRendererStaysControllableUntilCastEnds(t *testing.T) {
+	app := test.NewApp()
+	t.Cleanup(app.Quit)
+	mode := devices.RelaxedDiscovery()
+	t.Cleanup(func() { devices.SetRelaxedDiscovery(mode) })
+	devices.SetRelaxedDiscovery(false)
+
+	relayed := devType{name: "Relayed", addr: "http://10.0.0.9:49152/desc.xml", deviceType: devices.DeviceTypeDLNA, requiresRelaxedDiscovery: true}
+	s := &FyneScreen{
+		selectedDevice:      relayed,
+		selectedDeviceType:  devices.DeviceTypeDLNA,
+		renderingControlURL: "http://10.0.0.9:49152/rc",
+		activeDevice:        relayed,
+		State:               "Playing",
+	}
+	s.DeviceList = newDeviceList(s, &[]devType{})
+
+	s.clearHiddenDeviceSelection()
+	if s.selectedDevice.addr != relayed.addr || s.renderingControlURL == "" {
+		t.Fatal("strict mode dropped the renderer mid-cast; volume would stop working")
+	}
+
+	s.clearActiveDevice()
+	s.updateScreenState("Stopped")
+	if s.selectedDevice.addr != "" || s.renderingControlURL != "" {
+		t.Fatalf("hidden renderer still selected after cast ended: %+v", s.selectedDevice)
+	}
+}

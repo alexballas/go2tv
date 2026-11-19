@@ -30,6 +30,7 @@ import (
 	"go2tv.app/go2tv/v2/internal/cliartwork"
 	"go2tv.app/go2tv/v2/internal/crashlog"
 	"go2tv.app/go2tv/v2/internal/devicecolors"
+	"go2tv.app/go2tv/v2/internal/devicelist"
 	"go2tv.app/go2tv/v2/internal/gui"
 	"go2tv.app/go2tv/v2/internal/interactive"
 	"go2tv.app/go2tv/v2/internal/playback"
@@ -51,13 +52,15 @@ var (
 	burnSubtitlesPtr      = flag.Bool("burn-subtitles", false, "Burn Chromecast subtitles when transcoding (compatibility fallback).")
 	noTorrentSubtitlesPtr = flag.Bool("no-torrent-subtitles", false, "Disable automatic embedded torrent subtitles.")
 	listPtr               = flag.Bool("l", false, "List available devices (Smart TVs and Chromecasts).")
+	jsonPtr               = flag.Bool("json", false, "With -l: scan once, print devices as JSON and exit.")
 	audioTrackPtr         = flag.Int("a", 0, "Audio track number to cast (from -la output). Non-default tracks stream through ffmpeg.")
 	listAudioPtr          = flag.Bool("la", false, "List the audio tracks of the -v media file.")
 
 	versionPtr    = flag.Bool("version", false, "Print version.")
 	serverOptions = servermode.RegisterCLIFlags(flag.CommandLine)
 
-	errNoCombi = errors.New("can't combine -l with other flags")
+	errNoCombi       = errors.New("can't combine -l with other flags")
+	errJSONNeedsList = errors.New("-json requires -l and no other list flag")
 )
 
 type flagResults struct {
@@ -101,10 +104,15 @@ func run(crash *crashlog.Session) error {
 	if err := serverOptions.Validate(flag.CommandLine); err != nil {
 		return err
 	}
+	relaxedSet := false
+	flag.Visit(func(f *flag.Flag) { relaxedSet = relaxedSet || f.Name == "relaxed-discovery" })
+	if relaxedSet {
+		devices.SetRelaxedDiscovery(serverOptions.RelaxedDiscovery)
+	}
 	if serverOptions.Server {
 		return servermode.Run(exitCTX, serverOptions.Config(version), os.Stdout)
 	}
-	flagRes, err := processflags()
+	flagRes, err := processflags(exitCTX)
 	if err != nil {
 		return err
 	}
@@ -204,6 +212,9 @@ func run(crash *crashlog.Session) error {
 	}
 
 	if flagRes.gui {
+		if relaxedSet {
+			gui.SetRelaxedDiscoveryOverride(serverOptions.RelaxedDiscovery)
+		}
 		scr := gui.NewFyneScreen(version, crash)
 		gui.Start(exitCTX, scr)
 		return nil
@@ -608,27 +619,42 @@ func (m listDevicesModel) View() string {
 	return s.String()
 }
 
-func listFlagFunction() error {
+func listFlagFunction(ctx context.Context) error {
 	flagsEnabled := 0
-	flag.Visit(func(*flag.Flag) {
-		flagsEnabled++
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name != "relaxed-discovery" && f.Name != "json" {
+			flagsEnabled++
+		}
 	})
 
 	if flagsEnabled > 1 {
 		return errNoCombi
 	}
 
+	if *jsonPtr {
+		hidden, err := devicelist.WriteJSON(ctx, os.Stdout)
+		devicelist.WriteHiddenNotice(os.Stderr, hidden)
+		return err
+	}
+
 	p := tea.NewProgram(listDevicesModel{})
 	_, err := p.Run()
+
+	// Printed after the full-screen list exits so it cannot garble it.
+	devicelist.WriteHiddenNotice(os.Stderr, devices.HiddenSSDPLocations())
 
 	return err
 }
 
-func processflags() (*flagResults, error) {
+func processflags(ctx context.Context) (*flagResults, error) {
 	res := &flagResults{}
 	if checkVerflag() {
 		res.exit = true
 		return res, nil
+	}
+
+	if *jsonPtr && (!*listPtr || *listAudioPtr) {
+		return nil, fmt.Errorf("checkflags error: %w", errJSONNeedsList)
 	}
 
 	if checkGUI() {
@@ -649,7 +675,7 @@ func processflags() (*flagResults, error) {
 		return nil, fmt.Errorf("checkflags error: %w", err)
 	}
 
-	list, err := checkLflag()
+	list, err := checkLflag(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("checkflags error: %w", err)
 	}
@@ -733,9 +759,9 @@ func checkTflag(res *flagResults) error {
 	return nil
 }
 
-func checkLflag() (bool, error) {
+func checkLflag(ctx context.Context) (bool, error) {
 	if *listPtr {
-		if err := listFlagFunction(); err != nil {
+		if err := listFlagFunction(ctx); err != nil {
 			return false, fmt.Errorf("checkLflag error: %w", err)
 		}
 		return true, nil

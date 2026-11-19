@@ -53,13 +53,15 @@ func TestCLIOptionsConfigIncludesFFmpeg(t *testing.T) {
 	}
 }
 
-func TestFFmpegFlagIsSharedByLegacyAndServerModes(t *testing.T) {
+// -ffmpeg and -relaxed-discovery apply to both modes; neither may be rejected
+// as a legacy flag conflicting with -server.
+func TestSharedFlagsWorkInLegacyAndServerModes(t *testing.T) {
 	for _, server := range []bool{false, true} {
 		t.Run(map[bool]string{false: "legacy", true: "server"}[server], func(t *testing.T) {
 			flags := flag.NewFlagSet("test", flag.ContinueOnError)
 			options := RegisterCLIFlags(flags)
 			flags.Bool("tc", false, "")
-			args := []string{"-ffmpeg", "/tools/ffmpeg"}
+			args := []string{"-ffmpeg", "/tools/ffmpeg", "-relaxed-discovery"}
 			if server {
 				args = append(args, "-server", "-media-root", "root")
 			} else {
@@ -73,6 +75,9 @@ func TestFFmpegFlagIsSharedByLegacyAndServerModes(t *testing.T) {
 			}
 			if options.FFmpegPath != "/tools/ffmpeg" {
 				t.Fatalf("FFmpegPath = %q", options.FFmpegPath)
+			}
+			if !options.RelaxedDiscovery || !options.Config("test").RelaxedDiscovery {
+				t.Fatal("-relaxed-discovery not carried into options and config")
 			}
 		})
 	}

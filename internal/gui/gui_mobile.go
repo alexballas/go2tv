@@ -119,13 +119,8 @@ type FyneScreen struct {
 	hotkeysSuspendCount    int32
 	Crash                  *crashlog.Session
 	PendingCrashPath       string
-}
 
-type devType struct {
-	name        string
-	addr        string
-	deviceType  string
-	isAudioOnly bool
+	refreshDiscoverySetting func()
 }
 
 // Start .
@@ -139,6 +134,7 @@ func Start(ctx context.Context, s *FyneScreen) {
 	// Install the Android multicast hooks before the discovery goroutines run
 	// their immediate first scans.
 	prepareBackgroundSession(s)
+	applyRelaxedDiscoveryPref()
 	devices.StartDiscovery(ctx)
 
 	settingsContent, refreshMobileSettings := mobileSettingsWindow(s)
@@ -253,6 +249,7 @@ func (p *FyneScreen) updateScreenState(a string) {
 		if p.SlideBar != nil {
 			p.SlideBar.Enable()
 		}
+		p.clearHiddenDeviceSelection()
 		p.refreshPlaybackStatus()
 		p.refreshAudioPicker()
 		p.tracks.refresh(p)

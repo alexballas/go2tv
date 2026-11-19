@@ -243,8 +243,12 @@
   .connection i[data-state="error"] {
     @apply bg-red-500 shadow-red-500/10;
   }
-  #pending {
+  #pending,
+  #relaxed-discovery {
     @apply text-xs text-amber-600 dark:text-amber-400;
+  }
+  #relaxed-discovery {
+    @apply mt-2;
   }
   #status {
     @apply text-[#6d6782] dark:text-[#c6c1d1];

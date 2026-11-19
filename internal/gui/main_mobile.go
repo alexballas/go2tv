@@ -7,6 +7,7 @@ import (
 	"errors"
 	"image/color"
 	"net/url"
+	"slices"
 	"sort"
 	"time"
 
@@ -305,6 +306,10 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
+		if data[id].hiddenByDiscoveryPolicy() {
+			list.UnselectAll()
+			return
+		}
 		defer s.refreshPlaybackReadiness()
 		defer list.Refresh()
 
@@ -480,20 +485,7 @@ func refreshDevList(s *FyneScreen, data *[]devType, discoveryStatus, noDevicesHi
 			}
 		})
 
-	outer:
-		for _, old := range oldDevices {
-			oldAddress, _ := url.Parse(old.addr)
-			for _, new := range datanew {
-				newAddress, _ := url.Parse(new.addr)
-				if newAddress.Host == oldAddress.Host {
-					continue outer
-				}
-			}
-
-			if utils.HostPortIsAlive(oldAddress.Host) {
-				datanew = append(datanew, old)
-			}
-		}
+		datanew = retainReachableDevices(datanew, oldDevices)
 
 		// Sort devices alphabetically for consistent ordering
 		sortDevTypeSlice(datanew)
@@ -519,26 +511,22 @@ func refreshDevList(s *FyneScreen, data *[]devType, discoveryStatus, noDevicesHi
 			}
 		}
 
-		foundIdx := -1
-		if selectedDeviceAddr != "" {
-			for n, a := range datanew {
-				if selectedDeviceAddr == a.addr {
-					foundIdx = n
-					break
-				}
-			}
-		}
-
 		fyne.DoAndWait(func() {
+			datanew = slices.DeleteFunc(datanew, devType.hiddenByDiscoveryPolicy)
 			*data = datanew
 			discoveryStatus.SetText(discoveryStatusText(len(datanew), true, discoveryErr))
 			noDevicesHint.Hidden = len(datanew) > 0
 			noDevicesHint.Refresh()
 
+			s.clearHiddenDeviceSelection()
+			foundIdx := slices.IndexFunc(datanew, func(d devType) bool {
+				return d.addr == s.selectedDevice.addr
+			})
 			state := s.getScreenState()
 			playing := state == "Playing" || state == "Paused"
 			switch {
-			case clearSelection, foundIdx < 0 && selectedDeviceAddr != "" && !playing:
+			case clearSelection && s.selectedDevice.addr == selectedDeviceAddr,
+				foundIdx < 0 && s.selectedDevice.addr != "" && !playing:
 				// A vanished device must not stay selected without a checked row.
 				s.clearDeviceSelection()
 			case foundIdx >= 0:
@@ -549,6 +537,9 @@ func refreshDevList(s *FyneScreen, data *[]devType, discoveryStatus, noDevicesHi
 
 			s.DeviceList.Refresh()
 			s.refreshPlaybackReadiness()
+			if s.refreshDiscoverySetting != nil {
+				s.refreshDiscoverySetting()
+			}
 		})
 	}
 }

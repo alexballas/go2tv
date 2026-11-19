@@ -1589,7 +1589,8 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 	if screen.ExternalMediaURL.Checked {
 		artworkAsset = screen.resolveCurrentRadioArtwork(startupCtx, screen.MediaText.Text)
 		mediaURL = screen.MediaText.Text
-		screen.mediafile = mediaURL
+		// Runs off the UI goroutine; the UI reads mediafile (canTraverse).
+		fyne.DoAndWait(func() { screen.mediafile = mediaURL })
 
 		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
 			mediaType = "application/vnd.apple.mpegurl"
@@ -2842,25 +2843,6 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 	}()
 }
 
-func getDevices() ([]devType, error) {
-	deviceList, err := devices.LoadAllDevices()
-	if err != nil {
-		return nil, fmt.Errorf("getDevices error: %w", err)
-	}
-
-	var guiDeviceList []devType
-	for _, dev := range deviceList {
-		guiDeviceList = append(guiDeviceList, devType{
-			name:        dev.Name,
-			addr:        dev.Addr,
-			deviceType:  dev.Type,
-			isAudioOnly: dev.IsAudioOnly,
-		})
-	}
-
-	return guiDeviceList, nil
-}
-
 func volumeAction(screen *FyneScreen, up bool) {
 	releasePermit, permitted := screen.rendererPermit(true)
 	if !permitted {
@@ -3241,7 +3223,9 @@ func startRTMPServer(screen *FyneScreen) {
 			err := server.Wait()
 			// Only react if we didn't intentionally stop it
 			if stopRTMPServerIfCurrent(screen, server) {
-				check(screen, formatRTMPServerWaitError(err))
+				if err != nil {
+					check(screen, formatRTMPServerWaitError(err))
+				}
 				stopAction(screen)
 			}
 		}()
@@ -3300,10 +3284,6 @@ func clearRTMPCheck(screen *FyneScreen) {
 }
 
 func formatRTMPServerWaitError(err error) error {
-	if err == nil {
-		return errors.New(lang.L("RTMP server stopped unexpectedly"))
-	}
-
 	if rtmp.IsListenTimeoutError(err) {
 		timeoutMinutes := rtmp.ListenTimeoutSeconds / 60
 		return errors.New(fmt.Sprintf(

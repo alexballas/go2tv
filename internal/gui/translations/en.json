@@ -347,5 +347,9 @@
     "Choose an external text subtitle file for this track.": "Choose an external text subtitle file for this track.",
     "From video": "From video",
     "Choose subtitle file…": "Choose subtitle file…",
-    "Off": "Off"
+    "Off": "Off",
+    "Relaxed Device Discovery": "Relaxed Device Discovery",
+    "Hidden in last scan": "Hidden in last scan",
+    "Finds devices behind relays, with several addresses or on public-IP networks. Any device on your network can then make Go2TV contact other addresses. Leave off unless a device is missing.": "Finds devices behind relays, with several addresses or on public-IP networks. Any device on your network can then make Go2TV contact other addresses. Leave off unless a device is missing.",
+    "Set by -relaxed-discovery for this session": "Set by -relaxed-discovery for this session"
 }

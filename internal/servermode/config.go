@@ -40,6 +40,10 @@ type Config struct {
 	FFmpegPath     string
 	Version        string
 	Debug          bool
+	// RelaxedDiscovery drives the startup warning, the hidden-count notice and
+	// the read-only Web UI notice; the discovery setting itself is process-wide
+	// (devices.SetRelaxedDiscovery).
+	RelaxedDiscovery bool
 	// ManagedChild marks a GUI-managed child run: discovery arrives over the
 	// parent stdin pipe and managed event frames are emitted on stdout.
 	ManagedChild bool
@@ -52,6 +56,8 @@ type CLIOptions struct {
 	FFmpegPath     string
 	MediaRoots     Strings
 	AllowedOrigins Strings
+	// RelaxedDiscovery is shared by -l, -server and the desktop GUI.
+	RelaxedDiscovery bool
 	// ManagedChild is bound to the hidden -managed-child flag, which only the
 	// desktop go2tv binary registers.
 	ManagedChild bool
@@ -65,6 +71,7 @@ func RegisterCLIFlags(flags *flag.FlagSet) *CLIOptions {
 	flags.StringVar(&options.FFmpegPath, "ffmpeg", "", "ffmpeg command or path for transcoding.")
 	flags.Var(&options.MediaRoots, "media-root", "Allowed media directory (repeatable; required with -server).")
 	flags.Var(&options.AllowedOrigins, "allowed-origin", "Allowed Web origin, including scheme/host/port (repeatable).")
+	flags.BoolVar(&options.RelaxedDiscovery, "relaxed-discovery", false, "Also list DLNA devices behind relays, with several addresses or on public-IP networks. Lets any LAN device make go2tv send requests to other addresses.")
 	return options
 }
 
@@ -76,7 +83,7 @@ func (o *CLIOptions) Validate(flags *flag.FlagSet) error {
 		case "server":
 		case "listen", "debug", "media-root", "allowed-origin", "managed-child":
 			serverOptionSet = true
-		case "ffmpeg":
+		case "ffmpeg", "relaxed-discovery":
 		default:
 			legacy = append(legacy, "-"+visited.Name)
 		}
@@ -86,13 +93,14 @@ func (o *CLIOptions) Validate(flags *flag.FlagSet) error {
 
 func (o *CLIOptions) Config(version string) Config {
 	return Config{
-		Listen:         o.Listen,
-		MediaRoots:     o.MediaRoots,
-		AllowedOrigins: o.AllowedOrigins,
-		FFmpegPath:     o.FFmpegPath,
-		Version:        version,
-		Debug:          o.Debug,
-		ManagedChild:   o.ManagedChild,
+		Listen:           o.Listen,
+		MediaRoots:       o.MediaRoots,
+		AllowedOrigins:   o.AllowedOrigins,
+		FFmpegPath:       o.FFmpegPath,
+		Version:          version,
+		Debug:            o.Debug,
+		RelaxedDiscovery: o.RelaxedDiscovery,
+		ManagedChild:     o.ManagedChild,
 	}
 }
 

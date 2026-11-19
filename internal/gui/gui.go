@@ -66,6 +66,8 @@ func (p *FyneScreen) refreshMPRISProgress() {
 
 // FyneScreen .
 type FyneScreen struct {
+	// refreshDiscoverySetting updates the hint as discovery results change.
+	refreshDiscoverySetting  func()
 	workers                  backgroundWork
 	radioSong                radioSongState
 	radio                    *radioView
@@ -248,13 +250,6 @@ const (
 	droppedMediaModeAppend
 )
 
-type devType struct {
-	name        string
-	addr        string
-	deviceType  string
-	isAudioOnly bool
-}
-
 func (s *FyneScreen) updateFFmpegDependentCheckTooltips() {
 	if s == nil {
 		return
@@ -344,6 +339,9 @@ func Start(ctx context.Context, s *FyneScreen) {
 	w.SetOnDropped(onDropFiles(s))
 
 	mainContent := container.NewScroll(container.NewPadded(mainWindow(s)))
+	// Before Settings is built, so the relaxed-discovery checkbox shows the
+	// session's real mode.
+	applyRelaxedDiscoveryPref()
 	settingsContent := container.NewScroll(container.NewPadded(settingsWindow(s)))
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Go2TV", mainContent),
@@ -353,6 +351,9 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	s.Hotkeys = true
 	tabs.OnSelected = func(t *container.TabItem) {
+		if t.Text == lang.L("Settings") && s.refreshDiscoverySetting != nil {
+			s.refreshDiscoverySetting()
+		}
 		if t.Text == "Go2TV" {
 			if s.renderGate.remoteLeaseHeld() {
 				// Remote session owns the renderer; availability is recomputed
@@ -788,6 +789,7 @@ func (p *FyneScreen) updateScreenState(a string) {
 		}
 		p.refreshAudioPicker()
 		p.updateActiveDeviceView()
+		p.clearHiddenDeviceSelection()
 		p.refreshPlaybackReadiness()
 		p.refreshQueueStateUI()
 	})
