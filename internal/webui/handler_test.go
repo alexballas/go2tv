@@ -543,6 +543,36 @@ func TestStrictEnvelopeVersionUnknownAndNesting(t *testing.T) {
 	}
 }
 
+func TestLibraryPlayRejectsEmptyFile(t *testing.T) {
+	h, lib, control, rootID := testHandler(t)
+	ctx := t.Context()
+	page, err := lib.Browse(rootID, "", "", 10)
+	if err != nil || len(page.Entries) != 1 {
+		t.Fatalf("browse: %#v %v", page, err)
+	}
+	entryID := page.Entries[0].ID
+	file, meta, err := lib.OpenMedia(rootID, entryID)
+	if err != nil {
+		t.Fatalf("open media: %v", err)
+	}
+	_ = file.Close()
+	if err := os.Truncate(meta.AbsolutePath(), 0); err != nil {
+		t.Fatalf("truncate media: %v", err)
+	}
+	payload, err := json.Marshal(map[string]string{"root_id": rootID, "entry_id": entryID})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	result, _ := h.command(ctx, envelope{ProtocolVersion: ProtocolVersion, Type: "library.play", ID: "play-empty", Payload: payload})
+	if result.Code != controller.CodeInvalid || result.Message != "media file is empty" {
+		t.Fatalf("play empty file = %#v", result)
+	}
+	snapshot, err := control.Snapshot(ctx)
+	if err != nil || len(snapshot.Queue) != 0 || snapshot.HasSession {
+		t.Fatalf("empty file mutated playback: %#v, %v", snapshot, err)
+	}
+}
+
 func TestCommandStableQueueIDsAndStrictPayload(t *testing.T) {
 	h, lib, control, rootID := testHandler(t)
 	page, err := lib.Browse(rootID, "", "", 10)

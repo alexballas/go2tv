@@ -32,6 +32,8 @@ const csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inl
 
 const maxArtworkRefs = controller.MaxQueueItems + 1
 
+var errEmptyMedia = errors.New("media file is empty")
+
 type Handler struct {
 	cfg          Config
 	hub          *hub
@@ -494,7 +496,7 @@ func (h *Handler) executeCommand(ctx context.Context, message envelope) controll
 		if message.Type == "library.play" || message.Type == "library.select_media" {
 			ref, err := h.mediaRef(ctx, p.RootID, p.EntryID)
 			if err != nil {
-				return invalid(message.ID)
+				return mediaRefError(message.ID, err)
 			}
 			if message.Type == "library.play" {
 				return h.cfg.Controller.QueueAndPlay(ctx, expectedMutation(message.ID, p.ExpectedRevision), ref)
@@ -534,7 +536,7 @@ func (h *Handler) executeCommand(ctx context.Context, message envelope) controll
 		}
 		ref, err := h.mediaRef(ctx, p.RootID, p.EntryID)
 		if err != nil {
-			return invalid(message.ID)
+			return mediaRefError(message.ID, err)
 		}
 		return h.cfg.Controller.AddQueueItem(ctx, controller.QueueAddRequest{Mutation: expectedMutation(message.ID, p.ExpectedRevision), Media: ref}).Result
 	case "queue.select":
@@ -785,6 +787,13 @@ func invalid(id string) controller.Result {
 	return controller.Result{RequestID: id, Code: controller.CodeInvalid, Message: "invalid request"}
 }
 
+func mediaRefError(id string, err error) controller.Result {
+	if errors.Is(err, errEmptyMedia) {
+		return controller.Result{RequestID: id, Code: controller.CodeInvalid, Message: errEmptyMedia.Error()}
+	}
+	return invalid(id)
+}
+
 func (h *Handler) mediaRef(_ context.Context, rootID, entryID string) (controller.MediaRef, error) {
 	return h.buildMediaRef(rootID, entryID)
 }
@@ -798,9 +807,12 @@ func (h *Handler) buildMediaRef(rootID, entryID string) (controller.MediaRef, er
 	if err != nil {
 		return controller.MediaRef{}, err
 	}
+	defer file.Close()
+	if meta.Size == 0 {
+		return controller.MediaRef{}, errEmptyMedia
+	}
 	kind := mediamodel.KindForPath(meta.Name)
 	mediaType := detectMediaType(file)
-	_ = file.Close()
 	open := h.opener(rootID, entryID)
 	return controller.MediaRef{RootID: rootID, ID: entryID, AbsolutePath: meta.AbsolutePath(), Name: meta.Name, Kind: kind, MIMEType: mediaType, OpenDirect: open, OpenTranscode: open, LoadArtwork: h.mediaArtworkLoader(rootID, entryID, meta.Name, kind)}, nil
 }

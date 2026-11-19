@@ -102,6 +102,9 @@ export function startClient(env) {
     libraryEntries = [],
     libraryParent = "",
     libraryCursor = "",
+    libraryRequest = 0,
+    libraryLoading = false,
+    libraryRetry = null,
     queueLimit = 1000,
     queueRenderKey = "",
     queueFocus = null,
@@ -949,12 +952,6 @@ export function startClient(env) {
   function playLibraryMedia(item) {
     const previousCurrentID =
       state.queue.find((queued) => queued.selected)?.id || "";
-    state.selected_media = true;
-    state.selected_media_name = item.name;
-    state.media_type = item.media_kind;
-    state.artwork_id = "";
-    renderPlayback();
-    renderLibrary();
     const requestID = send("library.play", {
       root_id: selectedRoot,
       entry_id: item.id,
@@ -1137,6 +1134,19 @@ export function startClient(env) {
         connected = false;
         torrents.connection(false);
         pending.clear();
+        clearTimeout(skipTimer);
+        skipTarget = seekPreview = null;
+        Object.assign(state, {
+          playback_state: "STOPPED",
+          has_session: false,
+          position: 0,
+          duration: 0,
+          active_device_id: "",
+          active_media_name: "",
+          active_live: false,
+          active_station: "",
+          stream_title: "",
+        });
         connection("Server stopped", "error");
         renderPending();
         break;
@@ -1305,6 +1315,21 @@ export function startClient(env) {
   }
   function renderLibrary() {
     library.replaceChildren();
+    if (libraryLoading || libraryRetry) {
+      renderAddVisible(0);
+      const status = document.createElement("li");
+      status.className = "empty-state";
+      if (libraryLoading) {
+        status.className += " loading-state";
+        status.textContent = "Loading folder…";
+      } else {
+        const message = document.createElement("p");
+        message.textContent = "Could not load this folder.";
+        status.append(message, button("Retry", libraryRetry));
+      }
+      library.append(status);
+      return;
+    }
     const entries = filteredEntries();
     renderAddVisible(playableEntries(entries).length);
     if (!entries.length) {
@@ -1423,21 +1448,21 @@ export function startClient(env) {
     library.append(nav);
   }
   async function browse(parentID = "", cursor = "", append = false) {
+    const request = ++libraryRequest;
     const query = new URLSearchParams({ root_id: selectedRoot, limit: "200" });
     if (parentID) query.set("parent_id", parentID);
     if (cursor) query.set("cursor", cursor);
     if (!append) {
-      library.replaceChildren();
-      const loading = document.createElement("li");
-      loading.className = "empty-state loading-state";
-      loading.textContent = "Loading folder…";
-      library.append(loading);
+      libraryLoading = true;
+      libraryRetry = null;
+      renderLibrary();
     }
     try {
       const response = await fetch(`/api/library?${query}`, {
           headers: { Accept: "application/json" },
         }),
         data = await response.json();
+      if (request !== libraryRequest) return;
       if (!response.ok) throw new Error(data.error || "Browse failed");
       libraryEntries = (
         append
@@ -1446,11 +1471,15 @@ export function startClient(env) {
       ).sort(byName);
       libraryParent = parentID;
       libraryCursor = data.cursor || "";
+      libraryLoading = false;
       renderBreadcrumbs();
       renderLibrary();
     } catch (error) {
+      if (request !== libraryRequest) return;
       showToast(error.message, "error");
-      if (append) renderLibrary();
+      libraryLoading = false;
+      if (!append) libraryRetry = () => browse(parentID);
+      renderLibrary();
     }
   }
   function sendPolicy(changed = "") {

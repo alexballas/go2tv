@@ -475,6 +475,16 @@ test("renders safe labels and sends playlist/play payloads", async () => {
     entry_id: "media-1",
     expected_revision: 4,
   });
+  ws.message({
+    protocol_version: 1,
+    type: "state.selection",
+    payload: {
+      revision: 5,
+      media: true,
+      media_name: "<movie>.mp4",
+      media_type: "video",
+    },
+  });
   assert.equal(ids.library.children[0].dataset.selected, "true");
   assert.equal(ids.library.children[0].ariaCurrent, "true");
   assert.equal(ids["subtitle-selection"].hidden, true);
@@ -616,8 +626,25 @@ test("reconnects after a server restart when assets are unchanged", async () => 
   await settle();
   const ws = FakeSocket.instances[0];
   ws.emit("open");
+  ws.message({
+    protocol_version: 1,
+    type: "state.snapshot",
+    payload: {
+      playback_state: "PLAYING",
+      has_session: true,
+      position: 25,
+      active_live: true,
+      stream_title: "Live song",
+    },
+  });
+  assert.equal(ids["playback-state"].textContent, "Playing");
+  assert.equal(ids["live-timeline"].dataset.active, "true");
+  assert.equal(ids["stream-title"].hidden, false);
   ws.message({ protocol_version: 1, type: "server.shutdown", payload: {} });
   assert.equal(ids.status.textContent, "Server stopped");
+  assert.equal(ids["playback-state"].textContent, "Stopped");
+  assert.equal(ids["live-timeline"].dataset.active, "false");
+  assert.equal(ids["stream-title"].hidden, true);
   ws.close();
   assert.equal(ids.status.textContent, "Server stopped");
   timers.at(-1)();
@@ -905,6 +932,16 @@ test("shows selected names and silently retries revision conflicts", async () =>
   await settle();
   const ws = FakeSocket.instances[0];
   ids.library.children[0].children[1].children[0].emit("click");
+  ws.message({
+    protocol_version: 1,
+    type: "state.selection",
+    payload: {
+      revision: 4,
+      media: true,
+      media_name: "<movie>.mp4",
+      media_type: "video",
+    },
+  });
   assert.equal(ids["media-selected"].textContent, "<movie>.mp4");
   ws.message({
     protocol_version: 1,
@@ -1617,6 +1654,45 @@ test("bulk add badge caps its display at 999+", async () => {
   ids["add-visible"].emit("click");
   assert.equal(ws.sent[0].payload.entry_ids.length, 1000);
   assert.equal(ws.sent[0].payload.entry_ids[0], "id-0");
+});
+
+test("a failed folder load can be retried without reloading the page", async () => {
+  const { ids, env } = fixture();
+  const fetch = env.fetch;
+  let fail = true;
+  env.fetch = async (url) => {
+    if (fail && url.startsWith("/api/library")) throw new Error("offline");
+    return fetch(url);
+  };
+  startClient(env);
+  await settle();
+  const [message, retry] = ids.library.children[0].children;
+  assert.equal(message.textContent, "Could not load this folder.");
+  assert.equal(retry.textContent, "Retry");
+  assert.equal(ids["add-visible"].disabled, true);
+
+  fail = false;
+  retry.emit("click");
+  await settle();
+  assert.equal(ids["add-visible"].disabled, false);
+  assert.equal(ids.library.children[0].className, "library-row");
+});
+
+test("a rejected library play leaves the selection and player unchanged", async () => {
+  const { ids, env } = fixture();
+  startClient(env);
+  await settle();
+  const ws = FakeSocket.instances[0];
+  ids.library.children[0].children[1].children[0].emit("click");
+  ws.message({
+    protocol_version: 1,
+    type: "error",
+    id: ws.sent.at(-1).id,
+    payload: { code: "invalid", message: "media file is empty" },
+  });
+  assert.equal(ids.toast.children.at(-1).textContent, "media file is empty");
+  assert.equal(ids["media-selected"].textContent, "No media");
+  assert.equal(ids["play-toggle"].disabled, true);
 });
 
 test("folder navigation exposes current location and one-level up", async () => {
