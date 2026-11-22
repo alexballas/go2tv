@@ -51,6 +51,31 @@
   </branding>
 
   <releases>
+      <release version="2.10.0" date="2026-11-22" type="stable">
+        <description>
+          <ul>
+            <li>Fixed a security issue where any device on your network could make Go2TV send requests to internet, loopback or cloud addresses during device discovery.</li>
+            <li>Added Relaxed Device Discovery in Settings and the -relaxed-discovery flag to list DLNA devices behind SSDP relays, with several network addresses or on public-IP networks, which the security fix now hides by default.</li>
+            <li>DLNA devices that advertise a hostname or IPv6 address are no longer discovered automatically; cast to them with -t and the device URL.</li>
+            <li>Added -l -json to scan once and print the discovered devices as JSON for scripts.</li>
+            <li>Improved scrolling smoothness in Settings and long lists such as radio stations.</li>
+            <li>Improved how quickly the main window redraws while playback information updates.</li>
+            <li>Fixed Chinese text sometimes mixing characters from different fonts.</li>
+            <li>Fixed the seek bar moving when a press that started beside it was dragged onto it.</li>
+            <li>Fixed a newly selected device being deselected when the previously selected device went offline during a scan.</li>
+            <li>Desktop App: Fixed an "RTMP server stopped unexpectedly" error appearing when an RTMP stream ended normally.</li>
+            <li>Desktop App: Fixed memory not being released after closing the Playlist window.</li>
+            <li>Windows: Fixed DLNA discovery finding no devices while another Go2TV instance is scanning.</li>
+            <li>Web UI: Added a Retry button when a library folder fails to load, instead of leaving it stuck on "Loading folder…".</li>
+            <li>Web UI: Fixed the library showing the wrong folder when another folder was opened before the previous one finished loading.</li>
+            <li>Web UI: Fixed files from the previous folder being added to the Playlist while the next folder was loading.</li>
+            <li>Web UI: Fixed a library file appearing selected after the server rejected playing it.</li>
+            <li>Web UI: Fixed empty media files being accepted for playback instead of showing a "media file is empty" error.</li>
+            <li>Web UI: Fixed the player still showing playback as active after the server stopped.</li>
+          </ul>
+        </description>
+        <url type="details">https://github.com/alexballas/go2tv/releases/tag/v2.10.0</url>
+      </release>
       <release version="2.9.0" date="2026-11-14" type="stable">
         <description>
           <ul>
