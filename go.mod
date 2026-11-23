@@ -31,7 +31,7 @@ require (
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	github.com/stretchr/testify v1.12.1
 	github.com/yeqown/go-qrcode/v2 v2.3.0
-	go2tv.app/screencast v0.0.0-20261123174720-67eaeec63584
+	go2tv.app/screencast v0.0.0-20261123205050-47159f14a4b5
 	golang.org/x/image v0.47.0
 	golang.org/x/mod v0.42.0
 	golang.org/x/net v0.62.0

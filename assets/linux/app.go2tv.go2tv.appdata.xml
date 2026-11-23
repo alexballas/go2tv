@@ -67,6 +67,8 @@
             <li>Desktop App: Fixed memory not being released after closing the Playlist window.</li>
             <li>Windows: Fixed DLNA discovery finding no devices while another Go2TV instance is scanning.</li>
             <li>Linux: Fixed Cast Desktop failing on KDE Plasma with an "unexpected response from dbus" error, or hanging while it starts.</li>
+            <li>Linux: Fixed Cast Desktop showing a garbled, repeated picture on displays with scaling enabled.</li>
+            <li>Linux: Fixed sharing a single window with Cast Desktop on KDE Plasma failing with "invalid stream size 0x0".</li>
             <li>Web UI: Added a Retry button when a library folder fails to load, instead of leaving it stuck on "Loading folder…".</li>
             <li>Web UI: Fixed the library showing the wrong folder when another folder was opened before the previous one finished loading.</li>
             <li>Web UI: Fixed files from the previous folder being added to the Playlist while the next folder was loading.</li>
