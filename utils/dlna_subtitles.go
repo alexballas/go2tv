@@ -29,7 +29,7 @@ func SubtitlesReaderToSRT(ctx context.Context, source io.Reader, extension, ffmp
 		}
 		srt, err := webVTTToSRT(ctx, string(data))
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("webVTTToSRT: %w", err)
 		}
 		return stripReceiverSRTOverrides(srt), nil
 	case ".ass", ".ssa":
