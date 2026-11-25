@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -37,8 +38,10 @@ func TestCleanReceiverCueBody(t *testing.T) {
 		{name: "bare b is off", in: `{\b}x`, want: "x", wantAn: 0},
 		{name: "b400 not bold", in: `{\b400}x`, want: "x", wantAn: 0},
 		{name: "b700 is bold", in: `{\b700}x`, want: "<b>x</b>", wantAn: 0},
-		{name: "nested close properly", in: `{\i1}a{\b1}b{\i0}c`, want: "<i>a<b>b</b></i>c", wantAn: 0},
+		{name: "closing outer tag keeps inner on", in: `{\i1}a{\b1}b{\i0}c`, want: "<i>a<b>b</b></i><b>c</b>", wantAn: 0},
 		{name: "reset closes stack", in: `{\i1}a{\r}b`, want: "<i>a</i>b", wantAn: 0},
+		{name: "named style reset closes stack", in: `{\b1}a{\rSign}b`, want: "<b>a</b>b", wantAn: 0},
+		{name: "trailing space in tag", in: `{\b1 }x`, want: "<b>x</b>", wantAn: 0},
 		{name: "i1 b1 in one block", in: `{\i1\b1}x`, want: "<i><b>x</b></i>", wantAn: 0},
 	}
 	for _, tc := range tt {
@@ -168,15 +171,45 @@ func TestStripReceiverSRTOverrides(t *testing.T) {
 	})
 }
 
-func TestSplitSubtitleBlocks(t *testing.T) {
-	in := "1\n00:00:01,000 --> 00:00:04,000\n{\\an8}A\n \n2\n00:00:05,000 --> 00:00:08,000\nB\n"
-	blocks := splitSubtitleBlocks(strings.ReplaceAll(in, "\r\n", "\n"))
-	if len(blocks) != 2 {
-		t.Fatalf("blocks = %d, want 2: %q", len(blocks), blocks)
+// SRT ends a cue at a whitespace-only line; WebVTT keeps it as cue text.
+func TestReceiverWhitespaceOnlyLines(t *testing.T) {
+	srt := "1\n00:00:01,000 --> 00:00:04,000\n{\\an8}A\n \n2\n00:00:05,000 --> 00:00:08,000\nB\n"
+	vtt := "WEBVTT\n\n00:00:01.000 --> 00:00:04.000\n{\\an8}A\n \nB\n"
+	tt := []struct {
+		name, in, ext string
+		chromecast    bool
+		wantCues      int
+		together      bool // A and B in the same cue
+	}{
+		{name: "srt separator dlna", in: srt, ext: ".srt", wantCues: 2},
+		{name: "srt separator chromecast", in: srt, ext: ".srt", chromecast: true, wantCues: 2},
+		{name: "vtt cue text dlna", in: vtt, ext: ".vtt", wantCues: 1, together: true},
+		{name: "vtt cue text chromecast", in: vtt, ext: ".vtt", chromecast: true, wantCues: 1, together: true},
 	}
-	got := string(stripReceiverSRTOverrides([]byte(in)))
-	// two cues should remain
-	if strings.Count(got, "-->") != 2 {
-		t.Fatalf("cues after strip = %q", got)
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			var out []byte
+			var err error
+			if tc.chromecast {
+				out, err = SubtitlesReaderForPlaybackContext(context.Background(), strings.NewReader(tc.in), tc.ext, 0)
+			} else {
+				out, err = SubtitlesReaderToSRT(context.Background(), strings.NewReader(tc.in), tc.ext, "")
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := string(out)
+			if n := strings.Count(got, "-->"); n != tc.wantCues {
+				t.Fatalf("cues = %d, want %d: %q", n, tc.wantCues, got)
+			}
+			for block := range strings.SplitSeq(got, "\n\n") {
+				if strings.Contains(block, "A") && strings.Contains(block, "B") != tc.together {
+					t.Fatalf("A/B together = %v, want %v: %q", !tc.together, tc.together, got)
+				}
+			}
+			if !strings.Contains(got, "B") {
+				t.Fatalf("B lost: %q", got)
+			}
+		})
 	}
 }

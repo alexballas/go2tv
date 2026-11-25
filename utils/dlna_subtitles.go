@@ -42,7 +42,7 @@ func SubtitlesReaderToSRT(ctx context.Context, source io.Reader, extension, ffmp
 func webVTTToSRT(ctx context.Context, input string) ([]byte, error) {
 	input = strings.TrimPrefix(input, "\ufeff")
 	input = strings.ReplaceAll(strings.ReplaceAll(input, "\r\n", "\n"), "\r", "\n")
-	blocks := splitSubtitleBlocks(input)
+	blocks := splitWebVTTBlocks(input)
 	var output strings.Builder
 	cues := 0
 	for _, block := range blocks {
@@ -73,7 +73,8 @@ func webVTTToSRT(ctx context.Context, input string) ([]byte, error) {
 		if end <= start {
 			continue
 		}
-		body := strings.TrimSpace(strings.Join(lines[timingIndex+1:], "\n"))
+		// Whitespace-only lines are WebVTT cue text but end an SRT cue.
+		body := dropEmptyCueLines(strings.TrimSpace(strings.Join(lines[timingIndex+1:], "\n")))
 		if body == "" {
 			continue
 		}

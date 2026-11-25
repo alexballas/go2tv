@@ -132,7 +132,7 @@ func applyOverrideStyleTokens(block string, b *strings.Builder, open []string) [
 		for j < len(body) && body[j] != '\\' {
 			j++
 		}
-		token := body[i+1:j]
+		token := strings.TrimSpace(body[i+1 : j])
 		open = applyStyleToken(token, b, open)
 		i = j
 	}
@@ -140,7 +140,8 @@ func applyOverrideStyleTokens(block string, b *strings.Builder, open []string) [
 }
 
 func applyStyleToken(token string, b *strings.Builder, open []string) []string {
-	if token == "r" {
+	// \r and \r<style> reset to a style; no other ASS tag starts with r.
+	if strings.HasPrefix(token, "r") {
 		return closeAllTags(b, open)
 	}
 	m := assStyleToken.FindStringSubmatch(token)
@@ -175,7 +176,8 @@ func openTag(b *strings.Builder, open []string, tag string) []string {
 	return append(open, tag)
 }
 
-// closeTag closes tag and everything opened after it (innermost first).
+// closeTag closes tag and everything opened after it (innermost first), then
+// reopens the later tags so they stay nested and keep applying.
 func closeTag(b *strings.Builder, open []string, tag string) []string {
 	idx := slices.Index(open, tag)
 	if idx < 0 {
@@ -184,7 +186,13 @@ func closeTag(b *strings.Builder, open []string, tag string) []string {
 	for _, t := range slices.Backward(open[idx:]) {
 		b.WriteString("</" + t + ">")
 	}
-	return open[:idx]
+	reopen := slices.Clone(open[idx+1:])
+	open = open[:idx]
+	for _, t := range reopen {
+		b.WriteString("<" + t + ">")
+		open = append(open, t)
+	}
+	return open
 }
 
 func closeAllTags(b *strings.Builder, open []string) []string {
@@ -207,9 +215,19 @@ func dropEmptyCueLines(s string) string {
 	return strings.Join(kept, "\n")
 }
 
-// splitSubtitleBlocks splits on empty or whitespace-only lines so cues
-// separated by spaces-only lines stay distinct blocks.
-func splitSubtitleBlocks(text string) []string {
+// splitSRTBlocks splits SRT on empty or whitespace-only lines; some SRT
+// writers put spaces on separator lines.
+func splitSRTBlocks(text string) []string {
+	return splitSubtitleBlocks(text, func(line string) bool { return strings.TrimSpace(line) == "" })
+}
+
+// splitWebVTTBlocks splits WebVTT on empty lines only; per spec a
+// whitespace-only line is cue text, not a separator.
+func splitWebVTTBlocks(text string) []string {
+	return splitSubtitleBlocks(text, func(line string) bool { return line == "" })
+}
+
+func splitSubtitleBlocks(text string, isSeparator func(string) bool) []string {
 	lines := strings.Split(text, "\n")
 	var blocks []string
 	var cur []string
@@ -220,7 +238,7 @@ func splitSubtitleBlocks(text string) []string {
 		}
 	}
 	for _, line := range lines {
-		if strings.TrimSpace(line) == "" {
+		if isSeparator(line) {
 			flush()
 			continue
 		}
@@ -280,7 +298,7 @@ func sanitizeReceiverWebVTT(data []byte) []byte {
 	text := strings.ReplaceAll(string(data), "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
 	trailing := strings.HasSuffix(text, "\n")
-	blocks := splitSubtitleBlocks(text)
+	blocks := splitWebVTTBlocks(text)
 	kept := make([]string, 0, len(blocks))
 	for _, block := range blocks {
 		if isWebVTTNonCueBlock(block) {
@@ -349,7 +367,7 @@ func stripReceiverSRTOverridesUTF8(data []byte) []byte {
 	text := strings.ReplaceAll(string(data), "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
 	trailing := strings.HasSuffix(text, "\n")
-	blocks := splitSubtitleBlocks(text)
+	blocks := splitSRTBlocks(text)
 	kept := make([]string, 0, len(blocks))
 	for _, block := range blocks {
 		lines := strings.Split(strings.TrimSpace(block), "\n")

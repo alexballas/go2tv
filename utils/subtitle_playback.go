@@ -92,7 +92,7 @@ func SubtitlesReaderForPlaybackContext(ctx context.Context, source io.Reader, ex
 
 	text := strings.ReplaceAll(string(data), "\r\n", "\n")
 	trailing := strings.HasSuffix(text, "\n")
-	blocks := splitSubtitleBlocks(text)
+	blocks := splitWebVTTBlocks(text)
 	kept := make([]string, 0, len(blocks))
 	offset := int64(seekSeconds) * 1000
 	for _, block := range blocks {
