@@ -58,17 +58,23 @@ func SubtitlesReaderForPlaybackContext(ctx context.Context, source io.Reader, ex
 	defer stopClosing()
 	var data []byte
 	var err error
+	ffmpegPathStr := ""
+	if len(ffmpegPath) > 0 {
+		ffmpegPathStr = ffmpegPath[0]
+	}
 	switch strings.ToLower(extension) {
 	case ".srt":
 		data, err = ConvertSRTReaderToWebVTT(source)
 	case ".vtt":
 		data, err = io.ReadAll(source)
 	case ".ass", ".ssa":
-		path := ""
-		if len(ffmpegPath) > 0 {
-			path = ffmpegPath[0]
+		// ASS→SRT intermediate: FFmpeg time-sorts cues and embeds {\anN}
+		// so sanitize maps alignment per cue (style Alignment included).
+		var rawSRT []byte
+		rawSRT, err = convertASSReaderToSRTUnstripped(ctx, source, ffmpegPathStr)
+		if err == nil {
+			data, err = ConvertSRTReaderToWebVTT(bytes.NewReader(rawSRT))
 		}
-		data, err = convertASSReaderToWebVTT(ctx, source, path)
 	default:
 		return nil, fmt.Errorf("unsupported subtitle format: %s", extension)
 	}
@@ -78,6 +84,8 @@ func SubtitlesReaderForPlaybackContext(ctx context.Context, source io.Reader, ex
 	if err != nil {
 		return nil, err
 	}
+	// Strip ASS overrides and map {\anN} before seek so settings survive retime.
+	data = sanitizeReceiverWebVTT(data)
 	if seekSeconds <= 0 {
 		return data, nil
 	}
@@ -88,7 +96,7 @@ func SubtitlesReaderForPlaybackContext(ctx context.Context, source io.Reader, ex
 	offset := int64(seekSeconds) * 1000
 	for _, block := range blocks {
 		// Comments and style blocks may contain text resembling cue timings.
-		if strings.HasPrefix(block, "NOTE") || strings.HasPrefix(block, "STYLE") || strings.HasPrefix(block, "REGION") {
+		if isWebVTTNonCueBlock(block) {
 			kept = append(kept, block)
 			continue
 		}
@@ -108,17 +116,18 @@ func SubtitlesReaderForPlaybackContext(ctx context.Context, source io.Reader, ex
 }
 
 // ConvertASSReaderToSRT converts ASS/SSA captions for DLNA renderers.
+// FFmpeg embeds {\anN} into SRT; those blocks are stripped for receivers.
 func ConvertASSReaderToSRT(ctx context.Context, source io.Reader, ffmpegPath string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	stopClosing := closeSubtitleSourceOnCancel(ctx, source)
 	defer stopClosing()
-	prepared, err := prepareASSForConversion(ctx, source)
+	data, err := convertASSReaderToSRTUnstripped(ctx, source, ffmpegPath)
 	if err != nil {
 		return nil, err
 	}
-	return convertSubtitleWithFFmpeg(ctx, bytes.NewReader(prepared), "ass", "srt", ffmpegPath)
+	return stripReceiverSRTOverrides(data), nil
 }
 
 func closeSubtitleSourceOnCancel(ctx context.Context, source io.Reader) func() bool {
@@ -129,12 +138,14 @@ func closeSubtitleSourceOnCancel(ctx context.Context, source io.Reader) func() b
 	return context.AfterFunc(ctx, func() { _ = closer.Close() })
 }
 
-func convertASSReaderToWebVTT(ctx context.Context, source io.Reader, ffmpegPath string) ([]byte, error) {
+// convertASSReaderToSRTUnstripped runs prepare + FFmpeg ass→srt without
+// stripping overrides so callers can map {\anN} before serving.
+func convertASSReaderToSRTUnstripped(ctx context.Context, source io.Reader, ffmpegPath string) ([]byte, error) {
 	prepared, err := prepareASSForConversion(ctx, source)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("prepare ASS captions: %w", err)
 	}
-	return convertSubtitleWithFFmpeg(ctx, bytes.NewReader(prepared), "ass", "webvtt", ffmpegPath)
+	return convertSubtitleWithFFmpeg(ctx, bytes.NewReader(prepared), "ass", "srt", ffmpegPath)
 }
 
 func convertSubtitleWithFFmpeg(ctx context.Context, source io.Reader, inputFormat, outputFormat, ffmpegPath string) ([]byte, error) {

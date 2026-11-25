@@ -53,9 +53,9 @@ func TestPrepareDLNAASSAndSSAAsSRT(t *testing.T) {
 		t.Run(extension, func(t *testing.T) {
 			var source string
 			if extension == ".ass" {
-				source = "[Script Info]\nScriptType: v4.00+\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,Hello ASS\n"
+				source = "[Script Info]\nScriptType: v4.00+\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,{\\an8}Hello ASS\n"
 			} else {
-				source = "[Script Info]\nScriptType: v4.00\n[V4 Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, TertiaryColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, AlphaLevel, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,1,2,2,2,10,10,10,0,1\n[Events]\nFormat: Marked, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: Marked=0,0:00:01.00,0:00:03.00,Default,,0,0,0,,Hello SSA\n"
+				source = "[Script Info]\nScriptType: v4.00\n[V4 Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, TertiaryColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, AlphaLevel, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,1,2,2,2,10,10,10,0,1\n[Events]\nFormat: Marked, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: Marked=0,0:00:01.00,0:00:03.00,Default,,0,0,0,,{\\an8}Hello SSA\n"
 			}
 			url, prepared, err := PrepareDLNASubtitles(context.Background(), "http://host/subtitles"+extension, strings.NewReader(source), ffmpeg)
 			if err != nil {
@@ -68,6 +68,47 @@ func TestPrepareDLNAASSAndSSAAsSRT(t *testing.T) {
 			if !ok || !strings.Contains(string(body), "00:00:01,000 --> 00:00:03,000") || !strings.Contains(string(body), "Hello ") {
 				t.Fatalf("receiver captions = %q", prepared)
 			}
+			if strings.Contains(string(body), `{\`) {
+				t.Fatalf("ASS override leaked to DLNA SRT: %q", body)
+			}
 		})
+	}
+}
+
+func TestPrepareDLNASRTStripsASSOverrides(t *testing.T) {
+	srt := "1\n00:00:01,000 --> 00:00:04,000\n{\\an8}<i>Italic</i> top\n"
+	url, prepared, err := PrepareDLNASubtitles(context.Background(), "http://host/captions.srt", strings.NewReader(srt), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if url != "http://host/captions.srt" {
+		t.Fatalf("subtitle URL = %q", url)
+	}
+	body, ok := prepared.([]byte)
+	if !ok {
+		t.Fatalf("prepared type %T", prepared)
+	}
+	got := string(body)
+	if strings.Contains(got, `{\`) {
+		t.Fatalf("override leaked: %q", got)
+	}
+	if !strings.Contains(got, "<i>Italic</i> top") {
+		t.Fatalf("html/text lost: %q", got)
+	}
+	if strings.Contains(got, "align:") || strings.Contains(got, "line:") {
+		t.Fatalf("vtt settings on srt: %q", got)
+	}
+}
+
+func TestPrepareDLNASubtitlesMissingFileFallsBack(t *testing.T) {
+	url, prepared, err := PrepareDLNASubtitles(context.Background(), "http://host/missing.srt", "/no/such/file.srt", "")
+	if err != nil {
+		t.Fatalf("cast must not fail: %v", err)
+	}
+	if prepared != nil {
+		t.Fatalf("prepared = %v, want nil", prepared)
+	}
+	if !strings.HasSuffix(url, "/.") {
+		t.Fatalf("url = %q, want path /.", url)
 	}
 }

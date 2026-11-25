@@ -8,6 +8,7 @@ import (
 )
 
 // SubtitlesReaderToSRT prepares a sidecar for DLNA receiver captions.
+// ASS override blocks are stripped; SRT has no standard positioning.
 func SubtitlesReaderToSRT(ctx context.Context, source io.Reader, extension, ffmpegPath string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -16,13 +17,21 @@ func SubtitlesReaderToSRT(ctx context.Context, source io.Reader, extension, ffmp
 	defer stopClosing()
 	switch strings.ToLower(extension) {
 	case ".srt":
-		return io.ReadAll(source)
+		data, err := io.ReadAll(source)
+		if err != nil {
+			return nil, fmt.Errorf("read SRT captions: %w", err)
+		}
+		return stripReceiverSRTOverrides(data), nil
 	case ".vtt":
 		data, err := io.ReadAll(source)
 		if err != nil {
 			return nil, fmt.Errorf("read WebVTT captions: %w", err)
 		}
-		return webVTTToSRT(ctx, string(data))
+		srt, err := webVTTToSRT(ctx, string(data))
+		if err != nil {
+			return nil, err
+		}
+		return stripReceiverSRTOverrides(srt), nil
 	case ".ass", ".ssa":
 		return ConvertASSReaderToSRT(ctx, source, ffmpegPath)
 	default:
