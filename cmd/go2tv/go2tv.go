@@ -382,10 +382,12 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 	needsMediaServer := !externalURL || transcode
 	needsLocalServer := needsMediaServer || (hasSubtitles && !(transcode && *burnSubtitlesPtr))
 	var httpServer *httphandlers.HTTPserver
+	var whereToListen string
 	mediaMetadata := metadata.Media{Title: mediaPath}
 
 	if needsLocalServer {
-		whereToListen, err := utils.URLtoListenIPandPort(deviceURL)
+		var err error
+		whereToListen, err = utils.URLtoListenIPandPort(deviceURL)
 		if err != nil {
 			return fmt.Errorf("chromecast listen addr: %w", err)
 		}
@@ -455,10 +457,10 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 	scr.AudioLabel = audio.Label
 	// Local transcodes restart at the target; the receiver cannot seek them.
 	if _, local := mediaFile.(string); local && transcode && httpServer != nil && mediaDuration > 0 {
-		host, _ := utils.URLtoListenIPandPort(deviceURL)
 		scr.Duration = mediaDuration
 		scr.Restart = func(seconds int) error {
-			captions, err := castsubtitles.Register(httpServer, host, mediaPath, subtitlesPath, castsubtitles.Options{
+			// Reuse the serving address; a fresh pick skips our own busy port.
+			captions, err := castsubtitles.Register(httpServer, whereToListen, mediaPath, subtitlesPath, castsubtitles.Options{
 				FFmpegPath: ffmpegPath,
 				Transcoded: true, BurnSubtitles: *burnSubtitlesPtr,
 				AutomaticTorrent: !*noTorrentSubtitlesPtr,

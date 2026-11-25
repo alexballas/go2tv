@@ -107,6 +107,17 @@ func (p *ChromecastScreen) EmitMsg(inputtext string) {
 	s.Show()
 }
 
+// mediaEnded reports playback reaching the end; Chromecast stops updating
+// ~1-2s early. Transcoded streams report the buffered length as duration, so
+// the source duration wins when known.
+func mediaEnded(current, receiverDuration float32, offset int, sourceDuration float64) bool {
+	total := receiverDuration
+	if sourceDuration > 0 {
+		total = float32(sourceDuration)
+	}
+	return total > 0 && float32(offset)+current >= total-1.5
+}
+
 // InterInit starts the interactive terminal for Chromecast.
 func (p *ChromecastScreen) InterInit(mediaPath string, c chan error) {
 	p.mu.Lock()
@@ -143,8 +154,7 @@ func (p *ChromecastScreen) InterInit(mediaPath string, c chan error) {
 			case "PLAYING":
 				mediaStarted = true
 				p.EmitMsg("Playing")
-				// Detect media completion: Chromecast stops updating ~1-2s before end
-				if status.Duration > 0 && float32(p.streamOffset())+status.CurrentTime >= status.Duration-1.5 {
+				if mediaEnded(status.CurrentTime, status.Duration, p.streamOffset(), p.Duration) {
 					p.EmitMsg("Stopped")
 					p.Fini()
 				}
