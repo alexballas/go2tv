@@ -72,6 +72,19 @@ func TestSubtitlesForPlaybackStripsASSOverrides(t *testing.T) {
 			wantContains:    []string{"<b>Bold</b>"},
 			wantNotContains: []string{`{\`},
 		},
+		{
+			name:         "stray < and & escaped, markup kept",
+			ext:          ".srt",
+			input:        "1\n00:00:01,000 --> 00:00:04,000\na < b && c > d\n<i>x</i> &amp; y\n",
+			wantContains: []string{"a &lt; b &amp;&amp; c > d", "<i>x</i> &amp; y"},
+		},
+		{
+			name:            "arrow in text does not end cue",
+			ext:             ".vtt",
+			input:           "WEBVTT\n\n00:01.000 --> 00:04.000\nx --> y\n",
+			wantContains:    []string{"x --&gt; y"},
+			wantNotContains: []string{"x --> y"},
+		},
 	}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
@@ -114,6 +127,49 @@ func TestSubtitlesForPlaybackSeekKeepsInjectedSettings(t *testing.T) {
 	}
 	if strings.Contains(string(got), `{\`) {
 		t.Fatalf("override leaked: %q", got)
+	}
+}
+
+func TestASSOverrideCleanupForReceivers(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	header := `[Script Info]
+ScriptType: v4.00+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,24,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,2,10,10,10,1
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+`
+	tt := []struct {
+		name, text   string
+		want, unwant []string
+	}{
+		{name: "comment hidden", text: "{TL note: pun}Visible", want: []string{"Visible"}, unwant: []string{"TL note", "{"}},
+		{name: "text before tag in block hidden", text: "{note \\an8}Top", want: []string{"line:1 align:center", "Top"}, unwant: []string{"note"}},
+		// FFmpeg drops the rest of the cue on {\b1 } and leaks <b> into the next.
+		{name: "space in tag keeps cue", text: "{\\b1 }Bold{\\b0} after", want: []string{"<b>Bold</b> after"}},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			script := header + "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,," + tc.text + "\nDialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,Next\n"
+			got, err := SubtitlesReaderForPlayback(strings.NewReader(script), ".ass", 0, ffmpeg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range append(tc.want, ">Next</font>\n") { // no tag leak into next cue
+				if !strings.Contains(string(got), want) {
+					t.Fatalf("missing %q in %q", want, got)
+				}
+			}
+			for _, bad := range tc.unwant {
+				if strings.Contains(string(got), bad) {
+					t.Fatalf("unexpected %q in %q", bad, got)
+				}
+			}
+		})
 	}
 }
 

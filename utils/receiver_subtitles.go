@@ -12,32 +12,42 @@ var (
 	assOverrideBlock = regexp.MustCompile(`\{\\[^{}]*\}`)
 	assAlignTag      = regexp.MustCompile(`(?i)\\an([1-9])`)
 	assStyleToken    = regexp.MustCompile(`^([biu])(\d*)$`)
+	// webVTTMarkup matches what WebVTT cue text may keep unescaped: tags
+	// (incl. timestamps) and character references.
+	webVTTMarkup = regexp.MustCompile(`^(?:</?[A-Za-z0-9][^<>]*>|&(?:[A-Za-z]+|#[0-9]+|#[xX][0-9A-Fa-f]+);)`)
 )
 
 // assAlignmentToWebVTT maps ASS numpad alignment 1-9 to WebVTT cue settings.
-// Returns "" when an is out of range.
-// Bottom (1-3) omits line: so an2 matches untagged default bottom captions.
-// Top (7-9) uses line:1 (device: line:0% flush to edge; line:1 matches default margin).
+// Returns "" when an is out of range. Tuned on a Chromecast:
+//   - Bottom (1-3) omits line: so an2 matches untagged default bottom captions.
+//   - Middle (4-6) uses line:6. line:50%,center is ignored, and percentage
+//     lines break position:/size:.
+//   - Top (7-9) uses line:1 (line:0% is flush; line:1 matches bottom margin).
+//   - Left/right get a 5% side margin; full-width boxes touch the edge.
 func assAlignmentToWebVTT(an int) string {
+	const (
+		left  = "position:5% size:90% align:left"
+		right = "position:95% size:90% align:right"
+	)
 	switch an {
 	case 1:
-		return "align:left"
+		return left
 	case 2:
 		return "align:center"
 	case 3:
-		return "align:right"
+		return right
 	case 4:
-		return "line:50%,center align:left"
+		return "line:6 " + left
 	case 5:
-		return "line:50%,center align:center"
+		return "line:6 align:center"
 	case 6:
-		return "line:50%,center align:right"
+		return "line:6 " + right
 	case 7:
-		return "line:1 align:left"
+		return "line:1 " + left
 	case 8:
 		return "line:1 align:center"
 	case 9:
-		return "line:1 align:right"
+		return "line:1 " + right
 	}
 	return ""
 }
@@ -259,10 +269,12 @@ func applyWebVTTAlignment(timing string, an int) string {
 		return timing
 	}
 	existing := webVTTSettingKeys(timing)
+	// position: and size: form one box; never mix ours with the cue's own.
+	ownBox := existing["position"] || existing["size"]
 	var add []string
 	for tok := range strings.FieldsSeq(settings) {
 		key, _, _ := strings.Cut(tok, ":")
-		if !existing[key] {
+		if !existing[key] && !(ownBox && (key == "position" || key == "size")) {
 			add = append(add, tok)
 		}
 	}
@@ -324,6 +336,7 @@ func sanitizeReceiverWebVTT(data []byte) []byte {
 		if cleaned == "" {
 			continue // drop empty cue
 		}
+		cleaned = escapeWebVTTCueText(cleaned)
 		lines[timingIdx] = applyWebVTTAlignment(lines[timingIdx], bodyAn)
 		lines = append(lines[:bodyStart], cleaned)
 		kept = append(kept, strings.Join(lines, "\n"))
@@ -333,6 +346,39 @@ func sanitizeReceiverWebVTT(data []byte) []byte {
 		out += "\n"
 	}
 	return []byte(out)
+}
+
+// escapeWebVTTCueText escapes stray < and & (receivers swallow "a < b") and
+// --> (ends the cue) while keeping tags and character references.
+func escapeWebVTTCueText(s string) string {
+	if !strings.ContainsAny(s, "<&") && !strings.Contains(s, "-->") {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s) + 8)
+	for i := 0; i < len(s); {
+		switch {
+		case s[i] == '<' || s[i] == '&':
+			if m := webVTTMarkup.FindString(s[i:]); m != "" {
+				b.WriteString(m)
+				i += len(m)
+				continue
+			}
+			if s[i] == '<' {
+				b.WriteString("&lt;")
+			} else {
+				b.WriteString("&amp;")
+			}
+		case strings.HasPrefix(s[i:], "-->"):
+			b.WriteString("--&gt;")
+			i += 3
+			continue
+		default:
+			b.WriteByte(s[i])
+		}
+		i++
+	}
+	return b.String()
 }
 
 // stripReceiverSRTOverrides removes ASS override blocks from SRT cue bodies.

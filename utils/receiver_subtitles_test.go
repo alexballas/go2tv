@@ -62,8 +62,14 @@ func TestApplyWebVTTAlignment(t *testing.T) {
 	}{
 		{name: "an8 top", timing: "00:01.000 --> 00:04.000", an: 8, want: "00:01.000 --> 00:04.000 line:1 align:center"},
 		{name: "an2 bottom only align", timing: "00:01.000 --> 00:04.000", an: 2, want: "00:01.000 --> 00:04.000 align:center"},
-		{name: "an1 bottom left", timing: "00:01.000 --> 00:04.000", an: 1, want: "00:01.000 --> 00:04.000 align:left"},
-		{name: "an5 mid", timing: "00:01.000 --> 00:04.000", an: 5, want: "00:01.000 --> 00:04.000 line:50%,center align:center"},
+		// Left/right get a 5% side margin; otherwise text touches the screen edge.
+		{name: "an1 bottom left", timing: "00:01.000 --> 00:04.000", an: 1, want: "00:01.000 --> 00:04.000 position:5% size:90% align:left"},
+		{name: "an9 top right", timing: "00:01.000 --> 00:04.000", an: 9, want: "00:01.000 --> 00:04.000 line:1 position:95% size:90% align:right"},
+		// Chromecast drops line:50%,center (cue falls to bottom) and breaks
+		// position:/size: on percentage lines.
+		{name: "an5 mid", timing: "00:01.000 --> 00:04.000", an: 5, want: "00:01.000 --> 00:04.000 line:6 align:center"},
+		{name: "an4 mid left", timing: "00:01.000 --> 00:04.000", an: 4, want: "00:01.000 --> 00:04.000 line:6 position:5% size:90% align:left"},
+		{name: "own position keeps box", timing: "00:01.000 --> 00:04.000 position:30%", an: 7, want: "00:01.000 --> 00:04.000 position:30% line:1 align:left"},
 		{name: "merge line onto existing align", timing: "00:01.000 --> 00:04.000 align:start", an: 8, want: "00:01.000 --> 00:04.000 align:start line:1"},
 		{name: "keep existing line add align", timing: "00:01.000 --> 00:04.000 line:50%", an: 8, want: "00:01.000 --> 00:04.000 line:50% align:center"},
 		{name: "region untouched", timing: "00:01.000 --> 00:04.000 region:foo", an: 8, want: "00:01.000 --> 00:04.000 region:foo"},
@@ -124,7 +130,7 @@ func TestSanitizeReceiverWebVTT(t *testing.T) {
 		}
 	})
 	t.Run("idempotent", func(t *testing.T) {
-		in := "WEBVTT\n\n00:01.000 --> 00:04.000\n{\\an8}Top\n"
+		in := "WEBVTT\n\n00:01.000 --> 00:04.000\n{\\an8}Top a < b & c\n"
 		once := sanitizeReceiverWebVTT([]byte(in))
 		twice := sanitizeReceiverWebVTT(once)
 		if string(once) != string(twice) {

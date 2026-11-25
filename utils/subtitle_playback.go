@@ -21,6 +21,9 @@ import (
 	textunicode "golang.org/x/text/encoding/unicode"
 )
 
+// assTagGap matches whitespace before a tag or at the end of a block.
+var assTagGap = regexp.MustCompile(`\s+(\\|$)`)
+
 var webVTTCueTiming = regexp.MustCompile(`(?m)^((?:\d{2,}:)?\d{2}:\d{2}\.\d{3})[\t ]+-->[\t ]+((?:\d{2,}:)?\d{2}:\d{2}\.\d{3})([^\n]*)$`)
 
 // SubtitlesForPlayback returns WebVTT with cues relative to the start of a
@@ -189,7 +192,7 @@ func prepareASSForConversion(ctx context.Context, source io.Reader) ([]byte, err
 	if err != nil {
 		return nil, err
 	}
-	return stripASSDrawings(data), nil
+	return cleanASSEvents(data), nil
 }
 
 func decodeASSCharset(data []byte) ([]byte, error) {
@@ -286,7 +289,9 @@ func utf16WithoutBOM(data []byte) *textunicode.Endianness {
 	return nil
 }
 
-func stripASSDrawings(data []byte) []byte {
+// cleanASSEvents rewrites Dialogue text for FFmpeg: comment blocks and
+// stray spaces in override blocks go, drawing runs are dropped.
+func cleanASSEvents(data []byte) []byte {
 	var result strings.Builder
 	result.Grow(len(data))
 	inEvents := false
@@ -315,11 +320,11 @@ func stripASSDrawings(data []byte) []byte {
 		case hasColon && strings.EqualFold(strings.TrimSpace(prefix), "Dialogue"):
 			fields := strings.SplitN(value, ",", textField+1)
 			if len(fields) > textField {
-				cleaned, hadDrawing := removeASSDrawingRuns(fields[textField])
-				if hadDrawing {
-					if !hasVisibleASSText(cleaned) {
-						continue
-					}
+				cleaned, hadDrawing := removeASSDrawingRuns(normalizeASSOverrideBlocks(fields[textField]))
+				if hadDrawing && !hasVisibleASSText(cleaned) {
+					continue
+				}
+				if cleaned != fields[textField] {
 					fields[textField] = cleaned
 					body = prefix + ":" + strings.Join(fields, ",")
 				}
@@ -329,6 +334,38 @@ func stripASSDrawings(data []byte) []byte {
 		result.WriteString(end)
 	}
 	return []byte(result.String())
+}
+
+// normalizeASSOverrideBlocks mirrors libass for FFmpeg: a {...} block without a
+// tag is a comment and is dropped; text before the first tag and whitespace
+// before a tag or the closing brace go ({\b1 } makes FFmpeg drop the cue
+// rest). Unclosed braces stay literal.
+func normalizeASSOverrideBlocks(text string) string {
+	if !strings.Contains(text, "{") {
+		return text
+	}
+	var b strings.Builder
+	b.Grow(len(text))
+	for {
+		start := strings.IndexByte(text, '{')
+		if start < 0 {
+			break
+		}
+		end := strings.IndexByte(text[start:], '}')
+		if end < 0 {
+			break
+		}
+		b.WriteString(text[:start])
+		inner := text[start+1 : start+end]
+		text = text[start+end+1:]
+		tag := strings.IndexByte(inner, '\\')
+		if tag < 0 {
+			continue // comment
+		}
+		b.WriteString("{" + assTagGap.ReplaceAllString(inner[tag:], "$1") + "}")
+	}
+	b.WriteString(text)
+	return b.String()
 }
 
 func removeASSDrawingRuns(text string) (string, bool) {
