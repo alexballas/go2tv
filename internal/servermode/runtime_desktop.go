@@ -169,7 +169,8 @@ func (s *runtimeMediaServer) prepareRequest(request playback.ServerRequest) play
 	}
 	if request.Subtitle != nil && request.Target.Protocol == "DLNA" && !request.Transcode {
 		extension := strings.ToLower(request.SubtitleExt)
-		if extension == ".ass" || extension == ".ssa" || extension == ".vtt" {
+		switch extension {
+		case ".srt", ".ass", ".ssa", ".vtt":
 			original := request.Subtitle
 			request.Subtitle = func(ctx context.Context) (io.ReadSeekCloser, time.Time, error) {
 				source, mod, err := original(ctx)
