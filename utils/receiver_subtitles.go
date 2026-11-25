@@ -11,7 +11,7 @@ import (
 var (
 	assOverrideBlock = regexp.MustCompile(`\{\\[^{}]*\}`)
 	assAlignTag      = regexp.MustCompile(`(?i)\\an([1-9])`)
-	assStyleTag      = regexp.MustCompile(`(?i)\\([biu])(\d*)`)
+	assStyleToken    = regexp.MustCompile(`^([biu])(\d*)$`)
 )
 
 // assAlignmentToWebVTT maps ASS numpad alignment 1-9 to WebVTT cue settings.
@@ -46,7 +46,7 @@ func assAlignmentToWebVTT(an int) string {
 // HTML, and normalizes ASS breaks. It returns the cleaned text and the last
 // {\anN} alignment seen (0 if none).
 func cleanReceiverCueBody(s string) (string, int) {
-	// Guard \n/\h unescape on pre-strip body so paths survive when no overrides.
+	// Guard all ASS unescape on pre-strip body so paths survive without overrides.
 	hasOverride := strings.Contains(s, `{\`)
 	// Drop drawing runs first while {\pN} markers still exist to toggle mode.
 	s, _ = removeASSDrawingRuns(s)
@@ -63,33 +63,7 @@ func cleanReceiverCueBody(s string) (string, int) {
 						an = n
 					}
 				}
-				for _, m := range assStyleTag.FindAllStringSubmatch(block, -1) {
-					tag := strings.ToLower(m[1])
-					on := true
-					switch m[2] {
-					case "":
-						// \b / \i / \u without arg = on
-					case "0":
-						on = false
-					default:
-						n, err := strconv.Atoi(m[2])
-						on = err == nil && n != 0
-					}
-					if on {
-						if !containsTag(open, tag) {
-							b.WriteString("<" + tag + ">")
-							open = append(open, tag)
-						}
-					} else {
-						for i := len(open) - 1; i >= 0; i-- {
-							if open[i] == tag {
-								b.WriteString("</" + tag + ">")
-								open = append(open[:i], open[i+1:]...)
-								break
-							}
-						}
-					}
-				}
+				open = applyOverrideStyleTokens(block, &b, open)
 				s = s[end+1:]
 				continue
 			}
@@ -109,8 +83,8 @@ func cleanReceiverCueBody(s string) (string, int) {
 		b.WriteString("</" + tag + ">")
 	}
 	cleaned := b.String()
-	cleaned = strings.ReplaceAll(cleaned, `\N`, "\n")
 	if hasOverride {
+		cleaned = strings.ReplaceAll(cleaned, `\N`, "\n")
 		cleaned = strings.ReplaceAll(cleaned, `\n`, " ")
 		cleaned = strings.ReplaceAll(cleaned, `\h`, " ")
 	}
@@ -118,8 +92,106 @@ func cleanReceiverCueBody(s string) (string, int) {
 	return cleaned, an
 }
 
-func containsTag(tags []string, tag string) bool {
-	return slices.Contains(tags, tag)
+// applyOverrideStyleTokens walks one {\...} block with a linear scanner.
+// Whole-token match only (\bord/\blur/\iclip must not become b/i).
+// \t(...) is skipped with paren-depth counting. Returns the updated open stack.
+func applyOverrideStyleTokens(block string, b *strings.Builder, open []string) []string {
+	// Interior without braces: starts with '\'
+	body := block[1 : len(block)-1]
+	i := 0
+	for i < len(body) {
+		if body[i] != '\\' {
+			i++
+			continue
+		}
+		// \t( ... ) — skip entire transform, count nested parens
+		if strings.HasPrefix(body[i:], `\t(`) {
+			depth := 0
+			j := i + 2 // at '('
+			for j < len(body) {
+				switch body[j] {
+				case '(':
+					depth++
+				case ')':
+					depth--
+					if depth == 0 {
+						j++
+						i = j
+						goto next
+					}
+				}
+				j++
+			}
+			// unclosed \t( — skip to end of block
+			return open
+		next:
+			continue
+		}
+		// Token until next '\' or end
+		j := i + 1
+		for j < len(body) && body[j] != '\\' {
+			j++
+		}
+		token := body[i+1:j]
+		open = applyStyleToken(token, b, open)
+		i = j
+	}
+	return open
+}
+
+func applyStyleToken(token string, b *strings.Builder, open []string) []string {
+	if token == "r" {
+		return closeAllTags(b, open)
+	}
+	m := assStyleToken.FindStringSubmatch(token)
+	if m == nil {
+		return open // \an, \pos, \bord, \blur, \be, \iclip, \BORD, …
+	}
+	tag := m[1] // case-sensitive b|i|u only
+	var on bool
+	switch tag {
+	case "b":
+		if m[2] == "" || m[2] == "0" {
+			on = false // bare \b and \b0 reset to normal
+		} else {
+			n, err := strconv.Atoi(m[2])
+			// \b1 = bold; weights < 700 are normal weight
+			on = err == nil && (n == 1 || n >= 700)
+		}
+	default: // i, u
+		on = m[2] == "1"
+	}
+	if on {
+		return openTag(b, open, tag)
+	}
+	return closeTag(b, open, tag)
+}
+
+func openTag(b *strings.Builder, open []string, tag string) []string {
+	if slices.Contains(open, tag) {
+		return open
+	}
+	b.WriteString("<" + tag + ">")
+	return append(open, tag)
+}
+
+// closeTag closes tag and everything opened after it (innermost first).
+func closeTag(b *strings.Builder, open []string, tag string) []string {
+	idx := slices.Index(open, tag)
+	if idx < 0 {
+		return open
+	}
+	for _, t := range slices.Backward(open[idx:]) {
+		b.WriteString("</" + t + ">")
+	}
+	return open[:idx]
+}
+
+func closeAllTags(b *strings.Builder, open []string) []string {
+	for _, t := range slices.Backward(open) {
+		b.WriteString("</" + t + ">")
+	}
+	return nil
 }
 
 // dropEmptyCueLines removes blank lines that would terminate a WebVTT/SRT cue.
@@ -133,6 +205,29 @@ func dropEmptyCueLines(s string) string {
 		kept = append(kept, line)
 	}
 	return strings.Join(kept, "\n")
+}
+
+// splitSubtitleBlocks splits on empty or whitespace-only lines so cues
+// separated by spaces-only lines stay distinct blocks.
+func splitSubtitleBlocks(text string) []string {
+	lines := strings.Split(text, "\n")
+	var blocks []string
+	var cur []string
+	flush := func() {
+		if len(cur) > 0 {
+			blocks = append(blocks, strings.Join(cur, "\n"))
+			cur = nil
+		}
+	}
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			flush()
+			continue
+		}
+		cur = append(cur, line)
+	}
+	flush()
+	return blocks
 }
 
 // applyWebVTTAlignment merges missing cue settings for an onto the timing line.
@@ -161,8 +256,8 @@ func applyWebVTTAlignment(timing string, an int) string {
 
 func hasWebVTTSetting(timing, key string) bool {
 	for tok := range strings.FieldsSeq(strings.ToLower(timing)) {
-		k, _, ok := strings.Cut(tok, ":")
-		if ok && k == key {
+		k, _, _ := strings.Cut(tok, ":")
+		if k == key {
 			return true
 		}
 	}
@@ -185,7 +280,7 @@ func sanitizeReceiverWebVTT(data []byte) []byte {
 	text := strings.ReplaceAll(string(data), "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
 	trailing := strings.HasSuffix(text, "\n")
-	blocks := strings.Split(text, "\n\n")
+	blocks := splitSubtitleBlocks(text)
 	kept := make([]string, 0, len(blocks))
 	for _, block := range blocks {
 		if isWebVTTNonCueBlock(block) {
@@ -254,7 +349,7 @@ func stripReceiverSRTOverridesUTF8(data []byte) []byte {
 	text := strings.ReplaceAll(string(data), "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
 	trailing := strings.HasSuffix(text, "\n")
-	blocks := strings.Split(text, "\n\n")
+	blocks := splitSubtitleBlocks(text)
 	kept := make([]string, 0, len(blocks))
 	for _, block := range blocks {
 		lines := strings.Split(strings.TrimSpace(block), "\n")

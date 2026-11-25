@@ -91,7 +91,8 @@ func SubtitlesReaderForPlaybackContext(ctx context.Context, source io.Reader, ex
 	}
 
 	text := strings.ReplaceAll(string(data), "\r\n", "\n")
-	blocks := strings.Split(text, "\n\n")
+	trailing := strings.HasSuffix(text, "\n")
+	blocks := splitSubtitleBlocks(text)
 	kept := make([]string, 0, len(blocks))
 	offset := int64(seekSeconds) * 1000
 	for _, block := range blocks {
@@ -112,7 +113,11 @@ func SubtitlesReaderForPlaybackContext(ctx context.Context, source io.Reader, ex
 		}
 		kept = append(kept, block)
 	}
-	return []byte(strings.Join(kept, "\n\n")), nil
+	out := strings.Join(kept, "\n\n")
+	if trailing && !strings.HasSuffix(out, "\n") {
+		out += "\n"
+	}
+	return []byte(out), nil
 }
 
 // ConvertASSReaderToSRT converts ASS/SSA captions for DLNA renderers.

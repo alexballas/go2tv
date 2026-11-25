@@ -112,3 +112,21 @@ func TestPrepareDLNASubtitlesMissingFileFallsBack(t *testing.T) {
 		t.Fatalf("url = %q, want path /.", url)
 	}
 }
+
+func TestPrepareDLNASubtitlesConvertErrorFatal(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "captions.ass")
+	// Minimal ASS so open succeeds; invalid ffmpeg forces convert failure.
+	if err := os.WriteFile(src, []byte("[Script Info]\nScriptType: v4.00+\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	url, prepared, err := PrepareDLNASubtitles(context.Background(), "http://host/captions.ass", src, "/missing/ffmpeg-binary")
+	if err == nil {
+		t.Fatalf("convert error must be fatal, got url=%q prepared=%v", url, prepared)
+	}
+	if prepared != nil {
+		t.Fatalf("prepared = %v, want nil", prepared)
+	}
+	if strings.HasSuffix(url, "/.") {
+		t.Fatalf("must not silently disable captions: %q", url)
+	}
+}

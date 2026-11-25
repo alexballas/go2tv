@@ -13,10 +13,10 @@ import (
 )
 
 // PrepareDLNASubtitles makes direct-play receiver captions available as SRT.
-// ASS override blocks are stripped from the served body. On open/convert
-// failure it falls back to casting without captions (URL path "/.") instead
-// of aborting the cast. Transcoded callers keep the original source so
-// FFmpeg can burn ASS styling.
+// ASS override blocks are stripped from the served body. Only an unreadable
+// sidecar (os.Open fails) falls back to casting without captions (URL path
+// "/."); conversion and context errors remain fatal. Transcoded callers keep
+// the original source so FFmpeg can burn ASS styling.
 func PrepareDLNASubtitles(ctx context.Context, subtitleURL string, subtitles any, ffmpegPath string) (string, any, error) {
 	parsed, err := url.Parse(subtitleURL)
 	if err != nil {
@@ -61,7 +61,10 @@ func PrepareDLNASubtitles(ctx context.Context, subtitleURL string, subtitles any
 	}
 	converted, err := utils.SubtitlesReaderToSRT(ctx, source, extension, ffmpegPath)
 	if err != nil {
-		return disableCaptions()
+		if ctx.Err() != nil {
+			return "", nil, ctx.Err()
+		}
+		return "", nil, fmt.Errorf("convert DLNA subtitles: %w", err)
 	}
 	parsed.Path = strings.TrimSuffix(parsed.Path, filepath.Ext(parsed.Path)) + ".srt"
 	parsed.RawPath = ""

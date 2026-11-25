@@ -42,7 +42,7 @@ func SubtitlesReaderToSRT(ctx context.Context, source io.Reader, extension, ffmp
 func webVTTToSRT(ctx context.Context, input string) ([]byte, error) {
 	input = strings.TrimPrefix(input, "\ufeff")
 	input = strings.ReplaceAll(strings.ReplaceAll(input, "\r\n", "\n"), "\r", "\n")
-	blocks := strings.Split(input, "\n\n")
+	blocks := splitSubtitleBlocks(input)
 	var output strings.Builder
 	cues := 0
 	for _, block := range blocks {
@@ -54,7 +54,7 @@ func webVTTToSRT(ctx context.Context, input string) ([]byte, error) {
 			continue
 		}
 		first := strings.TrimSpace(lines[0])
-		if strings.HasPrefix(first, "WEBVTT") || strings.HasPrefix(first, "NOTE") || first == "STYLE" || first == "REGION" {
+		if isWebVTTMetadataFirstLine(first) {
 			continue
 		}
 		timingIndex := 0

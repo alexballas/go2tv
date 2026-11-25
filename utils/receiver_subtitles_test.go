@@ -17,13 +17,29 @@ func TestCleanReceiverCueBody(t *testing.T) {
 		{name: "unclosed italic closed at end", in: `{\i1}Italic`, want: "<i>Italic</i>", wantAn: 0},
 		{name: "hard breaks with override", in: `{\an8}Line1\NLine2\hX`, want: "Line1\nLine2 X", wantAn: 8},
 		{name: "windows path no override untouched", in: `C:\home\notes`, want: `C:\home\notes`, wantAn: 0},
+		{name: "Network path no override untouched", in: `C:\Network`, want: `C:\Network`, wantAn: 0},
 		{name: "soft break becomes space with override", in: `{\b1}a\nb{\b0}`, want: "<b>a b</b>", wantAn: 0},
 		{name: "unclosed brace is literal", in: `oops {an8 still`, want: "oops {an8 still", wantAn: 0},
 		{name: "last an wins", in: `{\an7}a{\an9}b`, want: "ab", wantAn: 9},
 		{name: "pos and move stripped", in: `{\pos(1,2)\move(3,4,5,6)}text`, want: "text", wantAn: 0},
 		{name: "drawing run dropped", in: `{\p1}m 0 0 l 100 0{\p0}Hello`, want: "Hello", wantAn: 0},
 		{name: "empty after clean", in: `{\pos(1,2)}`, want: "", wantAn: 0},
-		{name: "blank lines dropped", in: `A\N\NB`, want: "A\nB", wantAn: 0},
+		{name: "blank lines dropped with override", in: `{\an8}A\N\NB`, want: "A\nB", wantAn: 8},
+		// Style-token whole match (no prefix false positives)
+		{name: "bord not bold", in: `{\bord2}x`, want: "x", wantAn: 0},
+		{name: "blur not bold", in: `{\blur3}x`, want: "x", wantAn: 0},
+		{name: "be not bold", in: `{\be1}x`, want: "x", wantAn: 0},
+		{name: "BORD case not bold", in: `{\BORD2}x`, want: "x", wantAn: 0},
+		{name: "iclip not italic", in: `{\iclip(0,0,1,1)}x`, want: "x", wantAn: 0},
+		{name: "transform b1 ignored", in: `{\t(\b1)}x`, want: "x", wantAn: 0},
+		{name: "transform with nested pos", in: `{\t(\pos(1,2))}x`, want: "x", wantAn: 0},
+		{name: "unclosed transform skip", in: `{\t(\b1`, want: `{\t(\b1`, wantAn: 0},
+		{name: "bare b is off", in: `{\b}x`, want: "x", wantAn: 0},
+		{name: "b400 not bold", in: `{\b400}x`, want: "x", wantAn: 0},
+		{name: "b700 is bold", in: `{\b700}x`, want: "<b>x</b>", wantAn: 0},
+		{name: "nested close properly", in: `{\i1}a{\b1}b{\i0}c`, want: "<i>a<b>b</b></i>c", wantAn: 0},
+		{name: "reset closes stack", in: `{\i1}a{\r}b`, want: "<i>a</i>b", wantAn: 0},
+		{name: "i1 b1 in one block", in: `{\i1\b1}x`, want: "<i><b>x</b></i>", wantAn: 0},
 	}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
@@ -150,4 +166,17 @@ func TestStripReceiverSRTOverrides(t *testing.T) {
 			t.Fatalf("bom cue not stripped: %q", got)
 		}
 	})
+}
+
+func TestSplitSubtitleBlocks(t *testing.T) {
+	in := "1\n00:00:01,000 --> 00:00:04,000\n{\\an8}A\n \n2\n00:00:05,000 --> 00:00:08,000\nB\n"
+	blocks := splitSubtitleBlocks(strings.ReplaceAll(in, "\r\n", "\n"))
+	if len(blocks) != 2 {
+		t.Fatalf("blocks = %d, want 2: %q", len(blocks), blocks)
+	}
+	got := string(stripReceiverSRTOverrides([]byte(in)))
+	// two cues should remain
+	if strings.Count(got, "-->") != 2 {
+		t.Fatalf("cues after strip = %q", got)
+	}
 }
