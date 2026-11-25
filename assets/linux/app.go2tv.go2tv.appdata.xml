@@ -63,9 +63,10 @@
             <li>Fixed Chinese text sometimes mixing characters from different fonts.</li>
             <li>Fixed the seek bar moving when a press that started beside it was dragged onto it.</li>
             <li>Fixed a newly selected device being deselected when the previously selected device went offline during a scan.</li>
-            <li>Fixed subtitles showing raw formatting codes such as {\an8} on Chromecast and DLNA devices.</li>
-            <li>Subtitles meant for the top of the screen now appear at the top on Chromecast, and bold, italic and underline styling is kept.</li>
-            <li>Fixed an unreadable subtitle file stopping a DLNA cast; the video now plays without subtitles.</li>
+            <li>Fixed subtitles showing formatting codes such as {\an8} on Chromecast and DLNA devices, and Chromecast now places them at the top or side of the screen as intended.</li>
+            <li>Fixed an unreadable subtitle file stopping a DLNA cast.</li>
+            <li>Fixed the CLI stopping a transcoded Chromecast cast after a few seconds.</li>
+            <li>Fixed subtitles disappearing after skipping forward or back in a transcoded Chromecast cast from the CLI.</li>
             <li>Desktop App: Fixed an "RTMP server stopped unexpectedly" error appearing when an RTMP stream ended normally.</li>
             <li>Desktop App: Fixed memory not being released after closing the Playlist window.</li>
             <li>Windows: Fixed DLNA discovery finding no devices while another Go2TV instance is scanning.</li>
