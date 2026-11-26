@@ -33,8 +33,78 @@ type ChromecastScreen struct {
 	offset  int
 	skips   *skipper
 	note    notice
+	idle    idleWatch
 	mu      sync.RWMutex
 }
+
+// reloadTimeout bounds how long IDLE is ignored after a LOAD was sent but
+// the receiver never started a new media session (e.g. it rejected it).
+const reloadTimeout = 20 * time.Second
+
+// idleWatch decides when an IDLE receiver means playback is over. The 1s poll
+// can miss the last seconds before IDLE. A LOAD (initial cast or transcoded
+// skip) passes through IDLE without ending playback, and the receiver keeps
+// reporting the replaced session until it handles the LOAD.
+type idleWatch struct {
+	mu       sync.Mutex
+	started  bool
+	loading  bool      // LOAD pending: ignore IDLE and the replaced session
+	sent     bool      // LOAD sent; a new session ends loading
+	session  int       // last session seen; replaced session while loading
+	deadline time.Time // give up waiting for the new session
+	now      func() time.Time
+}
+
+func (w *idleWatch) clock() time.Time {
+	if w.now != nil {
+		return w.now()
+	}
+	return time.Now()
+}
+
+func (w *idleWatch) beginLoad() {
+	w.mu.Lock()
+	w.loading, w.sent = true, false
+	w.mu.Unlock()
+}
+
+// loadSent records whether LOAD reached the receiver; it acts on it later.
+func (w *idleWatch) loadSent(ok bool) {
+	w.mu.Lock()
+	w.loading, w.sent = ok, ok
+	w.deadline = w.clock().Add(reloadTimeout)
+	w.mu.Unlock()
+}
+
+// ended reports whether a receiver state in media session ends playback.
+func (w *idleWatch) ended(state string, session int) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	switch state {
+	case "PLAYING", "PAUSED", "BUFFERING":
+		switch {
+		case !w.loading:
+			w.started, w.session = true, session
+		case !w.sent:
+			w.session = session // seen before LOAD went out: the replaced one
+		case session != w.session || w.clock().After(w.deadline):
+			// A new session, or the same ID after a receiver relaunch.
+			w.loading, w.started, w.session = false, true, session
+		}
+	case "IDLE":
+		if w.loading {
+			return w.sent && w.started && w.clock().After(w.deadline)
+		}
+		return w.started
+	}
+	return false
+}
+
+// LoadStarted marks a LOAD about to be sent; call LoadSent with its result.
+func (p *ChromecastScreen) LoadStarted() { p.idle.beginLoad() }
+
+// LoadSent records whether the LOAD was sent.
+func (p *ChromecastScreen) LoadSent(ok bool) { p.idle.loadSent(ok) }
 
 func (p *ChromecastScreen) emitStr(x, y int, style tcell.Style, str string) {
 	s := p.Current
@@ -140,7 +210,6 @@ func (p *ChromecastScreen) InterInit(mediaPath string, c chan error) {
 
 	// Status polling goroutine
 	statusTicker := time.NewTicker(time.Second)
-	var mediaStarted bool
 	go func() {
 		for range statusTicker.C {
 			if p.Client == nil {
@@ -150,24 +219,23 @@ func (p *ChromecastScreen) InterInit(mediaPath string, c chan error) {
 			if err != nil {
 				continue
 			}
+			if p.idle.ended(status.PlayerState, status.MediaSessionID) {
+				p.EmitMsg("Stopped")
+				p.Fini()
+				continue
+			}
 			switch status.PlayerState {
 			case "PLAYING":
-				mediaStarted = true
 				p.EmitMsg("Playing")
 				if mediaEnded(status.CurrentTime, status.Duration, p.streamOffset(), p.Duration) {
 					p.EmitMsg("Stopped")
 					p.Fini()
 				}
 			case "PAUSED":
-				mediaStarted = true
 				p.EmitMsg("Paused")
 			case "BUFFERING":
-				mediaStarted = true
 				p.EmitMsg("Buffering...")
 			case "IDLE":
-				if mediaStarted {
-					p.EmitMsg("Stopped")
-				}
 			default:
 				p.EmitMsg(p.getLastAction())
 			}
@@ -321,9 +389,12 @@ func (p *ChromecastScreen) seekRelative(delta int) (int, error) {
 		return 0, errors.New("seekRelative: transcoded duration unknown")
 	}
 	target := playback.SkipTarget(current, delta, int(p.Duration))
+	p.idle.beginLoad()
 	if err := p.Restart(target); err != nil {
+		p.idle.loadSent(false)
 		return 0, fmt.Errorf("seekRelative: %w", err)
 	}
+	p.idle.loadSent(true)
 	p.mu.Lock()
 	p.offset = target
 	p.mu.Unlock()

@@ -482,10 +482,12 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 	}
 
 	// Load media (async)
+	// Status from a session this LOAD replaces must not count as playback.
+	scr.LoadStarted()
 	go func() {
 		// Use LIVE stream type for URL/stdin streams to avoid ~30s buffering delay
 		_, isStream := mediaFile.(io.ReadCloser)
-		if err := client.LoadMedia(castprotocol.LoadRequest{
+		err := client.LoadMedia(castprotocol.LoadRequest{
 			MediaURL:           mediaURL,
 			ContentType:        mediaType,
 			Metadata:           mediaMetadata,
@@ -494,7 +496,9 @@ func runChromecastCLI(ctx context.Context, cancel context.CancelFunc, deviceURL,
 			SubtitleURL:        subtitleURL,
 			TorrentSubtitleURL: torrentSubtitleURL,
 			Live:               externalURL || isStream,
-		}); err != nil {
+		})
+		scr.LoadSent(err == nil)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "chromecast load: %v\n", err)
 		}
 	}()
