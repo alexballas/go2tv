@@ -717,6 +717,12 @@ func serveContentWithDLNAOptions(w http.ResponseWriter, r *http.Request, tv *soa
 		}
 		serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, borrowedLiveReader{rc}, dlnaOpts)
 	case io.ReadCloser:
+		// Single-use stream: a HEAD probe (Samsung sends two) must not close
+		// it, or the GET that follows gets an empty body.
+		if r.Method != http.MethodGet {
+			serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, http.NoBody, dlnaOpts)
+			return
+		}
 		serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, f, dlnaOpts)
 	default:
 		http.NotFound(w, r)
