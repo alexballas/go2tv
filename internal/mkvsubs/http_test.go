@@ -150,3 +150,35 @@ func TestCaptionHTTPOriginRetriesUnavailablePieces(t *testing.T) {
 		t.Fatalf("retry lost normalized captions: status=%d cues=%+v", response.Code, result.Cues)
 	}
 }
+
+// TestCaptionHTTPPlainOverlayText: the receiver overlay renders text
+// literally, so SRT tracks with {\an8} or <i> showed raw codes on screen.
+func TestCaptionHTTPPlainOverlayText(t *testing.T) {
+	srt := textTrack(7, "S_TEXT/UTF8")
+	ass := elem(0xae, number(0xd7, 7), number(0x83, 17), elem(0x86, []byte("S_TEXT/ASS")), elem(0x63a2, []byte("[Script Info]\n")))
+	tt := []struct {
+		name, text, want string
+		track            []byte
+	}{
+		{name: "ASS override and italic", track: srt, text: "{\\an8}<i>top italic</i>", want: "top italic"},
+		{name: "font and bold", track: srt, text: `<font color="#ffff00">sign</font> <B>loud</B>`, want: "sign loud"},
+		{name: "plain comparison kept", track: srt, text: "a < b and c > d", want: "a < b and c > d"},
+		// ASS has no HTML markup, so <i> in an ASS line is literal text.
+		{name: "literal tag in ASS track kept", track: ass, text: "0,0,Default,,0,0,0,,The <i> tag", want: "The <i> tag"},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			data := elem(segmentID, elem(0x1654ae6b, tc.track),
+				elem(clusterID, number(0xe7, 0), subBlock(7, 1000, 2000, tc.text)))
+			response := httptest.NewRecorder()
+			Handler(New(&memorySource{data: data}), 0, false).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "http://host/?time=0", nil))
+			var result struct{ Cues []Cue }
+			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || len(result.Cues) != 1 {
+				t.Fatalf("captions %d: %s: %v", response.Code, response.Body.String(), err)
+			}
+			if got := result.Cues[0].Text; got != tc.want {
+				t.Fatalf("overlay text = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

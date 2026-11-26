@@ -65,6 +65,7 @@ type Parser struct {
 	subtitleIndex             int  // -1 selects the first supported track.
 	strict                    bool // File export must fail rather than silently omit captions.
 	preserveASS               bool
+	plainText                 bool // Receiver overlay: drop SRT {\an8} and <i> markup.
 	burn                      BurnMetadata
 	attachments               int64
 	seekHeads                 []int64
@@ -890,6 +891,9 @@ func (p *Parser) block(r io.ReadSeeker, e element) (string, int16, error) {
 		return "", 0, fmt.Errorf("invalid UTF8 subtitle")
 	}
 	text := strings.ToValidUTF8(string(b), "�")
+	if p.codec == "S_TEXT/UTF8" && p.plainText {
+		text = overlayText(text)
+	}
 	if p.codec != "S_TEXT/UTF8" {
 		fields := strings.SplitN(text, ",", 9)
 		if len(fields) != 9 {

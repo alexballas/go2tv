@@ -6,13 +6,28 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
+
+var (
+	assOverride = regexp.MustCompile(`\{\\[^{}]*\}`)
+	formatTag   = regexp.MustCompile(`(?i)</?(?:b|i|u|s|font)(?:\s[^<>]*)?>`)
+)
+
+// overlayText strips ASS overrides and formatting tags from SRT-track text:
+// the receiver overlay shows plain text, so {\an8} or <i> would appear
+// literally. ASS tracks are cleaned by assText; a literal <i> there is text.
+func overlayText(s string) string {
+	return strings.TrimSpace(formatTag.ReplaceAllString(assOverride.ReplaceAllString(s, ""), ""))
+}
 
 // Handler supplies a bounded caption window in the receiver's timeline. Offset
 // accounts for a transcoded seek; transcoded streams also rebase the media origin.
 func Handler(p *Parser, offset float64, transcoded bool) http.Handler {
+	p.plainText = true
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
