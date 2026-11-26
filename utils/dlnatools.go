@@ -19,6 +19,35 @@ var (
 	ErrInvalidClockFormat = errors.New("invalid clock format")
 )
 
+// sniffMIME matches a header with filetype, falling back to MPEG-TS, which
+// filetype lacks: unknown sniffs became "/", so piped TS (ffmpeg -f mpegts -)
+// was never transcoded and receivers rejected it. Fallback only, as GIFs
+// start with the TS sync byte too.
+func sniffMIME(head []byte) (string, error) {
+	kind, err := filetype.Match(head)
+	if err != nil {
+		return "", err
+	}
+	if kind == filetype.Unknown && isMPEGTS(head) {
+		return "video/mp2t", nil
+	}
+	return fmt.Sprintf("%s/%s", kind.MIME.Type, kind.MIME.Subtype), nil
+}
+
+// isMPEGTS checks the 0x47 sync byte on consecutive 188-byte packets.
+func isMPEGTS(head []byte) bool {
+	const packet = 188
+	if len(head) <= packet {
+		return false
+	}
+	for i := 0; i < len(head); i += packet {
+		if head[i] != 0x47 {
+			return false
+		}
+	}
+	return true
+}
+
 // DLNAContentFeaturesOptions describes only capabilities that are true for
 // the bytes served by the HTTP endpoint. Profile names and FLAGS are omitted
 // unless a future classifier can verify them from the actual media stream.
@@ -105,22 +134,22 @@ func GetMimeDetailsFromPath(path string) (string, error) {
 		return "", fmt.Errorf("getMimeDetailsFromPath error #2: %w", err)
 	}
 
-	kind, err := filetype.Match(head[:read])
+	mime, err := sniffMIME(head[:read])
 	if err != nil {
 		return "", fmt.Errorf("getMimeDetailsFromPath error #3: %w", err)
 	}
 
-	return fmt.Sprintf("%s/%s", kind.MIME.Type, kind.MIME.Subtype), nil
+	return mime, nil
 }
 
 // GetMimeDetailsFromBytes returns the media mime details from a byte slice.
 func GetMimeDetailsFromBytes(data []byte) (string, error) {
-	kind, err := filetype.Match(data)
+	mime, err := sniffMIME(data)
 	if err != nil {
 		return "", fmt.Errorf("getMimeDetailsFromBytes error: %w", err)
 	}
 
-	return fmt.Sprintf("%s/%s", kind.MIME.Type, kind.MIME.Subtype), nil
+	return mime, nil
 }
 
 // GetMimeDetailsFromStream returns the media URL mime details.
@@ -139,12 +168,12 @@ func GetMimeDetailsFromStream(s io.ReadCloser) (string, error) {
 		return "", fmt.Errorf("getMimeDetailsFromStream error: %w", err)
 	}
 
-	kind, err := filetype.Match(head[:read])
+	mime, err := sniffMIME(head[:read])
 	if err != nil {
 		return "", fmt.Errorf("getMimeDetailsFromStream error  #2: %w", err)
 	}
 
-	return fmt.Sprintf("%s/%s", kind.MIME.Type, kind.MIME.Subtype), nil
+	return mime, nil
 }
 
 // ClockTimeToSeconds converts relative time to seconds.

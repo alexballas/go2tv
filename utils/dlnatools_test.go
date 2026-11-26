@@ -254,3 +254,35 @@ func TestSecondsToClockTime(t *testing.T) {
 		})
 	}
 }
+
+func TestGetMimeDetailsMPEGTS(t *testing.T) {
+	ts := make([]byte, 512)
+	for i := 0; i < len(ts); i += 188 {
+		ts[i] = 0x47
+	}
+	tt := []struct {
+		name string
+		data []byte
+		want string
+	}{
+		// Piped `ffmpeg -f mpegts -` output: was "/", so -tc never applied.
+		{name: "transport stream", data: ts, want: "video/mp2t"},
+		{name: "single sync byte is not TS", data: append([]byte{0x47}, make([]byte, 300)...), want: "/"},
+		// "GIF8" starts with the sync byte; ~1 in 256 GIFs also have 0x47 at 188.
+		{name: "GIF with sync byte at packet boundary", data: gifWithSyncAt188(), want: "image/gif"},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := GetMimeDetailsFromBytes(tc.data)
+			if err != nil || got != tc.want {
+				t.Fatalf("GetMimeDetailsFromBytes = %q, %v; want %q", got, err, tc.want)
+			}
+		})
+	}
+}
+
+func gifWithSyncAt188() []byte {
+	b := append([]byte("GIF89a"), make([]byte, 255)...)
+	b[188] = 0x47
+	return b
+}
