@@ -67,6 +67,9 @@
             <li>Fixed an unreadable subtitle file stopping a DLNA cast.</li>
             <li>Fixed the CLI stopping a transcoded Chromecast cast after a few seconds.</li>
             <li>Fixed subtitles disappearing after skipping forward or back in a transcoded Chromecast cast from the CLI.</li>
+            <li>Fixed casting a media URL to some DLNA TVs, such as Samsung, playing nothing.</li>
+            <li>Fixed the CLI sometimes staying open after a Chromecast cast finished.</li>
+            <li>Fixed piped MPEG-TS video not playing on Chromecast with -tc.</li>
             <li>Desktop App: Fixed an "RTMP server stopped unexpectedly" error appearing when an RTMP stream ended normally.</li>
             <li>Desktop App: Fixed memory not being released after closing the Playlist window.</li>
             <li>Windows: Fixed DLNA discovery finding no devices while another Go2TV instance is scanning.</li>
