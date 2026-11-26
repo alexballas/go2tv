@@ -3,6 +3,7 @@ package utils
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,7 +54,9 @@ printf '%s\n' "$@" > "$GO2TV_CHROMECAST_ARGS"
 
 // TestChromecastTranscodeFragmentLength: 1s fragments (one per keyframe) made
 // the receiver stall for good at ~3s in roughly a third of -tc casts and skips.
-// Short-GOP file transcodes need long fragments; live pipes keep fast startup.
+// Short-GOP file transcodes and torrent burn-in need long fragments; torrent
+// burn-in also caps them so playback starts before the download completes.
+// Live pipes keep fast startup.
 func TestChromecastTranscodeFragmentLength(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell-script fake ffmpeg test skipped on windows")
@@ -67,12 +70,15 @@ func TestChromecastTranscodeFragmentLength(t *testing.T) {
 		name     string
 		input    any
 		hardware bool
+		torrent  bool
 		wantMin  bool
+		wantMax  bool
 	}{
 		{name: "hardware local file", input: "movie.mp4", hardware: true, wantMin: true},
 		{name: "hardware seekable fd", input: file, hardware: true, wantMin: true},
 		{name: "hardware piped stream", input: strings.NewReader("stream"), hardware: true},
 		{name: "software long GOP", input: "movie.mp4"},
+		{name: "software torrent burn-in", input: "movie.mkv", torrent: true, wantMin: true, wantMax: true},
 	}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
@@ -98,6 +104,9 @@ case " $* " in *" -movflags "*) printf '%s\n' "$@" > "$GO2TV_CHROMECAST_ARGS" ;;
 			}
 			var command exec.Cmd
 			opts := &TranscodeOptions{FFmpegPath: ffmpegPath}
+			if tc.torrent {
+				opts.TorrentSource = fragmentTestSource{}
+			}
 			if err := ServeChromecastTranscodedStream(context.Background(), &bytes.Buffer{}, tc.input, &command, opts); err != nil {
 				t.Fatal(err)
 			}
@@ -106,13 +115,29 @@ case " $* " in *" -movflags "*) printf '%s\n' "$@" > "$GO2TV_CHROMECAST_ARGS" ;;
 				t.Fatal(err)
 			}
 			args := strings.Fields(string(data))
-			i := slices.Index(args, "-min_frag_duration")
-			if tc.wantMin && (i < 0 || i+1 >= len(args) || args[i+1] != chromecastMinFragment) {
-				t.Fatalf("args = %q, want -min_frag_duration %s", args, chromecastMinFragment)
-			}
-			if !tc.wantMin && i >= 0 {
-				t.Fatalf("args = %q, want no fragment minimum", args)
+			for _, flag := range []struct {
+				name string
+				want bool
+			}{{"-min_frag_duration", tc.wantMin}, {"-frag_duration", tc.wantMax}} {
+				i := slices.Index(args, flag.name)
+				if flag.want && (i < 0 || i+1 >= len(args) || args[i+1] != chromecastMinFragment) {
+					t.Fatalf("args = %q, want %s %s", args, flag.name, chromecastMinFragment)
+				}
+				if !flag.want && i >= 0 {
+					t.Fatalf("args = %q, want no %s", args, flag.name)
+				}
 			}
 		})
 	}
 }
+
+// fragmentTestSource stands in for a torrent; subtitle burn-in setup fails
+// against the fake ffmpeg and is skipped, leaving only the fragment choice.
+type fragmentTestSource struct{}
+
+func (fragmentTestSource) Open(context.Context) (io.ReadSeekCloser, error) {
+	return nil, os.ErrNotExist
+}
+func (fragmentTestSource) URL() string  { return "" }
+func (fragmentTestSource) MIME() string { return "video/x-matroska" }
+func (fragmentTestSource) Size() int64  { return 0 }

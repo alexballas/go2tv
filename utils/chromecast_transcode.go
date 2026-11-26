@@ -167,9 +167,10 @@ func ServeChromecastTranscodedStream(
 		} else {
 			switch {
 			case opts.TorrentSource != nil:
-				// Flush playable fragments before the next keyframe, which may
+				// Flush fragments without waiting for the next keyframe, which may
 				// otherwise require downloading the entire low-frame-rate file.
-				args = append(args, "-frag_duration", "1000000")
+				// Exactly 8s, not 1s: short fragments stall the receiver (below).
+				args = append(args, "-frag_duration", chromecastMinFragment, "-min_frag_duration", chromecastMinFragment)
 			case fileInput && plan.codec != "libx264":
 				// Chromecast intermittently stalls for good at the first fragment
 				// boundary when it falls within ~5s of the start (1s GOP: stuck at
