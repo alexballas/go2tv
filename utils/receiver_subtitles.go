@@ -9,9 +9,8 @@ import (
 )
 
 var (
-	assOverrideBlock = regexp.MustCompile(`\{\\[^{}]*\}`)
-	assAlignTag      = regexp.MustCompile(`(?i)\\an([1-9])`)
-	assStyleToken    = regexp.MustCompile(`^([biu])(\d*)$`)
+	assAlignTag   = regexp.MustCompile(`(?i)\\an([1-9])`)
+	assStyleToken = regexp.MustCompile(`^([biu])(\d*)$`)
 	// webVTTMarkup matches what WebVTT cue text may keep unescaped: tags
 	// (incl. timestamps) and character references.
 	webVTTMarkup = regexp.MustCompile(`^(?:</?[A-Za-z0-9][^<>]*>|&(?:[A-Za-z]+|#[0-9]+|#[xX][0-9A-Fa-f]+);)`)
@@ -89,9 +88,7 @@ func cleanReceiverCueBody(s string) (string, int) {
 		s = s[end:]
 	}
 	// Close still-open style tags at cue end.
-	for _, tag := range slices.Backward(open) {
-		b.WriteString("</" + tag + ">")
-	}
+	closeAllTags(&b, open)
 	cleaned := b.String()
 	if hasOverride {
 		cleaned = strings.ReplaceAll(cleaned, `\N`, "\n")
@@ -109,6 +106,7 @@ func applyOverrideStyleTokens(block string, b *strings.Builder, open []string) [
 	// Interior without braces: starts with '\'
 	body := block[1 : len(block)-1]
 	i := 0
+tokens:
 	for i < len(body) {
 		if body[i] != '\\' {
 			i++
@@ -125,17 +123,14 @@ func applyOverrideStyleTokens(block string, b *strings.Builder, open []string) [
 				case ')':
 					depth--
 					if depth == 0 {
-						j++
-						i = j
-						goto next
+						i = j + 1
+						continue tokens
 					}
 				}
 				j++
 			}
 			// unclosed \t( — skip to end of block
 			return open
-		next:
-			continue
 		}
 		// Token until next '\' or end
 		j := i + 1
@@ -313,12 +308,12 @@ func sanitizeReceiverWebVTT(data []byte) []byte {
 	blocks := splitWebVTTBlocks(text)
 	kept := make([]string, 0, len(blocks))
 	for _, block := range blocks {
-		if isWebVTTNonCueBlock(block) {
+		if isWebVTTMetadataFirstLine(block) {
 			kept = append(kept, block)
 			continue
 		}
 		lines := strings.Split(strings.TrimSpace(block), "\n")
-		if len(lines) == 0 || lines[0] == "" {
+		if lines[0] == "" {
 			kept = append(kept, block)
 			continue
 		}
@@ -417,7 +412,7 @@ func stripReceiverSRTOverridesUTF8(data []byte) []byte {
 	kept := make([]string, 0, len(blocks))
 	for _, block := range blocks {
 		lines := strings.Split(strings.TrimSpace(block), "\n")
-		if len(lines) == 0 || lines[0] == "" {
+		if lines[0] == "" {
 			kept = append(kept, block)
 			continue
 		}
@@ -456,10 +451,6 @@ func looksLikeSRTIndex(s string) bool {
 		}
 	}
 	return true
-}
-
-func isWebVTTNonCueBlock(block string) bool {
-	return isWebVTTMetadataFirstLine(block)
 }
 
 // isWebVTTMetadataFirstLine reports whether the first line of a block is a

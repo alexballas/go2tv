@@ -61,20 +61,20 @@ func SubtitlesReaderForPlaybackContext(ctx context.Context, source io.Reader, ex
 	defer stopClosing()
 	var data []byte
 	var err error
-	ffmpegPathStr := ""
-	if len(ffmpegPath) > 0 {
-		ffmpegPathStr = ffmpegPath[0]
-	}
 	switch strings.ToLower(extension) {
 	case ".srt":
 		data, err = ConvertSRTReaderToWebVTT(source)
 	case ".vtt":
 		data, err = io.ReadAll(source)
 	case ".ass", ".ssa":
+		path := ""
+		if len(ffmpegPath) > 0 {
+			path = ffmpegPath[0]
+		}
 		// ASS→SRT intermediate: FFmpeg time-sorts cues and embeds {\anN}
 		// so sanitize maps alignment per cue (style Alignment included).
 		var rawSRT []byte
-		rawSRT, err = convertASSReaderToSRTUnstripped(ctx, source, ffmpegPathStr)
+		rawSRT, err = convertASSReaderToSRTUnstripped(ctx, source, path)
 		if err == nil {
 			data, err = ConvertSRTReaderToWebVTT(bytes.NewReader(rawSRT))
 		}
@@ -100,7 +100,7 @@ func SubtitlesReaderForPlaybackContext(ctx context.Context, source io.Reader, ex
 	offset := int64(seekSeconds) * 1000
 	for _, block := range blocks {
 		// Comments and style blocks may contain text resembling cue timings.
-		if isWebVTTNonCueBlock(block) {
+		if isWebVTTMetadataFirstLine(block) {
 			kept = append(kept, block)
 			continue
 		}

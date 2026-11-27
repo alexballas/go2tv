@@ -311,29 +311,6 @@ func LoadSSDPservicesContext(ctx context.Context, delay int) ([]Device, error) {
 		}
 	}
 
-	if len(deviceList) == 0 {
-		discoverySummaryf(
-			"LoadSSDPservices summary",
-			"LoadSSDPservices summary listen_addr=%q ssdp_results=%d unique_locations=%d relaxed=%t rejected=%d restricted=%d hidden=%d relaxed_selected=%d capped=%d load_errors=%d error_hosts=%q filtered=%d duplicate_names=%d unnamed=%d returned=0 devices=%q",
-			addrString,
-			len(list),
-			sel.seen,
-			relaxed,
-			len(sel.rejected),
-			len(sel.restricted),
-			len(sel.hidden),
-			sel.relaxedSelected,
-			sel.capped,
-			loadErrors,
-			formatSummaryList(loadErrorHosts, 3),
-			filteredDevices,
-			dupNameCount,
-			unnamedDevices,
-			"",
-		)
-		return nil, ErrNoDeviceAvailable
-	}
-
 	// Convert map to Device slice with proper type
 	result := make([]Device, 0, len(deviceList))
 	for name, dev := range deviceList {
@@ -360,6 +337,9 @@ func LoadSSDPservicesContext(ctx context.Context, delay int) ([]Device, error) {
 		len(result),
 		deviceNames(result, 3),
 	)
+	if len(result) == 0 {
+		return nil, ErrNoDeviceAvailable
+	}
 
 	return result, nil
 }

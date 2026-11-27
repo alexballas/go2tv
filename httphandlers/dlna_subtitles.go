@@ -35,19 +35,15 @@ func PrepareDLNASubtitles(ctx context.Context, subtitleURL string, subtitles any
 		return subtitleURL, subtitles, nil
 	}
 
-	// disableCaptions rewrites the URL to the established no-caption path.
-	disableCaptions := func() (string, any, error) {
-		parsed.Path = "/."
-		parsed.RawPath = ""
-		return parsed.String(), nil, nil
-	}
-
 	var source io.Reader
 	switch value := subtitles.(type) {
 	case string:
 		file, openErr := os.Open(value)
 		if openErr != nil {
-			return disableCaptions()
+			// Cast without captions via the established no-caption path.
+			parsed.Path = "/."
+			parsed.RawPath = ""
+			return parsed.String(), nil, nil
 		}
 		defer file.Close()
 		source = file
