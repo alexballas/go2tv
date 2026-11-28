@@ -18,7 +18,7 @@ if [ ! -d "$directory" ]; then
 	case "$url" in
 		*.tar.gz)
 			archive=$workdir/source.tar.gz
-			curl -fL "$url" -o "$archive"
+			curl -fL --retry 5 --retry-all-errors --connect-timeout 20 "$url" -o "$archive"
 			if command -v sha256sum >/dev/null 2>&1; then
 				actual=$(sha256sum "$archive" | awk '{print $1}')
 			else

@@ -39,3 +39,14 @@ func acceptSharedURI(uri fyne.URI, mime string) bool {
 	}
 	return false
 }
+
+func resumeEligibleMediaKind(mediaType string) (string, bool) {
+	switch {
+	case strings.HasPrefix(mediaType, "video/"):
+		return "video", true
+	case strings.HasPrefix(mediaType, "audio/"):
+		return "audio", true
+	default:
+		return "", false
+	}
+}

@@ -2678,14 +2678,6 @@ func stopAction(screen *FyneScreen) {
 	stopActionInternal(screen, false)
 }
 
-// Finish renderer and HTTP teardown before starting replacement playback.
-func stopActionSync(screen *FyneScreen) {
-	if done := screen.cancelPlaybackStartup(); done != nil {
-		<-done
-	}
-	stopActionInternal(screen, true)
-}
-
 func stopActionInternal(screen *FyneScreen, wait bool) {
 	// Silent when the remote session holds the renderer: no GUI session can
 	// exist then, so there is nothing to stop.

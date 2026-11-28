@@ -9,7 +9,6 @@ import (
 	"image/color"
 	"net/url"
 	"slices"
-	"sort"
 	"time"
 
 	ttwidget "github.com/alexballas/fyne-tooltip/widget"
@@ -33,17 +32,6 @@ type deviceList struct {
 }
 
 func (c *deviceList) FocusGained() {}
-
-// sortDevTypeSlice sorts devices alphabetically by name,
-// with DLNA devices before Chromecast devices when names are equal.
-func sortDevTypeSlice(d []devType) {
-	sort.Slice(d, func(i, j int) bool {
-		if d[i].deviceType != d[j].deviceType {
-			return d[i].deviceType < d[j].deviceType
-		}
-		return d[i].name < d[j].name
-	})
-}
 
 func newDeviceList(s *FyneScreen, dd *[]devType) *deviceList {
 	list := &deviceList{}

@@ -208,13 +208,6 @@ func (p *FyneScreen) EmitMsg(a string) {
 	}
 }
 
-// SetMediaType Method to implement the screen interface
-func (p *FyneScreen) SetMediaType(mediaType string) {
-	p.mu.Lock()
-	p.castingMediaType = mediaType
-	p.mu.Unlock()
-}
-
 // Fini Method to implement the screen interface.
 // Will only be executed when we receive a callback message,
 // not when we explicitly click the Stop button.
@@ -262,34 +255,10 @@ func (p *FyneScreen) setActiveDevice(device devType) {
 	p.mu.Unlock()
 }
 
-func (p *FyneScreen) clearActiveDevice() {
-	p.setActiveDevice(devType{})
-}
-
 func (p *FyneScreen) getActiveDevice() devType {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.activeDevice
-}
-
-// getScreenState returns the current screen state
-func (p *FyneScreen) getScreenState() string {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.State
-}
-
-func (p *FyneScreen) nextChromecastActionID() uint64 {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.chromecastActionID++
-	return p.chromecastActionID
-}
-
-func (p *FyneScreen) isChromecastActionCurrent(actionID uint64) bool {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.chromecastActionID == actionID
 }
 
 func setPlayPauseView(s string, screen *FyneScreen) {

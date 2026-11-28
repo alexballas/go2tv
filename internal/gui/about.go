@@ -109,24 +109,3 @@ func checkVersion(s *FyneScreen) {
 		return
 	}
 }
-
-func showVersionPopup(latestVersionStr string, s *FyneScreen) {
-	fyne.Do(func() {
-		lbl := widget.NewLabel(lang.L("Current") + ": v" + s.version + " → " + lang.L("New") + ": " + latestVersionStr)
-		lbl.Alignment = fyne.TextAlignCenter
-		cnf := dialog.NewCustomConfirm(
-			lang.L("Version checker"),
-			lang.L("Download"),
-			lang.L("Cancel"),
-			lbl,
-			func(b bool) {
-				if b {
-					u, _ := url.Parse("https://go2tv.app/latest")
-					_ = fyne.CurrentApp().OpenURL(u)
-				}
-			},
-			s.Current,
-		)
-		cnf.Show()
-	})
-}

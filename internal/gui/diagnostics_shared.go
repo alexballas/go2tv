@@ -8,6 +8,8 @@ import (
 	"runtime/debug"
 	"strings"
 	"time"
+
+	"go2tv.app/go2tv/v2/internal/crashlog"
 )
 
 func diagnosticsFileName() string {
@@ -126,4 +128,12 @@ func writeDiagnostics(w io.Writer, s *FyneScreen) error {
 	}
 
 	return writeDebugLogs(w, s.DiscoveryDebug)
+}
+
+func crashPath(crash *crashlog.Session) string {
+	if crash == nil {
+		return ""
+	}
+
+	return crash.PreviousCrashPath()
 }

@@ -3,11 +3,15 @@ package gui
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/alexballas/refyne/v2"
+	"github.com/alexballas/refyne/v2/dialog"
+	"github.com/alexballas/refyne/v2/lang"
+	"github.com/alexballas/refyne/v2/widget"
 	"golang.org/x/mod/semver"
 )
 
@@ -96,4 +100,25 @@ func compareVersions(v1, v2 string) (int, error) {
 	}
 
 	return semver.Compare(v1Norm, v2Norm), nil
+}
+
+func showVersionPopup(latestVersionStr string, s *FyneScreen) {
+	fyne.Do(func() {
+		lbl := widget.NewLabel(lang.L("Current") + ": v" + s.version + " → " + lang.L("New") + ": " + latestVersionStr)
+		lbl.Alignment = fyne.TextAlignCenter
+		cnf := dialog.NewCustomConfirm(
+			lang.L("Version checker"),
+			lang.L("Download"),
+			lang.L("Cancel"),
+			lbl,
+			func(b bool) {
+				if b {
+					u, _ := url.Parse("https://go2tv.app/latest")
+					_ = fyne.CurrentApp().OpenURL(u)
+				}
+			},
+			s.Current,
+		)
+		cnf.Show()
+	})
 }

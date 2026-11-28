@@ -62,3 +62,11 @@ func (s *FyneScreen) shutdownWait() <-chan struct{} {
 	})
 	return s.shutdownWaitCh
 }
+
+// stopActionSync waits for DLNA teardown before a transcoded seek restart.
+func stopActionSync(screen *FyneScreen) {
+	if done := screen.cancelPlaybackStartup(); done != nil {
+		<-done
+	}
+	stopActionInternal(screen, true)
+}

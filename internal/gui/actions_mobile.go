@@ -930,14 +930,6 @@ func stopAction(screen *FyneScreen) {
 	stopActionInternal(screen, false)
 }
 
-// stopActionSync waits for DLNA teardown before a transcoded seek restart.
-func stopActionSync(screen *FyneScreen) {
-	if done := screen.cancelPlaybackStartup(); done != nil {
-		<-done
-	}
-	stopActionInternal(screen, true)
-}
-
 func stopActionInternal(screen *FyneScreen, wait bool) {
 	preserveSeek := screen.dlnaSeekRestart
 	screen.persistDisplayedResumeProgress(true)

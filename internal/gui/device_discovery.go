@@ -3,6 +3,7 @@ package gui
 import (
 	"fmt"
 	"net/url"
+	"sort"
 
 	"go2tv.app/go2tv/v2/devices"
 	"go2tv.app/go2tv/v2/utils"
@@ -68,4 +69,15 @@ func (s *FyneScreen) clearHiddenDeviceSelection() {
 	}
 	s.clearDeviceSelection()
 	s.refreshPlaybackReadiness()
+}
+
+// sortDevTypeSlice sorts devices alphabetically by name,
+// with DLNA devices before Chromecast devices when names are equal.
+func sortDevTypeSlice(d []devType) {
+	sort.Slice(d, func(i, j int) bool {
+		if d[i].deviceType != d[j].deviceType {
+			return d[i].deviceType < d[j].deviceType
+		}
+		return d[i].name < d[j].name
+	})
 }
