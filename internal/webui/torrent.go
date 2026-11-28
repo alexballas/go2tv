@@ -154,9 +154,7 @@ func (h *Handler) loadTorrent(ctx context.Context, magnet string, body []byte) e
 	h.torrents.pending = pending
 	h.torrents.mu.Unlock()
 	closeWebTorrent(old)
-	h.torrents.workers.Add(1)
-	go func() {
-		defer h.torrents.workers.Done()
+	h.torrents.workers.Go(func() {
 		var session *torrentstream.Session
 		var err error
 		if magnet != "" {
@@ -196,7 +194,7 @@ func (h *Handler) loadTorrent(ctx context.Context, magnet string, body []byte) e
 				_ = session.Close()
 			}
 		}
-	}()
+	})
 	return nil
 }
 

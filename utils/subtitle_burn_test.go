@@ -359,7 +359,8 @@ func TestLocalASSBurnPreservesTypesetting(t *testing.T) {
 		{name: "external with adjacent font", opts: TranscodeOptions{SubsPath: subs}},
 		{name: "copied external retains original font directory", opts: TranscodeOptions{SubsPath: copied, SubtitleFontsDir: filepath.Dir(subs)}},
 	}
-	for _, tc := range tt {
+	for i := range tt {
+		tc := &tt[i]
 		t.Run(tc.name, func(t *testing.T) {
 			tc.opts.FFmpegPath, tc.opts.SubtitleSize = ffmpeg, SubtitleSizeLarge
 			burn, err := prepareSubtitleBurn(ctx, &tc.opts)

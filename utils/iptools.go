@@ -45,7 +45,7 @@ func URLtoListenIPandPort(u string) (string, error) {
 		return "", fmt.Errorf("URLtoListenIPandPort UDP call error: %w", err)
 	}
 
-	ipToListen := strings.Split(conn.LocalAddr().String(), ":")[0]
+	ipToListen, _, _ := strings.Cut(conn.LocalAddr().String(), ":")
 	portToListen, err := checkAndPickPort(ipToListen, 3500)
 	if err != nil {
 		return "", fmt.Errorf("URLtoListenIPandPort port error: %w", err)

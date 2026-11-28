@@ -912,7 +912,7 @@ func assText(s string) string {
 	for len(s) > 0 {
 		if s[0] == '{' {
 			if end := strings.IndexByte(s, '}'); end >= 0 {
-				for _, tag := range strings.Split(s[1:end], "\\") {
+				for tag := range strings.SplitSeq(s[1:end], "\\") {
 					if strings.HasPrefix(tag, "p") && len(tag) > 1 && tag[1] >= '0' && tag[1] <= '9' {
 						drawing = tag[1] != '0'
 					}
