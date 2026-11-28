@@ -280,7 +280,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	medialoop, nextmedia := &loopToggle.Check.Check, &nextToggle.Check.Check
 	transcodeToggle := newPlaybackToggle(lang.L("Transcode"), playbackTranscodeIcon())
 	transcode := &transcodeToggle.Check
-	screencastToggle := newPlaybackToggle(lang.L("Cast Desktop (experimental)"), playbackDesktopIcon())
+	screencastToggle := newPlaybackToggle(lang.L("Cast Desktop"), playbackDesktopIcon())
 	screencast := &screencastToggle.Check
 	rtmpToggle := newPlaybackToggle(lang.L("RTMP Server"), playbackServerIcon())
 	rtmpServerCheck := &rtmpToggle.Check

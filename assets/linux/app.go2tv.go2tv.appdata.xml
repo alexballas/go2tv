@@ -71,6 +71,7 @@
             <li>Fixed the CLI sometimes staying open after a Chromecast cast finished.</li>
             <li>Fixed piped MPEG-TS video not playing on Chromecast with -tc.</li>
             <li>Fixed transcoded Chromecast casts sometimes freezing a few seconds in.</li>
+            <li>Desktop App: Cast Desktop is no longer marked as experimental.</li>
             <li>Desktop App: Fixed an "RTMP server stopped unexpectedly" error appearing when an RTMP stream ended normally.</li>
             <li>Desktop App: Fixed memory not being released after closing the Playlist window.</li>
             <li>Windows: Fixed DLNA discovery finding no devices while another Go2TV instance is scanning.</li>
