@@ -181,10 +181,6 @@ func deriveMediaTitle(value string) string {
 }
 
 // Ensure the Default Media Receiver is running before custom media commands.
-func (c *CastClient) ensureDefaultReceiverReady() error {
-	return c.ensureDefaultReceiverReadyContext(context.Background())
-}
-
 func (c *CastClient) ensureDefaultReceiverReadyContext(ctx context.Context) error {
 	if c.defaultReceiverReady() {
 		return nil

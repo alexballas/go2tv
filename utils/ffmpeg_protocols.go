@@ -50,10 +50,6 @@ func underlyingOSFile(r io.Reader) (*os.File, bool) {
 	return nil, false
 }
 
-func ffmpegInputProtocolAvailable(ffmpegPath, name string) bool {
-	return ffmpegInputProtocolAvailableContext(context.Background(), ffmpegPath, name)
-}
-
 func ffmpegInputProtocolAvailableContext(ctx context.Context, ffmpegPath, name string) bool {
 	key := ffmpegPath + "|" + name
 	if cached, ok := ffmpegProtocolCache.Load(key); ok {
@@ -68,10 +64,6 @@ func ffmpegInputProtocolAvailableContext(ctx context.Context, ffmpegPath, name s
 	_, ok := protocols[name]
 	ffmpegProtocolCache.Store(key, ok)
 	return ok
-}
-
-func ffmpegInputProtocolSet(ffmpegPath string) (map[string]struct{}, error) {
-	return ffmpegInputProtocolSetContext(context.Background(), ffmpegPath)
 }
 
 func ffmpegInputProtocolSetContext(ctx context.Context, ffmpegPath string) (map[string]struct{}, error) {

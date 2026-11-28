@@ -5,8 +5,6 @@ import (
 	"context"
 	"fmt"
 	"image"
-	"image/color"
-	"image/gif"
 	"image/png"
 	"net/http"
 	"net/http/httptest"
@@ -24,15 +22,6 @@ func radioTestPNG(t *testing.T) []byte {
 	t.Helper()
 	var data bytes.Buffer
 	if err := png.Encode(&data, image.NewRGBA(image.Rect(0, 0, 24, 16))); err != nil {
-		t.Fatal(err)
-	}
-	return data.Bytes()
-}
-
-func radioTestGIF(t *testing.T) []byte {
-	t.Helper()
-	var data bytes.Buffer
-	if err := gif.Encode(&data, image.NewPaletted(image.Rect(0, 0, 24, 16), color.Palette{color.Black, color.White}), nil); err != nil {
 		t.Fatal(err)
 	}
 	return data.Bytes()

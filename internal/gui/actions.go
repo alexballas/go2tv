@@ -260,12 +260,6 @@ func unmuteAction(screen *FyneScreen) {
 	}()
 }
 
-func selectMediaFile(screen *FyneScreen, f fyne.URI) {
-	if err := selectMediaPaths(screen, []string{f.Path()}); err != nil {
-		check(screen, err)
-	}
-}
-
 func selectMediaPaths(screen *FyneScreen, paths []string) error {
 	if len(paths) == 1 && strings.EqualFold(filepath.Ext(paths[0]), ".torrent") {
 		fyne.Do(func() { showTorrentDialog(screen, paths[0]) })
