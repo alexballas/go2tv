@@ -14,10 +14,7 @@ import (
 	"go2tv.app/go2tv/v2/internal/mediasource"
 )
 
-var (
-	ErrInvalidSeekFlag    = errors.New("invalid seek flag")
-	ErrInvalidClockFormat = errors.New("invalid clock format")
-)
+var ErrInvalidClockFormat = errors.New("invalid clock format")
 
 // sniffMIME matches a header with filetype, falling back to MPEG-TS, which
 // filetype lacks: unknown sniffs became "/", so piped TS (ffmpeg -f mpegts -)
@@ -95,26 +92,6 @@ func DLNATransferMode(mediaType string) string {
 		return "Streaming"
 	}
 	return "Interactive"
-}
-
-// BuildContentFeatures is kept for callers that still pass the legacy seek
-// string. It no longer infers profiles or emits OP=00/FLAGS.
-// Deprecated: use BuildDLNAContentFeatures.
-func BuildContentFeatures(_ string, seek string, transcode bool) (string, error) {
-	opts := DLNAContentFeaturesOptions{Converted: transcode}
-	switch seek {
-	case "00":
-	case "01":
-		opts.ByteSeek = true
-	case "10":
-		opts.TimeSeek = true
-	case "11":
-		opts.TimeSeek = true
-		opts.ByteSeek = true
-	default:
-		return "", ErrInvalidSeekFlag
-	}
-	return BuildDLNAContentFeatures(opts), nil
 }
 
 // GetMimeDetailsFromPath returns the media mime details from a local file path.

@@ -180,19 +180,19 @@ type getPositionInfoResponse struct {
 	} `xml:"Body"`
 }
 
-func (p *TVPayload) doSOAPRequestWithMPostFallback(client *http.Client, req *http.Request, payload []byte, method string) (*http.Response, bool, error) {
+func (p *TVPayload) doSOAPRequestWithMPostFallback(client *http.Client, req *http.Request, payload []byte, method string) (*http.Response, error) {
 	res, err := client.Do(req)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 
 	if res.StatusCode != http.StatusMethodNotAllowed || req.Method != http.MethodPost {
-		return res, false, nil
+		return res, nil
 	}
 
 	soapAction := headerGetCaseInsensitive(req.Header, "SOAPAction")
 	if soapAction == "" {
-		return res, false, nil
+		return res, nil
 	}
 
 	p.Log().Debug("POST returned 405, retrying with M-POST", "Method", method, "Action", "M-POST Fallback")
@@ -202,7 +202,7 @@ func (p *TVPayload) doSOAPRequestWithMPostFallback(client *http.Client, req *htt
 
 	mpostReq, err := http.NewRequestWithContext(req.Context(), "M-POST", req.URL.String(), bytes.NewReader(payload))
 	if err != nil {
-		return nil, true, err
+		return nil, err
 	}
 
 	mpostReq.Header = req.Header.Clone()
@@ -223,10 +223,10 @@ func (p *TVPayload) doSOAPRequestWithMPostFallback(client *http.Client, req *htt
 
 	res, err = client.Do(mpostReq)
 	if err != nil {
-		return nil, true, err
+		return nil, err
 	}
 
-	return res, true, nil
+	return res, nil
 }
 
 func headerGetCaseInsensitive(h http.Header, key string) string {
@@ -354,7 +354,7 @@ func (p *TVPayload) setAVTransportSoapCallContext(ctx context.Context) error {
 
 		p.Log().Debug(string(payload), "Method", "setAVTransportSoapCall", "Action", action+" Request", "Headers", json.RawMessage(headerBytesReq))
 
-		res, _, reqErr := p.doSOAPRequestWithMPostFallback(client, req, payload, "setAVTransportSoapCall")
+		res, reqErr := p.doSOAPRequestWithMPostFallback(client, req, payload, "setAVTransportSoapCall")
 		if reqErr != nil {
 			p.Log().Error("", "Method", "setAVTransportSoapCall", "Action", action+" Do POST", "error", reqErr)
 			return 0, nil, fmt.Errorf("setAVTransportSoapCall Do POST error: %w", reqErr)
@@ -504,7 +504,7 @@ func (p *TVPayload) setNextAVTransportSoapCallContext(ctx context.Context, clear
 
 	p.Log().Debug(string(xmlData), "Method", "setNextAVTransportSoapCall", "Action", "Request", "Headers", json.RawMessage(headerBytesReq))
 
-	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlData, "setNextAVTransportSoapCall")
+	res, err := p.doSOAPRequestWithMPostFallback(client, req, xmlData, "setNextAVTransportSoapCall")
 	if err != nil {
 		p.Log().Error("", "Method", "setNextAVTransportSoapCall", "Action", "Do POST", "error", err)
 		return fmt.Errorf("setNextAVTransportSoapCall Do POST error: %w", err)
@@ -590,7 +590,7 @@ func (p *TVPayload) PlayPauseStopSoapCallContext(ctx context.Context, action str
 
 	p.Log().Debug(string(xmlData), "Method", "AVTransportActionSoapCall", "Action", action+" Request", "Headers", json.RawMessage(headerBytesReq))
 
-	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlData, "AVTransportActionSoapCall")
+	res, err := p.doSOAPRequestWithMPostFallback(client, req, xmlData, "AVTransportActionSoapCall")
 	if err != nil {
 		if action == "Play" && isTimeout(err) && p.rendererStarted(ctx) {
 			p.Log().Debug("Play reply timed out but renderer started", "Method", "AVTransportActionSoapCall", "Action", "Play Timeout Recovered", "error", err)
@@ -639,7 +639,7 @@ func (p *TVPayload) rendererStarted(ctx context.Context) bool {
 
 // SeekSoapCall builds and sends the AVTransport actions for Seek.
 func (p *TVPayload) SeekSoapCall(reltime string) error {
-	return p.SeekSoapCallContext(nil, reltime)
+	return p.SeekSoapCallContext(p.Context(), reltime)
 }
 
 func (p *TVPayload) SeekSoapCallContext(ctx context.Context, reltime string) error {
@@ -683,7 +683,7 @@ func (p *TVPayload) SeekSoapCallContext(ctx context.Context, reltime string) err
 
 	p.Log().Debug(string(xmlData), "Method", "SeekSoapCall", "Action", "Seek Request", "Headers", json.RawMessage(headerBytesReq))
 
-	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlData, "SeekSoapCall")
+	res, err := p.doSOAPRequestWithMPostFallback(client, req, xmlData, "SeekSoapCall")
 	if err != nil {
 		p.Log().Error("", "Method", "SeekSoapCall", "Action", "Do POST", "error", err)
 		return fmt.Errorf("SeekSoapCall Do POST error: %w", err)
@@ -960,7 +960,7 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 
 	p.Log().Debug(string(xmlbuilder), "Method", "GetMuteSoapCall", "Action", "Request", "Headers", json.RawMessage(headerBytesReq))
 
-	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetMuteSoapCall")
+	res, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetMuteSoapCall")
 	if err != nil {
 		return "", fmt.Errorf("GetMuteSoapCall Do POST error: %w", err)
 	}
@@ -991,7 +991,7 @@ func (p *TVPayload) GetMuteSoapCall() (string, error) {
 // It constructs the SOAP request, sets the necessary headers, and sends the request to the TV's RenderingControlURL.
 // The function logs the request and response details for debugging purposes.
 func (p *TVPayload) SetMuteSoapCall(number string) error {
-	return p.SetMuteSoapCallContext(nil, number)
+	return p.SetMuteSoapCallContext(p.Context(), number)
 }
 
 func (p *TVPayload) SetMuteSoapCallContext(ctx context.Context, number string) error {
@@ -1034,7 +1034,7 @@ func (p *TVPayload) SetMuteSoapCallContext(ctx context.Context, number string) e
 
 	p.Log().Debug(string(xmlbuilder), "Method", "SetMuteSoapCall", "Action", "Request", "Headers", json.RawMessage(headerBytesReq))
 
-	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "SetMuteSoapCall")
+	res, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "SetMuteSoapCall")
 	if err != nil {
 		return fmt.Errorf("SetMuteSoapCall Do POST error: %w", err)
 	}
@@ -1059,7 +1059,7 @@ func (p *TVPayload) SetMuteSoapCallContext(ctx context.Context, number string) e
 
 // GetVolumeSoapCall returns tue volume level for our device.
 func (p *TVPayload) GetVolumeSoapCall() (int, error) {
-	return p.GetVolumeSoapCallContext(nil)
+	return p.GetVolumeSoapCallContext(p.Context())
 }
 
 func (p *TVPayload) GetVolumeSoapCallContext(ctx context.Context) (int, error) {
@@ -1102,7 +1102,7 @@ func (p *TVPayload) GetVolumeSoapCallContext(ctx context.Context) (int, error) {
 
 	p.Log().Debug(string(xmlbuilder), "Method", "GetVolumeSoapCall", "Action", "Request", "Headers", json.RawMessage(headerBytesReq))
 
-	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetVolumeSoapCall")
+	res, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetVolumeSoapCall")
 	if err != nil {
 		p.Log().Error("", "Method", "GetVolumeSoapCall", "Action", "Do POST", "error", err)
 		return 0, fmt.Errorf("GetVolumeSoapCall Do POST error: %w", err)
@@ -1142,7 +1142,7 @@ func (p *TVPayload) GetVolumeSoapCallContext(ctx context.Context) (int, error) {
 
 // SetVolumeSoapCall sets the desired volume level.
 func (p *TVPayload) SetVolumeSoapCall(v string) error {
-	return p.SetVolumeSoapCallContext(nil, v)
+	return p.SetVolumeSoapCallContext(p.Context(), v)
 }
 
 func (p *TVPayload) SetVolumeSoapCallContext(ctx context.Context, v string) error {
@@ -1185,7 +1185,7 @@ func (p *TVPayload) SetVolumeSoapCallContext(ctx context.Context, v string) erro
 
 	p.Log().Debug(string(xmlbuilder), "Method", "SetVolumeSoapCall", "Action", "Request", "Headers", json.RawMessage(headerBytesReq))
 
-	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "SetVolumeSoapCall")
+	res, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "SetVolumeSoapCall")
 	if err != nil {
 		return fmt.Errorf("SetVolumeSoapCall Do POST error: %w", err)
 	}
@@ -1255,7 +1255,7 @@ func (p *TVPayload) GetProtocolInfoContext(ctx context.Context) error {
 
 	p.Log().Debug(string(xmlbuilder), "Method", "GetProtocolInfo", "Action", "Request", "Headers", json.RawMessage(headerBytesReq))
 
-	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetProtocolInfo")
+	res, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetProtocolInfo")
 	if err != nil {
 		p.Log().Error("", "Method", "GetProtocolInfo", "Action", "Do POST failed <ignoring>", "error", err)
 		return nil
@@ -1343,7 +1343,7 @@ func (p *TVPayload) GetMediaInfoContext(ctx context.Context) (MediaInfo, error) 
 
 	p.Log().Debug(string(xmlbuilder), "Method", "Gapless", "Action", "Request", "Headers", json.RawMessage(headerBytesReq))
 
-	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "Gapless")
+	res, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "Gapless")
 	if err != nil {
 		return MediaInfo{}, fmt.Errorf("Gapless Do POST error: %w", err)
 	}
@@ -1431,7 +1431,7 @@ func (p *TVPayload) GetTransportInfoContext(ctx context.Context) ([]string, erro
 
 	p.Log().Debug(string(xmlbuilder), "Method", "GetTransportInfo", "Action", "Request", "Headers", json.RawMessage(headerBytesReq))
 
-	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetTransportInfo")
+	res, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetTransportInfo")
 	if err != nil {
 		return nil, fmt.Errorf("GetTransportInfo Do POST error: %w", err)
 	}
@@ -1532,7 +1532,7 @@ func (p *TVPayload) GetPositionInfoContext(ctx context.Context) (PositionInfo, e
 
 	p.Log().Debug(string(xmlbuilder), "Method", "GetPositionInfo", "Action", "Request", "Headers", json.RawMessage(headerBytesReq))
 
-	res, _, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetPositionInfo")
+	res, err := p.doSOAPRequestWithMPostFallback(client, req, xmlbuilder, "GetPositionInfo")
 	if err != nil {
 		return PositionInfo{}, fmt.Errorf("GetPositionInfo Do POST error: %w", err)
 	}

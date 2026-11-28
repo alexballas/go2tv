@@ -73,9 +73,7 @@ func checkVersion(s *FyneScreen) {
 	errVersioncomp := errors.New(lang.L("failed to get version info") + "\n" + lang.L("you're using a development or a non-compiled version"))
 	errVersionGet := errors.New(lang.L("failed to get version info") + "\n" + lang.L("check your internet connection"))
 
-	// Parse current version
-	// Check if current version is valid/parsable (not "dev")
-	if _, err := parseVersion(s.version); err != nil {
+	if !validVersion(s.version) {
 		fyne.Do(func() {
 			dialog.ShowError(errVersioncomp, s.Current)
 		})

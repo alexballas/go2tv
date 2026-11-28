@@ -441,7 +441,7 @@ func (h *Handler) queueAddMany(ctx context.Context, message envelope) (controlle
 	refs := make([]controller.MediaRef, 0, len(p.EntryIDs))
 	failed := 0
 	for _, entryID := range p.EntryIDs {
-		ref, err := h.queuedMediaRef(p.RootID, entryID)
+		ref, err := h.mediaRef(p.RootID, entryID)
 		if err != nil || ref.Kind == mediamodel.MediaKindUnknown {
 			// Entries listed by the client can vanish or change before the
 			// bulk add arrives; skip them instead of failing the batch.
@@ -461,11 +461,6 @@ func (h *Handler) queueAddMany(ctx context.Context, message envelope) (controlle
 }
 
 func (h *Handler) executeCommand(ctx context.Context, message envelope) controller.Result {
-	var common struct {
-		ExpectedRevision *uint64 `json:"expected_revision"`
-	}
-	if len(message.Payload) > 0 && readStrict(message.Payload, &common) != nil { /* command-specific decoder follows */
-	}
 	switch message.Type {
 	case "devices.refresh":
 		var p struct {
@@ -494,7 +489,7 @@ func (h *Handler) executeCommand(ctx context.Context, message envelope) controll
 			return invalid(message.ID)
 		}
 		if message.Type == "library.play" || message.Type == "library.select_media" {
-			ref, err := h.mediaRef(ctx, p.RootID, p.EntryID)
+			ref, err := h.mediaRef(p.RootID, p.EntryID)
 			if err != nil {
 				return mediaRefError(message.ID, err)
 			}
@@ -534,7 +529,7 @@ func (h *Handler) executeCommand(ctx context.Context, message envelope) controll
 		if readStrict(message.Payload, &p) != nil {
 			return invalid(message.ID)
 		}
-		ref, err := h.mediaRef(ctx, p.RootID, p.EntryID)
+		ref, err := h.mediaRef(p.RootID, p.EntryID)
 		if err != nil {
 			return mediaRefError(message.ID, err)
 		}
@@ -794,15 +789,7 @@ func mediaRefError(id string, err error) controller.Result {
 	return invalid(id)
 }
 
-func (h *Handler) mediaRef(_ context.Context, rootID, entryID string) (controller.MediaRef, error) {
-	return h.buildMediaRef(rootID, entryID)
-}
-
-func (h *Handler) queuedMediaRef(rootID, entryID string) (controller.MediaRef, error) {
-	return h.buildMediaRef(rootID, entryID)
-}
-
-func (h *Handler) buildMediaRef(rootID, entryID string) (controller.MediaRef, error) {
+func (h *Handler) mediaRef(rootID, entryID string) (controller.MediaRef, error) {
 	file, meta, err := h.cfg.Library.OpenMedia(rootID, entryID)
 	if err != nil {
 		return controller.MediaRef{}, err

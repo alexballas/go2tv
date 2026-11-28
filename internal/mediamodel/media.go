@@ -28,8 +28,6 @@ var (
 
 func ImageExtensions() []string { return slices.Clone(imageExtensions[:]) }
 func VideoExtensions() []string { return slices.Clone(videoExtensions[:]) }
-func AudioExtensions() []string { return slices.Clone(audioExtensions[:]) }
-func SRTExtensions() []string   { return slices.Clone(srtExtensions[:]) }
 
 // SubtitleExtensions returns subtitle formats supported by playback.
 func SubtitleExtensions() []string {

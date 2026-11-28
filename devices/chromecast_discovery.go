@@ -233,7 +233,7 @@ func StartChromecastDiscoveryLoop(ctx context.Context) {
 func discoverChromecastDevices(ctx context.Context) {
 	const googlecastService = "_googlecast._tcp"
 
-	startPollingWorker := func(parent context.Context, iface *net.Interface) (context.CancelFunc, error) {
+	startPollingWorker := func(parent context.Context, iface *net.Interface) context.CancelFunc {
 		entriesCh := make(chan *mdns.ServiceEntry, 256)
 		workerCtx, cancel := context.WithCancel(parent)
 
@@ -283,15 +283,11 @@ func discoverChromecastDevices(ctx context.Context) {
 			}
 		}()
 
-		return cancel, nil
+		return cancel
 	}
 
-	type worker struct {
-		cancel context.CancelFunc
-	}
-
-	pollWorkers := make(map[int]worker)
-	refresh := func() bool {
+	pollWorkers := make(map[int]context.CancelFunc)
+	refresh := func() {
 		interfaces := getActiveNetworkInterfaces()
 
 		active := make(map[int]net.Interface, len(interfaces))
@@ -303,47 +299,39 @@ func discoverChromecastDevices(ctx context.Context) {
 			}
 
 			pollIface := iface
-			cancel, err := startPollingWorker(ctx, &pollIface)
-			if err == nil {
-				pollWorkers[iface.Index] = worker{cancel: cancel}
-				discoveryDebugf("Chromecast discovery interface added name=%q index=%d", iface.Name, iface.Index)
-			}
+			pollWorkers[iface.Index] = startPollingWorker(ctx, &pollIface)
+			discoveryDebugf("Chromecast discovery interface added name=%q index=%d", iface.Name, iface.Index)
 		}
 
-		for idx, w := range pollWorkers {
+		for idx, cancel := range pollWorkers {
 			if idx == -1 {
 				continue
 			}
 			if _, ok := active[idx]; !ok {
 				discoveryDebugf("Chromecast discovery interface removed index=%d", idx)
-				w.cancel()
+				cancel()
 				delete(pollWorkers, idx)
 			}
 		}
 
 		if len(interfaces) == 0 {
 			if _, ok := pollWorkers[-1]; ok {
-				return true
+				return
 			}
-			cancel, err := startPollingWorker(ctx, nil)
-			if err == nil {
-				pollWorkers[-1] = worker{cancel: cancel}
-				discoveryDebugf("Chromecast discovery fallback worker enabled")
-			}
-		} else if w, ok := pollWorkers[-1]; ok {
+			pollWorkers[-1] = startPollingWorker(ctx, nil)
+			discoveryDebugf("Chromecast discovery fallback worker enabled")
+		} else if cancel, ok := pollWorkers[-1]; ok {
 			discoveryDebugf("Chromecast discovery fallback worker disabled")
-			w.cancel()
+			cancel()
 			delete(pollWorkers, -1)
 		}
-
-		return len(pollWorkers) > 0
 	}
 
 	ccWarmupOnce.Do(func() {
 		warmupChromecastCache(chromecastQueryTimeout)
 	})
 
-	_ = refresh()
+	refresh()
 
 	refreshTicker := time.NewTicker(chromecastIfaceRefreshInterval)
 	defer refreshTicker.Stop()
@@ -351,12 +339,12 @@ func discoverChromecastDevices(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			for _, w := range pollWorkers {
-				w.cancel()
+			for _, cancel := range pollWorkers {
+				cancel()
 			}
 			return
 		case <-refreshTicker.C:
-			_ = refresh()
+			refresh()
 		}
 	}
 }

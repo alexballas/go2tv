@@ -93,62 +93,6 @@ func TestBuildDLNAContentFeatures(t *testing.T) {
 	}
 }
 
-func TestBuildContentFeaturesLegacyWrapper(t *testing.T) {
-	tt := []struct {
-		name      string
-		mediaType string
-		seek      string
-		want      string
-		transcode bool
-	}{
-		{
-			`Test #1`,
-			`video/x-mkv`,
-			`00`,
-			"DLNA.ORG_CI=1",
-			true,
-		},
-		{
-			`Test #2`,
-			``,
-			`01`,
-			"DLNA.ORG_OP=01;DLNA.ORG_CI=0",
-			false,
-		},
-		{
-			`Test #3`,
-			`bad-text`,
-			`11`,
-			"DLNA.ORG_OP=11;DLNA.ORG_CI=0",
-			false,
-		},
-		{
-			`Media type does not infer profile`,
-			`video/mpeg`,
-			`00`,
-			"DLNA.ORG_CI=0",
-			false,
-		},
-	}
-
-	for _, tc := range tt {
-		t.Run(tc.name, func(t *testing.T) {
-			out, err := BuildContentFeatures(tc.mediaType, tc.seek, tc.transcode)
-			if err != nil {
-				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, tc.want)
-			}
-
-			if out != tc.want {
-				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, tc.want)
-			}
-		})
-	}
-
-	if _, err := BuildContentFeatures("video/mp4", "invalid", false); err != ErrInvalidSeekFlag {
-		t.Fatalf("invalid seek error = %v, want %v", err, ErrInvalidSeekFlag)
-	}
-}
-
 func TestDLNAResourceMediaTypeAndTransferMode(t *testing.T) {
 	if got := DLNAResourceMediaType("video/mp4", true); got != "video/mpeg" {
 		t.Fatalf("transcoded media type = %q, want video/mpeg", got)

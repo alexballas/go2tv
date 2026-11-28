@@ -77,7 +77,7 @@ func TestMediaRefCarriesDetectedMIMEType(t *testing.T) {
 	if err != nil || len(page.Entries) != 1 {
 		t.Fatalf("browse = %#v, err=%v", page, err)
 	}
-	ref, err := h.mediaRef(context.Background(), rootID, page.Entries[0].ID)
+	ref, err := h.mediaRef(rootID, page.Entries[0].ID)
 	if err != nil || ref.MIMEType != "video/mp4" {
 		t.Fatalf("media MIME = %q, err=%v", ref.MIMEType, err)
 	}
@@ -339,7 +339,7 @@ func TestLibraryImageThumbnailModalAndPlayerArtwork(t *testing.T) {
 	if err != nil || snapshot.ArtworkID != "" {
 		t.Fatalf("snapshot artwork = %q, err=%v", snapshot.ArtworkID, err)
 	}
-	ref, err := h.mediaRef(context.Background(), rootID, entry.ID)
+	ref, err := h.mediaRef(rootID, entry.ID)
 	if err != nil || ref.LoadArtwork == nil {
 		t.Fatalf("media ref artwork loader: %v", err)
 	}
@@ -490,7 +490,7 @@ func TestArtworkContentAddressedCache(t *testing.T) {
 	if snapshot.ArtworkID != "" {
 		t.Fatalf("artwork ID = %q", snapshot.ArtworkID)
 	}
-	ref, err := h.mediaRef(context.Background(), rootID, mediaID)
+	ref, err := h.mediaRef(rootID, mediaID)
 	if err != nil {
 		t.Fatal(err)
 	}
