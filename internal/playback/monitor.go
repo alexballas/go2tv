@@ -88,7 +88,6 @@ type MonitorConfig struct {
 	// Position known when a monitor restarts after a seek or pause, so the
 	// tail guard covers its first poll. Ignored unless InitialDuration > 0.
 	InitialPosition, InitialDuration int
-	// Temporary diagnostics; nil keeps monitoring silent.
 }
 
 // DLNAStopGate suppresses the renderer's initial STOPPED callback. Keeping it
@@ -174,7 +173,7 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNAPositi
 		}
 		emitMonitor(ctx, cfg, event)
 	}
-	poll := func(now time.Time, trigger string) bool {
+	poll := func(now time.Time) bool {
 		if _, ok := cfg.Clock.(interface{ Now() time.Time }); ok || now.IsZero() {
 			now = clockNow(cfg.Clock)
 		}
@@ -276,7 +275,7 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNAPositi
 				callbackStop = true
 				if _, ok := transport.(DLNAStatusTransport); ok {
 					state = "STOPPED"
-					if poll(clockNow(cfg.Clock), "STOPPED callback") {
+					if poll(clockNow(cfg.Clock)) {
 						return
 					}
 					continue
@@ -289,7 +288,7 @@ func RunDLNAMonitor(ctx context.Context, cfg MonitorConfig, transport DLNAPositi
 				return
 			}
 		case now := <-ticker.C():
-			if poll(now, "periodic poll") {
+			if poll(now) {
 				return
 			}
 		}
