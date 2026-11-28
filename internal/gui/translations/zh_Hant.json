@@ -119,7 +119,7 @@
     "RTMP stream not found. Please start streaming from OBS first.": "找不到 RTMP 串流。請先從 OBS 開始串流。",
     "RTMP server not started": "RTMP 伺服器未啟動",
     "Cast": "投放",
-    "Cast Desktop (experimental)": "投放桌面 (實驗性)",
+    "Cast Desktop": "投放桌面",
     "Cast Desktop Live Stream": "桌面即時投放",
     "Image Casting": "圖片投放",
     "Start RTMP Session": "開始 RTMP 工作階段",
@@ -304,7 +304,6 @@
     "Torrent": "種子",
     "Torrent media": "種子媒體",
     "Torrent: waiting for peers": "種子：正在等待節點",
-    "Torrent…": "種子…",
     "Unmute": "取消靜音",
     "Use file": "使用檔案",
     "Use station": "使用電台",
@@ -335,8 +334,6 @@
     "Browse subtitle file…": "瀏覽字幕檔案…",
     "Subtitle file": "字幕檔案",
     "Default audio": "預設音軌",
-    "Automatic subtitles": "自動字幕",
-    "Subtitles off": "字幕已關閉",
     "Selections apply when casting starts.": "選擇將在投放開始時生效。",
     "Stop playback to change audio or subtitles.": "停止播放後可變更音軌或字幕。",
     "Searching for subtitle tracks…": "正在尋找字幕軌道…",
@@ -347,5 +344,9 @@
     "Choose an external text subtitle file for this track.": "請為此軌道選擇外部文字字幕檔案。",
     "From video": "影片內字幕",
     "Choose subtitle file…": "選擇字幕檔案…",
-    "Off": "關閉"
+    "Off": "關閉",
+    "Relaxed Device Discovery": "寬鬆裝置探索",
+    "Hidden in last scan": "上次掃描中隱藏",
+    "Finds devices behind relays, with several addresses or on public-IP networks. Any device on your network can then make Go2TV contact other addresses. Leave off unless a device is missing.": "可探索位於中繼之後、具有多個位址或位於公網 IP 網路中的裝置。啟用後，網路中的任何裝置都能讓 Go2TV 連線其他位址。除非有裝置遺漏，否則請保持關閉。",
+    "Set by -relaxed-discovery for this session": "本次工作階段由 -relaxed-discovery 設定"
 }

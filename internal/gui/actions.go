@@ -260,12 +260,6 @@ func unmuteAction(screen *FyneScreen) {
 	}()
 }
 
-func selectMediaFile(screen *FyneScreen, f fyne.URI) {
-	if err := selectMediaPaths(screen, []string{f.Path()}); err != nil {
-		check(screen, err)
-	}
-}
-
 func selectMediaPaths(screen *FyneScreen, paths []string) error {
 	if len(paths) == 1 && strings.EqualFold(filepath.Ext(paths[0]), ".torrent") {
 		fyne.Do(func() { showTorrentDialog(screen, paths[0]) })
@@ -1589,7 +1583,8 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, sessionDevice dev
 	if screen.ExternalMediaURL.Checked {
 		artworkAsset = screen.resolveCurrentRadioArtwork(startupCtx, screen.MediaText.Text)
 		mediaURL = screen.MediaText.Text
-		screen.mediafile = mediaURL
+		// Runs off the UI goroutine; the UI reads mediafile (canTraverse).
+		fyne.DoAndWait(func() { screen.mediafile = mediaURL })
 
 		if screen.rtmpServerCheck != nil && screen.rtmpServerCheck.Checked {
 			mediaType = "application/vnd.apple.mpegurl"
@@ -2683,14 +2678,6 @@ func stopAction(screen *FyneScreen) {
 	stopActionInternal(screen, false)
 }
 
-// Finish renderer and HTTP teardown before starting replacement playback.
-func stopActionSync(screen *FyneScreen) {
-	if done := screen.cancelPlaybackStartup(); done != nil {
-		<-done
-	}
-	stopActionInternal(screen, true)
-}
-
 func stopActionInternal(screen *FyneScreen, wait bool) {
 	// Silent when the remote session holds the renderer: no GUI session can
 	// exist then, so there is nothing to stop.
@@ -2840,25 +2827,6 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 		defer releasePermit()
 		teardown()
 	}()
-}
-
-func getDevices() ([]devType, error) {
-	deviceList, err := devices.LoadAllDevices()
-	if err != nil {
-		return nil, fmt.Errorf("getDevices error: %w", err)
-	}
-
-	var guiDeviceList []devType
-	for _, dev := range deviceList {
-		guiDeviceList = append(guiDeviceList, devType{
-			name:        dev.Name,
-			addr:        dev.Addr,
-			deviceType:  dev.Type,
-			isAudioOnly: dev.IsAudioOnly,
-		})
-	}
-
-	return guiDeviceList, nil
 }
 
 func volumeAction(screen *FyneScreen, up bool) {
@@ -3241,7 +3209,9 @@ func startRTMPServer(screen *FyneScreen) {
 			err := server.Wait()
 			// Only react if we didn't intentionally stop it
 			if stopRTMPServerIfCurrent(screen, server) {
-				check(screen, formatRTMPServerWaitError(err))
+				if err != nil {
+					check(screen, formatRTMPServerWaitError(err))
+				}
 				stopAction(screen)
 			}
 		}()
@@ -3300,10 +3270,6 @@ func clearRTMPCheck(screen *FyneScreen) {
 }
 
 func formatRTMPServerWaitError(err error) error {
-	if err == nil {
-		return errors.New(lang.L("RTMP server stopped unexpectedly"))
-	}
-
 	if rtmp.IsListenTimeoutError(err) {
 		timeoutMinutes := rtmp.ListenTimeoutSeconds / 60
 		return errors.New(fmt.Sprintf(

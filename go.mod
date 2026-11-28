@@ -4,8 +4,8 @@ go 1.26.9
 
 require (
 	github.com/alexballas/fyne-tooltip v0.0.0-20260907194307-bfdbb9024bac
-	github.com/alexballas/go-ssdp v0.0.4-0.20260524181453-a1b7428979ab
-	github.com/alexballas/refyne/v2 v2.8.114
+	github.com/alexballas/go-ssdp v0.0.6-0.20261119000644-effbd3c03632
+	github.com/alexballas/refyne/v2 v2.8.115
 	github.com/alexballas/tunetag v0.0.0-20260922200838-ac09c80877d1
 	github.com/alexballas/xfilepicker v0.0.0-20260921231749-b5e595de2dba
 	github.com/anacrolix/torrent v1.61.1-0.20260927071845-d913b30f520e
@@ -31,7 +31,7 @@ require (
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	github.com/stretchr/testify v1.12.1
 	github.com/yeqown/go-qrcode/v2 v2.3.0
-	go2tv.app/screencast v0.0.0-20261108224428-00685abafafc
+	go2tv.app/screencast v0.0.0-20261123205050-47159f14a4b5
 	golang.org/x/image v0.47.0
 	golang.org/x/mod v0.42.0
 	golang.org/x/net v0.62.0

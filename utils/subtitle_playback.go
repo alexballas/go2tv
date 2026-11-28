@@ -21,6 +21,9 @@ import (
 	textunicode "golang.org/x/text/encoding/unicode"
 )
 
+// assTagGap matches whitespace before a tag or at the end of a block.
+var assTagGap = regexp.MustCompile(`\s+(\\|$)`)
+
 var webVTTCueTiming = regexp.MustCompile(`(?m)^((?:\d{2,}:)?\d{2}:\d{2}\.\d{3})[\t ]+-->[\t ]+((?:\d{2,}:)?\d{2}:\d{2}\.\d{3})([^\n]*)$`)
 
 // SubtitlesForPlayback returns WebVTT with cues relative to the start of a
@@ -68,7 +71,13 @@ func SubtitlesReaderForPlaybackContext(ctx context.Context, source io.Reader, ex
 		if len(ffmpegPath) > 0 {
 			path = ffmpegPath[0]
 		}
-		data, err = convertASSReaderToWebVTT(ctx, source, path)
+		// ASS→SRT intermediate: FFmpeg time-sorts cues and embeds {\anN}
+		// so sanitize maps alignment per cue (style Alignment included).
+		var rawSRT []byte
+		rawSRT, err = convertASSReaderToSRTUnstripped(ctx, source, path)
+		if err == nil {
+			data, err = ConvertSRTReaderToWebVTT(bytes.NewReader(rawSRT))
+		}
 	default:
 		return nil, fmt.Errorf("unsupported subtitle format: %s", extension)
 	}
@@ -78,17 +87,20 @@ func SubtitlesReaderForPlaybackContext(ctx context.Context, source io.Reader, ex
 	if err != nil {
 		return nil, err
 	}
+	// Strip ASS overrides and map {\anN} before seek so settings survive retime.
+	data = sanitizeReceiverWebVTT(data)
 	if seekSeconds <= 0 {
 		return data, nil
 	}
 
 	text := strings.ReplaceAll(string(data), "\r\n", "\n")
-	blocks := strings.Split(text, "\n\n")
+	trailing := strings.HasSuffix(text, "\n")
+	blocks := splitWebVTTBlocks(text)
 	kept := make([]string, 0, len(blocks))
 	offset := int64(seekSeconds) * 1000
 	for _, block := range blocks {
 		// Comments and style blocks may contain text resembling cue timings.
-		if strings.HasPrefix(block, "NOTE") || strings.HasPrefix(block, "STYLE") || strings.HasPrefix(block, "REGION") {
+		if isWebVTTMetadataFirstLine(block) {
 			kept = append(kept, block)
 			continue
 		}
@@ -104,21 +116,26 @@ func SubtitlesReaderForPlaybackContext(ctx context.Context, source io.Reader, ex
 		}
 		kept = append(kept, block)
 	}
-	return []byte(strings.Join(kept, "\n\n")), nil
+	out := strings.Join(kept, "\n\n")
+	if trailing && !strings.HasSuffix(out, "\n") {
+		out += "\n"
+	}
+	return []byte(out), nil
 }
 
 // ConvertASSReaderToSRT converts ASS/SSA captions for DLNA renderers.
+// FFmpeg embeds {\anN} into SRT; those blocks are stripped for receivers.
 func ConvertASSReaderToSRT(ctx context.Context, source io.Reader, ffmpegPath string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	stopClosing := closeSubtitleSourceOnCancel(ctx, source)
 	defer stopClosing()
-	prepared, err := prepareASSForConversion(ctx, source)
+	data, err := convertASSReaderToSRTUnstripped(ctx, source, ffmpegPath)
 	if err != nil {
 		return nil, err
 	}
-	return convertSubtitleWithFFmpeg(ctx, bytes.NewReader(prepared), "ass", "srt", ffmpegPath)
+	return stripReceiverSRTOverrides(data), nil
 }
 
 func closeSubtitleSourceOnCancel(ctx context.Context, source io.Reader) func() bool {
@@ -129,12 +146,14 @@ func closeSubtitleSourceOnCancel(ctx context.Context, source io.Reader) func() b
 	return context.AfterFunc(ctx, func() { _ = closer.Close() })
 }
 
-func convertASSReaderToWebVTT(ctx context.Context, source io.Reader, ffmpegPath string) ([]byte, error) {
+// convertASSReaderToSRTUnstripped runs prepare + FFmpeg ass→srt without
+// stripping overrides so callers can map {\anN} before serving.
+func convertASSReaderToSRTUnstripped(ctx context.Context, source io.Reader, ffmpegPath string) ([]byte, error) {
 	prepared, err := prepareASSForConversion(ctx, source)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("prepare ASS captions: %w", err)
 	}
-	return convertSubtitleWithFFmpeg(ctx, bytes.NewReader(prepared), "ass", "webvtt", ffmpegPath)
+	return convertSubtitleWithFFmpeg(ctx, bytes.NewReader(prepared), "ass", "srt", ffmpegPath)
 }
 
 func convertSubtitleWithFFmpeg(ctx context.Context, source io.Reader, inputFormat, outputFormat, ffmpegPath string) ([]byte, error) {
@@ -173,7 +192,7 @@ func prepareASSForConversion(ctx context.Context, source io.Reader) ([]byte, err
 	if err != nil {
 		return nil, err
 	}
-	return stripASSDrawings(data), nil
+	return cleanASSEvents(data), nil
 }
 
 func decodeASSCharset(data []byte) ([]byte, error) {
@@ -270,7 +289,9 @@ func utf16WithoutBOM(data []byte) *textunicode.Endianness {
 	return nil
 }
 
-func stripASSDrawings(data []byte) []byte {
+// cleanASSEvents rewrites Dialogue text for FFmpeg: comment blocks and
+// stray spaces in override blocks go, drawing runs are dropped.
+func cleanASSEvents(data []byte) []byte {
 	var result strings.Builder
 	result.Grow(len(data))
 	inEvents := false
@@ -299,11 +320,11 @@ func stripASSDrawings(data []byte) []byte {
 		case hasColon && strings.EqualFold(strings.TrimSpace(prefix), "Dialogue"):
 			fields := strings.SplitN(value, ",", textField+1)
 			if len(fields) > textField {
-				cleaned, hadDrawing := removeASSDrawingRuns(fields[textField])
-				if hadDrawing {
-					if !hasVisibleASSText(cleaned) {
-						continue
-					}
+				cleaned, hadDrawing := removeASSDrawingRuns(normalizeASSOverrideBlocks(fields[textField]))
+				if hadDrawing && !hasVisibleASSText(cleaned) {
+					continue
+				}
+				if cleaned != fields[textField] {
 					fields[textField] = cleaned
 					body = prefix + ":" + strings.Join(fields, ",")
 				}
@@ -313,6 +334,38 @@ func stripASSDrawings(data []byte) []byte {
 		result.WriteString(end)
 	}
 	return []byte(result.String())
+}
+
+// normalizeASSOverrideBlocks mirrors libass for FFmpeg: a {...} block without a
+// tag is a comment and is dropped; text before the first tag and whitespace
+// before a tag or the closing brace go ({\b1 } makes FFmpeg drop the cue
+// rest). Unclosed braces stay literal.
+func normalizeASSOverrideBlocks(text string) string {
+	if !strings.Contains(text, "{") {
+		return text
+	}
+	var b strings.Builder
+	b.Grow(len(text))
+	for {
+		start := strings.IndexByte(text, '{')
+		if start < 0 {
+			break
+		}
+		end := strings.IndexByte(text[start:], '}')
+		if end < 0 {
+			break
+		}
+		b.WriteString(text[:start])
+		inner := text[start+1 : start+end]
+		text = text[start+end+1:]
+		tag := strings.IndexByte(inner, '\\')
+		if tag < 0 {
+			continue // comment
+		}
+		b.WriteString("{" + assTagGap.ReplaceAllString(inner[tag:], "$1") + "}")
+	}
+	b.WriteString(text)
+	return b.String()
 }
 
 func removeASSDrawingRuns(text string) (string, bool) {

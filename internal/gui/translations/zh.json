@@ -120,7 +120,7 @@
     "RTMP stream not found. Please start streaming from OBS first.": "未找到 RTMP 流。请先从 OBS 开始推流。",
     "RTMP server not started": "RTMP 服务器未启动",
     "Cast": "投放",
-    "Cast Desktop (experimental)": "投放桌面 (试验性)",
+    "Cast Desktop": "投放桌面",
     "Cast Desktop Live Stream": "桌面实时投放",
     "Image Casting": "图片投放",
     "Start RTMP Session": "开始 RTMP 会话",
@@ -304,7 +304,6 @@
     "Torrent": "种子",
     "Torrent media": "种子媒体",
     "Torrent: waiting for peers": "种子：正在等待节点",
-    "Torrent…": "种子…",
     "Unmute": "取消静音",
     "Use file": "使用文件",
     "Use station": "使用电台",
@@ -335,8 +334,6 @@
     "Browse subtitle file…": "浏览字幕文件…",
     "Subtitle file": "字幕文件",
     "Default audio": "默认音轨",
-    "Automatic subtitles": "自动字幕",
-    "Subtitles off": "字幕已关闭",
     "Selections apply when casting starts.": "选择将在投屏开始时生效。",
     "Stop playback to change audio or subtitles.": "停止播放后可更改音轨或字幕。",
     "Searching for subtitle tracks…": "正在查找字幕轨道…",
@@ -347,5 +344,9 @@
     "Choose an external text subtitle file for this track.": "请为此轨道选择外部文本字幕文件。",
     "From video": "视频内字幕",
     "Choose subtitle file…": "选择字幕文件…",
-    "Off": "关闭"
+    "Off": "关闭",
+    "Relaxed Device Discovery": "宽松设备发现",
+    "Hidden in last scan": "上次扫描中隐藏",
+    "Finds devices behind relays, with several addresses or on public-IP networks. Any device on your network can then make Go2TV contact other addresses. Leave off unless a device is missing.": "可发现位于中继之后、具有多个地址或位于公网 IP 网络中的设备。启用后，网络中的任何设备都能让 Go2TV 连接其他地址。除非有设备缺失，否则请保持关闭。",
+    "Set by -relaxed-discovery for this session": "本次会话由 -relaxed-discovery 设置"
 }

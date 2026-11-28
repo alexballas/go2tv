@@ -3,11 +3,15 @@ package gui
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/alexballas/refyne/v2"
+	"github.com/alexballas/refyne/v2/dialog"
+	"github.com/alexballas/refyne/v2/lang"
+	"github.com/alexballas/refyne/v2/widget"
 	"golang.org/x/mod/semver"
 )
 
@@ -43,20 +47,9 @@ func normalize(v string) string {
 	return v
 }
 
-// parseVersion is a legacy helper now used just to validity check for "dev" versions in about.go
-// We keep the signature but use semver.IsValid internally after normalization.
-// It returns a dummy []int or nil to satisfy the existing caller usage pattern if we want to minimize churn,
-// OR we can change the caller.
-// Earlier I replaced the caller in about.go to: if _, err := parseVersion(s.version); err != nil { ... }
-// So I will maintain the signature but implement it using semver to check validity.
-// Actually, about.go ignored the []int, so returning nil slice with nil error is fine for success.
-func parseVersion(version string) ([]int, error) {
-	norm := normalize(version)
-	if !semver.IsValid(norm) {
-		return nil, errors.New("invalid semantic version")
-	}
-	// Return non-nil slice to avoid potential checks? No, caller ignores it.
-	return []int{0}, nil
+// validVersion reports whether version is semver (false for "dev" builds).
+func validVersion(version string) bool {
+	return semver.IsValid(normalize(version))
 }
 
 // silentCheckVersion performs a background version check and notifies the user
@@ -66,8 +59,8 @@ func silentCheckVersion(s *FyneScreen) {
 		return
 	}
 
-	// Parse current version - fail silently if dev or non-compiled
-	if _, err := parseVersion(s.version); err != nil {
+	// Fail silently for dev or non-compiled builds.
+	if !validVersion(s.version) {
 		return
 	}
 
@@ -107,4 +100,25 @@ func compareVersions(v1, v2 string) (int, error) {
 	}
 
 	return semver.Compare(v1Norm, v2Norm), nil
+}
+
+func showVersionPopup(latestVersionStr string, s *FyneScreen) {
+	fyne.Do(func() {
+		lbl := widget.NewLabel(lang.L("Current") + ": v" + s.version + " → " + lang.L("New") + ": " + latestVersionStr)
+		lbl.Alignment = fyne.TextAlignCenter
+		cnf := dialog.NewCustomConfirm(
+			lang.L("Version checker"),
+			lang.L("Download"),
+			lang.L("Cancel"),
+			lbl,
+			func(b bool) {
+				if b {
+					u, _ := url.Parse("https://go2tv.app/latest")
+					_ = fyne.CurrentApp().OpenURL(u)
+				}
+			},
+			s.Current,
+		)
+		cnf.Show()
+	})
 }

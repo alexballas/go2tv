@@ -437,3 +437,27 @@ type readCloserFunc struct {
 }
 
 func (r readCloserFunc) Close() error { return r.closer() }
+
+// TestURLStreamSurvivesHEADProbe: a DLNA URL cast serves a single-use upstream
+// body. Samsung TVs HEAD it twice before the GET; the probes used to close it,
+// so the GET got an empty body and the TV never played.
+func TestURLStreamSurvivesHEADProbe(t *testing.T) {
+	tv := &soapcalls.TVPayload{MediaType: "video/mp4"}
+	closed := false
+	body := readCloserFunc{Reader: strings.NewReader("movie"), closer: func() error { closed = true; return nil }}
+	srv := NewServer("127.0.0.1:0")
+	srv.AddHandler("/movie.mp4", tv, nil, io.ReadCloser(body))
+
+	for range 2 {
+		head := httptest.NewRecorder()
+		srv.ServeMediaHandler()(head, httptest.NewRequest(http.MethodHead, "/movie.mp4", nil))
+		if head.Body.Len() != 0 || closed {
+			t.Fatalf("HEAD consumed stream: body=%q closed=%v", head.Body.String(), closed)
+		}
+	}
+	get := httptest.NewRecorder()
+	srv.ServeMediaHandler()(get, httptest.NewRequest(http.MethodGet, "/movie.mp4", nil))
+	if got := get.Body.String(); got != "movie" {
+		t.Fatalf("GET after HEAD body = %q, want %q", got, "movie")
+	}
+}

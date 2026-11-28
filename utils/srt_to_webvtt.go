@@ -35,6 +35,10 @@ func ConvertSRTReaderToWebVTT(r io.Reader) ([]byte, error) {
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		// SRT treats whitespace-only lines as cue separators; WebVTT doesn't.
+		if strings.TrimSpace(line) == "" {
+			line = ""
+		}
 
 		// Convert time format: 00:00:01,234 --> 00:00:04,567
 		// To WebVTT format: 00:00:01.234 --> 00:00:04.567

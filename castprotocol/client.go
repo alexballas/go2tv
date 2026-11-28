@@ -181,10 +181,6 @@ func deriveMediaTitle(value string) string {
 }
 
 // Ensure the Default Media Receiver is running before custom media commands.
-func (c *CastClient) ensureDefaultReceiverReady() error {
-	return c.ensureDefaultReceiverReadyContext(context.Background())
-}
-
 func (c *CastClient) ensureDefaultReceiverReadyContext(ctx context.Context) error {
 	if c.defaultReceiverReady() {
 		return nil
@@ -659,6 +655,8 @@ func (c *CastClient) GetStatus() (*CastStatus, error) {
 		status.ContentType = media.Media.ContentType
 		status.StreamType = media.Media.StreamType
 		status.MediaTitle = media.Media.Metadata.Title
+		status.MediaSessionID = media.MediaSessionId
+		status.IdleReason = media.IdleReason
 	} else {
 		status.PlayerState = "IDLE"
 	}

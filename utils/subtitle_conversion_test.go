@@ -116,7 +116,8 @@ func TestASSConversionPreservesLegacyAndUTF16Text(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !bytes.Contains(got, []byte(tc.text)) || !bytes.Contains(got, []byte("00:01.000 --> 00:02.000")) {
+			// ASS→SRT intermediate: FFmpeg may emit hours and <font> wrappers.
+			if !bytes.Contains(got, []byte(tc.text)) || !bytes.Contains(got, []byte("00:00:01.000 --> 00:00:02.000")) {
 				t.Fatalf("decoded cue or timing missing: %s", got)
 			}
 		})

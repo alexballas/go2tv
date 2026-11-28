@@ -8,16 +8,7 @@ import (
 	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/dialog"
 	"github.com/alexballas/refyne/v2/lang"
-	"go2tv.app/go2tv/v2/internal/crashlog"
 )
-
-func crashPath(crash *crashlog.Session) string {
-	if crash == nil {
-		return ""
-	}
-
-	return crash.PreviousCrashPath()
-}
 
 func copyDiagnosticsToClipboard(s *FyneScreen) {
 	if s == nil || s.Current == nil {

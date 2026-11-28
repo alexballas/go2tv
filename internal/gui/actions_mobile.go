@@ -930,14 +930,6 @@ func stopAction(screen *FyneScreen) {
 	stopActionInternal(screen, false)
 }
 
-// stopActionSync waits for DLNA teardown before a transcoded seek restart.
-func stopActionSync(screen *FyneScreen) {
-	if done := screen.cancelPlaybackStartup(); done != nil {
-		<-done
-	}
-	stopActionInternal(screen, true)
-}
-
 func stopActionInternal(screen *FyneScreen, wait bool) {
 	preserveSeek := screen.dlnaSeekRestart
 	screen.persistDisplayedResumeProgress(true)
@@ -1026,25 +1018,6 @@ func stopActionInternal(screen *FyneScreen, wait bool) {
 	}
 
 	go teardown()
-}
-
-func getDevices() ([]devType, error) {
-	deviceList, err := devices.LoadAllDevices()
-	if err != nil {
-		return nil, fmt.Errorf("getDevices error: %w", err)
-	}
-
-	var guiDeviceList []devType
-	for _, dev := range deviceList {
-		guiDeviceList = append(guiDeviceList, devType{
-			name:        dev.Name,
-			addr:        dev.Addr,
-			deviceType:  dev.Type,
-			isAudioOnly: dev.IsAudioOnly,
-		})
-	}
-
-	return guiDeviceList, nil
 }
 
 func volumeAction(screen *FyneScreen, up bool) {
@@ -1318,7 +1291,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx contex
 	// URL and live sources never carry an audio choice.
 	screen.clearCastAudio()
 	var playbackStart int
-	serverStoppedCTX := context.Background()
+	var serverStoppedCTX context.Context
 	subtitleHost := ""
 	screen.clearResumeSession()
 	screen.ffmpegSeek = 0

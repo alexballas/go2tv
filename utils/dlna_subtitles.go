@@ -8,6 +8,7 @@ import (
 )
 
 // SubtitlesReaderToSRT prepares a sidecar for DLNA receiver captions.
+// ASS override blocks are stripped; SRT has no standard positioning.
 func SubtitlesReaderToSRT(ctx context.Context, source io.Reader, extension, ffmpegPath string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -16,13 +17,21 @@ func SubtitlesReaderToSRT(ctx context.Context, source io.Reader, extension, ffmp
 	defer stopClosing()
 	switch strings.ToLower(extension) {
 	case ".srt":
-		return io.ReadAll(source)
+		data, err := io.ReadAll(source)
+		if err != nil {
+			return nil, fmt.Errorf("read SRT captions: %w", err)
+		}
+		return stripReceiverSRTOverrides(data), nil
 	case ".vtt":
 		data, err := io.ReadAll(source)
 		if err != nil {
 			return nil, fmt.Errorf("read WebVTT captions: %w", err)
 		}
-		return webVTTToSRT(ctx, string(data))
+		srt, err := webVTTToSRT(ctx, string(data))
+		if err != nil {
+			return nil, fmt.Errorf("webVTTToSRT: %w", err)
+		}
+		return stripReceiverSRTOverrides(srt), nil
 	case ".ass", ".ssa":
 		return ConvertASSReaderToSRT(ctx, source, ffmpegPath)
 	default:
@@ -33,7 +42,7 @@ func SubtitlesReaderToSRT(ctx context.Context, source io.Reader, extension, ffmp
 func webVTTToSRT(ctx context.Context, input string) ([]byte, error) {
 	input = strings.TrimPrefix(input, "\ufeff")
 	input = strings.ReplaceAll(strings.ReplaceAll(input, "\r\n", "\n"), "\r", "\n")
-	blocks := strings.Split(input, "\n\n")
+	blocks := splitWebVTTBlocks(input)
 	var output strings.Builder
 	cues := 0
 	for _, block := range blocks {
@@ -45,7 +54,7 @@ func webVTTToSRT(ctx context.Context, input string) ([]byte, error) {
 			continue
 		}
 		first := strings.TrimSpace(lines[0])
-		if strings.HasPrefix(first, "WEBVTT") || strings.HasPrefix(first, "NOTE") || first == "STYLE" || first == "REGION" {
+		if isWebVTTMetadataFirstLine(first) {
 			continue
 		}
 		timingIndex := 0
@@ -64,7 +73,8 @@ func webVTTToSRT(ctx context.Context, input string) ([]byte, error) {
 		if end <= start {
 			continue
 		}
-		body := strings.TrimSpace(strings.Join(lines[timingIndex+1:], "\n"))
+		// Whitespace-only lines are WebVTT cue text but end an SRT cue.
+		body := dropEmptyCueLines(strings.TrimSpace(strings.Join(lines[timingIndex+1:], "\n")))
 		if body == "" {
 			continue
 		}

@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 
@@ -97,7 +99,7 @@ func DMRextractor(ctx context.Context, dmrurl string) (*DMRextracted, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := validateServiceEndpoints(ctx, pinned, extracted); err != nil {
+	if err := validateServiceEndpoints(ctx, pinned, extracted, false); err != nil {
 		return nil, err
 	}
 	extracted.PinnedIP = pinned.String()
@@ -106,38 +108,72 @@ func DMRextractor(ctx context.Context, dmrurl string) (*DMRextracted, error) {
 
 // LoadDevicesFromLocation fetches XML from a UPnP location URL and returns
 // all devices that have AVTransport service (for multi-device setups).
+// It resolves the host and applies no discovery policy, so callers must only
+// pass trusted URLs; unsolicited SSDP locations go through
+// LoadDevicesFromPinnedLocation.
 func LoadDevicesFromLocation(ctx context.Context, dmrurl string) ([]*DMRextracted, error) {
 	parsedURL, pinned, err := validateRendererLocation(ctx, dmrurl)
 	if err != nil {
 		return nil, fmt.Errorf("LoadDevicesFromLocation parse error: %w", err)
 	}
-
-	client := rendererHTTPClient(parsedURL, pinned)
-	req, err := http.NewRequestWithContext(ctx, "GET", dmrurl, nil)
+	devices, err := fetchDevices(ctx, dmrurl, parsedURL, pinned, false)
 	if err != nil {
-		return nil, fmt.Errorf("LoadDevicesFromLocation GET error: %w", err)
+		return nil, fmt.Errorf("LoadDevicesFromLocation: %w", err)
+	}
+	return devices, nil
+}
+
+// LoadDevicesFromPinnedLocation is LoadDevicesFromLocation without DNS: the
+// location host must be an IP literal equal to pinned, and IP-literal service
+// endpoints must equal pinned too; hostname endpoints are left unresolved (see
+// validateServiceEndpoints). The caller chooses pinned; this function does not
+// judge whether the address itself is acceptable.
+func LoadDevicesFromPinnedLocation(ctx context.Context, location string, pinned netip.Addr) ([]*DMRextracted, error) {
+	u, err := url.Parse(location)
+	if err != nil || u.Host == "" || u.User != nil || u.Scheme != "http" && u.Scheme != "https" {
+		return nil, errors.New("LoadDevicesFromPinnedLocation: location invalid")
+	}
+	host, err := netip.ParseAddr(u.Hostname())
+	if err != nil || host.Unmap() != pinned.Unmap() {
+		return nil, errors.New("LoadDevicesFromPinnedLocation: location host differs from pinned address")
+	}
+	devices, err := fetchDevices(ctx, location, u, net.IP(pinned.Unmap().AsSlice()), true)
+	if err != nil {
+		return nil, fmt.Errorf("LoadDevicesFromPinnedLocation: %w", err)
+	}
+	return devices, nil
+}
+
+// fetchDevices GETs a description through a client that only dials pinned and
+// returns its AVTransport devices whose service endpoints pass
+// validateServiceEndpoints.
+func fetchDevices(ctx context.Context, raw string, location *url.URL, pinned net.IP, literalOnly bool) ([]*DMRextracted, error) {
+	client := rendererHTTPClient(location, pinned)
+	req, err := http.NewRequestWithContext(ctx, "GET", raw, nil)
+	if err != nil {
+		return nil, fmt.Errorf("GET error: %w", err)
 	}
 
 	req.Header.Set("Connection", "close")
 
 	xmlresp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("LoadDevicesFromLocation Do GET error: %w", err)
+		return nil, fmt.Errorf("Do GET error: %w", err)
 	}
 	defer xmlresp.Body.Close()
 
 	xmlbody, err := readCapped(xmlresp.Body, maxRendererDescriptionBody)
 	if err != nil {
-		return nil, fmt.Errorf("LoadDevicesFromLocation read error: %w", err)
+		return nil, fmt.Errorf("read error: %w", err)
 	}
 
-	devices, err := ParseAllDMRFromXML(xmlbody, parsedURL)
+	devices, err := ParseAllDMRFromXML(xmlbody, location)
 	if err != nil {
 		return nil, err
 	}
 	valid := devices[:0]
 	for _, device := range devices {
-		if validateServiceEndpoints(ctx, pinned, device) == nil {
+		if validateServiceEndpoints(ctx, pinned, device, literalOnly) == nil {
 			device.PinnedIP = pinned.String()
 			valid = append(valid, device)
 		}

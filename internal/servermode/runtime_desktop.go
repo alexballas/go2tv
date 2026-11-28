@@ -81,7 +81,7 @@ func newRuntime(cfg Config, log *serverLogger, discovery playback.Discovery) (*r
 		}
 	}
 	control := controller.New(controller.NewRuntimeConfig(controller.RuntimeConfig{MediaServer: media, Callbacks: callbacks, LogOutput: log.protocolOutput(), Logger: log, Artwork: artwork, DurationProbe: durationProbe, AudioTracksProbe: audioTracksProbe, Discovery: discovery}))
-	web, err := webui.New(webui.Config{Version: cfg.Version, Controller: control, Library: lib, Artwork: artwork, FFmpegPath: ffmpeg, TranscodeAvailable: ffmpeg != "", Logger: log, ManagedByGUI: cfg.ManagedChild, RadioStorePath: radioStorePath()})
+	web, err := webui.New(webui.Config{Version: cfg.Version, Controller: control, Library: lib, Artwork: artwork, FFmpegPath: ffmpeg, TranscodeAvailable: ffmpeg != "", Logger: log, ManagedByGUI: cfg.ManagedChild, RelaxedDiscovery: cfg.RelaxedDiscovery, RadioStorePath: radioStorePath()})
 	if err != nil {
 		control.Close()
 		callbacks.Close()
@@ -169,7 +169,8 @@ func (s *runtimeMediaServer) prepareRequest(request playback.ServerRequest) play
 	}
 	if request.Subtitle != nil && request.Target.Protocol == "DLNA" && !request.Transcode {
 		extension := strings.ToLower(request.SubtitleExt)
-		if extension == ".ass" || extension == ".ssa" || extension == ".vtt" {
+		switch extension {
+		case ".srt", ".ass", ".ssa", ".vtt":
 			original := request.Subtitle
 			request.Subtitle = func(ctx context.Context) (io.ReadSeekCloser, time.Time, error) {
 				source, mod, err := original(ctx)

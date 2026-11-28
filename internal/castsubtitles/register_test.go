@@ -78,9 +78,9 @@ func TestTorrentCaptionRegistrationWithMediaOrigin(t *testing.T) {
 				seek       int
 				want       mkvsubs.Cue
 			}{
-				{name: "native", want: mkvsubs.Cue{10, 15, "First caption"}},
-				{name: "initial transcode", transcoded: true, want: mkvsubs.Cue{10 - origin, 15 - origin, "First caption"}},
-				{name: "transcoded seek", transcoded: true, seek: 30, want: mkvsubs.Cue{10 - origin, 15 - origin, "Second caption"}},
+				{name: "native", want: mkvsubs.Cue{Start: 10, End: 15, Text: "First caption"}},
+				{name: "initial transcode", transcoded: true, want: mkvsubs.Cue{Start: 10 - origin, End: 15 - origin, Text: "First caption"}},
+				{name: "transcoded seek", transcoded: true, seek: 30, want: mkvsubs.Cue{Start: 10 - origin, End: 15 - origin, Text: "Second caption"}},
 			}
 			for _, tc := range tt {
 				t.Run(tc.name, func(t *testing.T) {

@@ -77,7 +77,7 @@ func TestMediaRefCarriesDetectedMIMEType(t *testing.T) {
 	if err != nil || len(page.Entries) != 1 {
 		t.Fatalf("browse = %#v, err=%v", page, err)
 	}
-	ref, err := h.mediaRef(context.Background(), rootID, page.Entries[0].ID)
+	ref, err := h.mediaRef(rootID, page.Entries[0].ID)
 	if err != nil || ref.MIMEType != "video/mp4" {
 		t.Fatalf("media MIME = %q, err=%v", ref.MIMEType, err)
 	}
@@ -176,7 +176,9 @@ func TestTranscodeUnavailableRejected(t *testing.T) {
 	}
 }
 
-func TestBootstrapManagedByGUIFollowsConfig(t *testing.T) {
+// The browser learns the GUI-managed state and the read-only relaxed-discovery
+// notice from bootstrap; both come from startup config, never from the client.
+func TestBootstrapStartupFlagsFollowConfig(t *testing.T) {
 	for _, managed := range []bool{false, true} {
 		root := t.TempDir()
 		lib, err := library.Open(library.Config{Roots: []string{root}})
@@ -184,20 +186,24 @@ func TestBootstrapManagedByGUIFollowsConfig(t *testing.T) {
 			t.Fatal(err)
 		}
 		control := controller.New(controller.Config{})
-		h, err := New(Config{Version: "test", Controller: control, Library: lib, ManagedByGUI: managed})
+		h, err := New(Config{Version: "test", Controller: control, Library: lib, ManagedByGUI: managed, RelaxedDiscovery: managed})
 		if err != nil {
 			t.Fatal(err)
 		}
 		response := httptest.NewRecorder()
 		h.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/bootstrap", nil))
 		var payload struct {
-			ManagedByGUI bool `json:"managed_by_gui"`
+			ManagedByGUI bool            `json:"managed_by_gui"`
+			Features     map[string]bool `json:"features"`
 		}
 		if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 			t.Fatal(err)
 		}
 		if payload.ManagedByGUI != managed {
 			t.Fatalf("managed_by_gui = %v, want %v", payload.ManagedByGUI, managed)
+		}
+		if payload.Features["relaxed_discovery"] != managed {
+			t.Fatalf("relaxed_discovery = %v, want %v", payload.Features["relaxed_discovery"], managed)
 		}
 		h.Close()
 		control.Close()
@@ -333,7 +339,7 @@ func TestLibraryImageThumbnailModalAndPlayerArtwork(t *testing.T) {
 	if err != nil || snapshot.ArtworkID != "" {
 		t.Fatalf("snapshot artwork = %q, err=%v", snapshot.ArtworkID, err)
 	}
-	ref, err := h.mediaRef(context.Background(), rootID, entry.ID)
+	ref, err := h.mediaRef(rootID, entry.ID)
 	if err != nil || ref.LoadArtwork == nil {
 		t.Fatalf("media ref artwork loader: %v", err)
 	}
@@ -484,7 +490,7 @@ func TestArtworkContentAddressedCache(t *testing.T) {
 	if snapshot.ArtworkID != "" {
 		t.Fatalf("artwork ID = %q", snapshot.ArtworkID)
 	}
-	ref, err := h.mediaRef(context.Background(), rootID, mediaID)
+	ref, err := h.mediaRef(rootID, mediaID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -534,6 +540,36 @@ func TestStrictEnvelopeVersionUnknownAndNesting(t *testing.T) {
 		if _, err := decodeEnvelope(data); err == nil {
 			t.Fatalf("accepted %s", data)
 		}
+	}
+}
+
+func TestLibraryPlayRejectsEmptyFile(t *testing.T) {
+	h, lib, control, rootID := testHandler(t)
+	ctx := t.Context()
+	page, err := lib.Browse(rootID, "", "", 10)
+	if err != nil || len(page.Entries) != 1 {
+		t.Fatalf("browse: %#v %v", page, err)
+	}
+	entryID := page.Entries[0].ID
+	file, meta, err := lib.OpenMedia(rootID, entryID)
+	if err != nil {
+		t.Fatalf("open media: %v", err)
+	}
+	_ = file.Close()
+	if err := os.Truncate(meta.AbsolutePath(), 0); err != nil {
+		t.Fatalf("truncate media: %v", err)
+	}
+	payload, err := json.Marshal(map[string]string{"root_id": rootID, "entry_id": entryID})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	result, _ := h.command(ctx, envelope{ProtocolVersion: ProtocolVersion, Type: "library.play", ID: "play-empty", Payload: payload})
+	if result.Code != controller.CodeInvalid || result.Message != "media file is empty" {
+		t.Fatalf("play empty file = %#v", result)
+	}
+	snapshot, err := control.Snapshot(ctx)
+	if err != nil || len(snapshot.Queue) != 0 || snapshot.HasSession {
+		t.Fatalf("empty file mutated playback: %#v, %v", snapshot, err)
 	}
 }
 

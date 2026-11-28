@@ -9,20 +9,13 @@ import (
 
 	"github.com/alexballas/refyne/v2"
 	"github.com/alexballas/refyne/v2/dialog"
-	"github.com/alexballas/refyne/v2/lang"
 	"github.com/alexballas/refyne/v2/storage"
-	"github.com/alexballas/refyne/v2/theme"
-	"github.com/alexballas/refyne/v2/widget"
 
 	"go2tv.app/go2tv/v2/internal/mediasource"
 	"go2tv.app/go2tv/v2/utils"
 )
 
 func torrentCacheDir() (string, error) { return mobileCacheDir() }
-
-func newTorrentButton(s *FyneScreen) *widget.Button {
-	return widget.NewButtonWithIcon(lang.L("Torrent…"), theme.DownloadIcon(), func() { showTorrentDialog(s) })
-}
 
 func showTorrentDocument(s *FyneScreen, reader io.ReadCloser) {
 	showTorrentInputDialog(s, reader)

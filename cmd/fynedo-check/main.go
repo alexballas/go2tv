@@ -312,7 +312,7 @@ func (v *visitor) checkGoroutine(expr ast.Expr, insideFyneDo bool, inConcurrent 
 			v.checkBody(fnLit.Body, insideFyneDo, inConcurrent, ctx, localUIVars, stack)
 			return
 		}
-		v.checkCallTargets(e, insideFyneDo, inConcurrent, ctx, uiVars, stack)
+		v.checkCallTargets(e, insideFyneDo, inConcurrent, ctx, stack)
 	}
 }
 
@@ -405,7 +405,7 @@ func (v *visitor) checkCallExpr(call *ast.CallExpr, insideFyneDo bool, inConcurr
 		}
 	}
 
-	v.checkCallTargets(call, insideFyneDo, inConcurrent, ctx, uiVars, stack)
+	v.checkCallTargets(call, insideFyneDo, inConcurrent, ctx, stack)
 
 	for _, arg := range call.Args {
 		switch a := arg.(type) {
@@ -460,7 +460,7 @@ func (v *visitor) checkFieldAssignments(lhs []ast.Expr, ctx analysisContext, uiV
 	}
 }
 
-func (v *visitor) checkCallTargets(call *ast.CallExpr, insideFyneDo bool, inConcurrent bool, ctx analysisContext, uiVars map[string]bool, stack map[*ast.FuncDecl]bool) {
+func (v *visitor) checkCallTargets(call *ast.CallExpr, insideFyneDo bool, inConcurrent bool, ctx analysisContext, stack map[*ast.FuncDecl]bool) {
 	for _, target := range v.resolveCallTargets(call, ctx) {
 		v.checkFunction(target, insideFyneDo, inConcurrent, stack)
 	}

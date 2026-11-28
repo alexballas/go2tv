@@ -70,9 +70,13 @@ func mobileSettingsWindow(s *FyneScreen) (fyne.CanvasObject, func()) {
 	})
 	disableUpdates.SetChecked(prefs.BoolWithFallback(disableVersionNotificationsPref, false))
 
+	relaxedDiscovery, refreshRelaxedDiscovery := newRelaxedDiscoverySetting(s)
+	s.refreshDiscoverySetting = refreshRelaxedDiscovery
+
 	generalSettings := container.NewVBox(
 		widget.NewForm(widget.NewFormItem(lang.L("Theme"), themeSelect)),
 		disableUpdates,
+		relaxedDiscovery,
 	)
 	playbackSettings := container.NewVBox(
 		newChromecastSubtitleSettings(s),
@@ -90,5 +94,8 @@ func mobileSettingsWindow(s *FyneScreen) (fyne.CanvasObject, func()) {
 		settings = append(settings, batterySettings)
 	}
 
-	return container.NewVBox(settings...), refreshBatterySettings
+	return container.NewVBox(settings...), func() {
+		refreshBatterySettings()
+		refreshRelaxedDiscovery()
+	}
 }

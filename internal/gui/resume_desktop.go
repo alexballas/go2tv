@@ -284,17 +284,6 @@ func canonicalizeResumePath(path string, goos string) string {
 	return out
 }
 
-func resumeEligibleMediaKind(mediaType string) (string, bool) {
-	switch {
-	case strings.HasPrefix(mediaType, "video/"):
-		return "video", true
-	case strings.HasPrefix(mediaType, "audio/"):
-		return "audio", true
-	default:
-		return "", false
-	}
-}
-
 func resumeEligibleForPlayback(external bool, screencast bool, rtmp bool, mediaType string) (string, bool) {
 	if external || screencast || rtmp {
 		return "", false

@@ -120,7 +120,7 @@
     "RTMP stream not found. Please start streaming from OBS first.": "RTMP stream not found. Please start streaming from OBS first.",
     "RTMP server not started": "RTMP server not started",
     "Cast": "Cast",
-    "Cast Desktop (experimental)": "Cast Desktop (experimental)",
+    "Cast Desktop": "Cast Desktop",
     "Cast Desktop Live Stream": "Cast Desktop Live Stream",
     "Image Casting": "Image Casting",
     "Start RTMP Session": "Start RTMP Session",
@@ -304,7 +304,6 @@
     "Torrent": "Torrent",
     "Torrent media": "Torrent media",
     "Torrent: waiting for peers": "Torrent: waiting for peers",
-    "Torrent…": "Torrent…",
     "Unmute": "Unmute",
     "Use file": "Use file",
     "Use station": "Use station",
@@ -335,8 +334,6 @@
     "Browse subtitle file…": "Browse subtitle file…",
     "Subtitle file": "Subtitle file",
     "Default audio": "Default audio",
-    "Automatic subtitles": "Automatic subtitles",
-    "Subtitles off": "Subtitles off",
     "Selections apply when casting starts.": "Selections apply when casting starts.",
     "Stop playback to change audio or subtitles.": "Stop playback to change audio or subtitles.",
     "Searching for subtitle tracks…": "Searching for subtitle tracks…",
@@ -347,5 +344,9 @@
     "Choose an external text subtitle file for this track.": "Choose an external text subtitle file for this track.",
     "From video": "From video",
     "Choose subtitle file…": "Choose subtitle file…",
-    "Off": "Off"
+    "Off": "Off",
+    "Relaxed Device Discovery": "Relaxed Device Discovery",
+    "Hidden in last scan": "Hidden in last scan",
+    "Finds devices behind relays, with several addresses or on public-IP networks. Any device on your network can then make Go2TV contact other addresses. Leave off unless a device is missing.": "Finds devices behind relays, with several addresses or on public-IP networks. Any device on your network can then make Go2TV contact other addresses. Leave off unless a device is missing.",
+    "Set by -relaxed-discovery for this session": "Set by -relaxed-discovery for this session"
 }

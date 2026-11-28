@@ -10,6 +10,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
+
+	"go2tv.app/go2tv/v2/devices"
 )
 
 func Run(ctx context.Context, cfg Config, output io.Writer) error {
@@ -26,6 +29,18 @@ func Run(ctx context.Context, cfg Config, output io.Writer) error {
 	}
 	defer listener.Close()
 	log := newServerLogger(output, validated.Debug)
+	if validated.Debug {
+		devices.SetDiscoveryLogOutput(discoveryLogWriter{log: log})
+		defer devices.SetDiscoveryLogOutput(nil)
+	}
+	if !validated.RelaxedDiscovery {
+		// Count only: replies are attacker-controlled, so no remote text
+		// reaches the normal-level log.
+		devices.SetHiddenNoticeFunc(func(n int) {
+			log.Info(fmt.Sprintf("Strict discovery ignored %d SSDP description URLs; see -relaxed-discovery.", n))
+		})
+		defer devices.SetHiddenNoticeFunc(nil)
+	}
 	securityConfig := validated
 	securityConfig.Listen = listener.Addr().String()
 	runtime, err := newRuntime(validated, log, nil)
@@ -71,4 +86,16 @@ func logStartup(log *serverLogger, cfg Config, actualListen string) {
 		log.Info("Media root: " + root)
 	}
 	log.Warning("Media root paths may enter console/journal logs.")
+	if cfg.RelaxedDiscovery {
+		log.Warning("Relaxed discovery: relayed, multi-homed and public-IP DLNA devices are fetched; any LAN device can make go2tv contact other addresses.")
+	}
+}
+
+// discoveryLogWriter routes device discovery logs, including SSDP policy
+// rejections and strict-mode restrictions, to the server debug log.
+type discoveryLogWriter struct{ log *serverLogger }
+
+func (w discoveryLogWriter) Write(p []byte) (int, error) {
+	w.log.Debug(strings.TrimRight(string(p), "\n"))
+	return len(p), nil
 }

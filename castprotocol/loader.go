@@ -10,10 +10,10 @@ import (
 )
 
 // Request ID counter for Chromecast messages
-var requestIDCounter int32
+var requestIDCounter atomic.Int32
 
 func nextRequestID() int {
-	return int(atomic.AddInt32(&requestIDCounter, 1))
+	return int(requestIDCounter.Add(1))
 }
 
 // TextTrackStyle defines the appearance of subtitle text on Chromecast.

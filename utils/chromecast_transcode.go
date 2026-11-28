@@ -25,6 +25,9 @@ func escapeFFmpegPath(path string) string {
 	return path
 }
 
+// chromecastMinFragment (us): 8s validated on device; 4s still stalled.
+const chromecastMinFragment = "8000000"
+
 // ServeChromecastTranscodedStream transcodes media to Chromecast-compatible format.
 // Output: fragmented MP4 with H.264 video and AAC audio for HTTP streaming.
 // The context is used to kill ffmpeg when the HTTP request is cancelled.
@@ -62,12 +65,18 @@ func ServeChromecastTranscodedStream(
 	}
 
 	var in string
+	// fileInput: bounded media FFmpeg reads faster than real time.
+	var fileInput bool
 	switch f := input.(type) {
 	case string:
 		in = mediasource.Input(f)
 		input = in
+		fileInput = true
 	case *os.File:
 		in = ffmpegInputForFile(opts.FFmpegPath, f)
+		// Seekable files still pipe on FFmpeg without the fd: protocol.
+		_, err := f.Seek(0, io.SeekCurrent)
+		fileInput = err == nil
 	case io.Reader:
 		in = "pipe:0"
 	default:
@@ -156,10 +165,19 @@ func ServeChromecastTranscodedStream(
 			// Screen capture stream contains video only.
 			args = append(args, "-an")
 		} else {
-			if opts.TorrentSource != nil {
-				// Flush playable fragments before the next keyframe, which may
+			switch {
+			case opts.TorrentSource != nil:
+				// Flush fragments without waiting for the next keyframe, which may
 				// otherwise require downloading the entire low-frame-rate file.
-				args = append(args, "-frag_duration", "1000000")
+				// Exactly 8s, not 1s: short fragments stall the receiver (below).
+				args = append(args, "-frag_duration", chromecastMinFragment, "-min_frag_duration", chromecastMinFragment)
+			case fileInput && plan.codec != "libx264":
+				// Chromecast intermittently stalls for good at the first fragment
+				// boundary when it falls within ~5s of the start (1s GOP: stuck at
+				// 3.1s, any receiver). Keep 1s keyframes, cut fragments >= 8s.
+				// libx264 here keeps its long default GOP, which never stalled;
+				// a minimum would delay its first fragment to the second keyframe.
+				args = append(args, "-min_frag_duration", chromecastMinFragment)
 			}
 			args = append(
 				args,

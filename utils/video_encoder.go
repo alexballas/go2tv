@@ -531,7 +531,7 @@ func probeTranscodeVideoEncoder(ffmpegPath string, plan videoEncoderPlan) error 
 		return fmt.Errorf("probe timeout after %s", transcodeEncoderProbeTimeout)
 	}
 	if err != nil {
-		return fmt.Errorf("probe failed: %w: %s", err, tailFFmpegStderr(strings.TrimSpace(stderr.String()), 240))
+		return fmt.Errorf("probe failed: %w: %s", err, tailFFmpegStderr(strings.TrimSpace(stderr.String())))
 	}
 
 	return nil
@@ -549,12 +549,15 @@ func joinVideoFilters(parts ...string) string {
 	return strings.Join(nonEmpty, ",")
 }
 
-func tailFFmpegStderr(input string, max int) string {
+// ffmpegStderrTail bounds how much FFmpeg stderr an error message carries.
+const ffmpegStderrTail = 240
+
+func tailFFmpegStderr(input string) string {
 	if input == "" {
 		return "no ffmpeg stderr output"
 	}
-	if max <= 0 || len(input) <= max {
+	if len(input) <= ffmpegStderrTail {
 		return input
 	}
-	return input[len(input)-max:]
+	return input[len(input)-ffmpegStderrTail:]
 }

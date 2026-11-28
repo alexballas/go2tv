@@ -43,7 +43,3 @@ make check-no-replace   # go.mod must not keep replace directives
 - Wrap errors as `fmt.Errorf("function: %w", err)`; package-level `ErrSomething` for common cases.
 - Tests: table-driven (`tt := []struct{...}`), `t.Run` subtests, `t.Fatalf`.
 - **NO STUPID TESTS:** every test must protect real user-visible behavior or a credible regression. Assert the contract; no implementation trivia, tautologies or redundant coverage.
-
-## Plans
-
-End each plan with a list of unresolved questions, if any. Extremely concise; sacrifice grammar.

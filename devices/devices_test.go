@@ -6,6 +6,8 @@ import (
 	"errors"
 	"maps"
 	"net"
+	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -16,31 +18,32 @@ import (
 
 func TestLoadSSDPServicesDetectsNonAVTransportST(t *testing.T) {
 	origSearch := ssdpSearch
-	origLoad := loadDevicesFromLocation
+	origLoad := loadDiscoveredDevices
 	t.Cleanup(func() {
 		ssdpSearch = origSearch
-		loadDevicesFromLocation = origLoad
+		loadDiscoveredDevices = origLoad
 	})
 
 	ssdpSearch = func(searchType string, waitSec int, localAddr string) ([]ssdp.Service, error) {
 		return []ssdp.Service{
 			{
 				Type:     ssdp.RootDevice,
-				Location: "http://sonos.local:1400/xml/device_description.xml",
+				Location: "http://192.168.1.40:1400/xml/device_description.xml",
+				From:     &net.UDPAddr{IP: net.IPv4(192, 168, 1, 40), Port: 1900},
 			},
 		}, nil
 	}
 
-	loadDevicesFromLocation = func(ctx context.Context, dmrurl string) ([]*soapcalls.DMRextracted, error) {
-		if dmrurl != "http://sonos.local:1400/xml/device_description.xml" {
-			t.Fatalf("unexpected location: %s", dmrurl)
+	loadDiscoveredDevices = func(ctx context.Context, dmrurl string, pinned netip.Addr) ([]*soapcalls.DMRextracted, error) {
+		if dmrurl != "http://192.168.1.40:1400/xml/device_description.xml" || pinned != netip.MustParseAddr("192.168.1.40") {
+			t.Fatalf("unexpected location: %s pinned %v", dmrurl, pinned)
 		}
 
 		return []*soapcalls.DMRextracted{
 			{
 				FriendlyName:          "Sonos One",
-				AvtransportControlURL: "http://sonos.local:1400/MediaRenderer/AVTransport/Control",
-				ConnectionManagerURL:  "http://sonos.local:1400/MediaRenderer/ConnectionManager/Control",
+				AvtransportControlURL: "http://192.168.1.40:1400/MediaRenderer/AVTransport/Control",
+				ConnectionManagerURL:  "http://192.168.1.40:1400/MediaRenderer/ConnectionManager/Control",
 			},
 		}, nil
 	}
@@ -58,33 +61,34 @@ func TestLoadSSDPServicesDetectsNonAVTransportST(t *testing.T) {
 		t.Fatalf("LoadSSDPservices() name = %q, want %q", devs[0].Name, "Sonos One")
 	}
 
-	if devs[0].Addr != "http://sonos.local:1400/xml/device_description.xml" {
+	if devs[0].Addr != "http://192.168.1.40:1400/xml/device_description.xml" {
 		t.Fatalf("LoadSSDPservices() addr = %q, want location URL", devs[0].Addr)
 	}
 }
 
 func TestLoadSSDPServicesAllowsMissingConnectionManager(t *testing.T) {
 	origSearch := ssdpSearch
-	origLoad := loadDevicesFromLocation
+	origLoad := loadDiscoveredDevices
 	t.Cleanup(func() {
 		ssdpSearch = origSearch
-		loadDevicesFromLocation = origLoad
+		loadDiscoveredDevices = origLoad
 	})
 
 	ssdpSearch = func(searchType string, waitSec int, localAddr string) ([]ssdp.Service, error) {
 		return []ssdp.Service{
 			{
 				Type:     ssdp.RootDevice,
-				Location: "http://speaker.local:1400/xml/device_description.xml",
+				Location: "http://192.168.1.41:1400/xml/device_description.xml",
+				From:     &net.UDPAddr{IP: net.IPv4(192, 168, 1, 41), Port: 1900},
 			},
 		}, nil
 	}
 
-	loadDevicesFromLocation = func(ctx context.Context, dmrurl string) ([]*soapcalls.DMRextracted, error) {
+	loadDiscoveredDevices = func(ctx context.Context, dmrurl string, pinned netip.Addr) ([]*soapcalls.DMRextracted, error) {
 		return []*soapcalls.DMRextracted{
 			{
 				FriendlyName:          "Legacy Renderer",
-				AvtransportControlURL: "http://speaker.local:1400/MediaRenderer/AVTransport/Control",
+				AvtransportControlURL: "http://192.168.1.41:1400/MediaRenderer/AVTransport/Control",
 			},
 		}, nil
 	}
@@ -134,53 +138,26 @@ func TestFormatSummaryListDedupesAndCaps(t *testing.T) {
 	}
 }
 
-func TestCheckInterfacesForPortSkipsBadInterfaceAddresses(t *testing.T) {
-	origInterfaceAddrs := interfaceAddrs
-	origIfaceAddrLookup := ifaceAddrLookup
-	origListenUDP := listenUDP
-	t.Cleanup(func() {
-		interfaceAddrs = origInterfaceAddrs
-		ifaceAddrLookup = origIfaceAddrLookup
-		listenUDP = origListenUDP
-	})
+func TestSSDPSearchRetriesWhenPortIsBusy(t *testing.T) {
+	original := ssdpSearch
+	t.Cleanup(func() { ssdpSearch = original })
 
-	ifaces := []net.Interface{{Index: 1, Name: "bad0"}, {Index: 2, Name: "good0"}}
-	interfaceAddrs = func() ([]net.Interface, error) {
-		return ifaces, nil
-	}
-
-	listenAttempts := 0
-	listenUDP = func(network string, laddr *net.UDPAddr) (*net.UDPConn, error) {
-		listenAttempts++
-		switch laddr.IP.String() {
-		case "192.168.1.10":
-			return nil, errors.New("bind failed")
-		case "192.168.1.11":
-			conn, err := net.ListenUDP(network, &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
-			if err != nil {
-				t.Fatalf("ListenUDP fallback setup failed: %v", err)
-			}
-			return conn, nil
-		default:
-			t.Fatalf("unexpected listen address: %v", laddr)
-			return nil, nil
+	var attempted []string
+	ssdpSearch = func(_ string, _ int, addr string) ([]ssdp.Service, error) {
+		attempted = append(attempted, addr)
+		if len(attempted) == 1 {
+			return nil, &net.OpError{Op: "listen", Net: "udp4", Err: errors.New("address already in use")}
 		}
+		return []ssdp.Service{{Location: "http://192.168.1.40/device.xml"}}, nil
 	}
 
-	addrMap := map[string][]net.Addr{
-		"bad0":  {mustCIDRAddr(t, "192.168.1.10/24")},
-		"good0": {mustCIDRAddr(t, "192.168.1.11/24")},
+	found, addr, err := searchSSDP(t.Context(), 1)
+	if err != nil {
+		t.Fatalf("searchSSDP: %v", err)
 	}
-	ifaceAddrLookup = func(iface net.Interface) ([]net.Addr, error) {
-		return addrMap[iface.Name], nil
-	}
-
-	if err := checkInterfacesForPort(3339); err != nil {
-		t.Fatalf("checkInterfacesForPort() err = %v, want nil", err)
-	}
-
-	if listenAttempts != 2 {
-		t.Fatalf("listen attempts = %d, want 2", listenAttempts)
+	if len(found) != 1 || addr != "0.0.0.0:3340" ||
+		!slices.Equal(attempted, []string{"0.0.0.0:3339", "0.0.0.0:3340"}) {
+		t.Fatalf("search returned %d devices at %s after trying %v", len(found), addr, attempted)
 	}
 }
 
@@ -240,14 +217,4 @@ func TestStartDiscoveryStartsLoopsOnce(t *testing.T) {
 	if got := strings.Count(buf.String(), "discovery: Discovery loops starting\n"); got != 1 {
 		t.Fatalf("Discovery loops starting logs = %d, want 1", got)
 	}
-}
-
-func mustCIDRAddr(t *testing.T, raw string) net.Addr {
-	t.Helper()
-	ip, ipNet, err := net.ParseCIDR(raw)
-	if err != nil {
-		t.Fatalf("ParseCIDR(%q): %v", raw, err)
-	}
-	ipNet.IP = ip
-	return ipNet
 }

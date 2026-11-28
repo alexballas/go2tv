@@ -15,12 +15,13 @@ import (
 
 // Keep the status on one line; reveal the filename only when truncated.
 type playbackStatusLabel struct {
-	*ttwidget.Label
+	ttwidget.Label
 	filename string
 }
 
 func newPlaybackStatusLabel(text string) *playbackStatusLabel {
-	label := &playbackStatusLabel{Label: ttwidget.NewLabel(text)}
+	label := &playbackStatusLabel{}
+	label.Text = text
 	label.ExtendBaseWidget(label)
 	return label
 }

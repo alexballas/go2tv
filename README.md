@@ -37,7 +37,7 @@ No need to copy files to a USB drive or set up a media server. Just select your 
 - **Loop and auto-play** - Loop the current file or auto-play through the playlist
 - **DLNA Gapless Playback** - Supported for DLNA devices
 - **RTMP Server** - Cast live streams from OBS directly to Chromecast (requires FFmpeg)
-- **Cast Desktop (experimental)** - Cast desktop as a live stream to DLNA or Chromecast devices (requires FFmpeg)
+- **Cast Desktop** - Cast desktop as a live stream to DLNA or Chromecast devices (requires FFmpeg)
 - **Web UI (server mode)** - Browse media roots, tune in to internet radio and control casting from any browser on your network
 - **GUI and CLI** - Use the graphical interface or command line
 
@@ -159,6 +159,9 @@ Common commands:
 ``` console
 # List available devices
 go2tv -l
+
+# Scan once (about 5 s) and print devices as JSON, for scripts
+go2tv -l -json
 
 # Play a local file
 go2tv -v movie.mp4 -t http://192.168.1.100:8060/
@@ -287,9 +290,9 @@ FFmpeg must include `overlay` and `scale2ref` for bitmap burn-in, and `subtitles
 Select a Chromecast, enable **RTMP Server**, and click **Play**. Use the displayed URL in
 OBS or other streaming software. Requires FFmpeg.
 
-### Cast Desktop (Experimental)
+### Cast Desktop
 
-Select a DLNA or Chromecast device, enable **Cast Desktop (experimental)**, and click **Cast**.
+Select a DLNA or Chromecast device, enable **Cast Desktop**, and click **Cast**.
 Requires FFmpeg and is not supported on audio-only devices.
 
 ---
@@ -322,6 +325,14 @@ URLs, and stop playback. For direct control, use the Go2TV GUI or CLI.
   (the name varies by brand).
 - Allow Go2TV through your firewall (see below).
 - `go2tv -l` keeps scanning; give slow devices a few seconds to appear.
+- Behind an SSDP relay/proxy, using a renderer with several network addresses, or on a
+  network with public IP addresses? By default Go2TV only fetches DLNA device descriptions
+  from private-network addresses (`10.x`, `172.16–31.x`, `192.168.x`, `169.254.x`,
+  `100.64–127.x`) that answered discovery themselves; `go2tv -l` reports how many it
+  ignored on exit. Enable **Relaxed Device Discovery** in Settings, or pass
+  `-relaxed-discovery` (`-l` and `-server`). Any device on your network can then make
+  Go2TV contact other addresses, so leave it off unless a device is missing. `-t` with
+  the device URL always works.
 
 ### Device listed but playback fails
 
@@ -338,6 +349,18 @@ If you're behind a firewall, allow inbound traffic from devices on your local ne
 ---
 
 ## Notes
+
+**Discovery security**
+
+Before you pick a device, Go2TV only contacts addresses that discovery replies point to:
+literal IPv4 addresses (no DNS), never loopback or cloud metadata addresses, and in
+the default strict mode only private addresses that answered themselves. Remaining
+risks: a LAN device that can forge network packets can still make Go2TV send blind
+requests to private addresses your computer can reach (other VLANs, VPN or container
+networks); with **Relaxed Device Discovery** on, any LAN device can do so without
+forging, also to public addresses that answered themselves; and Chromecast (mDNS)
+discovery still makes TCP connection checks to the addresses it is told about.
+IPv6 description URLs are not used.
 
 **Chromecast receiver**
 

@@ -699,9 +699,9 @@ func serveContentWithDLNAOptions(w http.ResponseWriter, r *http.Request, tv *soa
 			serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, rsc, dlnaOpts)
 			return
 		}
-		serveContentSeekCloser(w, r, mediaType, seek, rsc)
+		serveContentSeekCloser(w, r, seek, rsc)
 	case []byte:
-		serveContentBytes(w, r, mediaType, f)
+		serveContentBytes(w, r, f)
 	case LiveStream:
 		// A probe must not take the reader, or the GET that follows it finds
 		// the stream busy and the renderer never starts playing.
@@ -717,6 +717,12 @@ func serveContentWithDLNAOptions(w http.ResponseWriter, r *http.Request, tv *soa
 		}
 		serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, borrowedLiveReader{rc}, dlnaOpts)
 	case io.ReadCloser:
+		// Single-use stream: a HEAD probe (Samsung sends two) must not close
+		// it, or the GET that follows gets an empty body.
+		if r.Method != http.MethodGet {
+			serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, http.NoBody, dlnaOpts)
+			return
+		}
 		serveContentReadClose(w, r, tv, tcOpts, mediaType, transcode, f, dlnaOpts)
 	default:
 		http.NotFound(w, r)
@@ -724,7 +730,7 @@ func serveContentWithDLNAOptions(w http.ResponseWriter, r *http.Request, tv *soa
 	}
 }
 
-func serveContentBytes(w http.ResponseWriter, r *http.Request, mediaType string, f []byte) {
+func serveContentBytes(w http.ResponseWriter, r *http.Request, f []byte) {
 	// Add CORS for subtitle files (needed for Chromecast)
 	requestPathLower := strings.ToLower(r.URL.Path)
 	if strings.HasSuffix(requestPathLower, ".vtt") || strings.HasSuffix(requestPathLower, ".srt") {
@@ -815,7 +821,7 @@ type MediaReaderSeeker func() (io.ReadSeekCloser, error)
 // serveContentSeekCloser serves a seekable reader directly via
 // http.ServeContent, giving full HTTP range-request support without copying the
 // media to a temporary file. The reader is closed once the request completes.
-func serveContentSeekCloser(w http.ResponseWriter, r *http.Request, mediaType string, seek bool, f io.ReadSeekCloser) {
+func serveContentSeekCloser(w http.ResponseWriter, r *http.Request, seek bool, f io.ReadSeekCloser) {
 	defer f.Close()
 
 	if r.Header.Get("getcontentFeatures.dlna.org") == "1" {

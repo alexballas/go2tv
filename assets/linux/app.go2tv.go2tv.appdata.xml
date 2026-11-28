@@ -9,9 +9,14 @@
   <metadata_license>MIT</metadata_license>
   <project_license>MIT</project_license>
 
+  <recommends>
+    <display_length compare="ge">360</display_length>
+  </recommends>
+
   <supports>
     <control>pointing</control>
     <control>keyboard</control>
+    <control>touch</control>
   </supports>
 
   <description>
@@ -51,6 +56,43 @@
   </branding>
 
   <releases>
+      <release version="2.10.0" date="2026-11-22" type="stable">
+        <description>
+          <ul>
+            <li>Fixed a security issue where any device on your network could make Go2TV send requests to internet, loopback or cloud addresses during device discovery.</li>
+            <li>Added Relaxed Device Discovery in Settings and the -relaxed-discovery flag to list DLNA devices behind SSDP relays, with several network addresses or on public-IP networks, which the security fix now hides by default.</li>
+            <li>DLNA devices that advertise a hostname or IPv6 address are no longer discovered automatically; cast to them with -t and the device URL.</li>
+            <li>Added -l -json to scan once and print the discovered devices as JSON for scripts.</li>
+            <li>Improved scrolling smoothness in Settings and long lists such as radio stations.</li>
+            <li>Improved how quickly the main window redraws while playback information updates.</li>
+            <li>Fixed Chinese text sometimes mixing characters from different fonts.</li>
+            <li>Fixed the seek bar moving when a press that started beside it was dragged onto it.</li>
+            <li>Fixed a newly selected device being deselected when the previously selected device went offline during a scan.</li>
+            <li>Fixed subtitles showing formatting codes such as {\an8} on Chromecast and DLNA devices, and Chromecast now places them at the top or side of the screen as intended.</li>
+            <li>Fixed an unreadable subtitle file stopping a DLNA cast.</li>
+            <li>Fixed the CLI stopping a transcoded Chromecast cast after a few seconds.</li>
+            <li>Fixed subtitles disappearing after skipping forward or back in a transcoded Chromecast cast from the CLI.</li>
+            <li>Fixed casting a media URL to some DLNA TVs, such as Samsung, playing nothing.</li>
+            <li>Fixed the CLI sometimes staying open after a Chromecast cast finished.</li>
+            <li>Fixed piped MPEG-TS video not playing on Chromecast with -tc.</li>
+            <li>Fixed transcoded Chromecast casts sometimes freezing a few seconds in.</li>
+            <li>Desktop App: Cast Desktop is no longer marked as experimental.</li>
+            <li>Desktop App: Fixed an "RTMP server stopped unexpectedly" error appearing when an RTMP stream ended normally.</li>
+            <li>Desktop App: Fixed memory not being released after closing the Playlist window.</li>
+            <li>Windows: Fixed DLNA discovery finding no devices while another Go2TV instance is scanning.</li>
+            <li>Linux: Fixed Cast Desktop failing on KDE Plasma with an "unexpected response from dbus" error, or hanging while it starts.</li>
+            <li>Linux: Fixed Cast Desktop showing a garbled, repeated picture on displays with scaling enabled.</li>
+            <li>Linux: Fixed sharing a single window with Cast Desktop on KDE Plasma failing with "invalid stream size 0x0".</li>
+            <li>Web UI: Added a Retry button when a library folder fails to load, instead of leaving it stuck on "Loading folder…".</li>
+            <li>Web UI: Fixed the library showing the wrong folder when another folder was opened before the previous one finished loading.</li>
+            <li>Web UI: Fixed files from the previous folder being added to the Playlist while the next folder was loading.</li>
+            <li>Web UI: Fixed a library file appearing selected after the server rejected playing it.</li>
+            <li>Web UI: Fixed empty media files being accepted for playback instead of showing a "media file is empty" error.</li>
+            <li>Web UI: Fixed the player still showing playback as active after the server stopped.</li>
+          </ul>
+        </description>
+        <url type="details">https://github.com/alexballas/go2tv/releases/tag/v2.10.0</url>
+      </release>
       <release version="2.9.0" date="2026-11-14" type="stable">
         <description>
           <ul>

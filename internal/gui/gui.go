@@ -66,6 +66,8 @@ func (p *FyneScreen) refreshMPRISProgress() {
 
 // FyneScreen .
 type FyneScreen struct {
+	// refreshDiscoverySetting updates the hint as discovery results change.
+	refreshDiscoverySetting  func()
 	workers                  backgroundWork
 	radioSong                radioSongState
 	radio                    *radioView
@@ -248,13 +250,6 @@ const (
 	droppedMediaModeAppend
 )
 
-type devType struct {
-	name        string
-	addr        string
-	deviceType  string
-	isAudioOnly bool
-}
-
 func (s *FyneScreen) updateFFmpegDependentCheckTooltips() {
 	if s == nil {
 		return
@@ -344,6 +339,9 @@ func Start(ctx context.Context, s *FyneScreen) {
 	w.SetOnDropped(onDropFiles(s))
 
 	mainContent := container.NewScroll(container.NewPadded(mainWindow(s)))
+	// Before Settings is built, so the relaxed-discovery checkbox shows the
+	// session's real mode.
+	applyRelaxedDiscoveryPref()
 	settingsContent := container.NewScroll(container.NewPadded(settingsWindow(s)))
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Go2TV", mainContent),
@@ -353,6 +351,9 @@ func Start(ctx context.Context, s *FyneScreen) {
 
 	s.Hotkeys = true
 	tabs.OnSelected = func(t *container.TabItem) {
+		if t.Text == lang.L("Settings") && s.refreshDiscoverySetting != nil {
+			s.refreshDiscoverySetting()
+		}
 		if t.Text == "Go2TV" {
 			if s.renderGate.remoteLeaseHeld() {
 				// Remote session owns the renderer; availability is recomputed
@@ -496,13 +497,6 @@ func (p *FyneScreen) EmitMsg(a string) {
 			dialog.ShowInformation("?", "Unknown callback value", p.Current)
 		}
 	})
-}
-
-// SetMediaType Method to implement the screen interface
-func (p *FyneScreen) SetMediaType(mediaType string) {
-	p.mu.Lock()
-	p.castingMediaType = mediaType
-	p.mu.Unlock()
 }
 
 // Fini Method to implement the screen interface.
@@ -788,6 +782,7 @@ func (p *FyneScreen) updateScreenState(a string) {
 		}
 		p.refreshAudioPicker()
 		p.updateActiveDeviceView()
+		p.clearHiddenDeviceSelection()
 		p.refreshPlaybackReadiness()
 		p.refreshQueueStateUI()
 	})
@@ -807,10 +802,6 @@ func (p *FyneScreen) setActiveDevice(device devType) {
 		}
 		p.updateActiveDeviceView()
 	})
-}
-
-func (p *FyneScreen) clearActiveDevice() {
-	p.setActiveDevice(devType{})
 }
 
 // Playback identity survives playlist edits and changes only with the session.
@@ -874,26 +865,6 @@ func (p *FyneScreen) updateActiveDeviceView() {
 	} else {
 		p.ActiveDeviceCard.Hide()
 	}
-}
-
-// getScreenState returns the current screen state
-func (p *FyneScreen) getScreenState() string {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.State
-}
-
-func (p *FyneScreen) nextChromecastActionID() uint64 {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.chromecastActionID++
-	return p.chromecastActionID
-}
-
-func (p *FyneScreen) isChromecastActionCurrent(actionID uint64) bool {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.chromecastActionID == actionID
 }
 
 func chromecastDeviceHost(device devType) string {
@@ -1028,14 +999,6 @@ func configuredFFmpegPath(pref string) string {
 
 	path, _ := utils.ResolveFFmpegPath("")
 	return path
-}
-
-func crashPath(crash *crashlog.Session) string {
-	if crash == nil {
-		return ""
-	}
-
-	return crash.PreviousCrashPath()
 }
 
 func onDropFiles(screen *FyneScreen) func(p fyne.Position, u []fyne.URI) {

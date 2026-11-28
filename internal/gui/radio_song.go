@@ -36,7 +36,7 @@ func newRadioSongLabel(screen *FyneScreen) *widget.Label {
 	return label
 }
 
-func (s *FyneScreen) stopRadioSongMonitor() uint64 { return s.resetRadioSongMonitor(false) }
+func (s *FyneScreen) stopRadioSongMonitor() { s.resetRadioSongMonitor(false) }
 
 func (s *FyneScreen) resetRadioSongMonitor(keepRelay bool) uint64 {
 	s.mu.Lock()

@@ -93,62 +93,6 @@ func TestBuildDLNAContentFeatures(t *testing.T) {
 	}
 }
 
-func TestBuildContentFeaturesLegacyWrapper(t *testing.T) {
-	tt := []struct {
-		name      string
-		mediaType string
-		seek      string
-		want      string
-		transcode bool
-	}{
-		{
-			`Test #1`,
-			`video/x-mkv`,
-			`00`,
-			"DLNA.ORG_CI=1",
-			true,
-		},
-		{
-			`Test #2`,
-			``,
-			`01`,
-			"DLNA.ORG_OP=01;DLNA.ORG_CI=0",
-			false,
-		},
-		{
-			`Test #3`,
-			`bad-text`,
-			`11`,
-			"DLNA.ORG_OP=11;DLNA.ORG_CI=0",
-			false,
-		},
-		{
-			`Media type does not infer profile`,
-			`video/mpeg`,
-			`00`,
-			"DLNA.ORG_CI=0",
-			false,
-		},
-	}
-
-	for _, tc := range tt {
-		t.Run(tc.name, func(t *testing.T) {
-			out, err := BuildContentFeatures(tc.mediaType, tc.seek, tc.transcode)
-			if err != nil {
-				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, tc.want)
-			}
-
-			if out != tc.want {
-				t.Fatalf("%s: got: %s, want: %s.", tc.name, out, tc.want)
-			}
-		})
-	}
-
-	if _, err := BuildContentFeatures("video/mp4", "invalid", false); err != ErrInvalidSeekFlag {
-		t.Fatalf("invalid seek error = %v, want %v", err, ErrInvalidSeekFlag)
-	}
-}
-
 func TestDLNAResourceMediaTypeAndTransferMode(t *testing.T) {
 	if got := DLNAResourceMediaType("video/mp4", true); got != "video/mpeg" {
 		t.Fatalf("transcoded media type = %q, want video/mpeg", got)
@@ -253,4 +197,36 @@ func TestSecondsToClockTime(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetMimeDetailsMPEGTS(t *testing.T) {
+	ts := make([]byte, 512)
+	for i := 0; i < len(ts); i += 188 {
+		ts[i] = 0x47
+	}
+	tt := []struct {
+		name string
+		data []byte
+		want string
+	}{
+		// Piped `ffmpeg -f mpegts -` output: was "/", so -tc never applied.
+		{name: "transport stream", data: ts, want: "video/mp2t"},
+		{name: "single sync byte is not TS", data: append([]byte{0x47}, make([]byte, 300)...), want: "/"},
+		// "GIF8" starts with the sync byte; ~1 in 256 GIFs also have 0x47 at 188.
+		{name: "GIF with sync byte at packet boundary", data: gifWithSyncAt188(), want: "image/gif"},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := GetMimeDetailsFromBytes(tc.data)
+			if err != nil || got != tc.want {
+				t.Fatalf("GetMimeDetailsFromBytes = %q, %v; want %q", got, err, tc.want)
+			}
+		})
+	}
+}
+
+func gifWithSyncAt188() []byte {
+	b := append([]byte("GIF89a"), make([]byte, 255)...)
+	b[188] = 0x47
+	return b
 }

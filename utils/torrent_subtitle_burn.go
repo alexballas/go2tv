@@ -345,7 +345,7 @@ func renderTorrentCaptions(ctx context.Context, w io.Writer, opts *TranscodeOpti
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			return fmt.Errorf("render torrent captions: %w: %s", err, tailFFmpegStderr(stderr.String(), 240))
+			return fmt.Errorf("render torrent captions: %w: %s", err, tailFFmpegStderr(stderr.String()))
 		}
 	}
 }

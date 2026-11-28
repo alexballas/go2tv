@@ -233,17 +233,6 @@ func resolveMobileResumeIdentity(uri fyne.URI, mediaKind string) (resumeIdentity
 	return identity, true, nil
 }
 
-func resumeEligibleMediaKind(mediaType string) (string, bool) {
-	switch {
-	case strings.HasPrefix(mediaType, "video/"):
-		return "video", true
-	case strings.HasPrefix(mediaType, "audio/"):
-		return "audio", true
-	default:
-		return "", false
-	}
-}
-
 func computeResumeStart(existingSeek, storedResume int, transcode bool) (int, int) {
 	if existingSeek > 0 {
 		return existingSeek, 0

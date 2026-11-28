@@ -75,14 +75,7 @@ func checkVersion(s *FyneScreen) {
 	errVersioncomp := errors.New(lang.L("failed to get version info") + " - " + lang.L("you're using a development or a non-compiled version"))
 	errVersionGet := errors.New(lang.L("failed to get version info") + " - " + lang.L("check your internet connection"))
 
-	// Parse current version
-	// We don't need to manually strip/replace, compareVersions handles it
-	// But we do need to check if it's "dev" or invalid first to fail fast if we want,
-	// or just let compareVersions return an error.
-	// The original code did atoi check early.
-
-	// Check if current version is valid/parsable (not "dev")
-	if _, err := parseVersion(s.version); err != nil {
+	if !validVersion(s.version) {
 		fyne.Do(func() {
 			dialog.ShowError(errVersioncomp, s.Current)
 		})
@@ -115,25 +108,4 @@ func checkVersion(s *FyneScreen) {
 		})
 		return
 	}
-}
-
-func showVersionPopup(latestVersionStr string, s *FyneScreen) {
-	fyne.Do(func() {
-		lbl := widget.NewLabel(lang.L("Current") + ": v" + s.version + " → " + lang.L("New") + ": " + latestVersionStr)
-		lbl.Alignment = fyne.TextAlignCenter
-		cnf := dialog.NewCustomConfirm(
-			lang.L("Version checker"),
-			lang.L("Download"),
-			lang.L("Cancel"),
-			lbl,
-			func(b bool) {
-				if b {
-					u, _ := url.Parse("https://go2tv.app/latest")
-					_ = fyne.CurrentApp().OpenURL(u)
-				}
-			},
-			s.Current,
-		)
-		cnf.Show()
-	})
 }

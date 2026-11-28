@@ -7,12 +7,15 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 )
 
 const (
+	maxRendererRedirects       = 10
 	maxRendererDescriptionBody = 2 << 20
 	maxSOAPResponseBody        = 1 << 20
 )
@@ -67,7 +70,8 @@ func rendererHTTPClient(location *url.URL, pinned net.IP) *http.Client {
 		Timeout:   soapHTTPClientTimeout,
 		Transport: base,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) == 0 || !strings.EqualFold(req.URL.Hostname(), via[0].URL.Hostname()) {
+			// A custom CheckRedirect drops Go's default hop limit, so restore it.
+			if len(via) == 0 || len(via) >= maxRendererRedirects || !strings.EqualFold(req.URL.Hostname(), via[0].URL.Hostname()) {
 				return http.ErrUseLastResponse
 			}
 			return nil
@@ -75,7 +79,15 @@ func rendererHTTPClient(location *url.URL, pinned net.IP) *http.Client {
 	}
 }
 
-func validateServiceEndpoints(ctx context.Context, pinned net.IP, extracted *DMRextracted) error {
+// validateServiceEndpoints requires every service endpoint to sit on pinned.
+// With literalOnly (discovery, before the user selects anything), hostnames are
+// never resolved, so an unsolicited description cannot trigger DNS lookups: an
+// IP-literal endpoint must equal pinned, and a hostname endpoint is accepted
+// unchecked because discovery never contacts endpoints. Selection re-runs
+// DMRextractor, which resolves and checks every endpoint before any SOAP call.
+// The port is free: many renderers serve control on a different port than the
+// description.
+func validateServiceEndpoints(ctx context.Context, pinned net.IP, extracted *DMRextracted, literalOnly bool) error {
 	values := []string{extracted.AvtransportControlURL, extracted.AvtransportEventSubURL, extracted.RenderingControlURL, extracted.ConnectionManagerURL}
 	for _, raw := range values {
 		if raw == "" {
@@ -85,18 +97,23 @@ func validateServiceEndpoints(ctx context.Context, pinned net.IP, extracted *DMR
 		if err != nil || u.Host == "" || u.User != nil || u.Scheme != "http" && u.Scheme != "https" {
 			return errors.New("service endpoint invalid")
 		}
-		ips, err := net.DefaultResolver.LookupIP(ctx, "ip", u.Hostname())
-		if err != nil {
-			return fmt.Errorf("resolve service endpoint: %w", err)
-		}
-		matched := false
-		for _, ip := range ips {
-			if ip.Equal(pinned) {
-				matched = true
-				break
+		var ips []net.IP
+		switch {
+		case literalOnly:
+			// netip parses zoned IPv6 literals (fe80::1%eth0) that net.ParseIP
+			// rejects; they are literals, not hostnames, so they must match too.
+			addr, err := netip.ParseAddr(u.Hostname())
+			if err != nil {
+				continue
+			}
+			ips = []net.IP{net.IP(addr.WithZone("").Unmap().AsSlice())}
+		default:
+			ips, err = net.DefaultResolver.LookupIP(ctx, "ip", u.Hostname())
+			if err != nil {
+				return fmt.Errorf("resolve service endpoint: %w", err)
 			}
 		}
-		if !matched {
+		if !slices.ContainsFunc(ips, pinned.Equal) {
 			return errors.New("service endpoint host differs from discovery host")
 		}
 		if port := u.Port(); port != "" {

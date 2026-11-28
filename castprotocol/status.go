@@ -10,4 +10,8 @@ type CastStatus struct {
 	MediaTitle  string
 	ContentType string
 	StreamType  string // "BUFFERED" or "LIVE"
+	// MediaSessionID changes on every LOAD; 0 means no media session.
+	MediaSessionID int
+	// IdleReason is FINISHED, CANCELLED, INTERRUPTED or ERROR when IDLE.
+	IdleReason string
 }

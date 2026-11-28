@@ -37,7 +37,7 @@ func (l *recordingLogger) Error(message string) {
 
 func TestWebUIActionLogging(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "media.mp4"), nil, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "media.mp4"), []byte("media"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	lib, err := library.Open(library.Config{Roots: []string{root}})

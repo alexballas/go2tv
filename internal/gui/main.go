@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"image/color"
 	"net/url"
-	"sort"
+	"slices"
 	"time"
 
 	ttwidget "github.com/alexballas/fyne-tooltip/widget"
@@ -32,17 +32,6 @@ type deviceList struct {
 }
 
 func (c *deviceList) FocusGained() {}
-
-// sortDevTypeSlice sorts devices alphabetically by name,
-// with DLNA devices before Chromecast devices when names are equal.
-func sortDevTypeSlice(d []devType) {
-	sort.Slice(d, func(i, j int) bool {
-		if d[i].deviceType != d[j].deviceType {
-			return d[i].deviceType < d[j].deviceType
-		}
-		return d[i].name < d[j].name
-	})
-}
 
 func newDeviceList(s *FyneScreen, dd *[]devType) *deviceList {
 	list := &deviceList{}
@@ -291,7 +280,7 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	medialoop, nextmedia := &loopToggle.Check.Check, &nextToggle.Check.Check
 	transcodeToggle := newPlaybackToggle(lang.L("Transcode"), playbackTranscodeIcon())
 	transcode := &transcodeToggle.Check
-	screencastToggle := newPlaybackToggle(lang.L("Cast Desktop (experimental)"), playbackDesktopIcon())
+	screencastToggle := newPlaybackToggle(lang.L("Cast Desktop"), playbackDesktopIcon())
 	screencast := &screencastToggle.Check
 	rtmpToggle := newPlaybackToggle(lang.L("RTMP Server"), playbackServerIcon())
 	rtmpServerCheck := &rtmpToggle.Check
@@ -452,6 +441,10 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 
 	// Widgets actions
 	list.OnSelected = func(id widget.ListItemID) {
+		if data[id].hiddenByDiscoveryPolicy() {
+			list.UnselectAll()
+			return
+		}
 		// Only reset DLNA-specific state when switching devices, NOT Chromecast playback.
 		// This allows browsing the device list while Chromecast is playing.
 		// Once playback is stopped, switching away should drop the warm Chromecast session.
@@ -678,6 +671,14 @@ func mainWindow(s *FyneScreen) fyne.CanvasObject {
 	return status.root
 }
 
+// clearDeviceSelection forgets the selected renderer on the UI thread.
+func (s *FyneScreen) clearDeviceSelection() {
+	s.selectedDevice = devType{}
+	s.selectedDeviceType = ""
+	s.controlURL, s.eventURL, s.renderingControlURL, s.connectionManagerURL = "", "", "", ""
+	s.DeviceList.UnselectAll()
+}
+
 func refreshDevList(s *FyneScreen, data *[]devType) {
 	refreshDevices := time.NewTimer(0)
 
@@ -701,20 +702,7 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 			}
 		})
 
-	outer:
-		for _, old := range oldDevices {
-			oldAddress, _ := url.Parse(old.addr)
-			for _, device := range newDevices {
-				newAddress, _ := url.Parse(device.addr)
-				if newAddress.Host == oldAddress.Host {
-					continue outer
-				}
-			}
-
-			if utils.HostPortIsAlive(oldAddress.Host) {
-				newDevices = append(newDevices, old)
-			}
-		}
+		newDevices = retainReachableDevices(newDevices, oldDevices)
 
 		// Sort devices alphabetically for consistent ordering
 		sortDevTypeSlice(newDevices)
@@ -739,26 +727,21 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 			}
 		}
 
-		foundIdx := -1
-		if selectedDeviceAddr != "" {
-			for n, a := range newDevices {
-				if selectedDeviceAddr == a.addr {
-					foundIdx = n
-					break
-				}
-			}
-		}
-
 		fyne.DoAndWait(func() {
+			newDevices = slices.DeleteFunc(newDevices, devType.hiddenByDiscoveryPolicy)
 			*data = newDevices
+			s.clearHiddenDeviceSelection()
+			foundIdx := slices.IndexFunc(newDevices, func(d devType) bool {
+				return d.addr == s.selectedDevice.addr
+			})
 
-			if clearSelection {
-				s.controlURL = ""
-				s.selectedDevice = devType{}
-				s.DeviceList.UnselectAll()
-			} else if foundIdx >= 0 {
+			switch {
+			case clearSelection && s.selectedDevice.addr == selectedDeviceAddr:
+				s.clearDeviceSelection()
+				setPlayPauseView("", s)
+			case foundIdx >= 0:
 				s.DeviceList.Select(foundIdx)
-			} else {
+			default:
 				s.DeviceList.UnselectAll()
 			}
 
@@ -766,8 +749,8 @@ func refreshDevList(s *FyneScreen, data *[]devType) {
 			if s.deviceSummary != nil {
 				s.deviceSummary.SetText(fmt.Sprintf(lang.L("%d devices found"), len(newDevices)))
 			}
-			if clearSelection {
-				setPlayPauseView("", s)
+			if s.refreshDiscoverySetting != nil {
+				s.refreshDiscoverySetting()
 			}
 		})
 

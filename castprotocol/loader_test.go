@@ -2,7 +2,6 @@ package castprotocol
 
 import (
 	"encoding/json"
-	"sync/atomic"
 	"testing"
 
 	"go2tv.app/go2tv/v2/castprotocol/v2/cast"
@@ -78,7 +77,7 @@ func TestLoadMediaPayloadExact(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			atomic.StoreInt32(&requestIDCounter, 0)
+			requestIDCounter.Store(0)
 			conn := &payloadCaptureConn{}
 			if err := loadMedia(conn, "transport-1", tt.req, tt.autoplay); err != nil {
 				t.Fatalf("loadMedia() error = %v", err)
