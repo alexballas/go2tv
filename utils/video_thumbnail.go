@@ -69,7 +69,7 @@ func ExtractVideoThumbnail(ctx context.Context, ffmpegPath string, input any) ([
 		if output.overflow {
 			return nil, errors.New("video thumbnail exceeds 20 MiB")
 		}
-		return nil, fmt.Errorf("extract video thumbnail: %w: %s", err, tailFFmpegStderr(stderr.String(), 240))
+		return nil, fmt.Errorf("extract video thumbnail: %w: %s", err, tailFFmpegStderr(stderr.String()))
 	}
 	if len(output.Bytes()) == 0 {
 		return nil, errors.New("video thumbnail is empty")

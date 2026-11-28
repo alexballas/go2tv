@@ -72,7 +72,7 @@ func runFFmpegTranscode(
 	ff.Stderr = &stderr
 
 	if err := processutil.Start(ff); err != nil {
-		return 0, fmt.Errorf("%w: %s", err, tailFFmpegStderr(strings.TrimSpace(stderr.String()), 240))
+		return 0, fmt.Errorf("%w: %s", err, tailFFmpegStderr(strings.TrimSpace(stderr.String())))
 	}
 
 	done := make(chan error, 1)
@@ -97,7 +97,7 @@ func runFFmpegTranscode(
 			return cw.n, context.Cause(ctx)
 		}
 		if err != nil {
-			return cw.n, fmt.Errorf("%w: %s", err, tailFFmpegStderr(strings.TrimSpace(stderr.String()), 240))
+			return cw.n, fmt.Errorf("%w: %s", err, tailFFmpegStderr(strings.TrimSpace(stderr.String())))
 		}
 		return cw.n, nil
 	}

@@ -1291,7 +1291,7 @@ func chromecastPlayAction(screen *FyneScreen, actionID uint64, startupCtx contex
 	// URL and live sources never carry an audio choice.
 	screen.clearCastAudio()
 	var playbackStart int
-	serverStoppedCTX := context.Background()
+	var serverStoppedCTX context.Context
 	subtitleHost := ""
 	screen.clearResumeSession()
 	screen.ffmpegSeek = 0
