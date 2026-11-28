@@ -9,9 +9,14 @@
   <metadata_license>MIT</metadata_license>
   <project_license>MIT</project_license>
 
+  <recommends>
+    <display_length compare="ge">360</display_length>
+  </recommends>
+
   <supports>
     <control>pointing</control>
     <control>keyboard</control>
+    <control>touch</control>
   </supports>
 
   <description>
